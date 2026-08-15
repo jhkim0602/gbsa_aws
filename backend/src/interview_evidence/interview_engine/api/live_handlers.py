@@ -290,8 +290,7 @@ class LiveInterviewHandler:
                 for turn in reversed(
                     self._repository.list_final_turns(context, envelope.session_id)
                 )
-                if turn.speaker is TurnSpeaker.INTERVIEWER
-                and turn.target_criterion_id is not None
+                if turn.speaker is TurnSpeaker.INTERVIEWER and turn.target_criterion_id is not None
             ),
             plan.criterion_ids[0],
         )

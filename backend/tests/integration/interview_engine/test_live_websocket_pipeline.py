@@ -225,8 +225,7 @@ def test_real_stream_handler_creates_initial_and_follow_up_questions() -> None:
     assert initial.message_type == "question.ready"
     assert initial.payload["text"] == "최근 해결한 기술 문제를 설명해 주세요?"
     assert (
-        repository.get_session(context(), SESSION_ID).state
-        is InterviewSessionState.AWAITING_ANSWER
+        repository.get_session(context(), SESSION_ID).state is InterviewSessionState.AWAITING_ANSWER
     )
 
     audio = b"\x01\x00\x02\x00"
@@ -278,8 +277,7 @@ def test_real_stream_handler_creates_initial_and_follow_up_questions() -> None:
     assert follow_up.message_type == "question.ready"
     assert follow_up.payload["text"] == "선택한 해결책의 트레이드오프는 무엇이었나요?"
     assert (
-        repository.get_session(context(), SESSION_ID).state
-        is InterviewSessionState.AWAITING_ANSWER
+        repository.get_session(context(), SESSION_ID).state is InterviewSessionState.AWAITING_ANSWER
     )
     final_turns = repository.list_final_turns(context(), SESSION_ID)
     assert [turn.speaker for turn in final_turns] == [

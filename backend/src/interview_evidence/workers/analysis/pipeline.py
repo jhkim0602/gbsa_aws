@@ -322,9 +322,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                 status=GitAnalysisStatus.RUNNING,
             ),
         )
-        identity = CommitIdentityInput.model_validate(
-            submission.candidate_identity_inputs or {}
-        )
+        identity = CommitIdentityInput.model_validate(submission.candidate_identity_inputs or {})
         commits = analyze_candidate_commits(
             company_id=context.company_id,
             repository_analysis_id=repository_analysis.repository_analysis_id,
@@ -429,9 +427,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                             source_id=unit.code_unit_id,
                             source_type="candidate_code_unit",
                             locator=locator,
-                            content_hash=hashlib.sha256(
-                                files[path].encode("utf-8")
-                            ).hexdigest(),
+                            content_hash=hashlib.sha256(files[path].encode("utf-8")).hexdigest(),
                             relevance_score=1.0,
                             ownership_confidence=commit_analysis.ownership_confidence,
                         )

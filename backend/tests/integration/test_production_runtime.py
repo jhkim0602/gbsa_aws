@@ -56,9 +56,7 @@ def _runtime(database_url: str):
         recent_context=InMemoryRecentContext(),
         search_index=InMemorySearchIndex(),
         model=DeterministicAIModel({}),
-        speech_to_text=DeterministicSpeechToText(
-            {"text": "테스트 답변", "confidence": 0.99}
-        ),
+        speech_to_text=DeterministicSpeechToText({"text": "테스트 답변", "confidence": 0.99}),
         text_to_speech=DeterministicTextToSpeech({}),
     )
 

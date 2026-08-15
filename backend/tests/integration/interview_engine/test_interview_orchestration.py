@@ -202,6 +202,5 @@ def test_answer_pipeline_is_idempotent_and_stores_question_sources() -> None:
     assert references[0].model_config_version == "question-model-v1"
     assert first.speech.text_only is False
     assert (
-        repository.get_session(context(), SESSION_ID).state
-        is InterviewSessionState.AWAITING_ANSWER
+        repository.get_session(context(), SESSION_ID).state is InterviewSessionState.AWAITING_ANSWER
     )

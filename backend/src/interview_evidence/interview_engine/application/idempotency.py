@@ -224,8 +224,7 @@ def _encode_result(value: object) -> object:
             "module": value.__class__.__module__,
             "name": value.__class__.__qualname__,
             "value": {
-                field.name: _encode_result(getattr(value, field.name))
-                for field in fields(value)
+                field.name: _encode_result(getattr(value, field.name)) for field in fields(value)
             },
         }
     if isinstance(value, tuple):
@@ -260,9 +259,7 @@ def _decode_result(value: object) -> object:
             if not issubclass(result_type, BaseModel):
                 raise TypeError("stored pydantic result type is invalid")
             return result_type.model_validate(raw_payload)
-        return result_type(
-            **{key: _decode_result(item) for key, item in raw_payload.items()}
-        )
+        return result_type(**{key: _decode_result(item) for key, item in raw_payload.items()})
     return {str(key): _decode_result(item) for key, item in value.items()}
 
 
