@@ -1,0 +1,78 @@
+from __future__ import annotations
+
+from uuid import UUID
+
+from interview_evidence.company_management.domain.criteria import (
+    CompetencyModelVersion,
+    EvaluationCriterion,
+)
+from interview_evidence.company_management.repositories.postgres import CompanyRepository
+from interview_evidence.shared.ids import Clock, new_uuid7
+from interview_evidence.shared.tenant import TenantContext
+
+
+class CriteriaService:
+    def __init__(self, repository: CompanyRepository, clock: Clock) -> None:
+        self._repository = repository
+        self._clock = clock
+        self._idempotency: dict[tuple[UUID, str], UUID] = {}
+
+    def create_version(
+        self,
+        context: TenantContext,
+        *,
+        position_id: UUID,
+        criteria: tuple[dict[str, object], ...],
+        prohibited_topics: tuple[str, ...],
+        interview_duration_minutes: int,
+        persona_definition: dict[str, object],
+        idempotency_key: str,
+    ) -> CompetencyModelVersion:
+        existing_id = self._idempotency.get((context.company_id, idempotency_key))
+        if existing_id is not None:
+            return self._repository.get_criterion_version(context, existing_id)
+        self._repository.get_position(context, position_id)
+        existing_versions = self._repository.list_criterion_versions(context, position_id)
+        domain_criteria = tuple(
+            EvaluationCriterion(
+                criterion_id=new_uuid7(self._clock.now()),
+                **item,
+            )
+            for item in criteria
+        )
+        version = CompetencyModelVersion.create(
+            competency_model_version_id=new_uuid7(self._clock.now()),
+            company_id=context.company_id,
+            position_id=position_id,
+            version_number=len(existing_versions) + 1,
+            criteria=domain_criteria,
+            prohibited_topics=prohibited_topics,
+            interview_duration_minutes=interview_duration_minutes,
+            persona_definition=persona_definition,
+        )
+        self._repository.save_criterion_version(context, version)
+        self._idempotency[(context.company_id, idempotency_key)] = (
+            version.competency_model_version_id
+        )
+        return version
+
+    def publish_version(
+        self,
+        context: TenantContext,
+        *,
+        version_id: UUID,
+        expected_version: int,
+    ) -> CompetencyModelVersion:
+        current = self._repository.get_criterion_version(context, version_id)
+        published = current.publish(
+            expected_version=expected_version,
+            published_at=self._clock.now(),
+        )
+        return self._repository.save_criterion_version(context, published)
+
+    def get_criterion_version(
+        self,
+        context: TenantContext,
+        version_id: UUID,
+    ) -> CompetencyModelVersion:
+        return self._repository.get_criterion_version(context, version_id)
