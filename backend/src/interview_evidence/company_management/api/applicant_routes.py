@@ -132,6 +132,30 @@ def create_applicant_router(
         )
 
     @router.post(
+        "/applicant/access/revoke",
+        status_code=status.HTTP_204_NO_CONTENT,
+        operation_id="revokeApplicantSession",
+    )
+    def revoke_applicant_session(
+        request: Request,
+        response: Response,
+        session_cookie: Annotated[
+            str | None,
+            Cookie(alias="iep_applicant_session"),
+        ] = None,
+    ) -> None:
+        applicant_scope(request, session_cookie)
+        assert session_cookie is not None
+        sessions.revoke(session_cookie)
+        response.delete_cookie(
+            key="iep_applicant_session",
+            secure=True,
+            httponly=True,
+            samesite="strict",
+            path="/v1/applicant",
+        )
+
+    @router.post(
         "/applicant/identity-verifications",
         response_model=ApplicantAccessState,
         operation_id="verifyApplicantIdentity",

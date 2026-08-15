@@ -141,6 +141,8 @@ def test_shared_runtime_state_survives_store_recreation(tmp_path: Path) -> None:
         assert SQLAuditAppender(session).count_for_company(COMPANY_ID) == 1
         principal = SQLApplicantSessionStore(session).get_session("b" * 64, now=now)
         assert principal is not None and principal.session_id == SESSION_ID
+        SQLApplicantSessionStore(session).revoke_session("b" * 64)
+        session.commit()
         assert SQLUploadIntentStore(session).get(_context(), RESOURCE_ID, APPLICANT_ID) is not None
         assert (
             SQLCommandIdempotencyStore(session).get(
@@ -150,6 +152,9 @@ def test_shared_runtime_state_survives_store_recreation(tmp_path: Path) -> None:
             )
             == RESOURCE_ID
         )
+
+    with Session(engine) as session:
+        assert SQLApplicantSessionStore(session).get_session("b" * 64, now=now) is None
 
 
 @pytest.mark.anyio

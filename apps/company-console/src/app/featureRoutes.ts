@@ -1,6 +1,12 @@
 import type { RouteObject } from "react-router-dom";
 
-import { CompanyHomeRoute, HiringRoute, ReviewRoute } from "./routeAdapters";
+import {
+  CompanyAuthCallbackRoute,
+  CompanyHomeRoute,
+  CompanyLoginRoute,
+  HiringRoute,
+  ReviewRoute,
+} from "./routeAdapters";
 
 export type FeatureRoute = Readonly<{
   path: string;
@@ -16,6 +22,8 @@ export const companyFeatureRoutes = [
 
 export const companyRouteObjects: RouteObject[] = [
   { path: "/", Component: CompanyHomeRoute },
+  { path: "/auth/login", Component: CompanyLoginRoute },
+  { path: "/auth/callback", Component: CompanyAuthCallbackRoute },
   { path: "/company", Component: CompanyHomeRoute },
   { path: "/hiring/*", Component: HiringRoute },
   { path: "/review/:sessionId", Component: ReviewRoute },

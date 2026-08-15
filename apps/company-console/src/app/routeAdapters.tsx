@@ -1,6 +1,17 @@
 import { useEffect, useState } from "react";
-import { Navigate, useParams, useSearchParams } from "react-router-dom";
+import {
+  Navigate,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 
+import {
+  beginCompanyLogin,
+  completeCompanyLogin,
+  getCompanyAccessToken,
+  type CompanyAuthConfig,
+} from "../features/company/cognitoAuth";
 import { HiringWorkspace, type HiringWorkspaceApi } from "../features/hiring";
 import {
   HumanReview,
@@ -10,6 +21,7 @@ import {
 } from "../features/review";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
+const AUTH_CONFIG = companyAuthConfig();
 
 function idempotencyKey(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -19,10 +31,11 @@ async function companyRequest<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const token =
-    localStorage.getItem("iep_company_token") ??
-    import.meta.env.VITE_COMPANY_TOKEN ??
-    "";
+  const token = AUTH_CONFIG
+    ? getCompanyAccessToken(localStorage)
+    : (localStorage.getItem("iep_company_token") ??
+      import.meta.env.VITE_COMPANY_TOKEN ??
+      "");
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
@@ -165,6 +178,9 @@ export function CompanyHomeRoute() {
 }
 
 export function HiringRoute() {
+  if (AUTH_CONFIG && !getCompanyAccessToken(localStorage)) {
+    return <Navigate replace to="/auth/login" />;
+  }
   return <HiringWorkspace api={hiringApi} />;
 }
 
@@ -175,8 +191,11 @@ export function ReviewRoute() {
   const [report, setReport] = useState<ReportResponse | null>(null);
   const [timeline, setTimeline] = useState<TimelineResponse | null>(null);
   const [error, setError] = useState(false);
+  const authenticated =
+    !AUTH_CONFIG || Boolean(getCompanyAccessToken(localStorage));
 
   useEffect(() => {
+    if (!authenticated) return;
     let active = true;
     Promise.all([
       companyRequest<ReportResponse>(
@@ -198,7 +217,11 @@ export function ReviewRoute() {
     return () => {
       active = false;
     };
-  }, [sessionId]);
+  }, [authenticated, sessionId]);
+
+  if (!authenticated) {
+    return <Navigate replace to="/auth/login" />;
+  }
 
   const reviewApi: ReviewApi = {
     async overrideAssessment(reportItemId, assessmentState, reason) {
@@ -313,4 +336,74 @@ export function ReviewRoute() {
       )}
     </main>
   );
+}
+
+export function CompanyLoginRoute() {
+  const [error, setError] = useState(false);
+
+  async function login() {
+    if (!AUTH_CONFIG) return;
+    try {
+      await beginCompanyLogin(AUTH_CONFIG, {
+        sessionStorage,
+        navigate: (location) => window.location.assign(location),
+      });
+    } catch {
+      setError(true);
+    }
+  }
+
+  return (
+    <main>
+      <h1>기업 로그인</h1>
+      <p>기업 계정으로 로그인해 채용 캠페인과 지원자 검토를 시작합니다.</p>
+      {AUTH_CONFIG ? (
+        <button type="button" onClick={() => void login()}>
+          Cognito로 로그인
+        </button>
+      ) : (
+        <p role="status">로컬 개발 인증을 사용하고 있습니다.</p>
+      )}
+      {error && <p role="alert">로그인을 시작할 수 없습니다.</p>}
+    </main>
+  );
+}
+
+export function CompanyAuthCallbackRoute() {
+  const [search] = useSearchParams();
+  const navigate = useNavigate();
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (!AUTH_CONFIG) {
+      navigate("/hiring", { replace: true });
+      return;
+    }
+    void completeCompanyLogin(AUTH_CONFIG, search, {
+      sessionStorage,
+      localStorage,
+      fetcher: fetch,
+    })
+      .then(() => navigate("/hiring", { replace: true }))
+      .catch(() => setError(true));
+  }, [navigate, search]);
+
+  return (
+    <main>
+      <h1>기업 로그인 확인</h1>
+      <p role={error ? "alert" : "status"}>
+        {error
+          ? "로그인 응답을 확인할 수 없습니다."
+          : "기업 계정 로그인을 확인하고 있습니다."}
+      </p>
+    </main>
+  );
+}
+
+function companyAuthConfig(): CompanyAuthConfig | null {
+  const domain = import.meta.env.VITE_COGNITO_DOMAIN;
+  const clientId = import.meta.env.VITE_COGNITO_CLIENT_ID;
+  const redirectUri = import.meta.env.VITE_COGNITO_REDIRECT_URI;
+  if (!domain || !clientId || !redirectUri) return null;
+  return { domain, clientId, redirectUri };
 }

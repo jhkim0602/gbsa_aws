@@ -29,6 +29,7 @@ EXPECTED_OPERATIONS = {
     "listInvitations",
     "createInvitations",
     "exchangeApplicantInvitationToken",
+    "revokeApplicantSession",
     "verifyApplicantIdentity",
     "recordApplicantConsent",
 }

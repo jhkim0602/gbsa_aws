@@ -13,6 +13,7 @@ from interview_evidence.company_management.domain.hiring import (
     InvitationStateError,
 )
 from interview_evidence.shared.ids import FrozenClock
+from interview_evidence.shared.security.principals import PrincipalNotFoundError
 
 COMPANY_ID = UUID("00000000-0000-7000-8000-000000000001")
 CAMPAIGN_ID = UUID("00000000-0000-7000-8000-000000000002")
@@ -75,6 +76,23 @@ def test_expired_invitation_token_is_rejected() -> None:
 
     with pytest.raises(InvitationTokenExpiredError):
         adapter.exchange(issued.raw_token)
+
+
+def test_applicant_session_can_be_revoked_before_expiry() -> None:
+    adapter = ApplicantSessionAdapter(clock=FrozenClock(NOW))
+    issued = adapter.issue_token(
+        invitation_id=INVITATION_ID,
+        company_id=COMPANY_ID,
+        applicant_id=APPLICANT_ID,
+        expires_at=NOW + timedelta(days=7),
+    )
+    _, cookie = adapter.exchange(issued.raw_token)
+
+    assert adapter.get_applicant_principal(cookie.raw_value).applicant_id == APPLICANT_ID
+    adapter.revoke(cookie.raw_value)
+
+    with pytest.raises(PrincipalNotFoundError):
+        adapter.get_applicant_principal(cookie.raw_value)
 
 
 def test_invitation_state_machine_rejects_skips_and_late_overwrites() -> None:

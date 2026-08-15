@@ -392,6 +392,12 @@ class SQLApplicantSessionStore:
             session_id=row.session_id,
         )
 
+    def revoke_session(self, session_hash: str) -> None:
+        row = self._session.get(ApplicantSessionRow, session_hash)
+        if row is not None:
+            self._session.delete(row)
+            self._session.flush()
+
 
 class SQLUploadIntentStore:
     def __init__(self, session: Session) -> None:

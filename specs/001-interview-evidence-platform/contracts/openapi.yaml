@@ -240,6 +240,23 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /applicant/access/revoke:
+    post:
+      operationId: revokeApplicantSession
+      x-owner-lane: A
+      tags: [Applicant Access]
+      security:
+        - ApplicantSession: []
+      responses:
+        "204":
+          description: Current applicant session revoked and cookie cleared
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        default:
+          $ref: "#/components/responses/Error"
+
   /applicant/identity-verifications:
     post:
       operationId: verifyApplicantIdentity

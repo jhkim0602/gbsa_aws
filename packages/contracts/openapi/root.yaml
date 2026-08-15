@@ -38,6 +38,8 @@ paths:
     $ref: ./paths/company/paths.yaml#/~1campaigns~1{campaign_id}~1invitations
   /applicant/access/exchange:
     $ref: ./paths/company/paths.yaml#/~1applicant~1access~1exchange
+  /applicant/access/revoke:
+    $ref: ./paths/company/paths.yaml#/~1applicant~1access~1revoke
   /applicant/identity-verifications:
     $ref: ./paths/company/paths.yaml#/~1applicant~1identity-verifications
   /applicant/consents:

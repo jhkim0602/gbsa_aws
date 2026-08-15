@@ -6,6 +6,7 @@ import { CompanyRoutes } from "../App";
 
 describe("company feature routes", () => {
   it.each([
+    ["/auth/login", "기업 로그인"],
     ["/hiring", "채용 캠페인"],
     ["/review/00000000-0000-7000-8000-000000000001", "지원자 검토"],
   ])("renders %s through the integration route registry", (path, heading) => {

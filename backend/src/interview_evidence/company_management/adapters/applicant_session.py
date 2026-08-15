@@ -76,6 +76,8 @@ class ApplicantSessionStore(Protocol):
 
     def get_session(self, session_hash: str, *, now: datetime) -> ApplicantPrincipal | None: ...
 
+    def revoke_session(self, session_hash: str) -> None: ...
+
 
 class InMemoryApplicantSessionStore:
     def __init__(self) -> None:
@@ -128,6 +130,9 @@ class InMemoryApplicantSessionStore:
             return None
         principal, expires_at = stored
         return None if now >= expires_at else principal
+
+    def revoke_session(self, session_hash: str) -> None:
+        self.sessions.pop(session_hash, None)
 
 
 class ApplicantSessionAdapter:
@@ -222,3 +227,6 @@ class ApplicantSessionAdapter:
         if principal is None:
             raise PrincipalNotFoundError("applicant principal not found")
         return principal
+
+    def revoke(self, credential: str) -> None:
+        self._store.revoke_session(self.hash_token(credential))

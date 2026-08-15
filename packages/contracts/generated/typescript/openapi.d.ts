@@ -20,6 +20,22 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/applicant/access/revoke": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["revokeApplicantSession"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/applicant/analysis-status": {
         readonly parameters: {
             readonly query?: never;
@@ -823,6 +839,26 @@ export interface operations {
         };
         readonly responses: {
             /** @description Scoped, expiring HttpOnly session cookie set. Raw invitation token is not returned. */
+            readonly 204: {
+                headers: {
+                    readonly "Set-Cookie"?: string;
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly revokeApplicantSession: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Current applicant session revoked and cookie cleared */
             readonly 204: {
                 headers: {
                     readonly "Set-Cookie"?: string;
