@@ -12,7 +12,11 @@ import {
   getCompanyAccessToken,
   type CompanyAuthConfig,
 } from "../features/company/cognitoAuth";
-import { HiringWorkspace, type HiringWorkspaceApi } from "../features/hiring";
+import {
+  HiringWorkspace,
+  type CriteriaConfiguration,
+  type HiringWorkspaceApi,
+} from "../features/hiring";
 import {
   HumanReview,
   ReportView,
@@ -62,7 +66,7 @@ const hiringApi: HiringWorkspaceApi = {
     );
     return { positionId: result.position_id };
   },
-  async publishCriteria(positionId, name) {
+  async publishCriteria(positionId, input) {
     const draft = await companyRequest<{
       competency_model_version_id: string;
       row_version: number;
@@ -70,22 +74,24 @@ const hiringApi: HiringWorkspaceApi = {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey("criteria") },
       body: JSON.stringify({
-        criteria: [
-          {
-            code: "PROBLEM_SOLVING",
-            name,
-            description: "대안과 트레이드오프를 실제 경험으로 설명한다.",
-            weight: 1,
-            good_evidence: { signal: "tradeoff" },
-            weak_evidence: { signal: "unsupported" },
-            abstain_guidance: "실제 답변 근거가 없으면 판단을 유보한다.",
-            common_questions: ["대안을 비교한 과정을 설명해 주세요."],
-            required: true,
-          },
-        ],
-        prohibited_topics: ["가족", "외모"],
-        interview_duration_minutes: 30,
-        persona_definition: { name: "GBSA AI", tone: "차분함" },
+        criteria: input.criteria.map((criterion) => ({
+          code: criterion.code,
+          name: criterion.name,
+          description: criterion.description,
+          weight: criterion.weight,
+          good_evidence: { description: criterion.goodEvidence },
+          weak_evidence: { description: criterion.weakEvidence },
+          abstain_guidance: criterion.abstainGuidance,
+          common_questions: criterion.commonQuestions,
+          required: criterion.required,
+        })),
+        prohibited_topics: input.prohibitedTopics,
+        interview_duration_minutes: input.interviewDurationMinutes,
+        persona_definition: {
+          name: input.persona.name,
+          tone: input.persona.tone,
+          voice_id: input.persona.voiceId,
+        },
       }),
     });
     const published = await companyRequest<{
@@ -101,6 +107,9 @@ const hiringApi: HiringWorkspaceApi = {
       },
     );
     return { versionId: published.competency_model_version_id };
+  },
+  previewVoice(persona) {
+    previewPersonaVoice(persona);
   },
   async createCampaign(positionId, versionId, name) {
     const draft = await companyRequest<{
@@ -137,6 +146,22 @@ const hiringApi: HiringWorkspaceApi = {
     });
   },
 };
+
+function previewPersonaVoice(persona: CriteriaConfiguration["persona"]) {
+  if (!("speechSynthesis" in window)) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(
+    `${persona.name}입니다. ${persona.tone} 방식으로 면접을 진행하겠습니다.`,
+  );
+  utterance.lang = "ko-KR";
+  const selected = window.speechSynthesis
+    .getVoices()
+    .find((voice) =>
+      voice.name.toLowerCase().includes(persona.voiceId.toLowerCase()),
+    );
+  if (selected) utterance.voice = selected;
+  window.speechSynthesis.speak(utterance);
+}
 
 type ReportResponse = {
   report_id: string;
