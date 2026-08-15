@@ -35,7 +35,7 @@ dev = [
 packages = ["backend/src/interview_evidence"]
 
 [tool.pytest.ini_options]
-addopts = "-ra"
+addopts = "-ra --import-mode=importlib"
 pythonpath = ["backend/src", "."]
 testpaths = ["backend/tests", "tests"]
 

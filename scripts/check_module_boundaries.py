@@ -14,6 +14,11 @@ LANE_MODULES = {
     "reporting",
 }
 PRIVATE_PACKAGES = {"domain", "repositories", "models", "internal"}
+WORKER_OWNERS = {
+    "analysis": "submission_analysis",
+    "interview": "interview_engine",
+    "reporting": "reporting",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,7 +31,13 @@ class Violation:
 
 def module_owner(path: Path, source_root: Path) -> str | None:
     relative = path.relative_to(source_root)
-    return relative.parts[0] if relative.parts and relative.parts[0] in LANE_MODULES else None
+    if not relative.parts:
+        return None
+    if relative.parts[0] in LANE_MODULES:
+        return relative.parts[0]
+    if len(relative.parts) >= 2 and relative.parts[0] == "workers":
+        return WORKER_OWNERS.get(relative.parts[1])
+    return None
 
 
 def imported_modules(module: ast.Module) -> list[tuple[int, str]]:
