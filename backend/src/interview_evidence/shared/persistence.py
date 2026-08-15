@@ -211,6 +211,32 @@ class SQLProcessedMessageStore:
             is not None
         )
 
+    def get(
+        self,
+        *,
+        consumer_name: str,
+        event_id: UUID,
+        event_version: int,
+    ) -> ProcessedMessage:
+        row = self._session.get(
+            ProcessedMessageRow,
+            {
+                "consumer_name": consumer_name,
+                "event_id": event_id,
+                "event_version": event_version,
+            },
+        )
+        if row is None:
+            raise LookupError("processed message not found")
+        return ProcessedMessage(
+            consumer_name=row.consumer_name,
+            event_id=row.event_id,
+            event_version=row.event_version,
+            idempotency_key=row.idempotency_key,
+            first_processed_at=_utc(row.first_processed_at),
+            outcome_digest=row.outcome_digest,
+        )
+
     def record(self, message: ProcessedMessage) -> None:
         if self.contains(
             consumer_name=message.consumer_name,

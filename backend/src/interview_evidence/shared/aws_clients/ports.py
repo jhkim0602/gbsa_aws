@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from typing import Any, Protocol
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from interview_evidence.shared.ids import new_uuid7
 from interview_evidence.shared.tenant import TenantContext, require_tenant_context
@@ -30,6 +30,22 @@ class QueueMessage:
     event_type: str
     payload: Mapping[str, Any]
     trace_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class QueueDelivery:
+    receipt_handle: str
+    event_id: UUID
+    event_version: int
+    idempotency_key: str
+    company_id: UUID
+    aggregate_type: str
+    aggregate_id: UUID
+    aggregate_version: int
+    event_type: str
+    payload: Mapping[str, Any]
+    trace_id: str
+    occurred_at: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +110,14 @@ class EventQueue(Protocol):
         event_type: str,
         payload: Mapping[str, Any],
     ) -> None: ...
+
+
+class ConsumableQueue(EventQueue, Protocol):
+    def receive(self, *, max_messages: int) -> tuple[QueueDelivery, ...]: ...
+
+    def acknowledge(self, receipt_handle: str) -> None: ...
+
+    def retry(self, receipt_handle: str) -> None: ...
 
 
 class SearchPort(Protocol):
@@ -179,6 +203,8 @@ class InMemoryObjectStorage:
 class InMemoryQueue:
     def __init__(self) -> None:
         self.messages: list[QueueMessage] = []
+        self._available: list[QueueDelivery] = []
+        self._inflight: dict[str, QueueDelivery] = {}
 
     def publish(
         self,
@@ -194,6 +220,80 @@ class InMemoryQueue:
                 payload=deepcopy(dict(payload)),
                 trace_id=tenant.trace_id,
             )
+        )
+        event_id = UUID(str(payload.get("event_id", uuid4())))
+        occurred_at_raw = payload.get("occurred_at")
+        occurred_at = (
+            datetime.fromisoformat(str(occurred_at_raw))
+            if occurred_at_raw is not None
+            else datetime.now(UTC)
+        )
+        event_payload = payload.get("payload", payload)
+        if not isinstance(event_payload, Mapping):
+            raise TypeError("queue event payload must be an object")
+        self._available.append(
+            QueueDelivery(
+                receipt_handle=str(uuid4()),
+                event_id=event_id,
+                event_version=int(payload.get("event_version", 1)),
+                idempotency_key=str(payload.get("idempotency_key", event_id)),
+                company_id=tenant.company_id,
+                aggregate_type=str(payload.get("aggregate_type", "event")),
+                aggregate_id=UUID(str(payload.get("aggregate_id", event_id))),
+                aggregate_version=int(payload.get("aggregate_version", 1)),
+                event_type=event_type,
+                payload=deepcopy(dict(event_payload)),
+                trace_id=tenant.trace_id,
+                occurred_at=occurred_at,
+            )
+        )
+
+    def receive(self, *, max_messages: int) -> tuple[QueueDelivery, ...]:
+        deliveries = tuple(self._available[:max_messages])
+        del self._available[:max_messages]
+        for delivery in deliveries:
+            self._inflight[delivery.receipt_handle] = delivery
+        return deliveries
+
+    def acknowledge(self, receipt_handle: str) -> None:
+        self._inflight.pop(receipt_handle, None)
+
+    def retry(self, receipt_handle: str) -> None:
+        delivery = self._inflight.pop(receipt_handle)
+        self._available.append(
+            QueueDelivery(
+                receipt_handle=str(uuid4()),
+                event_id=delivery.event_id,
+                event_version=delivery.event_version,
+                idempotency_key=delivery.idempotency_key,
+                company_id=delivery.company_id,
+                aggregate_type=delivery.aggregate_type,
+                aggregate_id=delivery.aggregate_id,
+                aggregate_version=delivery.aggregate_version,
+                event_type=delivery.event_type,
+                payload=delivery.payload,
+                trace_id=delivery.trace_id,
+                occurred_at=delivery.occurred_at,
+            )
+        )
+
+    def redeliver_all(self) -> None:
+        self._available.extend(
+            QueueDelivery(
+                receipt_handle=str(uuid4()),
+                event_id=delivery.event_id,
+                event_version=delivery.event_version,
+                idempotency_key=delivery.idempotency_key,
+                company_id=delivery.company_id,
+                aggregate_type=delivery.aggregate_type,
+                aggregate_id=delivery.aggregate_id,
+                aggregate_version=delivery.aggregate_version,
+                event_type=delivery.event_type,
+                payload=delivery.payload,
+                trace_id=delivery.trace_id,
+                occurred_at=delivery.occurred_at,
+            )
+            for delivery in tuple(self._available)
         )
 
 

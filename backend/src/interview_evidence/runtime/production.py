@@ -348,6 +348,7 @@ def create_production_runtime(
             "audit": audit,
             "clock": clock,
             "database": database,
+            "outbox": outbox,
             "object_storage": object_storage,
             "search_index": search_index,
             "privacy_deletion": privacy_deletion,

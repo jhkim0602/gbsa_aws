@@ -19,6 +19,7 @@ from interview_evidence.shared.tenant import TenantContext
 class InterviewSessionSnapshot:
     company_id: UUID
     interview_session_id: UUID
+    invitation_id: UUID
     state: str
     session_sequence: int
     interview_strategy_id: UUID
@@ -62,6 +63,7 @@ class InterviewEnginePublic:
         return InterviewSessionSnapshot(
             company_id=session.company_id,
             interview_session_id=session.interview_session_id,
+            invitation_id=session.invitation_id,
             state=session.state.value,
             session_sequence=session.session_sequence,
             interview_strategy_id=session.interview_strategy_id,

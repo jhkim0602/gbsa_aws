@@ -368,6 +368,7 @@ def create_local_runtime(
         resources={
             "audit": audit,
             "clock": clock,
+            "outbox": lane_b.outbox,
             "company_principals": company_principals,
             "object_storage": object_storage,
             "search_index": search_index,

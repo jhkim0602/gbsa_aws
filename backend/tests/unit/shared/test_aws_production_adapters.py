@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 from collections.abc import Mapping
 from uuid import UUID
 
@@ -85,6 +86,47 @@ def test_s3_sqs_and_ses_adapters_preserve_tenant_scope_without_logging_content()
     )
     assert isinstance(message_id, UUID)
     assert ses.calls[0][1]["Destination"] == {"ToAddresses": ["applicant@example.com"]}
+
+
+def test_sqs_long_poll_delivery_can_be_acknowledged_or_retried() -> None:
+    event_id = UUID("00000000-0000-7000-8000-000000000010")
+    aggregate_id = UUID("00000000-0000-7000-8000-000000000011")
+    body = json.dumps(
+        {
+            "company_id": str(COMPANY_ID),
+            "event_type": "submission.analysis_requested",
+            "trace_id": "aws-adapter-test",
+            "payload": {
+                "event_id": str(event_id),
+                "event_version": 1,
+                "idempotency_key": "analysis-request-0001",
+                "occurred_at": "2026-08-15T09:00:00+00:00",
+                "aggregate_type": "submission",
+                "aggregate_id": str(aggregate_id),
+                "aggregate_version": 1,
+                "payload": {"submission_id": str(aggregate_id)},
+            },
+        }
+    )
+    client = RecordingClient(
+        {
+            "receive_message": {
+                "Messages": [{"ReceiptHandle": "receipt-1", "Body": body}]
+            }
+        }
+    )
+    queue = AwsSqsQueue(client, queue_url="https://sqs.invalid/analysis")
+
+    delivery = queue.receive(max_messages=1)[0]
+    assert delivery.event_id == event_id
+    assert delivery.aggregate_id == aggregate_id
+    queue.retry(delivery.receipt_handle)
+    queue.acknowledge(delivery.receipt_handle)
+    assert [call[0] for call in client.calls] == [
+        "receive_message",
+        "change_message_visibility",
+        "delete_message",
+    ]
 
 
 def test_cognito_bedrock_and_polly_adapters_translate_aws_responses() -> None:

@@ -13,9 +13,10 @@ from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from interview_evidence.shared.aws_clients.ports import (
     AIModel,
+    ConsumableQueue,
     EmailSender,
-    EventQueue,
     ObjectStorage,
+    QueueDelivery,
     SpeechToText,
     TextToSpeech,
     UploadIntent,
@@ -51,6 +52,12 @@ class S3Client(Protocol):
 
 class SqsClient(Protocol):
     def send_message(self, **kwargs: object) -> Mapping[str, object]: ...
+
+    def receive_message(self, **kwargs: object) -> Mapping[str, object]: ...
+
+    def delete_message(self, **kwargs: object) -> Mapping[str, object]: ...
+
+    def change_message_visibility(self, **kwargs: object) -> Mapping[str, object]: ...
 
 
 class SesClient(Protocol):
@@ -146,7 +153,7 @@ class AwsS3ObjectStorage(ObjectStorage):
         )
 
 
-class AwsSqsQueue(EventQueue):
+class AwsSqsQueue(ConsumableQueue):
     def __init__(self, client: SqsClient, *, queue_url: str) -> None:
         self._client = client
         self._queue_url = queue_url
@@ -177,6 +184,70 @@ class AwsSqsQueue(EventQueue):
             )
         except Exception as error:
             raise AwsAdapterError("queue publish unavailable") from error
+
+    def receive(self, *, max_messages: int) -> tuple[QueueDelivery, ...]:
+        try:
+            response = self._client.receive_message(
+                QueueUrl=self._queue_url,
+                MaxNumberOfMessages=max(1, min(max_messages, 10)),
+                WaitTimeSeconds=20,
+                VisibilityTimeout=60,
+            )
+        except Exception as error:
+            raise AwsAdapterError("queue receive unavailable") from error
+        raw_messages = response.get("Messages", ())
+        if not isinstance(raw_messages, list):
+            return ()
+        deliveries: list[QueueDelivery] = []
+        for raw in raw_messages:
+            if not isinstance(raw, Mapping):
+                continue
+            receipt_handle = raw.get("ReceiptHandle")
+            body = raw.get("Body")
+            if not isinstance(receipt_handle, str) or not isinstance(body, str):
+                continue
+            try:
+                envelope = json.loads(body)
+                event = envelope["payload"]
+                payload = event["payload"]
+                deliveries.append(
+                    QueueDelivery(
+                        receipt_handle=receipt_handle,
+                        event_id=UUID(str(event["event_id"])),
+                        event_version=int(event["event_version"]),
+                        idempotency_key=str(event["idempotency_key"]),
+                        company_id=UUID(str(envelope["company_id"])),
+                        aggregate_type=str(event["aggregate_type"]),
+                        aggregate_id=UUID(str(event["aggregate_id"])),
+                        aggregate_version=int(event["aggregate_version"]),
+                        event_type=str(envelope["event_type"]),
+                        payload=dict(cast(Mapping[str, object], payload)),
+                        trace_id=str(envelope["trace_id"]),
+                        occurred_at=datetime.fromisoformat(str(event["occurred_at"])),
+                    )
+                )
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+                raise AwsAdapterError("queue message envelope is invalid") from error
+        return tuple(deliveries)
+
+    def acknowledge(self, receipt_handle: str) -> None:
+        try:
+            self._client.delete_message(
+                QueueUrl=self._queue_url,
+                ReceiptHandle=receipt_handle,
+            )
+        except Exception as error:
+            raise AwsAdapterError("queue acknowledgement unavailable") from error
+
+    def retry(self, receipt_handle: str) -> None:
+        try:
+            self._client.change_message_visibility(
+                QueueUrl=self._queue_url,
+                ReceiptHandle=receipt_handle,
+                VisibilityTimeout=0,
+            )
+        except Exception as error:
+            raise AwsAdapterError("queue retry unavailable") from error
 
 
 class AwsSesEmailSender(EmailSender):

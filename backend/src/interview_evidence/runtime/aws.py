@@ -15,8 +15,8 @@ from interview_evidence.interview_engine.adapters.recent_context import (
 )
 from interview_evidence.shared.aws_clients.ports import (
     AIModel,
+    ConsumableQueue,
     EmailSender,
-    EventQueue,
     ObjectStorage,
     SpeechToText,
     TextToSpeech,
@@ -63,7 +63,7 @@ class AwsRuntimeDependencies:
     email_sender: EmailSender
     recent_context: RecentContextPort
     search_index: SearchIndex
-    queues: Mapping[str, EventQueue]
+    queues: Mapping[str, ConsumableQueue]
     model: AIModel
     speech_to_text: SpeechToText
     text_to_speech: TextToSpeech
