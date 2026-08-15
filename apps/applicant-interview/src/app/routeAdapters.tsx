@@ -7,7 +7,11 @@ import {
   createBrowserEquipmentCheckApi,
   type EquipmentCheckResult,
 } from "../features/interview/EquipmentCheck";
-import { InterviewRoom } from "../features/interview/InterviewRoom";
+import {
+  InterviewSession,
+  type RecordingUploadApi,
+} from "../features/interview/InterviewSession";
+import type { StoredMediaChunk } from "../features/interview/media";
 import {
   SubmissionWorkspace,
   type SubmissionWorkspaceApi,
@@ -44,6 +48,47 @@ export function serializeEquipmentComponent(
   return {
     status: component.status,
     sanitized_code: component.sanitizedCode ?? null,
+  };
+}
+
+export function resolveWebSocketUrl(path: string): string {
+  const base = API_BASE || window.location.origin;
+  const url = new URL(path, base);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.toString();
+}
+
+export function createRecordingUploadApi(
+  sessionId: string,
+): RecordingUploadApi {
+  return {
+    async upload(chunk: StoredMediaChunk) {
+      const intent = await applicantRequest<{
+        method: string;
+        url: string;
+        required_headers: Record<string, string>;
+      }>(`/v1/applicant/interview-sessions/${sessionId}/media-upload-intents`, {
+        method: "POST",
+        headers: {
+          "Idempotency-Key": `recording-${sessionId}-${chunk.sequence}`,
+        },
+        body: JSON.stringify({
+          chunk_sequence: chunk.sequence,
+          byte_size: chunk.byteSize,
+          sha256: chunk.sha256,
+          session_start_ms: chunk.sessionStartMs,
+          session_end_ms: chunk.sessionEndMs,
+        }),
+      });
+      const response = await fetch(intent.url, {
+        method: intent.method,
+        headers: intent.required_headers,
+        body: chunk.blob,
+      });
+      if (!response.ok) {
+        throw new Error(`recording upload failed: ${response.status}`);
+      }
+    },
   };
 }
 
@@ -159,7 +204,11 @@ export function SubmissionsRoute() {
 export function InterviewRoute() {
   const [search] = useSearchParams();
   const strategyId = search.get("strategyId") ?? "";
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [session, setSession] = useState<{
+    sessionId: string;
+    equipmentCheckId: string;
+    websocketPath: string;
+  } | null>(null);
   const [error, setError] = useState(false);
 
   async function start(result: EquipmentCheckResult) {
@@ -178,6 +227,7 @@ export function InterviewRoute() {
       );
       const session = await applicantRequest<{
         interview_session_id: string;
+        websocket_path: string;
       }>("/v1/applicant/interview-sessions", {
         method: "POST",
         headers: { "Idempotency-Key": idempotencyKey("interview") },
@@ -187,13 +237,17 @@ export function InterviewRoute() {
           acknowledged_partial_analysis: true,
         }),
       });
-      setSessionId(session.interview_session_id);
+      setSession({
+        sessionId: session.interview_session_id,
+        equipmentCheckId: check.equipment_check_id,
+        websocketPath: session.websocket_path,
+      });
     } catch {
       setError(true);
     }
   }
 
-  if (!sessionId) {
+  if (!session) {
     return (
       <>
         <EquipmentCheck
@@ -205,15 +259,11 @@ export function InterviewRoute() {
     );
   }
   return (
-    <InterviewRoom
-      question="최근 경험에서 대안을 비교한 과정을 설명해 주세요."
-      state="awaiting_answer"
-      connectionState="connected"
-      textOnly={false}
-      onStartAnswer={() => undefined}
-      onCompleteAnswer={() => undefined}
-      onReconnect={() => undefined}
-      onAddExplanation={() => undefined}
+    <InterviewSession
+      sessionId={session.sessionId}
+      equipmentCheckId={session.equipmentCheckId}
+      websocketUrl={resolveWebSocketUrl(session.websocketPath)}
+      recordingApi={createRecordingUploadApi(session.sessionId)}
     />
   );
 }
