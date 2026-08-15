@@ -1,3 +1,15 @@
+import { BrowserRouter, useRoutes } from "react-router-dom";
+
+import { applicantRouteObjects } from "./featureRoutes";
+
+export function ApplicantRoutes() {
+  return useRoutes(applicantRouteObjects);
+}
+
 export function App() {
-  return <main id="applicant-interview-root" />;
+  return (
+    <BrowserRouter>
+      <ApplicantRoutes />
+    </BrowserRouter>
+  );
 }

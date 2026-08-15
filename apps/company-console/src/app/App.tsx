@@ -1,3 +1,15 @@
+import { BrowserRouter, useRoutes } from "react-router-dom";
+
+import { companyRouteObjects } from "./featureRoutes";
+
+export function CompanyRoutes() {
+  return useRoutes(companyRouteObjects);
+}
+
 export function App() {
-  return <main id="company-console-root" />;
+  return (
+    <BrowserRouter>
+      <CompanyRoutes />
+    </BrowserRouter>
+  );
 }
