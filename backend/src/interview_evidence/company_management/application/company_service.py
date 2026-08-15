@@ -244,9 +244,7 @@ class CompanyManagementPublic:
             retention_days=consent.retention_days,
             authorized=(
                 consent.withdrawn_at is None
-                and required_purposes.issubset(
-                    purpose.value for purpose in consent.purposes
-                )
+                and required_purposes.issubset(purpose.value for purpose in consent.purposes)
             ),
         )
 
