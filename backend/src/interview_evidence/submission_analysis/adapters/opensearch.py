@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
@@ -43,12 +44,18 @@ class AwsOpenSearchIndex:
         region: str,
         transport: Transport | None = None,
         signer: Signer | None = None,
+        verification_attempts: int = 20,
+        verification_delay_seconds: float = 0.25,
     ) -> None:
+        if verification_attempts < 1:
+            raise ValueError("verification_attempts must be positive")
         self._endpoint = endpoint.rstrip("/")
         self._index_name = index_name
         self._region = region
         self._transport = transport or _http_transport
         self._signer = signer or self._sigv4_headers
+        self._verification_attempts = verification_attempts
+        self._verification_delay_seconds = verification_delay_seconds
 
     def add(self, document: SearchDocument) -> None:
         self._request(
@@ -70,7 +77,7 @@ class AwsOpenSearchIndex:
         tenant = require_tenant_context(context)
         response = self._request(
             "POST",
-            f"/{self._index_name}/_delete_by_query",
+            f"/{self._index_name}/_delete_by_query?conflicts=proceed&refresh=true",
             {
                 "query": {
                     "bool": {
@@ -89,22 +96,27 @@ class AwsOpenSearchIndex:
         tenant = require_tenant_context(context)
         if not self.delete(context, document_id):
             return False
-        response = self._request(
-            "POST",
-            f"/{self._index_name}/_count",
-            {
-                "query": {
-                    "bool": {
-                        "filter": [
-                            {"term": {"company_id": str(tenant.company_id)}},
-                            {"ids": {"values": [document_id]}},
-                        ]
+        for attempt in range(self._verification_attempts):
+            response = self._request(
+                "POST",
+                f"/{self._index_name}/_count",
+                {
+                    "query": {
+                        "bool": {
+                            "filter": [
+                                {"term": {"company_id": str(tenant.company_id)}},
+                                {"ids": {"values": [document_id]}},
+                            ]
+                        }
                     }
-                }
-            },
-        )
-        count = response.get("count")
-        return isinstance(count, int) and count == 0
+                },
+            )
+            count = response.get("count")
+            if isinstance(count, int) and count == 0:
+                return True
+            if attempt + 1 < self._verification_attempts:
+                time.sleep(self._verification_delay_seconds)
+        return False
 
     def healthcheck(self) -> None:
         self._request(

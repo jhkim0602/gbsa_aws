@@ -81,7 +81,11 @@ from interview_evidence.reporting.application.deletion_service import DeletionSe
 from interview_evidence.reporting.application.evidence_service import EvidenceService
 from interview_evidence.reporting.application.public import ReportingPublic
 from interview_evidence.reporting.application.transcript_service import TranscriptService
-from interview_evidence.shared.aws_clients.ports import EmailSender, ObjectStorage
+from interview_evidence.shared.aws_clients.ports import (
+    ConsumableQueue,
+    EmailSender,
+    ObjectStorage,
+)
 from interview_evidence.shared.database import RequestScopedDatabase
 from interview_evidence.shared.ids import SystemClock
 from interview_evidence.shared.operations import (
@@ -138,6 +142,7 @@ def create_production_runtime(
     database: RequestScopedDatabase | None = None,
     metrics: MetricRecorder | None = None,
     readiness: ReadinessChecker | None = None,
+    queues: Mapping[str, ConsumableQueue] | None = None,
 ) -> LocalRuntime:
     aws = None
     if (
@@ -312,10 +317,12 @@ def create_production_runtime(
             probe = getattr(dependency, "healthcheck", None)
             if callable(probe):
                 probes[name] = probe
-        if aws is not None:
-            for queue_name, queue in aws.queues.items():
+        active_queues = queues or (aws.queues if aws is not None else {})
+        if active_queues:
+            for queue_name, queue in active_queues.items():
                 probes[f"{queue_name}_queue"] = queue.healthcheck
         readiness = DependencyReadiness(probes)
+    active_queues = queues or (aws.queues if aws is not None else {})
 
     root = create_app(
         [
@@ -396,6 +403,6 @@ def create_production_runtime(
             "privacy_deletion": privacy_deletion,
             "metrics": active_metrics,
             "readiness": readiness,
-            "queues": aws.queues if aws is not None else {},
+            "queues": active_queues,
         },
     )

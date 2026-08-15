@@ -105,9 +105,11 @@ class AwsS3ObjectStorage(ObjectStorage):
         *,
         bucket: str,
         kms_key_id: str,
+        presign_client: S3Client | None = None,
         expires_in_seconds: int = 900,
     ) -> None:
         self._client = client
+        self._presign_client = presign_client or client
         self._bucket = bucket
         self._kms_key_id = kms_key_id
         self._expires_in_seconds = expires_in_seconds
@@ -137,7 +139,7 @@ class AwsS3ObjectStorage(ObjectStorage):
             "Metadata": {"company-id": str(tenant.company_id)},
         }
         try:
-            url = self._client.generate_presigned_url(
+            url = self._presign_client.generate_presigned_url(
                 "put_object",
                 Params=params,
                 ExpiresIn=self._expires_in_seconds,

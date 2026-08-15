@@ -11,6 +11,9 @@ RUN npm ci
 COPY apps ./apps
 COPY packages ./packages
 
+ARG VITE_LOCAL_DEMO_ACCESS=""
+ENV VITE_LOCAL_DEMO_ACCESS=${VITE_LOCAL_DEMO_ACCESS}
+
 RUN npm run build --workspace @iep/company-console \
     && npm run build --workspace @iep/applicant-interview
 

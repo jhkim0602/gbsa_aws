@@ -442,4 +442,4 @@ additional degraded modes or richer review UI.
 - [X] T199 Lane A — Complete the company criteria and campaign UI for detailed evidence rules, prohibited topics, duration and interviewer persona/voice preview per FR-007-FR-009 (partial)
 - [X] T200 Lane A — Present server-versioned AI role, recording, retention and deletion policy content before consent and bind the accepted digest to the displayed policy per FR-002 and FR-014 (partial)
 - [X] T201 Integration — Add production store deletion verification, dependency-aware readiness and queue/latency/deletion metrics per FR-047 and FR-050-FR-051 (partial)
-- [ ] T202 Integration — Add LocalStack/PostgreSQL production-composition parity tests covering API, worker, auth, persistence, AWS adapters, restart recovery and failure isolation per plan R-014 and QG-13-QG-15 (missing)
+- [X] T202 Integration — Add LocalStack/PostgreSQL production-composition parity tests covering API, worker, auth, persistence, AWS adapters, restart recovery and failure isolation per plan R-014 and QG-13-QG-15 (missing)

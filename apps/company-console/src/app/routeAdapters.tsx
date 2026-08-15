@@ -38,7 +38,7 @@ async function companyRequest<T>(
   const token = AUTH_CONFIG
     ? getCompanyAccessToken(localStorage)
     : (localStorage.getItem("iep_company_token") ??
-      import.meta.env.VITE_COMPANY_TOKEN ??
+      import.meta.env.VITE_LOCAL_DEMO_ACCESS ??
       "");
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,

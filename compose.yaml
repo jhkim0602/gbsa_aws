@@ -1,5 +1,39 @@
 name: interview-evidence-platform
 
+x-runtime-environment: &runtime-environment
+  APP_ENVIRONMENT: local-production
+  AWS_REGION: ${AWS_REGION:-ap-northeast-2}
+  AWS_DEFAULT_REGION: ${AWS_REGION:-ap-northeast-2}
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  AWS_ENDPOINT_URL: http://localstack:4566
+  S3_PUBLIC_ENDPOINT_URL: http://localhost:${LOCALSTACK_PORT:-4566}
+  DATABASE_URL: postgresql+psycopg://iep:local-only-password@postgres:5432/interview_evidence
+  SOURCE_BUCKET: iep-local-source
+  MEDIA_BUCKET: iep-local-media
+  KMS_KEY_ARN: local-kms-key
+  DYNAMODB_ENDPOINT_URL: http://dynamodb:8000
+  DYNAMODB_TABLE_NAME: iep-local-interview-context
+  OPENSEARCH_ENDPOINT: http://opensearch:9200
+  OPENSEARCH_INDEX_NAME: candidate-source-v1
+  OPENSEARCH_SIGN_REQUESTS: "false"
+  SQS_ANALYSIS_QUEUE_URL: http://localstack:4566/000000000000/iep-analysis
+  SQS_MEDIA_QUEUE_URL: http://localstack:4566/000000000000/iep-media
+  SQS_REPORTING_QUEUE_URL: http://localstack:4566/000000000000/iep-reporting
+  SQS_DELETION_QUEUE_URL: http://localstack:4566/000000000000/iep-deletion
+  LOCAL_ANALYSIS_QUEUE_NAME: iep-analysis
+  LOCAL_MEDIA_QUEUE_NAME: iep-media
+  LOCAL_REPORTING_QUEUE_NAME: iep-reporting
+  LOCAL_DELETION_QUEUE_NAME: iep-deletion
+  SES_FROM_ADDRESS: no-reply@local.interview-evidence.test
+  SMTP_HOST: mailpit
+  SMTP_PORT: "1025"
+  BEDROCK_MODEL_ID: local-deterministic-model
+  MEDIACONVERT_ROLE_ARN: arn:aws:iam::000000000000:role/local-mediaconvert
+  LOCAL_COMPANY_TOKEN: local-company-token
+  LOCAL_COMPANY_ID: 00000000-0000-7000-8000-000000000001
+  LOCAL_COMPANY_USER_ID: 00000000-0000-7000-8000-000000000002
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -23,17 +57,15 @@ services:
 
   dynamodb:
     image: amazon/dynamodb-local:2.6.1
-    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/data"]
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory"]
     ports:
       - "${DYNAMODB_PORT:-8000}:8000"
     healthcheck:
-      test: ["CMD-SHELL", "test -d /data"]
+      test: ["CMD-SHELL", "kill -0 1"]
       interval: 5s
       timeout: 5s
       retries: 20
       start_period: 5s
-    volumes:
-      - dynamodb-data:/data
 
   localstack:
     image: localstack/localstack:3.8
@@ -50,6 +82,21 @@ services:
       retries: 20
     volumes:
       - localstack-data:/var/lib/localstack
+
+  mailpit:
+    image: public.ecr.aws/supabase/mailpit:v1.22.3
+    ports:
+      - "${MAILPIT_WEB_PORT:-8025}:8025"
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -O - http://127.0.0.1:8025/api/v1/info >/dev/null",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   opensearch:
     image: opensearchproject/opensearch:2.18.0
@@ -68,20 +115,83 @@ services:
     volumes:
       - opensearch-data:/usr/share/opensearch/data
 
+  local-init:
+    build:
+      context: .
+      dockerfile: backend/Containerfile
+      target: base
+    command:
+      [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "interview_evidence.runtime.local_infra",
+      ]
+    environment: *runtime-environment
+    depends_on:
+      dynamodb:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+    restart: "no"
+
+  migrate:
+    build:
+      context: .
+      dockerfile: backend/Containerfile
+      target: base
+    command:
+      [
+        "uv",
+        "run",
+        "--no-sync",
+        "alembic",
+        "-c",
+        "backend/alembic.ini",
+        "upgrade",
+        "heads",
+      ]
+    environment:
+      MIGRATION_DATABASE_URL: postgresql+psycopg://iep:local-only-password@postgres:5432/interview_evidence
+    depends_on:
+      postgres:
+        condition: service_healthy
+      local-init:
+        condition: service_completed_successfully
+    restart: "no"
+
+  local-seed:
+    build:
+      context: .
+      dockerfile: backend/Containerfile
+      target: base
+    command:
+      [
+        "uv",
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "interview_evidence.runtime.local_seed",
+      ]
+    environment: *runtime-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
   api:
     build:
       context: .
       dockerfile: backend/Containerfile
       target: api
-    environment:
-      APP_ENV: local
-      AWS_ACCESS_KEY_ID: test
-      AWS_SECRET_ACCESS_KEY: test
-      AWS_DEFAULT_REGION: ${AWS_REGION:-ap-northeast-2}
-      AWS_ENDPOINT_URL: http://localstack:4566
-      DATABASE_URL: postgresql+psycopg://iep:local-only-password@postgres:5432/interview_evidence
-      DYNAMODB_ENDPOINT_URL: http://dynamodb:8000
-      OPENSEARCH_ENDPOINT: http://opensearch:9200
+    environment: *runtime-environment
     ports:
       - "${API_PORT:-8080}:8080"
     healthcheck:
@@ -103,23 +213,19 @@ services:
         condition: service_healthy
       localstack:
         condition: service_healthy
+      mailpit:
+        condition: service_healthy
       opensearch:
         condition: service_healthy
+      local-seed:
+        condition: service_completed_successfully
 
   worker:
     build:
       context: .
       dockerfile: backend/Containerfile
       target: worker
-    environment:
-      APP_ENV: local
-      AWS_ACCESS_KEY_ID: test
-      AWS_SECRET_ACCESS_KEY: test
-      AWS_DEFAULT_REGION: ${AWS_REGION:-ap-northeast-2}
-      AWS_ENDPOINT_URL: http://localstack:4566
-      DATABASE_URL: postgresql+psycopg://iep:local-only-password@postgres:5432/interview_evidence
-      DYNAMODB_ENDPOINT_URL: http://dynamodb:8000
-      OPENSEARCH_ENDPOINT: http://opensearch:9200
+    environment: *runtime-environment
     healthcheck:
       test: ["CMD", "test", "-f", "/tmp/iep-worker-ready"]
       interval: 5s
@@ -135,12 +241,16 @@ services:
         condition: service_healthy
       opensearch:
         condition: service_healthy
+      local-seed:
+        condition: service_completed_successfully
 
   company-console:
     build:
       context: .
       dockerfile: apps/Containerfile
       target: company-console
+      args:
+        VITE_LOCAL_DEMO_ACCESS: local-company-token
     ports:
       - "${COMPANY_CONSOLE_PORT:-5173}:8080"
     healthcheck:
@@ -172,6 +282,5 @@ services:
 
 volumes:
   postgres-data:
-  dynamodb-data:
   localstack-data:
   opensearch-data:

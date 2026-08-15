@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Protocol, cast
 
 import boto3  # type: ignore[import-untyped]
+from botocore.config import Config  # type: ignore[import-untyped]
 from sqlalchemy import URL
 
 from interview_evidence.interview_engine.adapters.recent_context import (
@@ -47,10 +48,12 @@ from interview_evidence.shared.operations import (
     MetricRecorder,
 )
 from interview_evidence.shared.security.principals import PrincipalProvider
+from interview_evidence.shared.tenant import TenantContext
 from interview_evidence.submission_analysis.adapters.opensearch import (
     AwsOpenSearchIndex,
 )
 from interview_evidence.submission_analysis.adapters.search import SearchIndex
+from interview_evidence.workers.analysis.document_extract import TextractPort
 
 
 class SecretsManagerClient(Protocol):
@@ -58,6 +61,16 @@ class SecretsManagerClient(Protocol):
 
 
 ClientFactory = Callable[[str], object]
+
+
+class MediaConvertPort(Protocol):
+    def create_hls_job(
+        self,
+        context: TenantContext,
+        *,
+        input_key: str,
+        output_prefix: str,
+    ) -> str: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,8 +86,8 @@ class AwsRuntimeDependencies:
     model: AIModel
     speech_to_text: SpeechToText
     text_to_speech: TextToSpeech
-    textract: AwsTextract
-    media_convert: AwsMediaConvert
+    textract: TextractPort
+    media_convert: MediaConvertPort
     metrics: MetricRecorder
 
 
@@ -84,8 +97,20 @@ def create_aws_runtime_dependencies(
     client_factory: ClientFactory | None = None,
 ) -> AwsRuntimeDependencies:
     region = _required(environment, "AWS_REGION")
-    factory = client_factory or _boto_client
+    factory = client_factory or _client_factory(environment)
     s3 = cast(S3Client, factory("s3"))
+    presign_s3 = (
+        cast(
+            S3Client,
+            _boto_client(
+                "s3",
+                region=region,
+                endpoint_url=environment["S3_PUBLIC_ENDPOINT_URL"],
+            ),
+        )
+        if environment.get("S3_PUBLIC_ENDPOINT_URL")
+        else s3
+    )
     source_bucket = _required(environment, "SOURCE_BUCKET")
     media_bucket = _required(environment, "MEDIA_BUCKET")
     kms_key_id = _required(environment, "KMS_KEY_ARN")
@@ -105,11 +130,13 @@ def create_aws_runtime_dependencies(
         s3,
         bucket=source_bucket,
         kms_key_id=kms_key_id,
+        presign_client=presign_s3,
     )
     media_storage = AwsS3ObjectStorage(
         s3,
         bucket=media_bucket,
         kms_key_id=kms_key_id,
+        presign_client=presign_s3,
     )
     email_sender = AwsSesEmailSender(
         cast(SesClient, factory("sesv2")),
@@ -124,6 +151,11 @@ def create_aws_runtime_dependencies(
         endpoint=_required(environment, "OPENSEARCH_ENDPOINT"),
         index_name=_required(environment, "OPENSEARCH_INDEX_NAME"),
         region=region,
+        signer=(
+            (lambda _method, _url, _body: {})
+            if environment.get("OPENSEARCH_SIGN_REQUESTS", "true").casefold() == "false"
+            else None
+        ),
     )
     model = AwsBedrockModel(
         cast(BedrockClient, factory("bedrock-runtime")),
@@ -224,5 +256,42 @@ def _required(environment: Mapping[str, str], name: str) -> str:
     return value.strip()
 
 
-def _boto_client(service_name: str) -> object:
-    return boto3.client(service_name)
+def _client_factory(environment: Mapping[str, str]) -> ClientFactory:
+    region = _required(environment, "AWS_REGION")
+
+    def create(service_name: str) -> object:
+        service_key = service_name.upper().replace("-", "_")
+        endpoint_url = environment.get(f"{service_key}_ENDPOINT_URL")
+        if endpoint_url is None and service_name in {
+            "cloudwatch",
+            "s3",
+            "secretsmanager",
+            "sesv2",
+            "sqs",
+        }:
+            endpoint_url = environment.get("AWS_ENDPOINT_URL")
+        if service_name == "dynamodb":
+            endpoint_url = environment.get("DYNAMODB_ENDPOINT_URL", endpoint_url)
+        return _boto_client(
+            service_name,
+            region=region,
+            endpoint_url=endpoint_url,
+        )
+
+    return create
+
+
+def _boto_client(
+    service_name: str,
+    *,
+    region: str,
+    endpoint_url: str | None,
+) -> object:
+    kwargs: dict[str, object] = {
+        "region_name": region,
+    }
+    if endpoint_url:
+        kwargs["endpoint_url"] = endpoint_url
+    if service_name == "s3":
+        kwargs["config"] = Config(s3={"addressing_style": "path"})
+    return boto3.client(service_name, **kwargs)

@@ -7,8 +7,8 @@ DOCKER_CONTEXT ?= default
 	infra-plan-dev infra-security-check infra-validate lint migrate migration-check \
 	seed-contract-fixtures test test-ai-regression test-deletion-residue test-e2e-thin \
 	test-foundation test-integration test-lane-a test-lane-b test-lane-c test-lane-d \
-	test-load-pilot test-prior-lanes test-recovery test-tenant-isolation test-workspace \
-	typecheck verify-foundation
+	test-load-pilot test-local-production-parity test-prior-lanes test-recovery \
+	test-tenant-isolation test-workspace typecheck verify-foundation
 
 bootstrap:
 	npm ci
@@ -104,6 +104,9 @@ test-ai-regression:
 test-load-pilot:
 	PYTHONPATH=backend/src:. UV_CACHE_DIR=$(UV_CACHE_DIR) uv run --no-sync python tests/load/interview_load.py --concurrency 5 --soak-batches 3 --json
 	PYTHONPATH=backend/src:. UV_CACHE_DIR=$(UV_CACHE_DIR) uv run --no-sync python tests/load/evidence_seek.py --samples 20 --json
+
+test-local-production-parity:
+	DOCKER_CONTEXT=$(DOCKER_CONTEXT) ./scripts/verify_local_production_parity.sh
 
 test-prior-lanes: test-lane-a test-lane-b test-lane-c test-lane-d
 

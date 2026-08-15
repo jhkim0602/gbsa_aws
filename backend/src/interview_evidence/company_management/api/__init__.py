@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from fastapi import FastAPI
 from sqlalchemy.orm import Session
@@ -17,6 +19,7 @@ from interview_evidence.company_management.application.applicant_access_service 
 from interview_evidence.company_management.application.company_service import CompanyService
 from interview_evidence.company_management.application.criteria_service import CriteriaService
 from interview_evidence.company_management.application.hiring_service import HiringService
+from interview_evidence.company_management.domain.company import Company, CompanyUser
 from interview_evidence.company_management.repositories.postgres import (
     CompanyRepository,
     InMemoryCompanyRepository,
@@ -38,6 +41,7 @@ from interview_evidence.shared.idempotency import (
 from interview_evidence.shared.ids import Clock, SystemClock
 from interview_evidence.shared.messaging.outbox import InMemoryOutbox, Outbox
 from interview_evidence.shared.security.principals import PrincipalProvider
+from interview_evidence.shared.tenant import ActorType, TenantContext
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,3 +153,44 @@ def create_lane_a_app(
 
 def create_sql_repository(session: Session) -> CompanyRepository:
     return SqlAlchemyCompanyRepository(session)
+
+
+def ensure_company_principal(
+    session: Session,
+    *,
+    company_id: UUID,
+    company_user_id: UUID,
+    company_name: str,
+    identity_subject: str,
+    email_normalized: str,
+    now: datetime,
+) -> None:
+    """Create the local company principal without exposing Lane A persistence details."""
+    context = TenantContext(
+        company_id=company_id,
+        actor_type=ActorType.COMPANY_USER,
+        actor_id=company_user_id,
+        request_id=uuid5(NAMESPACE_URL, f"local-company-seed:{company_id}"),
+        trace_id="local-company-seed",
+    )
+    repository = SqlAlchemyCompanyRepository(session)
+    repository.save_company(
+        context,
+        Company(
+            company_id=company_id,
+            name=company_name,
+            created_at=now,
+            updated_at=now,
+        ),
+    )
+    repository.save_company_user(
+        context,
+        CompanyUser(
+            company_user_id=company_user_id,
+            company_id=company_id,
+            identity_subject=identity_subject,
+            email_normalized=email_normalized,
+            created_at=now,
+            last_seen_at=now,
+        ),
+    )

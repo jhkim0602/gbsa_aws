@@ -409,6 +409,18 @@ class LazyEnvironmentApplication:
         if self._runtime is None:
             if self.runtime_mode == "local":
                 self._runtime = create_local_runtime()
+            elif (
+                self._environment.get(
+                    "APP_ENVIRONMENT",
+                    self._environment.get("APP_ENV"),
+                )
+                == "local-production"
+            ):
+                from interview_evidence.runtime.local_production import (
+                    create_local_production_runtime,
+                )
+
+                self._runtime = create_local_production_runtime(self._environment)
             else:
                 from interview_evidence.runtime.production import create_production_runtime
 

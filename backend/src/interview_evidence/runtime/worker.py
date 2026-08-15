@@ -283,10 +283,24 @@ def create_local_worker_runtime() -> WorkerRuntime:
 
 
 def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRuntime:
-    from interview_evidence.runtime.aws import create_aws_runtime_dependencies
     from interview_evidence.runtime.production import create_production_runtime
 
-    aws = create_aws_runtime_dependencies(environment)
+    if (
+        environment.get(
+            "APP_ENVIRONMENT",
+            environment.get("APP_ENV"),
+        )
+        == "local-production"
+    ):
+        from interview_evidence.runtime.local_production import (
+            create_local_aws_runtime_dependencies,
+        )
+
+        aws = create_local_aws_runtime_dependencies(environment)
+    else:
+        from interview_evidence.runtime.aws import create_aws_runtime_dependencies
+
+        aws = create_aws_runtime_dependencies(environment)
     database = RequestScopedDatabase(aws.database_url)
     runtime = create_production_runtime(
         environment,
@@ -297,6 +311,8 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
         recent_context=aws.recent_context,
         search_index=aws.search_index,
         database=database,
+        metrics=aws.metrics,
+        queues=aws.queues,
     )
     outbox = cast(Outbox, runtime.resources["outbox"])
     clock = cast(Clock, runtime.resources["clock"])

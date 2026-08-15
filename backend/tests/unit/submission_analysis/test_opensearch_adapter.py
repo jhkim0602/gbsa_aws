@@ -128,3 +128,33 @@ def test_opensearch_deletion_requeries_the_same_tenant_before_verifying() -> Non
         {"term": {"company_id": str(COMPANY_ID)}},
         {"ids": {"values": ["doc-1"]}},
     ]
+
+
+def test_opensearch_deletion_waits_until_the_document_is_absent() -> None:
+    requests: list[dict[str, object]] = []
+
+    def transport(
+        _method: str,
+        _url: str,
+        body: bytes | None,
+        _headers: dict[str, str],
+    ) -> HttpResponse:
+        requests.append(json.loads(body or b"{}"))
+        if len(requests) == 1:
+            return HttpResponse(status=200, body=b'{"deleted":1}')
+        if len(requests) == 2:
+            return HttpResponse(status=200, body=b'{"count":1}')
+        return HttpResponse(status=200, body=b'{"count":0}')
+
+    index = AwsOpenSearchIndex(
+        endpoint="https://collection.example.aoss.amazonaws.com",
+        index_name="candidate-source-v1",
+        region="ap-northeast-2",
+        transport=transport,
+        signer=lambda _method, _url, _body: {},
+        verification_attempts=2,
+        verification_delay_seconds=0,
+    )
+
+    assert index.delete_and_verify(_context(), "doc-1") is True
+    assert len(requests) == 3
