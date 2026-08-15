@@ -148,6 +148,12 @@ module "compute" {
     [module.data.dynamodb_table_arn],
     values(module.async_workflow.queue_arns),
   )
+  task_environment = {
+    APP_ENVIRONMENT          = "stage"
+    AURORA_DATABASE          = module.data.aurora_database_name
+    AURORA_ENDPOINT          = module.data.aurora_endpoint
+    AURORA_MASTER_SECRET_ARN = module.data.aurora_master_secret_arn
+  }
   tags = local.tags
 }
 

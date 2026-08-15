@@ -140,11 +140,26 @@ def test_compute_and_data_define_durable_private_runtime_boundaries() -> None:
     assert '"--port",' in compute
     assert '"8000",' in compute
     assert 'command     = ["python", "-m", "interview_evidence.main"]' not in compute
+    assert compute.count('"secretsmanager:GetSecretValue"') == 2
     assert "block_public_policy     = true" in data
     assert 'sse_algorithm     = "aws:kms"' in data
     assert "point_in_time_recovery" in data
     assert "manage_master_user_password" in data
     assert "deletion_protection             = var.deletion_protection" in data
+
+
+def test_application_roots_pass_secret_identifiers_without_secret_values() -> None:
+    roots = (
+        ROOT / "environments" / "dev" / "application" / "main.tf",
+        ROOT / "environments" / "stage" / "main.tf",
+        ROOT / "environments" / "prod" / "main.tf",
+    )
+    for root in roots:
+        source = read(root)
+        assert "AURORA_ENDPOINT" in source
+        assert "AURORA_MASTER_SECRET_ARN" in source
+        assert "AURORA_DATABASE" in source
+        assert "MIGRATION_DATABASE_URL" not in source
 
 
 def test_async_ai_identity_and_audit_resources_enforce_safety_controls() -> None:

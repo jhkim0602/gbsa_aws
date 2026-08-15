@@ -258,6 +258,14 @@ resource "aws_iam_role_policy" "task" {
         Effect   = "Allow"
         Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
         Resource = var.kms_key_arns
+      },
+      {
+        Sid    = "ReadRuntimeSecrets"
+        Effect = "Allow"
+        Action = ["secretsmanager:GetSecretValue"]
+        Resource = length(var.secret_arns) > 0 ? var.secret_arns : [
+          "arn:aws:secretsmanager:${data.aws_region.current.name}:*:secret:${var.name}/disabled-*"
+        ]
       }
     ]
   })

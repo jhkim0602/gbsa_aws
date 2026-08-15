@@ -115,6 +115,7 @@ output "data" {
     bucket_arns                  = module.data.bucket_arns
     bucket_regional_domain_names = module.data.bucket_regional_domain_names
     aurora_cluster_arn           = module.data.aurora_cluster_arn
+    aurora_database_name         = module.data.aurora_database_name
     aurora_endpoint              = module.data.aurora_endpoint
     aurora_master_secret_arn     = module.data.aurora_master_secret_arn
     application_secret_arn       = module.data.application_secret_arn

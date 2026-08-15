@@ -240,6 +240,10 @@ output "aurora_cluster_arn" {
   value = aws_rds_cluster.this.arn
 }
 
+output "aurora_database_name" {
+  value = aws_rds_cluster.this.database_name
+}
+
 output "aurora_endpoint" {
   value     = aws_rds_cluster.this.endpoint
   sensitive = true

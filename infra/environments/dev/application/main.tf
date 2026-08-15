@@ -115,11 +115,13 @@ module "compute" {
     values(local.workflow.queue_arns),
   )
   task_environment = {
-    APP_ENVIRONMENT      = "dev"
-    AURORA_ENDPOINT      = local.data.aurora_endpoint
-    COGNITO_USER_POOL_ID = data.terraform_remote_state.foundation.outputs.identity.user_pool_id
-    DYNAMODB_TABLE_ARN   = local.data.dynamodb_table_arn
-    EVENT_BUS_ARN        = local.workflow.event_bus_arn
+    APP_ENVIRONMENT          = "dev"
+    AURORA_DATABASE          = local.data.aurora_database_name
+    AURORA_ENDPOINT          = local.data.aurora_endpoint
+    AURORA_MASTER_SECRET_ARN = local.data.aurora_master_secret_arn
+    COGNITO_USER_POOL_ID     = data.terraform_remote_state.foundation.outputs.identity.user_pool_id
+    DYNAMODB_TABLE_ARN       = local.data.dynamodb_table_arn
+    EVENT_BUS_ARN            = local.workflow.event_bus_arn
   }
   tags = local.tags
 }
