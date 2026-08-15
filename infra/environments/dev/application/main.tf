@@ -107,6 +107,7 @@ module "compute" {
   worker_image                  = var.worker_image
   task_role_arn                 = data.terraform_remote_state.foundation.outputs.identity.application_runtime_role_arn
   task_role_name                = data.terraform_remote_state.foundation.outputs.identity.application_runtime_role_name
+  create_task_role              = false
   secret_arns                   = [local.data.application_secret_arn, local.data.aurora_master_secret_arn]
   kms_key_arns                  = [local.data.kms_key_arn]
   data_resource_arns = concat(

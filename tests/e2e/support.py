@@ -4,6 +4,7 @@ import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from threading import Lock
 from typing import cast
 from urllib.parse import parse_qs, urlparse
 from uuid import UUID
@@ -78,6 +79,7 @@ COMPANY_TOKEN = "company-e2e-token"
 SECOND_COMPANY_ID = UUID("00000000-0000-7000-8000-000000000099")
 SECOND_COMPANY_USER_ID = UUID("00000000-0000-7000-8000-000000000098")
 SECOND_COMPANY_TOKEN = "company-e2e-token-second"
+_RUNTIME_BUILD_LOCK = Lock()
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,7 +127,11 @@ async def _run_thin_journey() -> ThinJourneyResult:
             ),
         }
     )
-    runtime = create_local_runtime(company_principal_provider=principals)
+    # FastAPI/Pydantic route schema construction is a process-start concern and is
+    # not thread-safe. Keep only runtime composition serialized; the interview
+    # journeys themselves still execute concurrently in the load gate.
+    with _RUNTIME_BUILD_LOCK:
+        runtime = create_local_runtime(company_principal_provider=principals)
     lane_a = cast(LaneARuntime, runtime.lanes["company_management"])
     lane_b = cast(LaneBRuntime, runtime.lanes["submission_analysis"])
     lane_c = cast(LaneCRuntime, runtime.lanes["interview_engine"])

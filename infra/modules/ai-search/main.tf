@@ -52,7 +52,11 @@ variable "tags" {
 }
 
 locals {
-  collection_name = substr(replace("${var.name}-candidate-materials", "_", "-"), 0, 32)
+  collection_name        = substr(replace("${var.name}-candidate-materials", "_", "-"), 0, 32)
+  encryption_policy_name = substr("${local.collection_name}-enc", 0, 32)
+  network_policy_name    = substr("${local.collection_name}-net", 0, 32)
+  data_policy_name       = substr("${local.collection_name}-data", 0, 32)
+  vpc_endpoint_name      = substr("${local.collection_name}-vpce", 0, 32)
   index_mapping = {
     settings = {
       index = {
@@ -78,14 +82,14 @@ locals {
 }
 
 resource "aws_opensearchserverless_vpc_endpoint" "this" {
-  name               = "${local.collection_name}-vpce"
+  name               = local.vpc_endpoint_name
   vpc_id             = var.vpc_id
   subnet_ids         = var.private_subnet_ids
   security_group_ids = var.security_group_ids
 }
 
 resource "aws_opensearchserverless_security_policy" "encryption" {
-  name = "${local.collection_name}-encryption"
+  name = local.encryption_policy_name
   type = "encryption"
   policy = jsonencode({
     Rules = [{
@@ -98,7 +102,7 @@ resource "aws_opensearchserverless_security_policy" "encryption" {
 }
 
 resource "aws_opensearchserverless_security_policy" "network" {
-  name = "${local.collection_name}-network"
+  name = local.network_policy_name
   type = "network"
   policy = jsonencode([{
     Rules = [
@@ -166,7 +170,7 @@ resource "aws_iam_role_policy" "knowledge_base" {
 }
 
 resource "aws_opensearchserverless_access_policy" "data" {
-  name = "${local.collection_name}-data"
+  name = local.data_policy_name
   type = "data"
   policy = jsonencode([{
     Rules = [

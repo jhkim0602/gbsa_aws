@@ -135,6 +135,7 @@ def test_compute_and_data_define_durable_private_runtime_boundaries() -> None:
     assert "deployment_circuit_breaker" in compute
     assert "ignore_changes = [desired_count, task_definition]" in compute
     assert "enable_deletion_protection = var.enable_deletion_protection" in compute
+    assert "count = var.create_task_role ? 1 : 0" in compute
     assert '"uvicorn",' in compute
     assert '"interview_evidence.main:app",' in compute
     assert '"--port",' in compute
@@ -176,6 +177,7 @@ def test_async_ai_identity_and_audit_resources_enforce_safety_controls() -> None
     assert 'applicant_id = { type = "keyword" }' in ai_search
     assert "aws_ssm_parameter" in ai_search
     assert "aws_bedrock_guardrail" in ai_search
+    assert 'substr("${local.collection_name}-enc", 0, 32)' in ai_search
     assert "minimum_length                   = 14" in identity
     assert "prevent_user_existence_errors" in identity
     assert '"ses:FromAddress"' in identity

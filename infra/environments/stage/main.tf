@@ -140,6 +140,7 @@ module "compute" {
   worker_image                  = var.worker_image
   task_role_arn                 = module.identity.application_runtime_role_arn
   task_role_name                = module.identity.application_runtime_role_name
+  create_task_role              = false
   secret_arns                   = [module.data.application_secret_arn, module.data.aurora_master_secret_arn]
   kms_key_arns                  = [module.data.kms_key_arn]
   data_resource_arns = concat(

@@ -83,6 +83,11 @@ variable "task_role_arn" {
   default = null
 }
 
+variable "create_task_role" {
+  type    = bool
+  default = true
+}
+
 variable "task_role_name" {
   type    = string
   default = null
@@ -106,10 +111,10 @@ locals {
     }
   ]
   effective_task_role_arn = (
-    var.task_role_arn != null ? var.task_role_arn : aws_iam_role.task[0].arn
+    var.create_task_role ? aws_iam_role.task[0].arn : var.task_role_arn
   )
   effective_task_role_name = (
-    var.task_role_name != null ? var.task_role_name : aws_iam_role.task[0].name
+    var.create_task_role ? aws_iam_role.task[0].name : var.task_role_name
   )
 }
 
@@ -190,7 +195,7 @@ resource "aws_iam_role_policy" "execution_secrets" {
 }
 
 resource "aws_iam_role" "task" {
-  count = var.task_role_arn == null ? 1 : 0
+  count = var.create_task_role ? 1 : 0
 
   name = "${var.name}-ecs-task"
   assume_role_policy = jsonencode({
