@@ -3,8 +3,12 @@
 from dataclasses import dataclass
 
 from fastapi import FastAPI
+from sqlalchemy.orm import Session
 
-from interview_evidence.interview_engine.adapters.recent_context import InMemoryRecentContext
+from interview_evidence.interview_engine.adapters.recent_context import (
+    InMemoryRecentContext,
+    RecentContextPort,
+)
 from interview_evidence.interview_engine.api.applicant_routes import (
     create_applicant_interview_router,
 )
@@ -27,12 +31,13 @@ from interview_evidence.interview_engine.application.session_service import (
 from interview_evidence.interview_engine.repositories.postgres import (
     InMemoryInterviewRepository,
     InterviewRepository,
+    SqlAlchemyInterviewRepository,
 )
 from interview_evidence.main import create_app
 from interview_evidence.shared.audit import AuditAppender, InMemoryAuditAppender
 from interview_evidence.shared.aws_clients.ports import InMemoryObjectStorage, ObjectStorage
 from interview_evidence.shared.ids import Clock, SystemClock
-from interview_evidence.shared.messaging.outbox import InMemoryOutbox
+from interview_evidence.shared.messaging.outbox import InMemoryOutbox, Outbox
 from interview_evidence.shared.security.principals import PrincipalProvider
 
 
@@ -42,9 +47,9 @@ class LaneCRuntime:
     repository: InterviewRepository
     service: SessionApplicationService
     idempotency: InMemoryIdempotencyStore
-    hot_view: InMemoryRecentContext
+    hot_view: RecentContextPort
     audit: AuditAppender
-    outbox: InMemoryOutbox
+    outbox: Outbox
 
 
 def create_lane_c_runtime(
@@ -55,20 +60,23 @@ def create_lane_c_runtime(
     object_storage: ObjectStorage | None = None,
     audit: AuditAppender | None = None,
     clock: Clock | None = None,
+    idempotency: InMemoryIdempotencyStore | None = None,
+    hot_view: RecentContextPort | None = None,
+    outbox: Outbox | None = None,
 ) -> LaneCRuntime:
     active_repository = repository or InMemoryInterviewRepository()
     active_storage = object_storage or InMemoryObjectStorage()
     active_audit = audit or InMemoryAuditAppender()
     active_clock = clock or SystemClock()
-    idempotency = InMemoryIdempotencyStore()
-    hot_view = InMemoryRecentContext()
-    outbox = InMemoryOutbox()
-    checkpoints = CheckpointService(active_repository, outbox)
-    reconciler = ContextReconciler(active_repository, hot_view)
+    active_idempotency = idempotency or InMemoryIdempotencyStore()
+    active_hot_view = hot_view or InMemoryRecentContext()
+    active_outbox = outbox or InMemoryOutbox()
+    checkpoints = CheckpointService(active_repository, active_outbox)
+    reconciler = ContextReconciler(active_repository, active_hot_view)
     service = SessionApplicationService(
         repository=active_repository,
         authorization=authorization,
-        idempotency=idempotency,
+        idempotency=active_idempotency,
         checkpoints=checkpoints,
         reconciler=reconciler,
         recording=RecordingService(active_storage),
@@ -87,10 +95,10 @@ def create_lane_c_runtime(
         app=create_app([router, websocket_router]),
         repository=active_repository,
         service=service,
-        idempotency=idempotency,
-        hot_view=hot_view,
+        idempotency=active_idempotency,
+        hot_view=active_hot_view,
         audit=active_audit,
-        outbox=outbox,
+        outbox=active_outbox,
     )
 
 
@@ -102,6 +110,9 @@ def create_lane_c_app(
     object_storage: ObjectStorage | None = None,
     audit: AuditAppender | None = None,
     clock: Clock | None = None,
+    idempotency: InMemoryIdempotencyStore | None = None,
+    hot_view: RecentContextPort | None = None,
+    outbox: Outbox | None = None,
 ) -> FastAPI:
     return create_lane_c_runtime(
         principal_provider=principal_provider,
@@ -110,4 +121,11 @@ def create_lane_c_app(
         object_storage=object_storage,
         audit=audit,
         clock=clock,
+        idempotency=idempotency,
+        hot_view=hot_view,
+        outbox=outbox,
     ).app
+
+
+def create_sql_repository(session: Session) -> InterviewRepository:
+    return SqlAlchemyInterviewRepository(session)

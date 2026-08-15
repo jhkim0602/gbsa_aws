@@ -57,6 +57,12 @@ class AuditAppender(Protocol):
         metadata: dict[str, Any],
     ) -> UUID: ...
 
+    def delete_for_resource(
+        self,
+        context: TenantContext,
+        resource_id: UUID,
+    ) -> bool: ...
+
 
 class InMemoryAuditAppender:
     def __init__(self) -> None:
@@ -91,3 +97,19 @@ class InMemoryAuditAppender:
         )
         self.events.append(event)
         return event.audit_event_id
+
+    def delete_for_resource(
+        self,
+        context: TenantContext,
+        resource_id: UUID,
+    ) -> bool:
+        tenant = require_tenant_context(context)
+        self.events = [
+            event
+            for event in self.events
+            if not (event.company_id == tenant.company_id and event.resource_id == resource_id)
+        ]
+        return not any(
+            event.company_id == tenant.company_id and event.resource_id == resource_id
+            for event in self.events
+        )

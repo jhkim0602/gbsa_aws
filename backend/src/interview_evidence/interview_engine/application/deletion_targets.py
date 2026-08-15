@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
-from interview_evidence.interview_engine.adapters.recent_context import InMemoryRecentContext
+from interview_evidence.interview_engine.adapters.recent_context import RecentContextPort
 from interview_evidence.interview_engine.repositories.postgres import InterviewRepository
 from interview_evidence.shared.ids import CommandMeta
 from interview_evidence.shared.tenant import TenantContext
@@ -43,7 +43,7 @@ class InMemoryInterviewTargetDeleter:
         self,
         *,
         repository: InterviewRepository | None = None,
-        hot_view: InMemoryRecentContext | None = None,
+        hot_view: RecentContextPort | None = None,
     ) -> None:
         self.calls: list[InterviewDeletionTarget] = []
         self._receipts: dict[tuple[UUID, str], InterviewDeletionReceipt] = {}

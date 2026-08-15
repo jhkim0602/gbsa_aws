@@ -9,7 +9,7 @@ from interview_evidence.interview_engine.domain.turn import (
 )
 from interview_evidence.interview_engine.repositories.postgres import InterviewRepository
 from interview_evidence.shared.ids import new_uuid7
-from interview_evidence.shared.messaging.outbox import InMemoryOutbox, OutboxEvent
+from interview_evidence.shared.messaging.outbox import Outbox, OutboxEvent
 from interview_evidence.shared.tenant import TenantContext
 
 
@@ -17,7 +17,7 @@ class CheckpointService:
     def __init__(
         self,
         repository: InterviewRepository,
-        outbox: InMemoryOutbox | None = None,
+        outbox: Outbox | None = None,
     ) -> None:
         self._repository = repository
         self._outbox = outbox

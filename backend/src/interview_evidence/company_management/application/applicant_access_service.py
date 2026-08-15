@@ -11,7 +11,7 @@ from interview_evidence.company_management.domain.hiring import (
 )
 from interview_evidence.company_management.repositories.postgres import CompanyRepository
 from interview_evidence.shared.ids import Clock, new_uuid7
-from interview_evidence.shared.messaging.outbox import InMemoryOutbox, OutboxEvent
+from interview_evidence.shared.messaging.outbox import Outbox, OutboxEvent
 from interview_evidence.shared.security.principals import ApplicantPrincipal
 from interview_evidence.shared.tenant import TenantContext
 
@@ -22,7 +22,7 @@ class ApplicantAccessService:
     def __init__(
         self,
         repository: CompanyRepository,
-        outbox: InMemoryOutbox,
+        outbox: Outbox,
         clock: Clock,
         *,
         default_retention_days: int = 180,

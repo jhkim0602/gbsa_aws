@@ -16,6 +16,10 @@ from interview_evidence.company_management.domain.hiring import (
     InvitationStateChange,
 )
 from interview_evidence.company_management.repositories.postgres import CompanyRepository
+from interview_evidence.shared.idempotency import (
+    InMemoryResourceIdempotencyStore,
+    ResourceIdempotencyStore,
+)
 from interview_evidence.shared.ids import Clock, CommandMeta, new_uuid7
 from interview_evidence.shared.security.principals import CompanyPrincipal
 from interview_evidence.shared.tenant import TenantContext
@@ -106,10 +110,15 @@ class InvitationStateSnapshot(BaseModel):
 
 
 class CompanyService:
-    def __init__(self, repository: CompanyRepository, clock: Clock) -> None:
+    def __init__(
+        self,
+        repository: CompanyRepository,
+        clock: Clock,
+        idempotency: ResourceIdempotencyStore | None = None,
+    ) -> None:
         self._repository = repository
         self._clock = clock
-        self._idempotent_positions: dict[tuple[UUID, str], UUID] = {}
+        self._idempotency = idempotency or InMemoryResourceIdempotencyStore()
 
     def get_current_user(
         self,
@@ -134,7 +143,11 @@ class CompanyService:
         idempotency_key: str,
     ) -> Position:
         context.assert_company(principal.company_id)
-        existing_id = self._idempotent_positions.get((context.company_id, idempotency_key))
+        existing_id = self._idempotency.get(
+            context,
+            operation="position.create",
+            idempotency_key=idempotency_key,
+        )
         if existing_id is not None:
             return self._repository.get_position(context, existing_id)
         position = Position(
@@ -146,7 +159,12 @@ class CompanyService:
             created_at=self._clock.now(),
         )
         self._repository.save_position(context, position)
-        self._idempotent_positions[(context.company_id, idempotency_key)] = position.position_id
+        self._idempotency.put(
+            context,
+            operation="position.create",
+            idempotency_key=idempotency_key,
+            resource_id=position.position_id,
+        )
         return position
 
     def list_positions(self, context: TenantContext) -> tuple[Position, ...]:

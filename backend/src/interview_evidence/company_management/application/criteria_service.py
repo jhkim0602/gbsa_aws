@@ -7,15 +7,24 @@ from interview_evidence.company_management.domain.criteria import (
     EvaluationCriterion,
 )
 from interview_evidence.company_management.repositories.postgres import CompanyRepository
+from interview_evidence.shared.idempotency import (
+    InMemoryResourceIdempotencyStore,
+    ResourceIdempotencyStore,
+)
 from interview_evidence.shared.ids import Clock, new_uuid7
 from interview_evidence.shared.tenant import TenantContext
 
 
 class CriteriaService:
-    def __init__(self, repository: CompanyRepository, clock: Clock) -> None:
+    def __init__(
+        self,
+        repository: CompanyRepository,
+        clock: Clock,
+        idempotency: ResourceIdempotencyStore | None = None,
+    ) -> None:
         self._repository = repository
         self._clock = clock
-        self._idempotency: dict[tuple[UUID, str], UUID] = {}
+        self._idempotency = idempotency or InMemoryResourceIdempotencyStore()
 
     def create_version(
         self,
@@ -28,7 +37,11 @@ class CriteriaService:
         persona_definition: dict[str, object],
         idempotency_key: str,
     ) -> CompetencyModelVersion:
-        existing_id = self._idempotency.get((context.company_id, idempotency_key))
+        existing_id = self._idempotency.get(
+            context,
+            operation="criterion_version.create",
+            idempotency_key=idempotency_key,
+        )
         if existing_id is not None:
             return self._repository.get_criterion_version(context, existing_id)
         self._repository.get_position(context, position_id)
@@ -51,8 +64,11 @@ class CriteriaService:
             persona_definition=persona_definition,
         )
         self._repository.save_criterion_version(context, version)
-        self._idempotency[(context.company_id, idempotency_key)] = (
-            version.competency_model_version_id
+        self._idempotency.put(
+            context,
+            operation="criterion_version.create",
+            idempotency_key=idempotency_key,
+            resource_id=version.competency_model_version_id,
         )
         return version
 

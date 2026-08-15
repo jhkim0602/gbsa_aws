@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 from fastapi import FastAPI
+from sqlalchemy.orm import Session
 
 from interview_evidence.main import create_app
 from interview_evidence.shared.audit import AuditAppender, InMemoryAuditAppender
@@ -8,9 +9,14 @@ from interview_evidence.shared.aws_clients.ports import (
     InMemoryObjectStorage,
     ObjectStorage,
 )
+from interview_evidence.shared.idempotency import (
+    InMemoryResourceIdempotencyStore,
+    ResourceIdempotencyStore,
+)
 from interview_evidence.shared.ids import Clock, SystemClock
-from interview_evidence.shared.messaging.outbox import InMemoryOutbox
+from interview_evidence.shared.messaging.outbox import InMemoryOutbox, Outbox
 from interview_evidence.shared.security.principals import PrincipalProvider
+from interview_evidence.shared.uploads import UploadIntentStore
 from interview_evidence.submission_analysis.adapters.object_storage import (
     ScopedSubmissionStorage,
 )
@@ -28,6 +34,7 @@ from interview_evidence.submission_analysis.application.submission_validator imp
 )
 from interview_evidence.submission_analysis.repositories.postgres import (
     InMemorySubmissionRepository,
+    SqlAlchemySubmissionRepository,
     SubmissionRepository,
 )
 
@@ -38,7 +45,7 @@ class LaneBRuntime:
     repository: SubmissionRepository
     storage: ScopedSubmissionStorage
     service: SubmissionService
-    outbox: InMemoryOutbox
+    outbox: Outbox
     audit: AuditAppender
 
 
@@ -50,16 +57,20 @@ def create_lane_b_runtime(
     object_storage: ObjectStorage | None = None,
     audit: AuditAppender | None = None,
     clock: Clock | None = None,
-    outbox: InMemoryOutbox | None = None,
+    outbox: Outbox | None = None,
+    idempotency: ResourceIdempotencyStore | None = None,
+    upload_intents: UploadIntentStore | None = None,
 ) -> LaneBRuntime:
     active_repository = repository or InMemorySubmissionRepository()
     active_storage_port = object_storage or InMemoryObjectStorage()
     active_audit = audit or InMemoryAuditAppender()
     active_clock = clock or SystemClock()
     active_outbox = outbox or InMemoryOutbox()
+    active_idempotency = idempotency or InMemoryResourceIdempotencyStore()
     storage = ScopedSubmissionStorage(
         active_storage_port,
         clock=active_clock,
+        intent_store=upload_intents,
     )
     service = SubmissionService(
         active_repository,
@@ -67,6 +78,7 @@ def create_lane_b_runtime(
         SubmissionValidator(),
         active_outbox,
         active_clock,
+        active_idempotency,
     )
     router = create_applicant_submission_router(
         principal_provider=principal_provider,
@@ -92,7 +104,9 @@ def create_lane_b_app(
     object_storage: ObjectStorage | None = None,
     audit: AuditAppender | None = None,
     clock: Clock | None = None,
-    outbox: InMemoryOutbox | None = None,
+    outbox: Outbox | None = None,
+    idempotency: ResourceIdempotencyStore | None = None,
+    upload_intents: UploadIntentStore | None = None,
 ) -> FastAPI:
     return create_lane_b_runtime(
         principal_provider=principal_provider,
@@ -102,4 +116,10 @@ def create_lane_b_app(
         audit=audit,
         clock=clock,
         outbox=outbox,
+        idempotency=idempotency,
+        upload_intents=upload_intents,
     ).app
+
+
+def create_sql_repository(session: Session) -> SubmissionRepository:
+    return SqlAlchemySubmissionRepository(session)

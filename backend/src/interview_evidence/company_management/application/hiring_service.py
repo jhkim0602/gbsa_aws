@@ -10,6 +10,10 @@ from interview_evidence.company_management.adapters.applicant_session import (
 )
 from interview_evidence.company_management.domain.hiring import Campaign, Invitation
 from interview_evidence.company_management.repositories.postgres import CompanyRepository
+from interview_evidence.shared.idempotency import (
+    InMemoryResourceIdempotencyStore,
+    ResourceIdempotencyStore,
+)
 from interview_evidence.shared.ids import Clock, new_uuid7
 from interview_evidence.shared.tenant import TenantContext
 
@@ -32,11 +36,12 @@ class HiringService:
         repository: CompanyRepository,
         sessions: ApplicantSessionAdapter,
         clock: Clock,
+        idempotency: ResourceIdempotencyStore | None = None,
     ) -> None:
         self._repository = repository
         self._sessions = sessions
         self._clock = clock
-        self._idempotency: dict[tuple[UUID, str], UUID] = {}
+        self._idempotency = idempotency or InMemoryResourceIdempotencyStore()
 
     def create_campaign(
         self,
@@ -48,7 +53,11 @@ class HiringService:
         candidate_instructions: str,
         idempotency_key: str,
     ) -> Campaign:
-        existing_id = self._idempotency.get((context.company_id, idempotency_key))
+        existing_id = self._idempotency.get(
+            context,
+            operation="campaign.create",
+            idempotency_key=idempotency_key,
+        )
         if existing_id is not None:
             return self._repository.get_campaign(context, existing_id)
         version = self._repository.get_criterion_version(context, competency_model_version_id)
@@ -61,7 +70,12 @@ class HiringService:
             candidate_instructions=candidate_instructions,
         )
         self._repository.save_campaign(context, campaign)
-        self._idempotency[(context.company_id, idempotency_key)] = campaign.campaign_id
+        self._idempotency.put(
+            context,
+            operation="campaign.create",
+            idempotency_key=idempotency_key,
+            resource_id=campaign.campaign_id,
+        )
         return campaign
 
     def publish_campaign(

@@ -8,6 +8,7 @@ from alembic.config import Config
 
 ROOT = Path(__file__).resolve().parents[4]
 MERGE_REVISION = "merge_001_lane_heads"
+CURRENT_REVISION = "m_002_runtime_persistence"
 LANE_HEADS = (
     "a_001_company_hiring",
     "b_001_submission_analysis",
@@ -33,7 +34,7 @@ def test_empty_database_upgrades_to_single_merged_head(tmp_path: Path) -> None:
 
     command.upgrade(alembic_config(database), "heads")
 
-    assert current_revisions(database) == {MERGE_REVISION}
+    assert current_revisions(database) == {CURRENT_REVISION}
 
 
 def test_existing_four_head_snapshot_converges_to_merge(tmp_path: Path) -> None:
@@ -45,4 +46,4 @@ def test_existing_four_head_snapshot_converges_to_merge(tmp_path: Path) -> None:
 
     command.upgrade(config, "heads")
 
-    assert current_revisions(database) == {MERGE_REVISION}
+    assert current_revisions(database) == {CURRENT_REVISION}

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Protocol
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -67,6 +67,14 @@ class ProcessedMessage(BaseModel):
     outcome_digest: str = Field(min_length=1, max_length=128)
 
 
+class Outbox(Protocol):
+    def append(self, event: OutboxEvent) -> OutboxEvent: ...
+
+    def pending(self) -> tuple[OutboxEvent, ...]: ...
+
+    def mark_published(self, event_id: UUID) -> None: ...
+
+
 class InMemoryOutbox:
     def __init__(self) -> None:
         self._events: dict[UUID, OutboxEvent] = {}
@@ -90,4 +98,13 @@ class InMemoryOutbox:
             event
             for event in self._events.values()
             if event.publish_status is PublishStatus.PENDING
+        )
+
+    def mark_published(self, event_id: UUID) -> None:
+        event = self._events[event_id]
+        self._events[event_id] = event.model_copy(
+            update={
+                "publish_status": PublishStatus.PUBLISHED,
+                "publish_attempts": event.publish_attempts + 1,
+            }
         )

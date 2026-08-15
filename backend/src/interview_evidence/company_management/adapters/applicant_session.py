@@ -5,6 +5,7 @@ import hmac
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import Protocol
 from uuid import UUID
 
 from interview_evidence.shared.ids import Clock, SystemClock, new_uuid7
@@ -40,8 +41,8 @@ class ApplicantSessionCookie:
     raw_value: str = field(repr=False)
 
 
-@dataclass(slots=True)
-class _TokenRecord:
+@dataclass(frozen=True, slots=True)
+class ApplicantTokenRecord:
     invitation_id: UUID
     company_id: UUID
     applicant_id: UUID
@@ -50,11 +51,83 @@ class _TokenRecord:
     consumed_at: datetime | None = None
 
 
-@dataclass(frozen=True, slots=True)
-class _SessionRecord:
-    principal: ApplicantPrincipal
-    session_hash: str
-    expires_at: datetime
+class ApplicantSessionStore(Protocol):
+    def save_token(
+        self,
+        *,
+        token_hash: str,
+        company_id: UUID,
+        invitation_id: UUID,
+        applicant_id: UUID,
+        expires_at: datetime,
+    ) -> None: ...
+
+    def get_token(self, token_hash: str) -> ApplicantTokenRecord | None: ...
+
+    def consume_token(self, token_hash: str, *, consumed_at: datetime) -> None: ...
+
+    def save_session(
+        self,
+        *,
+        session_hash: str,
+        principal: ApplicantPrincipal,
+        expires_at: datetime,
+    ) -> None: ...
+
+    def get_session(self, session_hash: str, *, now: datetime) -> ApplicantPrincipal | None: ...
+
+
+class InMemoryApplicantSessionStore:
+    def __init__(self) -> None:
+        self.tokens: dict[str, ApplicantTokenRecord] = {}
+        self.sessions: dict[str, tuple[ApplicantPrincipal, datetime]] = {}
+
+    def save_token(
+        self,
+        *,
+        token_hash: str,
+        company_id: UUID,
+        invitation_id: UUID,
+        applicant_id: UUID,
+        expires_at: datetime,
+    ) -> None:
+        self.tokens[token_hash] = ApplicantTokenRecord(
+            invitation_id=invitation_id,
+            company_id=company_id,
+            applicant_id=applicant_id,
+            token_hash=token_hash,
+            expires_at=expires_at,
+        )
+
+    def get_token(self, token_hash: str) -> ApplicantTokenRecord | None:
+        return self.tokens.get(token_hash)
+
+    def consume_token(self, token_hash: str, *, consumed_at: datetime) -> None:
+        current = self.tokens[token_hash]
+        self.tokens[token_hash] = ApplicantTokenRecord(
+            invitation_id=current.invitation_id,
+            company_id=current.company_id,
+            applicant_id=current.applicant_id,
+            token_hash=current.token_hash,
+            expires_at=current.expires_at,
+            consumed_at=consumed_at,
+        )
+
+    def save_session(
+        self,
+        *,
+        session_hash: str,
+        principal: ApplicantPrincipal,
+        expires_at: datetime,
+    ) -> None:
+        self.sessions[session_hash] = (principal, expires_at)
+
+    def get_session(self, session_hash: str, *, now: datetime) -> ApplicantPrincipal | None:
+        stored = self.sessions.get(session_hash)
+        if stored is None:
+            return None
+        principal, expires_at = stored
+        return None if now >= expires_at else principal
 
 
 class ApplicantSessionAdapter:
@@ -64,16 +137,18 @@ class ApplicantSessionAdapter:
         clock: Clock | None = None,
         session_ttl: timedelta = timedelta(hours=12),
         token_pepper: bytes = b"local-development-pepper",
+        store: ApplicantSessionStore | None = None,
     ) -> None:
         self._clock = clock or SystemClock()
         self._session_ttl = session_ttl
         self._token_pepper = token_pepper
-        self._tokens: dict[str, _TokenRecord] = {}
-        self._sessions: dict[str, _SessionRecord] = {}
+        self._store = store or InMemoryApplicantSessionStore()
 
     @property
     def persisted_token_hashes(self) -> tuple[str, ...]:
-        return tuple(record.token_hash for record in self._tokens.values())
+        if isinstance(self._store, InMemoryApplicantSessionStore):
+            return tuple(record.token_hash for record in self._store.tokens.values())
+        return ()
 
     def hash_token(self, raw_token: str) -> str:
         return hmac.new(
@@ -92,11 +167,11 @@ class ApplicantSessionAdapter:
     ) -> IssuedInvitationToken:
         raw_token = secrets.token_urlsafe(48)
         token_hash = self.hash_token(raw_token)
-        self._tokens[token_hash] = _TokenRecord(
-            invitation_id=invitation_id,
-            company_id=company_id,
-            applicant_id=applicant_id,
+        self._store.save_token(
             token_hash=token_hash,
+            company_id=company_id,
+            invitation_id=invitation_id,
+            applicant_id=applicant_id,
             expires_at=expires_at,
         )
         return IssuedInvitationToken(
@@ -111,7 +186,7 @@ class ApplicantSessionAdapter:
         raw_token: str,
     ) -> tuple[ApplicantPrincipal, ApplicantSessionCookie]:
         token_hash = self.hash_token(raw_token)
-        record = self._tokens.get(token_hash)
+        record = self._store.get_token(token_hash)
         if record is None:
             raise InvitationTokenNotFoundError("invitation token is invalid")
         now = self._clock.now()
@@ -120,7 +195,7 @@ class ApplicantSessionAdapter:
         if now >= record.expires_at:
             raise InvitationTokenExpiredError("invitation token has expired")
 
-        record.consumed_at = now
+        self._store.consume_token(token_hash, consumed_at=now)
         session_id = new_uuid7(now)
         principal = ApplicantPrincipal(
             company_id=record.company_id,
@@ -131,9 +206,9 @@ class ApplicantSessionAdapter:
         raw_session = secrets.token_urlsafe(48)
         session_hash = self.hash_token(raw_session)
         expires_at = min(record.expires_at, now + self._session_ttl)
-        self._sessions[session_hash] = _SessionRecord(
-            principal=principal,
+        self._store.save_session(
             session_hash=session_hash,
+            principal=principal,
             expires_at=expires_at,
         )
         return principal, ApplicantSessionCookie(
@@ -143,7 +218,7 @@ class ApplicantSessionAdapter:
 
     def get_applicant_principal(self, credential: str) -> ApplicantPrincipal:
         session_hash = self.hash_token(credential)
-        session = self._sessions.get(session_hash)
-        if session is None or self._clock.now() >= session.expires_at:
+        principal = self._store.get_session(session_hash, now=self._clock.now())
+        if principal is None:
             raise PrincipalNotFoundError("applicant principal not found")
-        return session.principal
+        return principal

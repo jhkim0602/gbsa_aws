@@ -5,9 +5,9 @@ from datetime import datetime
 from uuid import UUID
 
 from interview_evidence.company_management.repositories.postgres import CompanyRepository
-from interview_evidence.shared.audit import InMemoryAuditAppender
+from interview_evidence.shared.audit import AuditAppender
 from interview_evidence.shared.ids import Clock, new_uuid7
-from interview_evidence.shared.messaging.outbox import InMemoryOutbox, OutboxEvent
+from interview_evidence.shared.messaging.outbox import Outbox, OutboxEvent
 from interview_evidence.shared.tenant import TenantContext
 
 
@@ -32,7 +32,7 @@ class InMemoryCompanyTargetDeleter:
     def __init__(
         self,
         repository: CompanyRepository,
-        audit: InMemoryAuditAppender,
+        audit: AuditAppender,
     ) -> None:
         self._repository = repository
         self._audit = audit
@@ -47,15 +47,7 @@ class InMemoryCompanyTargetDeleter:
             raise PermissionError("deletion target is not owned by Lane A")
         resource_id = target.resource_id
         if target.resource_type == "audit_event":
-            self._audit.events = [
-                event
-                for event in self._audit.events
-                if not (event.company_id == context.company_id and event.resource_id == resource_id)
-            ]
-            absent = not any(
-                event.company_id == context.company_id and event.resource_id == resource_id
-                for event in self._audit.events
-            )
+            absent = self._audit.delete_for_resource(context, resource_id)
         else:
             absent = self._repository.delete_and_verify_target(
                 context,
@@ -74,7 +66,7 @@ class CompanyDeletionTargets:
     def __init__(
         self,
         repository: CompanyRepository,
-        outbox: InMemoryOutbox,
+        outbox: Outbox,
         clock: Clock,
     ) -> None:
         self._repository = repository

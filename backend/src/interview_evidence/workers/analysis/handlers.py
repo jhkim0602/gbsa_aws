@@ -6,7 +6,7 @@ from typing import Protocol
 from uuid import UUID
 
 from interview_evidence.shared.ids import Clock, new_uuid7
-from interview_evidence.shared.messaging.outbox import InMemoryOutbox, OutboxEvent
+from interview_evidence.shared.messaging.outbox import Outbox, OutboxEvent
 from interview_evidence.shared.tenant import TenantContext
 from interview_evidence.submission_analysis.domain.submission import SourceType
 
@@ -61,7 +61,7 @@ class AnalysisJobHandler:
     def __init__(
         self,
         processor: AnalysisProcessor,
-        outbox: InMemoryOutbox,
+        outbox: Outbox,
         clock: Clock,
         *,
         max_attempts: int,
