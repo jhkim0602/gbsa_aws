@@ -135,6 +135,11 @@ def test_compute_and_data_define_durable_private_runtime_boundaries() -> None:
     assert "deployment_circuit_breaker" in compute
     assert "ignore_changes = [desired_count, task_definition]" in compute
     assert "enable_deletion_protection = var.enable_deletion_protection" in compute
+    assert '"uvicorn",' in compute
+    assert '"interview_evidence.main:app",' in compute
+    assert '"--port",' in compute
+    assert '"8000",' in compute
+    assert 'command     = ["python", "-m", "interview_evidence.main"]' not in compute
     assert "block_public_policy     = true" in data
     assert 'sse_algorithm     = "aws:kms"' in data
     assert "point_in_time_recovery" in data

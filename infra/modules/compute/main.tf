@@ -328,7 +328,17 @@ resource "aws_ecs_task_definition" "api" {
     name      = "api"
     image     = var.api_image
     essential = true
-    command   = ["python", "-m", "interview_evidence.main"]
+    command = [
+      "uv",
+      "run",
+      "--no-sync",
+      "uvicorn",
+      "interview_evidence.main:app",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "8000",
+    ]
     portMappings = [{
       containerPort = 8000
       hostPort      = 8000
