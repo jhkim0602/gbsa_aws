@@ -59,11 +59,13 @@ from interview_evidence.interview_engine.api.applicant_routes import (
     create_applicant_interview_router,
 )
 from interview_evidence.interview_engine.api.websocket import (
-    ProtocolStreamHandler,
     create_interview_websocket_router,
 )
 from interview_evidence.interview_engine.application.deletion_targets import (
     InterviewDeletionTargets,
+)
+from interview_evidence.interview_engine.application.idempotency import (
+    SqlAlchemyIdempotencyStore,
 )
 from interview_evidence.interview_engine.application.public import InterviewEnginePublic
 from interview_evidence.main import LocalRuntime, create_app
@@ -82,9 +84,12 @@ from interview_evidence.reporting.application.evidence_service import EvidenceSe
 from interview_evidence.reporting.application.public import ReportingPublic
 from interview_evidence.reporting.application.transcript_service import TranscriptService
 from interview_evidence.shared.aws_clients.ports import (
+    AIModel,
     ConsumableQueue,
     EmailSender,
     ObjectStorage,
+    SpeechToText,
+    TextToSpeech,
 )
 from interview_evidence.shared.database import RequestScopedDatabase
 from interview_evidence.shared.ids import SystemClock
@@ -143,6 +148,9 @@ def create_production_runtime(
     metrics: MetricRecorder | None = None,
     readiness: ReadinessChecker | None = None,
     queues: Mapping[str, ConsumableQueue] | None = None,
+    model: AIModel | None = None,
+    speech_to_text: SpeechToText | None = None,
+    text_to_speech: TextToSpeech | None = None,
 ) -> LocalRuntime:
     aws = None
     if (
@@ -151,6 +159,9 @@ def create_production_runtime(
         or email_sender is None
         or recent_context is None
         or search_index is None
+        or model is None
+        or speech_to_text is None
+        or text_to_speech is None
     ):
         from interview_evidence.runtime.aws import create_aws_runtime_dependencies
 
@@ -161,6 +172,9 @@ def create_production_runtime(
         email_sender = email_sender or aws.email_sender
         recent_context = recent_context or aws.recent_context
         search_index = search_index or aws.search_index
+        model = model or aws.model
+        speech_to_text = speech_to_text or aws.speech_to_text
+        text_to_speech = text_to_speech or aws.text_to_speech
         database_url = aws.database_url
     else:
         database_url = environment.get("DATABASE_URL", "").strip()
@@ -176,7 +190,8 @@ def create_production_runtime(
     session = database.session
     audit = SQLAuditAppender(session)
     outbox = SQLOutbox(session)
-    idempotency = SQLCommandIdempotencyStore(session)
+    resource_idempotency = SQLCommandIdempotencyStore(session)
+    interview_idempotency = SqlAlchemyIdempotencyStore(session)
     applicant_sessions = ApplicantSessionAdapter(
         clock=clock,
         store=SQLApplicantSessionStore(session),
@@ -189,7 +204,7 @@ def create_production_runtime(
         clock=clock,
         sessions=applicant_sessions,
         outbox=outbox,
-        idempotency=idempotency,
+        idempotency=resource_idempotency,
         email_sender=email_sender,
     )
 
@@ -223,7 +238,7 @@ def create_production_runtime(
         audit=audit,
         clock=clock,
         outbox=outbox,
-        idempotency=idempotency,
+        idempotency=resource_idempotency,
         upload_intents=SQLUploadIntentStore(session),
     )
     submission_public = SubmissionAnalysisPublic(
@@ -237,7 +252,7 @@ def create_production_runtime(
             metrics=active_metrics,
         ),
     )
-    submission_interview = SubmissionInterviewBoundary(submission_public)
+    submission_interview = SubmissionInterviewBoundary(submission_public, company_public)
     lane_c = create_lane_c_runtime(
         principal_provider=principals,
         authorization=submission_interview,
@@ -247,6 +262,12 @@ def create_production_runtime(
         clock=clock,
         hot_view=recent_context,
         outbox=outbox,
+        idempotency=interview_idempotency,
+        plan_provider=submission_interview,
+        retrieval_provider=submission_interview,
+        model=model,
+        speech_to_text=speech_to_text,
+        text_to_speech=text_to_speech,
     )
     base_lane_d = create_lane_d_runtime(
         principal_provider=principals,
@@ -351,7 +372,8 @@ def create_production_runtime(
             ),
             create_interview_websocket_router(
                 principal_provider=principals,
-                handler=ProtocolStreamHandler(session_service=lane_c.service),
+                handler=lane_c.stream_handler,
+                database=database,
             ),
             create_reporting_router(
                 principal_provider=principals,

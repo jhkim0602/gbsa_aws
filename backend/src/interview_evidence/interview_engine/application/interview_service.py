@@ -15,7 +15,7 @@ from interview_evidence.interview_engine.application.context_builder import (
     ContextBuilder,
     ContextTurn,
 )
-from interview_evidence.interview_engine.application.idempotency import InMemoryIdempotencyStore
+from interview_evidence.interview_engine.application.idempotency import IdempotencyStore
 from interview_evidence.interview_engine.application.question_generator import (
     QuestionGenerationUnavailable,
     QuestionGenerator,
@@ -53,7 +53,7 @@ class InterviewService:
         self,
         *,
         repository: InterviewRepository,
-        idempotency: InMemoryIdempotencyStore,
+        idempotency: IdempotencyStore,
         recovery: RecoveryService,
         checkpoints: CheckpointService,
         context_builder: ContextBuilder,
@@ -255,7 +255,7 @@ class InterviewService:
                 turn_id=new_uuid7(occurred_at),
                 company_id=session.company_id,
                 interview_session_id=session_id,
-                sequence=len(turns) + 1,
+                sequence=max((turn.sequence for turn in turns), default=0) + 1,
                 speaker=TurnSpeaker.INTERVIEWER,
                 status=TurnStatus.FINAL,
                 text=question.text,
@@ -293,10 +293,15 @@ class InterviewService:
             voice_id=voice_id,
         )
         current = self._repository.get_session(context, session_id)
-        transitioned = self._state_machine.transition(
+        in_progress = self._state_machine.transition(
             current,
             expected_sequence=current.session_sequence,
             target=InterviewSessionState.IN_PROGRESS,
+        )
+        transitioned = self._state_machine.transition(
+            in_progress,
+            expected_sequence=in_progress.session_sequence,
+            target=InterviewSessionState.AWAITING_ANSWER,
         )
         active_degraded_modes = tuple(
             mode for mode in (retrieval.degraded_mode, speech.degraded_mode) if mode is not None

@@ -11,7 +11,7 @@ from interview_evidence.interview_engine.application.checkpoints import Checkpoi
 from interview_evidence.interview_engine.application.context_reconciliation import (
     ContextReconciler,
 )
-from interview_evidence.interview_engine.application.idempotency import InMemoryIdempotencyStore
+from interview_evidence.interview_engine.application.idempotency import IdempotencyStore
 from interview_evidence.interview_engine.application.state_machine import SessionStateMachine
 from interview_evidence.interview_engine.domain.session import InterviewSessionState
 from interview_evidence.interview_engine.domain.turn import (
@@ -40,7 +40,7 @@ class RecoveryService:
         self,
         *,
         repository: InterviewRepository,
-        idempotency: InMemoryIdempotencyStore,
+        idempotency: IdempotencyStore,
         checkpoints: CheckpointService,
         reconciler: ContextReconciler,
     ) -> None:
@@ -127,7 +127,25 @@ class RecoveryService:
         occurred_at: datetime,
     ) -> RecoveryMessage:
         session = self._repository.get_session(context, session_id)
-        next_turn_sequence = len(self._repository.list_turns(context, session_id)) + 1
+        try:
+            existing = self._repository.get_turn(context, answer_turn_id)
+        except LookupError:
+            existing = None
+        if existing is not None and (
+            existing.interview_session_id != session_id
+            or existing.speaker is not TurnSpeaker.APPLICANT
+            or existing.status is TurnStatus.FINAL
+        ):
+            raise ValueError("answer turn cannot be finalized")
+        next_turn_sequence = (
+            existing.sequence
+            if existing is not None
+            else max(
+                (turn.sequence for turn in self._repository.list_turns(context, session_id)),
+                default=0,
+            )
+            + 1
+        )
         turn = self._repository.save_turn(
             context,
             InterviewTurn(

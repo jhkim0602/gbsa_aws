@@ -12,7 +12,7 @@ from interview_evidence.interview_engine.application.checkpoints import Checkpoi
 from interview_evidence.interview_engine.application.context_reconciliation import (
     ContextReconciler,
 )
-from interview_evidence.interview_engine.application.idempotency import InMemoryIdempotencyStore
+from interview_evidence.interview_engine.application.idempotency import IdempotencyStore
 from interview_evidence.interview_engine.application.recording_service import (
     RecordingService,
     RecordingUploadIntent,
@@ -54,7 +54,7 @@ class SessionApplicationService:
         *,
         repository: InterviewRepository,
         authorization: InterviewAuthorizationPort,
-        idempotency: InMemoryIdempotencyStore,
+        idempotency: IdempotencyStore,
         checkpoints: CheckpointService,
         reconciler: ContextReconciler,
         recording: RecordingService,

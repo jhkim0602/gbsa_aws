@@ -247,6 +247,9 @@ def create_local_production_runtime(environment: Mapping[str, str]) -> LocalRunt
         metrics=aws.metrics,
         readiness=readiness,
         queues=aws.queues,
+        model=aws.model,
+        speech_to_text=aws.speech_to_text,
+        text_to_speech=aws.text_to_speech,
     )
 
 

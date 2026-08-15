@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from interview_evidence.interview_engine.application.idempotency import InMemoryIdempotencyStore
+from interview_evidence.interview_engine.application.idempotency import IdempotencyStore
 from interview_evidence.interview_engine.domain.turn import (
     RecordingChunk,
     RecordingUploadStatus,
@@ -55,7 +55,7 @@ class RecordingService:
         storage: ObjectStorage,
         *,
         repository: InterviewRepository | None = None,
-        idempotency: InMemoryIdempotencyStore | None = None,
+        idempotency: IdempotencyStore | None = None,
         verifier: RecordingObjectVerifier | None = None,
     ) -> None:
         self._storage = storage

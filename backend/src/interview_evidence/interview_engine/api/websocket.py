@@ -1,5 +1,7 @@
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
+from functools import partial
 from hashlib import sha256
 from typing import Literal, Protocol
 from uuid import UUID
@@ -10,6 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from interview_evidence.interview_engine.application.session_service import (
     SessionApplicationService,
 )
+from interview_evidence.interview_engine.domain.session import InterviewSession
+from interview_evidence.shared.database import RequestScopedDatabase
 from interview_evidence.shared.ids import new_uuid7
 from interview_evidence.shared.security.principals import (
     ApplicantPrincipal,
@@ -23,7 +27,7 @@ class WebSocketEnvelope(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     protocol_version: Literal["1.0"]
-    message_type: str = Field(pattern=r"^[a-z]+(?:\.[a-z_]+)+$")
+    message_type: str = Field(pattern=r"^[a-z]+(?:\.[a-z_]+)*$")
     session_id: UUID
     sequence: int = Field(ge=0)
     idempotency_key: str = Field(min_length=8, max_length=200)
@@ -36,7 +40,7 @@ class ServerEnvelope(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     protocol_version: Literal["1.0"] = "1.0"
-    message_type: str = Field(pattern=r"^[a-z]+(?:\.[a-z_]+)+$")
+    message_type: str = Field(pattern=r"^[a-z]+(?:\.[a-z_]+)*$")
     session_id: UUID
     sequence: int = Field(ge=0)
     idempotency_key: str = Field(min_length=8, max_length=200)
@@ -77,15 +81,27 @@ class AudioFrameHandler(Protocol):
     ) -> tuple[ServerEnvelope, ...]: ...
 
 
+class SessionStartHandler(Protocol):
+    def initial_question(
+        self,
+        context: TenantContext,
+        principal: ApplicantPrincipal,
+        envelope: WebSocketEnvelope,
+        started: InterviewSession,
+    ) -> ServerEnvelope: ...
+
+
 class ProtocolStreamHandler:
     def __init__(
         self,
         *,
         session_service: SessionApplicationService,
+        start_handler: SessionStartHandler | None = None,
         answer_handler: AnswerCompletionHandler | None = None,
         audio_handler: AudioFrameHandler | None = None,
     ) -> None:
         self._session_service = session_service
+        self._start_handler = start_handler
         self._answer_handler = answer_handler
         self._audio_handler = audio_handler
 
@@ -112,6 +128,13 @@ class ProtocolStreamHandler:
                 expected_sequence=envelope.sequence,
                 idempotency_key=envelope.idempotency_key,
             )
+            if self._start_handler is not None:
+                return self._start_handler.initial_question(
+                    context,
+                    principal,
+                    envelope,
+                    started,
+                )
             return self._server_message(
                 envelope,
                 message_type="session.state_changed",
@@ -260,6 +283,7 @@ def create_interview_websocket_router(
     *,
     principal_provider: PrincipalProvider,
     handler: ProtocolStreamHandler,
+    database: RequestScopedDatabase | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1")
 
@@ -283,10 +307,13 @@ def create_interview_websocket_router(
             trace_id=websocket.headers.get("x-trace-id") or str(request_id),
         )
         try:
-            handler.authorize_connection(
-                context,
-                principal,
-                session_id=session_id,
+            _execute_transaction(
+                database,
+                lambda: handler.authorize_connection(
+                    context,
+                    principal,
+                    session_id=session_id,
+                ),
             )
         except (LookupError, PermissionError):
             await websocket.close(code=4003)
@@ -308,12 +335,16 @@ def create_interview_websocket_router(
                     envelope, metadata = pending_audio
                     pending_audio = None
                     try:
-                        responses = handler.handle_audio(
-                            context,
-                            principal,
-                            envelope,
-                            metadata,
-                            binary,
+                        responses = _execute_transaction(
+                            database,
+                            partial(
+                                handler.handle_audio,
+                                context,
+                                principal,
+                                envelope,
+                                metadata,
+                                binary,
+                            ),
                         )
                     except ValueError:
                         responses = (_invalid_message(session_id),)
@@ -334,7 +365,10 @@ def create_interview_websocket_router(
                             AudioChunkMetadata.model_validate(envelope.payload),
                         )
                         continue
-                    response = handler.handle(context, principal, envelope)
+                    response = _execute_transaction(
+                        database,
+                        partial(handler.handle, context, principal, envelope),
+                    )
                 except (ValueError, TypeError):
                     response = _invalid_message(session_id)
                 await websocket.send_json(response.model_dump(mode="json"))
@@ -342,6 +376,24 @@ def create_interview_websocket_router(
             return
 
     return router
+
+
+def _execute_transaction[ResultT](
+    database: RequestScopedDatabase | None,
+    execute: Callable[[], ResultT],
+) -> ResultT:
+    if database is None:
+        return execute()
+    token = database.begin_scope()
+    try:
+        result = execute()
+        database.session.commit()
+        return result
+    except BaseException:
+        database.session.rollback()
+        raise
+    finally:
+        database.end_scope(token)
 
 
 def validate_audio_frame(metadata: AudioChunkMetadata, audio: bytes) -> None:

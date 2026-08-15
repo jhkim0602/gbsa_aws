@@ -8,8 +8,14 @@ from alembic.config import Config
 from interview_evidence.interview_engine.adapters.recent_context import (
     InMemoryRecentContext,
 )
+from interview_evidence.interview_engine.application.idempotency import (
+    SqlAlchemyIdempotencyStore,
+)
 from interview_evidence.runtime.production import create_production_runtime
 from interview_evidence.shared.aws_clients.ports import (
+    DeterministicAIModel,
+    DeterministicSpeechToText,
+    DeterministicTextToSpeech,
     InMemoryEmailSender,
     InMemoryObjectStorage,
 )
@@ -45,6 +51,11 @@ def _runtime(database_url: str):
         email_sender=InMemoryEmailSender(),
         recent_context=InMemoryRecentContext(),
         search_index=InMemorySearchIndex(),
+        model=DeterministicAIModel({}),
+        speech_to_text=DeterministicSpeechToText(
+            {"text": "테스트 답변", "confidence": 0.99}
+        ),
+        text_to_speech=DeterministicTextToSpeech({}),
     )
 
 
@@ -60,6 +71,10 @@ async def test_production_runtime_persists_http_state_across_recreation(
     }
 
     first = _runtime(database_url)
+    assert isinstance(
+        first.lanes["interview_engine"].idempotency,
+        SqlAlchemyIdempotencyStore,
+    )
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=first.app),
         base_url="http://test",
