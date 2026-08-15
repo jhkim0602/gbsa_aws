@@ -119,6 +119,10 @@ class ConsumableQueue(EventQueue, Protocol):
 
     def retry(self, receipt_handle: str) -> None: ...
 
+    def healthcheck(self) -> None: ...
+
+    def approximate_depth(self) -> int: ...
+
 
 class SearchPort(Protocol):
     def search(
@@ -198,6 +202,20 @@ class InMemoryObjectStorage:
         )
         self.intents.append(intent)
         return intent
+
+    def delete_and_verify_object(
+        self,
+        context: TenantContext,
+        object_key: str,
+    ) -> bool:
+        tenant = require_tenant_context(context)
+        if not object_key.startswith(f"tenants/{tenant.company_id}/"):
+            raise PermissionError("object key is outside the tenant scope")
+        self.intents = [intent for intent in self.intents if intent.object_key != object_key]
+        return all(intent.object_key != object_key for intent in self.intents)
+
+    def healthcheck(self) -> None:
+        return None
 
 
 class InMemoryQueue:
@@ -295,6 +313,12 @@ class InMemoryQueue:
             )
             for delivery in tuple(self._available)
         )
+
+    def healthcheck(self) -> None:
+        return None
+
+    def approximate_depth(self) -> int:
+        return len(self._available) + len(self._inflight)
 
 
 class StaticSearch:

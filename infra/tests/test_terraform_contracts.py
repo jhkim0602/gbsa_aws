@@ -219,6 +219,7 @@ def test_async_ai_identity_and_audit_resources_enforce_safety_controls() -> None
     assert "minimum_length                   = 14" in identity
     assert "prevent_user_existence_errors" in identity
     assert '"ses:FromAddress"' in identity
+    assert '"cloudwatch:PutMetricData"' in identity
     assert "enable_log_file_validation    = true" in observability
     assert "is_multi_region_trail         = true" in observability
     assert "block_public_policy     = true" in observability

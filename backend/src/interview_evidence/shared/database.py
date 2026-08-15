@@ -5,7 +5,7 @@ from typing import cast
 from uuid import uuid4
 
 from fastapi import FastAPI, Request, Response
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 from starlette.middleware.base import RequestResponseEndpoint
 
@@ -72,3 +72,14 @@ class RequestScopedDatabase:
                 raise
             finally:
                 self.end_scope(token)
+
+    def healthcheck(self) -> None:
+        existing_scope = _request_scope.get()
+        if existing_scope is not None:
+            self.session.execute(text("SELECT 1"))
+            return
+        token = self.begin_scope()
+        try:
+            self.session.execute(text("SELECT 1"))
+        finally:
+            self.end_scope(token)

@@ -94,3 +94,37 @@ def test_opensearch_adapter_always_filters_company_and_applicant() -> None:
     filters = search_body["query"]["bool"]["filter"]
     assert {"term": {"company_id": str(COMPANY_ID)}} in filters
     assert {"term": {"applicant_id": str(APPLICANT_ID)}} in filters
+
+
+def test_opensearch_deletion_requeries_the_same_tenant_before_verifying() -> None:
+    requests: list[dict[str, object]] = []
+
+    def transport(
+        _method: str,
+        _url: str,
+        body: bytes | None,
+        _headers: dict[str, str],
+    ) -> HttpResponse:
+        payload = json.loads(body or b"{}")
+        requests.append(payload)
+        if len(requests) == 1:
+            return HttpResponse(status=200, body=b'{"deleted":1}')
+        return HttpResponse(status=200, body=b'{"count":0}')
+
+    index = AwsOpenSearchIndex(
+        endpoint="https://collection.example.aoss.amazonaws.com",
+        index_name="candidate-source-v1",
+        region="ap-northeast-2",
+        transport=transport,
+        signer=lambda _method, _url, _body: {},
+    )
+
+    assert index.delete_and_verify(_context(), "doc-1") is True
+    assert requests[0]["query"]["bool"]["filter"] == [
+        {"term": {"company_id": str(COMPANY_ID)}},
+        {"ids": {"values": ["doc-1"]}},
+    ]
+    assert requests[1]["query"]["bool"]["filter"] == [
+        {"term": {"company_id": str(COMPANY_ID)}},
+        {"ids": {"values": ["doc-1"]}},
+    ]

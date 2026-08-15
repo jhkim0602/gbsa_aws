@@ -76,10 +76,22 @@ async def test_production_runtime_persists_http_state_across_recreation(
         transport=httpx.ASGITransport(app=recreated.app),
         base_url="http://test",
     ) as client:
+        ready = await client.get("/health/ready")
         positions = await client.get(
             "/v1/positions",
             headers={"Authorization": "Bearer company-token"},
         )
+    assert ready.status_code == 200
+    assert ready.json() == {
+        "status": "ok",
+        "dependencies": {
+            "database": "ok",
+            "media_storage": "ok",
+            "object_storage": "ok",
+            "recent_context": "ok",
+            "search": "ok",
+        },
+    }
     assert positions.status_code == 200
     assert [item["title"] for item in positions.json()["items"]] == [
         "Platform Engineer",

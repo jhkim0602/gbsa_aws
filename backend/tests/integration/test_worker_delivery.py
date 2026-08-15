@@ -16,6 +16,7 @@ from interview_evidence.shared.messaging.worker import (
     MessageConsumer,
     OutboxDispatcher,
 )
+from interview_evidence.shared.operations import InMemoryMetricRecorder
 from interview_evidence.shared.tenant import ActorType, TenantContext
 
 NOW = datetime(2026, 8, 15, 9, 0, tzinfo=UTC)
@@ -169,3 +170,38 @@ def test_local_worker_runtime_executes_a_cycle_without_cloud_dependencies() -> N
     runtime = create_environment_worker_runtime({"APP_ENVIRONMENT": "local"})
 
     assert runtime.run_once() == 0
+
+
+def test_worker_records_queue_depth_handler_latency_and_retry_outcome() -> None:
+    queue = InMemoryQueue()
+    metrics = InMemoryMetricRecorder()
+    dispatcher = OutboxDispatcher(
+        outbox=InMemoryOutbox(),
+        queues={"analysis": queue},
+        routing={"submission.analysis_requested": "analysis"},
+        metrics=metrics,
+    )
+    dispatcher.outbox.append(_event())
+    dispatcher.dispatch_once()
+
+    def fail_once(_context: TenantContext, _event: OutboxEvent) -> str:
+        raise TimeoutError("temporary dependency failure")
+
+    consumer = MessageConsumer(
+        consumer_name="analysis-worker",
+        queue_name="analysis",
+        queue=queue,
+        processed=InMemoryProcessedMessageStore(),
+        handlers={"submission.analysis_requested": fail_once},
+        clock=FrozenClock(NOW),
+        metrics=metrics,
+    )
+    assert consumer.consume_once(max_messages=1) == 0
+
+    names = [record.name for record in metrics.records]
+    assert "queue_depth" in names
+    assert "pipeline_stage_latency_ms" in names
+    assert any(
+        record.name == "worker_delivery" and record.dimensions["outcome"] == "retrying"
+        for record in metrics.records
+    )

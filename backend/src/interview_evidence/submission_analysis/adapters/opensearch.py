@@ -85,6 +85,34 @@ class AwsOpenSearchIndex:
         deleted = response.get("deleted", 0)
         return isinstance(deleted, int) and deleted >= 0
 
+    def delete_and_verify(self, context: TenantContext, document_id: str) -> bool:
+        tenant = require_tenant_context(context)
+        if not self.delete(context, document_id):
+            return False
+        response = self._request(
+            "POST",
+            f"/{self._index_name}/_count",
+            {
+                "query": {
+                    "bool": {
+                        "filter": [
+                            {"term": {"company_id": str(tenant.company_id)}},
+                            {"ids": {"values": [document_id]}},
+                        ]
+                    }
+                }
+            },
+        )
+        count = response.get("count")
+        return isinstance(count, int) and count == 0
+
+    def healthcheck(self) -> None:
+        self._request(
+            "POST",
+            f"/{self._index_name}/_count",
+            {"query": {"match_none": {}}},
+        )
+
     def candidates(
         self,
         context: TenantContext,

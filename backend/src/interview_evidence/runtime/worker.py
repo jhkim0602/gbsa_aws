@@ -30,6 +30,7 @@ from interview_evidence.shared.messaging.worker import (
     OutboxDispatcher,
     ProcessedMessageStore,
 )
+from interview_evidence.shared.operations import MetricRecorder, NullMetricRecorder
 from interview_evidence.shared.persistence import SQLProcessedMessageStore
 from interview_evidence.shared.tenant import TenantContext
 from interview_evidence.submission_analysis.api import LaneBRuntime
@@ -225,10 +226,13 @@ def create_worker_runtime(
     handlers: Mapping[str, EventHandler],
     clock: Clock,
     database: RequestScopedDatabase | None = None,
+    metrics: MetricRecorder | None = None,
 ) -> WorkerRuntime:
+    active_metrics = metrics or NullMetricRecorder()
     consumers = tuple(
         MessageConsumer(
             consumer_name=f"{queue_name}-worker",
+            queue_name=queue_name,
             queue=queue,
             processed=processed,
             handlers={
@@ -237,6 +241,7 @@ def create_worker_runtime(
                 if routed_queue == queue_name and event_type in handlers
             },
             clock=clock,
+            metrics=active_metrics,
         )
         for queue_name, queue in queues.items()
     )
@@ -245,6 +250,7 @@ def create_worker_runtime(
             outbox=outbox,
             queues=queues,
             routing=EVENT_QUEUE_ROUTING,
+            metrics=active_metrics,
         ),
         consumers=consumers,
         database=database,
@@ -254,10 +260,7 @@ def create_worker_runtime(
 def create_local_worker_runtime() -> WorkerRuntime:
     runtime = create_local_runtime()
     outbox = cast(Outbox, runtime.resources["outbox"])
-    queues = {
-        name: InMemoryQueue()
-        for name in ("analysis", "media", "reporting", "deletion")
-    }
+    queues = {name: InMemoryQueue() for name in ("analysis", "media", "reporting", "deletion")}
     lane_b = runtime.lanes["submission_analysis"]
     analysis_handler = runtime.worker_handlers["submission_analysis"]
     if not isinstance(lane_b, LaneBRuntime) or not isinstance(
@@ -289,6 +292,7 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
         environment,
         principal_provider=aws.principal_provider,
         object_storage=aws.object_storage,
+        media_storage=aws.media_storage,
         email_sender=aws.email_sender,
         recent_context=aws.recent_context,
         search_index=aws.search_index,
@@ -296,6 +300,7 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
     )
     outbox = cast(Outbox, runtime.resources["outbox"])
     clock = cast(Clock, runtime.resources["clock"])
+    metrics = cast(MetricRecorder, runtime.resources["metrics"])
     lane_b = runtime.lanes["submission_analysis"]
     company = runtime.boundaries["company_management"]
     interview = runtime.boundaries["interview_engine"]
@@ -364,6 +369,7 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
         },
         clock=clock,
         database=database,
+        metrics=metrics,
     )
 
 

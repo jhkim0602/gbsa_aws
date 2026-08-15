@@ -74,6 +74,10 @@ class InMemoryRecentContext:
         tenant = require_tenant_context(context)
         self._items.pop((tenant.company_id, session_id), None)
 
+    def healthcheck(self) -> None:
+        if self.fail_reads:
+            raise HotViewUnavailable("recent context read unavailable")
+
 
 class DynamoClient(Protocol):
     def put_item(
@@ -98,6 +102,8 @@ class DynamoClient(Protocol):
         TableName: str,
         Key: dict[str, dict[str, str]],
     ) -> dict[str, object]: ...
+
+    def describe_table(self, *, TableName: str) -> dict[str, object]: ...
 
 
 class DynamoRecentContext:
@@ -168,6 +174,18 @@ class DynamoRecentContext:
             )
         except Exception as error:
             raise HotViewUnavailable("recent context delete unavailable") from error
+
+    def healthcheck(self) -> None:
+        try:
+            response = self._client.describe_table(TableName=self._table_name)
+        except Exception as error:
+            raise HotViewUnavailable("recent context unavailable") from error
+        table = response.get("Table")
+        if not isinstance(table, dict):
+            raise HotViewUnavailable("recent context status is unavailable")
+        status = table.get("TableStatus")
+        if status not in {"ACTIVE", "UPDATING"}:
+            raise HotViewUnavailable("recent context is not active")
 
     @staticmethod
     def _key(session_id: UUID) -> dict[str, dict[str, str]]:

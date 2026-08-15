@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import cast
 
 from interview_evidence.company_management.adapters.applicant_session import (
     ApplicantSessionAdapter,
@@ -35,6 +36,14 @@ from interview_evidence.integration.interview_reporting import (
     InterviewReportingBoundary,
 )
 from interview_evidence.integration.privacy_deletion import PrivacyDeletionBoundary
+from interview_evidence.integration.production_deletion import (
+    HotViewTargetVerifier,
+    ObjectTargetVerifier,
+    ProductionInterviewTargetDeleter,
+    ProductionSubmissionTargetDeleter,
+    RelationalTargetVerifier,
+    SearchTargetVerifier,
+)
 from interview_evidence.integration.reporting_company import ReportingCompanyBoundary
 from interview_evidence.integration.submission_interview import (
     SubmissionInterviewBoundary,
@@ -54,7 +63,6 @@ from interview_evidence.interview_engine.api.websocket import (
     create_interview_websocket_router,
 )
 from interview_evidence.interview_engine.application.deletion_targets import (
-    InMemoryInterviewTargetDeleter,
     InterviewDeletionTargets,
 )
 from interview_evidence.interview_engine.application.public import InterviewEnginePublic
@@ -76,6 +84,12 @@ from interview_evidence.reporting.application.transcript_service import Transcri
 from interview_evidence.shared.aws_clients.ports import EmailSender, ObjectStorage
 from interview_evidence.shared.database import RequestScopedDatabase
 from interview_evidence.shared.ids import SystemClock
+from interview_evidence.shared.operations import (
+    DependencyReadiness,
+    MetricRecorder,
+    NullMetricRecorder,
+    ReadinessChecker,
+)
 from interview_evidence.shared.persistence import (
     SQLApplicantSessionStore,
     SQLAuditAppender,
@@ -99,7 +113,6 @@ from interview_evidence.submission_analysis.api.applicant_routes import (
     create_applicant_submission_router,
 )
 from interview_evidence.submission_analysis.application.deletion_targets import (
-    InMemorySubmissionTargetDeleter,
     SubmissionDeletionTargets,
 )
 from interview_evidence.submission_analysis.application.public import (
@@ -118,11 +131,15 @@ def create_production_runtime(
     *,
     principal_provider: PrincipalProvider | None = None,
     object_storage: ObjectStorage | None = None,
+    media_storage: ObjectStorage | None = None,
     email_sender: EmailSender | None = None,
     recent_context: RecentContextPort | None = None,
     search_index: SearchIndex | None = None,
     database: RequestScopedDatabase | None = None,
+    metrics: MetricRecorder | None = None,
+    readiness: ReadinessChecker | None = None,
 ) -> LocalRuntime:
+    aws = None
     if (
         principal_provider is None
         or object_storage is None
@@ -135,17 +152,20 @@ def create_production_runtime(
         aws = create_aws_runtime_dependencies(environment)
         principal_provider = principal_provider or aws.principal_provider
         object_storage = object_storage or aws.object_storage
+        media_storage = media_storage or aws.media_storage
         email_sender = email_sender or aws.email_sender
         recent_context = recent_context or aws.recent_context
         search_index = search_index or aws.search_index
         database_url = aws.database_url
     else:
         database_url = environment.get("DATABASE_URL", "").strip()
+    media_storage = media_storage or object_storage
     if database is None:
         if not database_url:
             raise RuntimeError("production DATABASE_URL is required")
         database = RequestScopedDatabase(database_url)
     active_principal_provider = principal_provider
+    active_metrics = metrics or (aws.metrics if aws is not None else NullMetricRecorder())
 
     clock = SystemClock()
     session = database.session
@@ -205,10 +225,11 @@ def create_production_runtime(
         repository=lane_b.repository,
         retriever=HybridRetriever(search_index, HybridRetrievalConfig()),
         deletion_targets=SubmissionDeletionTargets(lane_b.repository),
-        target_deleter=InMemorySubmissionTargetDeleter(
-            repository=lane_b.repository,
-            storage=lane_b.storage,
-            search_index=search_index,
+        target_deleter=ProductionSubmissionTargetDeleter(
+            repository=cast(RelationalTargetVerifier, lane_b.repository),
+            object_storage=cast(ObjectTargetVerifier, object_storage),
+            search_index=cast(SearchTargetVerifier, search_index),
+            metrics=active_metrics,
         ),
     )
     submission_interview = SubmissionInterviewBoundary(submission_public)
@@ -216,7 +237,7 @@ def create_production_runtime(
         principal_provider=principals,
         authorization=submission_interview,
         repository=create_interview_repository(session),
-        object_storage=object_storage,
+        object_storage=media_storage,
         audit=audit,
         clock=clock,
         hot_view=recent_context,
@@ -231,9 +252,11 @@ def create_production_runtime(
     interview_public = InterviewEnginePublic(
         repository=lane_c.repository,
         deletion_targets=InterviewDeletionTargets(lane_c.repository),
-        target_deleter=InMemoryInterviewTargetDeleter(
-            repository=lane_c.repository,
-            hot_view=recent_context,
+        target_deleter=ProductionInterviewTargetDeleter(
+            repository=cast(RelationalTargetVerifier, lane_c.repository),
+            object_storage=cast(ObjectTargetVerifier, media_storage),
+            hot_view=cast(HotViewTargetVerifier, recent_context),
+            metrics=active_metrics,
         ),
     )
     base_reporting_public = ReportingPublic(
@@ -246,6 +269,8 @@ def create_production_runtime(
         interview=interview_public,
         reporting=base_reporting_public,
         clock=clock,
+        object_storage=media_storage,
+        metrics=active_metrics,
     )
     deletion_service = DeletionService(
         base_lane_d.repository,
@@ -275,6 +300,22 @@ def create_production_runtime(
         deletion_service=lane_d.deletion_service,
     )
     reporting_company = ReportingCompanyBoundary(reporting_public)
+
+    if readiness is None:
+        probes = {"database": database.healthcheck}
+        for name, dependency in {
+            "object_storage": object_storage,
+            "media_storage": media_storage,
+            "recent_context": recent_context,
+            "search": search_index,
+        }.items():
+            probe = getattr(dependency, "healthcheck", None)
+            if callable(probe):
+                probes[name] = probe
+        if aws is not None:
+            for queue_name, queue in aws.queues.items():
+                probes[f"{queue_name}_queue"] = queue.healthcheck
+        readiness = DependencyReadiness(probes)
 
     root = create_app(
         [
@@ -313,7 +354,8 @@ def create_production_runtime(
                 deletion_service=lane_d.deletion_service,
                 playback=ScopedPlaybackLocator(),
             ),
-        ]
+        ],
+        readiness=readiness,
     )
     root.exception_handlers.update(lane_d.app.exception_handlers)
     database.install_http_transaction_middleware(root)
@@ -352,5 +394,8 @@ def create_production_runtime(
             "object_storage": object_storage,
             "search_index": search_index,
             "privacy_deletion": privacy_deletion,
+            "metrics": active_metrics,
+            "readiness": readiness,
+            "queues": aws.queues if aws is not None else {},
         },
     )

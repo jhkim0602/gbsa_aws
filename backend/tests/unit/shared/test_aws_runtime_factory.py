@@ -59,6 +59,7 @@ def test_aws_runtime_factory_builds_all_production_dependencies() -> None:
         "deletion",
     }
     assert dependencies.object_storage is not None
+    assert dependencies.media_storage is not None
     assert dependencies.recent_context is not None
     assert dependencies.search_index is not None
 

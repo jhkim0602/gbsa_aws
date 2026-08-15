@@ -16,6 +16,7 @@ from interview_evidence.interview_engine.application.public import InterviewEngi
 from interview_evidence.reporting.application.deletion_service import DeletionTargetSpec
 from interview_evidence.reporting.application.public import ReportingPublic
 from interview_evidence.shared.ids import Clock, CommandMeta
+from interview_evidence.shared.operations import MetricRecorder, NullMetricRecorder
 from interview_evidence.shared.tenant import TenantContext
 from interview_evidence.submission_analysis.application.deletion_targets import (
     SubmissionDeletionTarget,
@@ -55,12 +56,16 @@ class PrivacyDeletionBoundary:
         interview: InterviewEnginePublic,
         reporting: ReportingPublic,
         clock: Clock,
+        object_storage: object | None = None,
+        metrics: MetricRecorder | None = None,
     ) -> None:
         self._company = company
         self._submission = submission
         self._interview = interview
         self._reporting = reporting
         self._clock = clock
+        self._object_storage = object_storage
+        self._metrics = metrics or NullMetricRecorder()
         self._targets: dict[tuple[str, str, str, str], OwnedTarget] = {}
 
     @staticmethod
@@ -144,10 +149,12 @@ class PrivacyDeletionBoundary:
         owned = self._targets[self._key(manifest_target)]
         if not isinstance(owned, CompanyDeletionTarget):
             raise PermissionError("manifest target is not owned by Lane A")
-        return self._company.delete_company_target(
+        verified = self._company.delete_company_target(
             context,
             target=owned,
         ).verified_absent
+        self._record(owned.store, verified)
+        return verified
 
     def execute_submission(self, context: TenantContext, target: object) -> bool:
         manifest_target = cast(ManifestTarget, target)
@@ -182,7 +189,30 @@ class PrivacyDeletionBoundary:
         owned = self._targets[self._key(manifest_target)]
         if not isinstance(owned, DeletionTargetSpec):
             raise PermissionError("manifest target is not owned by Lane D")
-        return self._reporting.delete_reporting_target(
-            context,
-            target=owned,
-        ).verified_absent
+        if owned.store == "s3" and self._object_storage is not None:
+            delete_and_verify = getattr(
+                self._object_storage,
+                "delete_and_verify_object",
+                None,
+            )
+            verified = bool(
+                callable(delete_and_verify) and delete_and_verify(context, owned.resource_id)
+            )
+        else:
+            verified = self._reporting.delete_reporting_target(
+                context,
+                target=owned,
+            ).verified_absent
+        self._record(owned.store, verified)
+        return verified
+
+    def _record(self, store: str, verified_absent: bool) -> None:
+        self._metrics.record(
+            "privacy_deletion_target",
+            1,
+            unit="Count",
+            dimensions={
+                "store": store,
+                "outcome": "verified_absent" if verified_absent else "retrying",
+            },
+        )

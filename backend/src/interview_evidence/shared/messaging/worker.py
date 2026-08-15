@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import time
 from collections.abc import Callable, Mapping
 from typing import Protocol
 from uuid import UUID
@@ -12,6 +13,7 @@ from interview_evidence.shared.messaging.outbox import (
     OutboxEvent,
     ProcessedMessage,
 )
+from interview_evidence.shared.operations import MetricRecorder, NullMetricRecorder
 from interview_evidence.shared.tenant import ActorType, TenantContext
 
 EventHandler = Callable[[TenantContext, OutboxEvent], object]
@@ -73,10 +75,12 @@ class OutboxDispatcher:
         outbox: Outbox,
         queues: Mapping[str, EventQueue],
         routing: Mapping[str, str],
+        metrics: MetricRecorder | None = None,
     ) -> None:
         self.outbox = outbox
         self._queues = dict(queues)
         self._routing = dict(routing)
+        self._metrics = metrics or NullMetricRecorder()
 
     def dispatch_once(self) -> int:
         published = 0
@@ -106,8 +110,20 @@ class OutboxDispatcher:
                 },
             )
             self.outbox.mark_published(event.outbox_event_id)
+            self._record_queue_depth(queue_name, queue)
             published += 1
         return published
+
+    def _record_queue_depth(self, queue_name: str, queue: EventQueue) -> None:
+        depth_reader = getattr(queue, "approximate_depth", None)
+        if not callable(depth_reader):
+            return
+        self._metrics.record(
+            "queue_depth",
+            float(depth_reader()),
+            unit="Count",
+            dimensions={"queue": queue_name},
+        )
 
 
 class MessageConsumer:
@@ -119,27 +135,35 @@ class MessageConsumer:
         processed: ProcessedMessageStore,
         handlers: Mapping[str, EventHandler],
         clock: Clock,
+        queue_name: str | None = None,
+        metrics: MetricRecorder | None = None,
     ) -> None:
         self._consumer_name = consumer_name
         self._queue = queue
         self._processed = processed
         self._handlers = dict(handlers)
         self._clock = clock
+        self._queue_name = queue_name or consumer_name.removesuffix("-worker")
+        self._metrics = metrics or NullMetricRecorder()
 
     def consume_once(self, *, max_messages: int) -> int:
         completed = 0
-        for delivery in self._queue.receive(max_messages=max_messages):
+        deliveries = self._queue.receive(max_messages=max_messages)
+        self._record_queue_depth()
+        for delivery in deliveries:
             if self._processed.contains(
                 consumer_name=self._consumer_name,
                 event_id=delivery.event_id,
                 event_version=delivery.event_version,
             ):
                 self._queue.acknowledge(delivery.receipt_handle)
+                self._record_delivery("duplicate")
                 completed += 1
                 continue
             handler = self._handlers.get(delivery.event_type)
             if handler is None:
                 self._queue.acknowledge(delivery.receipt_handle)
+                self._record_delivery("ignored")
                 completed += 1
                 continue
             event = OutboxEvent(
@@ -162,11 +186,15 @@ class MessageConsumer:
                 request_id=delivery.event_id,
                 trace_id=delivery.trace_id,
             )
+            started_at = time.perf_counter()
             try:
                 outcome = handler(context, event)
             except (TimeoutError, ConnectionError):
+                self._record_latency(delivery.event_type, delivery.event_version, started_at)
+                self._record_delivery("retrying")
                 self._queue.retry(delivery.receipt_handle)
                 continue
+            self._record_latency(delivery.event_type, delivery.event_version, started_at)
             digest = hashlib.sha256(repr(outcome).encode("utf-8")).hexdigest()
             self._processed.record(
                 ProcessedMessage(
@@ -179,5 +207,44 @@ class MessageConsumer:
                 )
             )
             self._queue.acknowledge(delivery.receipt_handle)
+            self._record_delivery("completed")
             completed += 1
         return completed
+
+    def _record_queue_depth(self) -> None:
+        depth_reader = getattr(self._queue, "approximate_depth", None)
+        if not callable(depth_reader):
+            return
+        self._metrics.record(
+            "queue_depth",
+            float(depth_reader()),
+            unit="Count",
+            dimensions={"queue": self._queue_name},
+        )
+
+    def _record_latency(
+        self,
+        event_type: str,
+        event_version: int,
+        started_at: float,
+    ) -> None:
+        self._metrics.record(
+            "pipeline_stage_latency_ms",
+            (time.perf_counter() - started_at) * 1000,
+            unit="Milliseconds",
+            dimensions={
+                "stage": event_type,
+                "config_version": f"event-v{event_version}",
+            },
+        )
+
+    def _record_delivery(self, outcome: str) -> None:
+        self._metrics.record(
+            "worker_delivery",
+            1,
+            unit="Count",
+            dimensions={
+                "queue": self._queue_name,
+                "outcome": outcome,
+            },
+        )

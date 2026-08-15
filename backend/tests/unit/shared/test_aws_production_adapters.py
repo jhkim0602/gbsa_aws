@@ -5,6 +5,7 @@ import json
 from collections.abc import Mapping
 from uuid import UUID
 
+import pytest
 from interview_evidence.shared.aws_clients.production import (
     AwsBedrockModel,
     AwsCognitoPrincipalProvider,
@@ -45,6 +46,23 @@ class RecordingClient:
             return self.responses.get(name, {})
 
         return call
+
+
+class MissingObjectError(Exception):
+    def __init__(self) -> None:
+        self.response = {"Error": {"Code": "404"}}
+
+
+class DeletionS3Client(RecordingClient):
+    def __init__(self, *, remains: bool) -> None:
+        super().__init__()
+        self.remains = remains
+
+    def head_object(self, **kwargs: object) -> Mapping[str, object]:
+        self.calls.append(("head_object", kwargs))
+        if self.remains:
+            return {"ContentLength": 1}
+        raise MissingObjectError
 
 
 def test_s3_sqs_and_ses_adapters_preserve_tenant_scope_without_logging_content() -> None:
@@ -88,6 +106,47 @@ def test_s3_sqs_and_ses_adapters_preserve_tenant_scope_without_logging_content()
     assert ses.calls[0][1]["Destination"] == {"ToAddresses": ["applicant@example.com"]}
 
 
+def test_s3_deletion_is_verified_with_a_follow_up_head_request() -> None:
+    object_key = f"tenants/{COMPANY_ID}/submission-original/object-1"
+    absent_client = DeletionS3Client(remains=False)
+    absent_storage = AwsS3ObjectStorage(
+        absent_client,
+        bucket="source-bucket",
+        kms_key_id="kms-key",
+    )
+    assert absent_storage.delete_and_verify_object(_context(), object_key) is True
+    assert [call[0] for call in absent_client.calls] == [
+        "delete_object",
+        "head_object",
+    ]
+
+    remaining_storage = AwsS3ObjectStorage(
+        DeletionS3Client(remains=True),
+        bucket="source-bucket",
+        kms_key_id="kms-key",
+    )
+    assert remaining_storage.delete_and_verify_object(_context(), object_key) is False
+
+    media_storage = AwsS3ObjectStorage(
+        DeletionS3Client(remains=False),
+        bucket="media-bucket",
+        kms_key_id="kms-key",
+    )
+    assert (
+        media_storage.delete_and_verify_object(
+            _context(),
+            f"companies/{COMPANY_ID}/sessions/session-1/recording/final/v1/manifest.m3u8",
+        )
+        is True
+    )
+
+    with pytest.raises(PermissionError, match="tenant"):
+        absent_storage.delete_and_verify_object(
+            _context(),
+            "tenants/00000000-0000-7000-8000-000000000099/object-1",
+        )
+
+
 def test_sqs_long_poll_delivery_can_be_acknowledged_or_retried() -> None:
     event_id = UUID("00000000-0000-7000-8000-000000000010")
     aggregate_id = UUID("00000000-0000-7000-8000-000000000011")
@@ -109,11 +168,7 @@ def test_sqs_long_poll_delivery_can_be_acknowledged_or_retried() -> None:
         }
     )
     client = RecordingClient(
-        {
-            "receive_message": {
-                "Messages": [{"ReceiptHandle": "receipt-1", "Body": body}]
-            }
-        }
+        {"receive_message": {"Messages": [{"ReceiptHandle": "receipt-1", "Body": body}]}}
     )
     queue = AwsSqsQueue(client, queue_url="https://sqs.invalid/analysis")
 
@@ -126,6 +181,28 @@ def test_sqs_long_poll_delivery_can_be_acknowledged_or_retried() -> None:
         "receive_message",
         "change_message_visibility",
         "delete_message",
+    ]
+
+
+def test_sqs_readiness_and_depth_use_queue_attributes() -> None:
+    client = RecordingClient(
+        {
+            "get_queue_attributes": {
+                "Attributes": {
+                    "ApproximateNumberOfMessages": "7",
+                    "ApproximateNumberOfMessagesNotVisible": "2",
+                }
+            }
+        }
+    )
+    queue = AwsSqsQueue(client, queue_url="https://sqs.invalid/analysis")
+
+    queue.healthcheck()
+
+    assert queue.approximate_depth() == 9
+    assert [call[0] for call in client.calls] == [
+        "get_queue_attributes",
+        "get_queue_attributes",
     ]
 
 

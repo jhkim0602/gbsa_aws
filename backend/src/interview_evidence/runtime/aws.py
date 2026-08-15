@@ -41,6 +41,11 @@ from interview_evidence.shared.aws_clients.production import (
     TextractClient,
     TranscribeClient,
 )
+from interview_evidence.shared.operations import (
+    CloudWatchClient,
+    CloudWatchMetricRecorder,
+    MetricRecorder,
+)
 from interview_evidence.shared.security.principals import PrincipalProvider
 from interview_evidence.submission_analysis.adapters.opensearch import (
     AwsOpenSearchIndex,
@@ -60,6 +65,7 @@ class AwsRuntimeDependencies:
     database_url: str
     principal_provider: PrincipalProvider
     object_storage: ObjectStorage
+    media_storage: ObjectStorage
     email_sender: EmailSender
     recent_context: RecentContextPort
     search_index: SearchIndex
@@ -69,6 +75,7 @@ class AwsRuntimeDependencies:
     text_to_speech: TextToSpeech
     textract: AwsTextract
     media_convert: AwsMediaConvert
+    metrics: MetricRecorder
 
 
 def create_aws_runtime_dependencies(
@@ -97,6 +104,11 @@ def create_aws_runtime_dependencies(
     object_storage = AwsS3ObjectStorage(
         s3,
         bucket=source_bucket,
+        kms_key_id=kms_key_id,
+    )
+    media_storage = AwsS3ObjectStorage(
+        s3,
+        bucket=media_bucket,
         kms_key_id=kms_key_id,
     )
     email_sender = AwsSesEmailSender(
@@ -142,10 +154,18 @@ def create_aws_runtime_dependencies(
         role_arn=_required(environment, "MEDIACONVERT_ROLE_ARN"),
         output_bucket=media_bucket,
     )
+    metrics = CloudWatchMetricRecorder(
+        cast(CloudWatchClient, factory("cloudwatch")),
+        namespace=environment.get(
+            "METRIC_NAMESPACE",
+            "InterviewEvidencePlatform",
+        ),
+    )
     return AwsRuntimeDependencies(
         database_url=database_url,
         principal_provider=principal_provider,
         object_storage=object_storage,
+        media_storage=media_storage,
         email_sender=email_sender,
         recent_context=recent_context,
         search_index=search_index,
@@ -155,6 +175,7 @@ def create_aws_runtime_dependencies(
         text_to_speech=text_to_speech,
         textract=textract,
         media_convert=media_convert,
+        metrics=metrics,
     )
 
 

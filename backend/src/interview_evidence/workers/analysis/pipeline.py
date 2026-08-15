@@ -147,9 +147,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                 extractor_version=self._extractor.extractor_version,
                 chunk_config_version="document-chunks-v1",
                 claims=({"type": "document_extracted", "chunk_count": len(drafts)},),
-                verification_points=(
-                    {"type": "answer_verification", "source": "document"},
-                ),
+                verification_points=({"type": "answer_verification", "source": "document"},),
                 status=AnalysisStatus.READY,
                 created_at=occurred_at,
             ),

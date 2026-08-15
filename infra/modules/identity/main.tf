@@ -175,6 +175,24 @@ resource "aws_iam_role_policy" "email_sender" {
   })
 }
 
+resource "aws_iam_role_policy" "application_metrics" {
+  name = "publish-application-metrics"
+  role = aws_iam_role.application_runtime.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["cloudwatch:PutMetricData"]
+      Resource = "*"
+      Condition = {
+        StringEquals = {
+          "cloudwatch:namespace" = "InterviewEvidencePlatform"
+        }
+      }
+    }]
+  })
+}
+
 output "user_pool_id" {
   value = aws_cognito_user_pool.company.id
 }

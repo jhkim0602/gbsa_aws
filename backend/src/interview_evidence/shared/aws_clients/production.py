@@ -49,6 +49,12 @@ class S3Client(Protocol):
 
     def put_object(self, **kwargs: object) -> Mapping[str, object]: ...
 
+    def delete_object(self, **kwargs: object) -> Mapping[str, object]: ...
+
+    def head_object(self, **kwargs: object) -> Mapping[str, object]: ...
+
+    def head_bucket(self, **kwargs: object) -> Mapping[str, object]: ...
+
 
 class SqsClient(Protocol):
     def send_message(self, **kwargs: object) -> Mapping[str, object]: ...
@@ -58,6 +64,8 @@ class SqsClient(Protocol):
     def delete_message(self, **kwargs: object) -> Mapping[str, object]: ...
 
     def change_message_visibility(self, **kwargs: object) -> Mapping[str, object]: ...
+
+    def get_queue_attributes(self, **kwargs: object) -> Mapping[str, object]: ...
 
 
 class SesClient(Protocol):
@@ -151,6 +159,33 @@ class AwsS3ObjectStorage(ObjectStorage):
                 "x-amz-meta-company-id": str(tenant.company_id),
             },
         )
+
+    def delete_and_verify_object(
+        self,
+        context: TenantContext,
+        object_key: str,
+    ) -> bool:
+        tenant = require_tenant_context(context)
+        allowed_prefixes = (
+            f"tenants/{tenant.company_id}/",
+            f"companies/{tenant.company_id}/",
+        )
+        if not object_key.startswith(allowed_prefixes):
+            raise PermissionError("object key is outside the tenant scope")
+        try:
+            self._client.delete_object(Bucket=self._bucket, Key=object_key)
+            self._client.head_object(Bucket=self._bucket, Key=object_key)
+        except Exception as error:
+            if _aws_error_code(error) in {"404", "NoSuchKey", "NotFound"}:
+                return True
+            raise AwsAdapterError("object deletion verification unavailable") from error
+        return False
+
+    def healthcheck(self) -> None:
+        try:
+            self._client.head_bucket(Bucket=self._bucket)
+        except Exception as error:
+            raise AwsAdapterError("object storage unavailable") from error
 
 
 class AwsSqsQueue(ConsumableQueue):
@@ -248,6 +283,34 @@ class AwsSqsQueue(ConsumableQueue):
             )
         except Exception as error:
             raise AwsAdapterError("queue retry unavailable") from error
+
+    def healthcheck(self) -> None:
+        self._attributes()
+
+    def approximate_depth(self) -> int:
+        attributes = self._attributes()
+        try:
+            visible = _queue_count(attributes.get("ApproximateNumberOfMessages", "0"))
+            inflight = _queue_count(attributes.get("ApproximateNumberOfMessagesNotVisible", "0"))
+        except (TypeError, ValueError) as error:
+            raise AwsAdapterError("queue attributes are invalid") from error
+        return visible + inflight
+
+    def _attributes(self) -> Mapping[str, object]:
+        try:
+            response = self._client.get_queue_attributes(
+                QueueUrl=self._queue_url,
+                AttributeNames=[
+                    "ApproximateNumberOfMessages",
+                    "ApproximateNumberOfMessagesNotVisible",
+                ],
+            )
+        except Exception as error:
+            raise AwsAdapterError("queue attributes unavailable") from error
+        attributes = response.get("Attributes")
+        if not isinstance(attributes, Mapping):
+            raise AwsAdapterError("queue attributes are invalid")
+        return cast(Mapping[str, object], attributes)
 
 
 class AwsSesEmailSender(EmailSender):
@@ -649,6 +712,23 @@ def _cognito_attributes(raw: object) -> dict[str, str]:
         if isinstance(name, str) and isinstance(value, str):
             attributes[name] = value
     return attributes
+
+
+def _aws_error_code(error: Exception) -> str | None:
+    response = getattr(error, "response", None)
+    if not isinstance(response, Mapping):
+        return None
+    details = response.get("Error")
+    if not isinstance(details, Mapping):
+        return None
+    code = details.get("Code")
+    return str(code) if code is not None else None
+
+
+def _queue_count(value: object) -> int:
+    if not isinstance(value, int | str):
+        raise TypeError("queue count is not numeric")
+    return int(value)
 
 
 def _transcript_confidences(raw: object) -> list[float]:

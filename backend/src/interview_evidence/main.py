@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from fastapi import APIRouter, FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.types import Receive, Scope, Send
 
@@ -15,10 +16,15 @@ from interview_evidence.shared.observability import (
     configure_structured_logging,
     reset_trace_context,
 )
+from interview_evidence.shared.operations import ReadinessChecker
 from interview_evidence.shared.security.principals import PrincipalProvider
 
 
-def create_app(public_routers: Iterable[APIRouter] = ()) -> FastAPI:
+def create_app(
+    public_routers: Iterable[APIRouter] = (),
+    *,
+    readiness: ReadinessChecker | None = None,
+) -> FastAPI:
     configure_structured_logging()
     application = FastAPI(
         title="Interview Evidence Platform",
@@ -48,8 +54,17 @@ def create_app(public_routers: Iterable[APIRouter] = ()) -> FastAPI:
         return {"status": "ok"}
 
     @application.get("/health/ready", include_in_schema=False)
-    async def ready() -> dict[str, str]:
-        return {"status": "ok"}
+    async def ready() -> Response:
+        if readiness is None:
+            return JSONResponse({"status": "ok"})
+        report = readiness.check()
+        return JSONResponse(
+            {
+                "status": report.status,
+                "dependencies": dict(report.dependencies),
+            },
+            status_code=200 if report.ready else 503,
+        )
 
     for router in public_routers:
         application.include_router(router)

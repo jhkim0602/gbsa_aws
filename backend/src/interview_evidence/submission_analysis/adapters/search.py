@@ -60,6 +60,12 @@ class InMemorySearchIndex:
             self._documents.pop(document_id, None)
         return document_id not in self._documents
 
+    def delete_and_verify(self, context: TenantContext, document_id: str) -> bool:
+        return self.delete(context, document_id)
+
+    def healthcheck(self) -> None:
+        return None
+
     def candidates(
         self,
         context: TenantContext,

@@ -258,17 +258,19 @@ async def _run_thin_journey() -> ThinJourneyResult:
             json={"display_name": "홍길동", "verification_value": "1234"},
         )
         assert verified.status_code == 200
+        consent_policy = await client.get("/v1/applicant/consents")
+        assert consent_policy.status_code == 200
         consent = await client.post(
             "/v1/applicant/consents",
             headers={"Idempotency-Key": "e2e-consent-record-0001"},
             json={
-                "policy_version": "2026-08-v1",
+                "policy_version": consent_policy.json()["policy_version"],
                 "accepted_purposes": [
                     "document_analysis",
                     "recording",
                     "ai_assessment",
                 ],
-                "consent_content_digest": "a" * 64,
+                "consent_content_digest": consent_policy.json()["content_digest"],
             },
         )
         assert consent.status_code == 201
