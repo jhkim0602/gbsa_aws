@@ -5,13 +5,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from interview_evidence.company_management.domain.applicant_access import (
-    ProcessingPurpose,
-)
 from interview_evidence.company_management.domain.company import Position
 from interview_evidence.company_management.domain.hiring import (
     InvitationStateChange,
-    InvitationStatus,
 )
 from interview_evidence.company_management.repositories.postgres import CompanyRepository
 from interview_evidence.shared.ids import Clock, CommandMeta, new_uuid7
@@ -76,7 +72,7 @@ class InvitationAuthorization(BaseModel):
     invitation_id: UUID
     applicant_id: UUID
     campaign_id: UUID
-    state: InvitationStatus
+    state: str
     expires_at: datetime
     authorized: bool
 
@@ -88,7 +84,7 @@ class ConsentAuthorizationSnapshot(BaseModel):
     invitation_id: UUID
     consent_record_id: UUID | None
     policy_version: str | None
-    accepted_purposes: frozenset[ProcessingPurpose]
+    accepted_purposes: frozenset[str]
     withdrawn_at: datetime | None
     retention_days: int | None
     authorized: bool
@@ -99,7 +95,7 @@ class InvitationStateSnapshot(BaseModel):
 
     company_id: UUID
     invitation_id: UUID
-    state: InvitationStatus
+    state: str
     row_version: int
 
 
@@ -203,7 +199,7 @@ class CompanyManagementPublic:
         context: TenantContext,
         invitation_id: UUID,
         *,
-        required_state: InvitationStatus,
+        required_state: str,
     ) -> InvitationAuthorization:
         invitation = self._repository.get_invitation(context, invitation_id)
         return InvitationAuthorization(
@@ -211,10 +207,11 @@ class CompanyManagementPublic:
             invitation_id=invitation.invitation_id,
             applicant_id=invitation.applicant_id,
             campaign_id=invitation.campaign_id,
-            state=invitation.status,
+            state=invitation.status.value,
             expires_at=invitation.expires_at,
             authorized=(
-                invitation.status is required_state and self._clock.now() < invitation.expires_at
+                invitation.status.value == required_state
+                and self._clock.now() < invitation.expires_at
             ),
         )
 
@@ -223,7 +220,7 @@ class CompanyManagementPublic:
         context: TenantContext,
         invitation_id: UUID,
         *,
-        required_purposes: frozenset[ProcessingPurpose],
+        required_purposes: frozenset[str],
     ) -> ConsentAuthorizationSnapshot:
         consent = self._repository.get_latest_consent(context, invitation_id)
         if consent is None:
@@ -242,11 +239,14 @@ class CompanyManagementPublic:
             invitation_id=invitation_id,
             consent_record_id=consent.consent_record_id,
             policy_version=consent.policy_version,
-            accepted_purposes=consent.purposes,
+            accepted_purposes=frozenset(purpose.value for purpose in consent.purposes),
             withdrawn_at=consent.withdrawn_at,
             retention_days=consent.retention_days,
             authorized=(
-                consent.withdrawn_at is None and required_purposes.issubset(consent.purposes)
+                consent.withdrawn_at is None
+                and required_purposes.issubset(
+                    purpose.value for purpose in consent.purposes
+                )
             ),
         )
 
@@ -255,12 +255,12 @@ class CompanyManagementPublic:
         context: TenantContext,
         invitation_id: UUID,
         *,
-        from_state: InvitationStatus,
-        to_state: InvitationStatus,
+        from_state: str,
+        to_state: str,
         meta: CommandMeta,
     ) -> InvitationStateSnapshot:
         current = self._repository.get_invitation(context, invitation_id)
-        if current.status is not from_state:
+        if current.status.value != from_state:
             raise ValueError("invitation state does not match the requested transition")
         if meta.expected_version is None:
             raise ValueError("expected_version is required")
@@ -287,6 +287,6 @@ class CompanyManagementPublic:
         return InvitationStateSnapshot(
             company_id=context.company_id,
             invitation_id=invitation_id,
-            state=updated.status,
+            state=updated.status.value,
             row_version=updated.row_version,
         )
