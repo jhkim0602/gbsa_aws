@@ -38,6 +38,11 @@ from interview_evidence.workers.analysis.document_extract import DocumentExtract
 from interview_evidence.workers.analysis.event_handler import (
     AnalysisRequestedEventHandler,
 )
+from interview_evidence.workers.analysis.git_fetch import (
+    BoundedGitFetcher,
+    GitFetchLimits,
+    GitHubPublicTransport,
+)
 from interview_evidence.workers.analysis.handlers import AnalysisJobHandler
 from interview_evidence.workers.analysis.pipeline import SubmissionAnalysisPipeline
 from interview_evidence.workers.reporting.report import CriterionInput, ReportGenerator
@@ -313,6 +318,9 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
         database=database,
         metrics=aws.metrics,
         queues=aws.queues,
+        model=aws.model,
+        speech_to_text=aws.speech_to_text,
+        text_to_speech=aws.text_to_speech,
     )
     outbox = cast(Outbox, runtime.resources["outbox"])
     clock = cast(Clock, runtime.resources["clock"])
@@ -345,6 +353,10 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
             axis_provider=CompanyAnalysisAxisProvider(company),
             outbox=outbox,
             clock=clock,
+            git_fetcher=BoundedGitFetcher(
+                GitHubPublicTransport(token=environment.get("GITHUB_TOKEN")),
+                GitFetchLimits(),
+            ),
         ),
         outbox,
         clock,
