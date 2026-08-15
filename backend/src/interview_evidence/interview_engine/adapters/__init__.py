@@ -1,0 +1,1 @@
+"""Live interview external adapters."""
