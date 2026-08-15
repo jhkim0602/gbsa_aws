@@ -13,6 +13,7 @@ from fastapi import (
     Response,
     status,
 )
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from interview_evidence.reporting.adapters.playback import ScopedPlaybackLocator
@@ -22,7 +23,10 @@ from interview_evidence.reporting.application.timeline_service import TimelineSe
 from interview_evidence.reporting.domain.deletion import DeletionManifest
 from interview_evidence.reporting.domain.report import Report
 from interview_evidence.reporting.domain.review import Decision, HumanReview, ReviewType
-from interview_evidence.reporting.repositories.postgres import ReportingRepository
+from interview_evidence.reporting.repositories.postgres import (
+    ReportingRepository,
+    TenantScopedReportingNotFound,
+)
 from interview_evidence.shared.audit import AuditAppender
 from interview_evidence.shared.ids import Clock
 from interview_evidence.shared.security.principals import (
@@ -220,6 +224,14 @@ def create_company_router(
             asset=assets[-1] if assets else None,
             now=clock.now(),
         )
+        audit.append(
+            scope.context,
+            action="timeline.view",
+            resource_type="interview_session",
+            resource_id=session_id,
+            result="allowed",
+            metadata={"query_present": query is not None, "entry_count": len(entries)},
+        )
         return {
             "entries": [
                 {
@@ -378,6 +390,17 @@ def create_company_router(
         scope: Scope,
     ) -> dict[str, object]:
         _, manifest = repository.get_deletion(scope.context, deletion_request_id)
+        audit.append(
+            scope.context,
+            action="privacy_deletion.status_view",
+            resource_type="deletion_manifest",
+            resource_id=manifest.manifest_id,
+            result="allowed",
+            metadata={
+                "verified_targets": manifest.verified_targets,
+                "expected_targets": len(manifest.targets),
+            },
+        )
         return _deletion_view(manifest)
 
     return router
@@ -392,6 +415,14 @@ def create_lane_d_runtime(
     deletion_service: DeletionService | None = None,
 ) -> LaneDRuntime:
     app = FastAPI(title="Interview Evidence Reporting")
+
+    @app.exception_handler(TenantScopedReportingNotFound)
+    async def reporting_not_found(
+        _request: Request,
+        _error: TenantScopedReportingNotFound,
+    ) -> JSONResponse:
+        return JSONResponse(status_code=404, content={"detail": "resource not found"})
+
     service = deletion_service or DeletionService(repository)
     app.include_router(
         create_company_router(
