@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from uuid import UUID
@@ -375,17 +376,33 @@ def create_local_runtime(
     )
 
 
-class LazyLocalApplication:
-    def __init__(self) -> None:
+class LazyEnvironmentApplication:
+    def __init__(self, *, environment: Mapping[str, str] | None = None) -> None:
+        self._environment = dict(os.environ if environment is None else environment)
         self._runtime: LocalRuntime | None = None
+
+    @property
+    def runtime_mode(self) -> str:
+        environment = self._environment.get(
+            "APP_ENVIRONMENT",
+            self._environment.get("APP_ENV", "local"),
+        )
+        return "local" if environment == "local" else "production"
 
     def _application(self) -> FastAPI:
         if self._runtime is None:
-            self._runtime = create_local_runtime()
+            if self.runtime_mode == "local":
+                self._runtime = create_local_runtime()
+            else:
+                from interview_evidence.runtime.production import create_production_runtime
+
+                self._runtime = create_production_runtime(self._environment)
         return self._runtime.app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         await self._application()(scope, receive, send)
 
 
-app = LazyLocalApplication()
+LazyLocalApplication = LazyEnvironmentApplication
+
+app = LazyEnvironmentApplication()
