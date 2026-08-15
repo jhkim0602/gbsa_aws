@@ -1,0 +1,923 @@
+from __future__ import annotations
+
+from collections.abc import Mapping
+from datetime import datetime
+from typing import Protocol, TypeVar
+from uuid import UUID
+
+from sqlalchemy import JSON, DateTime, Float, Integer, String, Uuid, select
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+
+from interview_evidence.shared.tenant import TenantContext, require_tenant_context
+from interview_evidence.submission_analysis.domain.git_analysis import (
+    CandidateCodeUnit,
+    GitAnalysisStatus,
+    GitCommitAnalysis,
+    GitRepositoryAnalysis,
+    OwnershipClass,
+)
+from interview_evidence.submission_analysis.domain.source import (
+    SourceLocation,
+    SourceReferenceCandidate,
+    SubmissionChunk,
+)
+from interview_evidence.submission_analysis.domain.strategy import (
+    InterviewStrategy,
+    StrategyStatus,
+    VerificationPoint,
+)
+from interview_evidence.submission_analysis.domain.submission import (
+    AnalysisStatus,
+    SourceType,
+    Submission,
+    SubmissionAnalysis,
+    SubmissionStatus,
+)
+
+
+class TenantScopedSubmissionNotFound(LookupError):
+    """Raised without revealing another tenant or applicant's resources."""
+
+
+class TenantOwned(Protocol):
+    @property
+    def company_id(self) -> UUID: ...
+
+
+TenantOwnedT = TypeVar("TenantOwnedT", bound=TenantOwned)
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class SubmissionRow(Base):
+    __tablename__ = "submissions"
+
+    submission_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    invitation_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    source_type: Mapped[str] = mapped_column(String(30))
+    source_uri: Mapped[str] = mapped_column(String(4096))
+    original_filename: Mapped[str | None] = mapped_column(String(255))
+    content_hash: Mapped[str | None] = mapped_column(String(64))
+    byte_size: Mapped[int | None] = mapped_column(Integer)
+    media_type: Mapped[str | None] = mapped_column(String(200))
+    candidate_identity_inputs: Mapped[dict[str, list[str]] | None] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(30))
+    failure_code: Mapped[str | None] = mapped_column(String(100))
+    impact_summary: Mapped[str | None] = mapped_column(String(2000))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    row_version: Mapped[int] = mapped_column(Integer)
+
+
+class SubmissionAnalysisRow(Base):
+    __tablename__ = "submission_analyses"
+
+    analysis_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    submission_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    analysis_version: Mapped[int] = mapped_column(Integer)
+    extractor_version: Mapped[str] = mapped_column(String(100))
+    chunk_config_version: Mapped[str] = mapped_column(String(100))
+    claims: Mapped[list[dict[str, object]]] = mapped_column(JSON)
+    conflicts: Mapped[list[dict[str, object]]] = mapped_column(JSON)
+    verification_points: Mapped[list[dict[str, object]]] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(30))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    failure_code: Mapped[str | None] = mapped_column(String(100))
+    impact_summary: Mapped[str | None] = mapped_column(String(2000))
+
+
+class SubmissionChunkRow(Base):
+    __tablename__ = "submission_chunks"
+
+    chunk_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    submission_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    analysis_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    source_location: Mapped[dict[str, object]] = mapped_column(JSON)
+    text_object_key: Mapped[str] = mapped_column(String(2048))
+    source_hash: Mapped[str] = mapped_column(String(64))
+    chunk_hash: Mapped[str] = mapped_column(String(64))
+    embedding_model: Mapped[str] = mapped_column(String(200))
+    embedding_version: Mapped[str] = mapped_column(String(100))
+    index_document_id: Mapped[str] = mapped_column(String(512))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class GitRepositoryAnalysisRow(Base):
+    __tablename__ = "git_repository_analyses"
+
+    repository_analysis_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    submission_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    repository_url: Mapped[str] = mapped_column(String(4096))
+    default_branch: Mapped[str] = mapped_column(String(500))
+    pinned_head_sha: Mapped[str] = mapped_column(String(40))
+    candidate_identity_inputs: Mapped[dict[str, object]] = mapped_column(JSON)
+    limits_applied: Mapped[dict[str, int]] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(30))
+
+
+class GitCommitAnalysisRow(Base):
+    __tablename__ = "git_commit_analyses"
+
+    git_commit_analysis_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    repository_analysis_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    parent_sha: Mapped[str] = mapped_column(String(40))
+    commit_sha: Mapped[str] = mapped_column(String(40))
+    author_match_inputs: Mapped[dict[str, object]] = mapped_column(JSON)
+    change_summary_object_key: Mapped[str] = mapped_column(String(2048))
+    ownership_confidence: Mapped[float] = mapped_column(Float)
+    ownership_class: Mapped[str] = mapped_column(String(30))
+    ownership_explanation: Mapped[list[str]] = mapped_column(JSON)
+
+
+class CandidateCodeUnitRow(Base):
+    __tablename__ = "candidate_code_units"
+
+    code_unit_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    git_commit_analysis_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    path: Mapped[str] = mapped_column(String(1000))
+    language: Mapped[str] = mapped_column(String(100))
+    symbol: Mapped[str] = mapped_column(String(500))
+    original_line_range: Mapped[list[int]] = mapped_column(JSON)
+    current_line_range: Mapped[list[int]] = mapped_column(JSON)
+    authored_snapshot_key: Mapped[str] = mapped_column(String(2048))
+    current_snapshot_key: Mapped[str] = mapped_column(String(2048))
+    candidate_owned_regions: Mapped[list[list[int]]] = mapped_column(JSON)
+    related_test_ids: Mapped[list[str]] = mapped_column(JSON)
+    dependency_ids: Mapped[list[str]] = mapped_column(JSON)
+    index_document_ids: Mapped[list[str]] = mapped_column(JSON)
+
+
+class InterviewStrategyRow(Base):
+    __tablename__ = "interview_strategies"
+
+    interview_strategy_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    invitation_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    competency_model_version_id: Mapped[UUID] = mapped_column(Uuid)
+    strategy_version: Mapped[int] = mapped_column(Integer)
+    common_topics: Mapped[list[str]] = mapped_column(JSON)
+    verification_points: Mapped[list[dict[str, object]]] = mapped_column(JSON)
+    follow_up_directions: Mapped[dict[str, list[str]]] = mapped_column(JSON)
+    time_budget: Mapped[dict[str, int]] = mapped_column(JSON)
+    required_evidence_plan: Mapped[dict[str, int]] = mapped_column(JSON)
+    source_reference_candidates: Mapped[list[dict[str, object]]] = mapped_column(JSON)
+    model_config_version: Mapped[str] = mapped_column(String(100))
+    status: Mapped[str] = mapped_column(String(30))
+
+
+class SubmissionRepository(Protocol):
+    def save_submission(self, context: TenantContext, submission: Submission) -> Submission: ...
+    def get_submission(self, context: TenantContext, submission_id: UUID) -> Submission: ...
+    def list_submissions(
+        self, context: TenantContext, applicant_id: UUID
+    ) -> tuple[Submission, ...]: ...
+    def list_submissions_for_invitation(
+        self, context: TenantContext, invitation_id: UUID
+    ) -> tuple[Submission, ...]: ...
+    def save_analysis(
+        self, context: TenantContext, analysis: SubmissionAnalysis
+    ) -> SubmissionAnalysis: ...
+    def list_analyses(
+        self, context: TenantContext, submission_ids: frozenset[UUID]
+    ) -> tuple[SubmissionAnalysis, ...]: ...
+    def save_chunks(
+        self, context: TenantContext, chunks: tuple[SubmissionChunk, ...]
+    ) -> tuple[SubmissionChunk, ...]: ...
+    def list_chunks(
+        self, context: TenantContext, applicant_id: UUID
+    ) -> tuple[SubmissionChunk, ...]: ...
+    def get_chunk(self, context: TenantContext, chunk_id: UUID) -> SubmissionChunk: ...
+    def save_git_repository_analysis(
+        self, context: TenantContext, analysis: GitRepositoryAnalysis
+    ) -> GitRepositoryAnalysis: ...
+    def list_git_repository_analyses(
+        self, context: TenantContext, submission_ids: frozenset[UUID]
+    ) -> tuple[GitRepositoryAnalysis, ...]: ...
+    def save_git_commit_analyses(
+        self, context: TenantContext, analyses: tuple[GitCommitAnalysis, ...]
+    ) -> tuple[GitCommitAnalysis, ...]: ...
+    def list_git_commit_analyses(
+        self, context: TenantContext, repository_analysis_ids: frozenset[UUID]
+    ) -> tuple[GitCommitAnalysis, ...]: ...
+    def save_code_units(
+        self, context: TenantContext, units: tuple[CandidateCodeUnit, ...]
+    ) -> tuple[CandidateCodeUnit, ...]: ...
+    def list_code_units(
+        self, context: TenantContext, commit_analysis_ids: frozenset[UUID]
+    ) -> tuple[CandidateCodeUnit, ...]: ...
+    def get_code_unit(self, context: TenantContext, code_unit_id: UUID) -> CandidateCodeUnit: ...
+    def get_git_commit_analysis(
+        self, context: TenantContext, commit_analysis_id: UUID
+    ) -> GitCommitAnalysis: ...
+    def save_strategy(
+        self, context: TenantContext, strategy: InterviewStrategy
+    ) -> InterviewStrategy: ...
+    def latest_strategy(
+        self, context: TenantContext, invitation_id: UUID
+    ) -> InterviewStrategy | None: ...
+    def get_strategy(self, context: TenantContext, strategy_id: UUID) -> InterviewStrategy: ...
+
+
+class InMemorySubmissionRepository:
+    def __init__(self) -> None:
+        self.submissions: dict[UUID, Submission] = {}
+        self.analyses: dict[UUID, SubmissionAnalysis] = {}
+        self.chunks: dict[UUID, SubmissionChunk] = {}
+        self.git_repositories: dict[UUID, GitRepositoryAnalysis] = {}
+        self.git_commits: dict[UUID, GitCommitAnalysis] = {}
+        self.code_units: dict[UUID, CandidateCodeUnit] = {}
+        self.strategies: dict[UUID, InterviewStrategy] = {}
+
+    @staticmethod
+    def _scoped(
+        context: TenantContext,
+        values: Mapping[UUID, TenantOwnedT],
+        resource_id: UUID,
+    ) -> TenantOwnedT:
+        tenant = require_tenant_context(context)
+        value = values.get(resource_id)
+        if value is None or value.company_id != tenant.company_id:
+            raise TenantScopedSubmissionNotFound("submission resource not found")
+        return value
+
+    def save_submission(self, context: TenantContext, submission: Submission) -> Submission:
+        require_tenant_context(context).assert_company(submission.company_id)
+        self.submissions[submission.submission_id] = submission
+        return submission
+
+    def get_submission(self, context: TenantContext, submission_id: UUID) -> Submission:
+        return self._scoped(context, self.submissions, submission_id)
+
+    def list_submissions(
+        self, context: TenantContext, applicant_id: UUID
+    ) -> tuple[Submission, ...]:
+        tenant = require_tenant_context(context)
+        if tenant.actor_type.value == "applicant" and tenant.actor_id != applicant_id:
+            raise PermissionError("applicant scope mismatch")
+        return tuple(
+            value
+            for value in self.submissions.values()
+            if value.company_id == tenant.company_id and value.applicant_id == applicant_id
+        )
+
+    def list_submissions_for_invitation(
+        self, context: TenantContext, invitation_id: UUID
+    ) -> tuple[Submission, ...]:
+        tenant = require_tenant_context(context)
+        return tuple(
+            value
+            for value in self.submissions.values()
+            if value.company_id == tenant.company_id and value.invitation_id == invitation_id
+        )
+
+    def save_analysis(
+        self, context: TenantContext, analysis: SubmissionAnalysis
+    ) -> SubmissionAnalysis:
+        require_tenant_context(context).assert_company(analysis.company_id)
+        self.get_submission(context, analysis.submission_id)
+        self.analyses[analysis.analysis_id] = analysis
+        return analysis
+
+    def list_analyses(
+        self, context: TenantContext, submission_ids: frozenset[UUID]
+    ) -> tuple[SubmissionAnalysis, ...]:
+        tenant = require_tenant_context(context)
+        return tuple(
+            analysis
+            for analysis in self.analyses.values()
+            if analysis.company_id == tenant.company_id and analysis.submission_id in submission_ids
+        )
+
+    def save_chunks(
+        self, context: TenantContext, chunks: tuple[SubmissionChunk, ...]
+    ) -> tuple[SubmissionChunk, ...]:
+        for chunk in chunks:
+            require_tenant_context(context).assert_company(chunk.company_id)
+            self.get_submission(context, chunk.submission_id)
+            self.chunks[chunk.chunk_id] = chunk
+        return chunks
+
+    def list_chunks(
+        self, context: TenantContext, applicant_id: UUID
+    ) -> tuple[SubmissionChunk, ...]:
+        tenant = require_tenant_context(context)
+        return tuple(
+            chunk
+            for chunk in self.chunks.values()
+            if chunk.company_id == tenant.company_id and chunk.applicant_id == applicant_id
+        )
+
+    def get_chunk(self, context: TenantContext, chunk_id: UUID) -> SubmissionChunk:
+        return self._scoped(context, self.chunks, chunk_id)
+
+    def save_git_repository_analysis(
+        self,
+        context: TenantContext,
+        analysis: GitRepositoryAnalysis,
+    ) -> GitRepositoryAnalysis:
+        require_tenant_context(context).assert_company(analysis.company_id)
+        self.get_submission(context, analysis.submission_id)
+        self.git_repositories[analysis.repository_analysis_id] = analysis
+        return analysis
+
+    def list_git_repository_analyses(
+        self, context: TenantContext, submission_ids: frozenset[UUID]
+    ) -> tuple[GitRepositoryAnalysis, ...]:
+        tenant = require_tenant_context(context)
+        return tuple(
+            analysis
+            for analysis in self.git_repositories.values()
+            if analysis.company_id == tenant.company_id and analysis.submission_id in submission_ids
+        )
+
+    def save_git_commit_analyses(
+        self,
+        context: TenantContext,
+        analyses: tuple[GitCommitAnalysis, ...],
+    ) -> tuple[GitCommitAnalysis, ...]:
+        for analysis in analyses:
+            require_tenant_context(context).assert_company(analysis.company_id)
+            self.git_commits[analysis.git_commit_analysis_id] = analysis
+        return analyses
+
+    def list_git_commit_analyses(
+        self, context: TenantContext, repository_analysis_ids: frozenset[UUID]
+    ) -> tuple[GitCommitAnalysis, ...]:
+        tenant = require_tenant_context(context)
+        return tuple(
+            analysis
+            for analysis in self.git_commits.values()
+            if analysis.company_id == tenant.company_id
+            and analysis.repository_analysis_id in repository_analysis_ids
+        )
+
+    def save_code_units(
+        self,
+        context: TenantContext,
+        units: tuple[CandidateCodeUnit, ...],
+    ) -> tuple[CandidateCodeUnit, ...]:
+        for unit in units:
+            require_tenant_context(context).assert_company(unit.company_id)
+            self.code_units[unit.code_unit_id] = unit
+        return units
+
+    def list_code_units(
+        self, context: TenantContext, commit_analysis_ids: frozenset[UUID]
+    ) -> tuple[CandidateCodeUnit, ...]:
+        tenant = require_tenant_context(context)
+        return tuple(
+            unit
+            for unit in self.code_units.values()
+            if unit.company_id == tenant.company_id
+            and unit.git_commit_analysis_id in commit_analysis_ids
+        )
+
+    def get_code_unit(self, context: TenantContext, code_unit_id: UUID) -> CandidateCodeUnit:
+        return self._scoped(context, self.code_units, code_unit_id)
+
+    def get_git_commit_analysis(
+        self, context: TenantContext, commit_analysis_id: UUID
+    ) -> GitCommitAnalysis:
+        return self._scoped(context, self.git_commits, commit_analysis_id)
+
+    def save_strategy(
+        self, context: TenantContext, strategy: InterviewStrategy
+    ) -> InterviewStrategy:
+        require_tenant_context(context).assert_company(strategy.company_id)
+        self.strategies[strategy.interview_strategy_id] = strategy
+        return strategy
+
+    def latest_strategy(
+        self, context: TenantContext, invitation_id: UUID
+    ) -> InterviewStrategy | None:
+        tenant = require_tenant_context(context)
+        matches = [
+            strategy
+            for strategy in self.strategies.values()
+            if strategy.company_id == tenant.company_id and strategy.invitation_id == invitation_id
+        ]
+        return max(matches, key=lambda value: value.strategy_version, default=None)
+
+    def get_strategy(self, context: TenantContext, strategy_id: UUID) -> InterviewStrategy:
+        return self._scoped(context, self.strategies, strategy_id)
+
+
+class SqlAlchemySubmissionRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def save_submission(self, context: TenantContext, submission: Submission) -> Submission:
+        require_tenant_context(context).assert_company(submission.company_id)
+        self._session.merge(
+            SubmissionRow(
+                submission_id=submission.submission_id,
+                company_id=submission.company_id,
+                invitation_id=submission.invitation_id,
+                applicant_id=submission.applicant_id,
+                source_type=submission.source_type.value,
+                source_uri=submission.source_uri,
+                original_filename=submission.original_filename,
+                content_hash=submission.content_hash,
+                byte_size=submission.byte_size,
+                media_type=submission.media_type,
+                candidate_identity_inputs=(
+                    {
+                        key: list(values)
+                        for key, values in submission.candidate_identity_inputs.items()
+                    }
+                    if submission.candidate_identity_inputs is not None
+                    else None
+                ),
+                status=submission.status.value,
+                failure_code=submission.failure_code,
+                impact_summary=submission.impact_summary,
+                created_at=submission.created_at,
+                row_version=submission.row_version,
+            )
+        )
+        self._session.flush()
+        return submission
+
+    def get_submission(self, context: TenantContext, submission_id: UUID) -> Submission:
+        tenant = require_tenant_context(context)
+        row = self._session.scalar(
+            select(SubmissionRow).where(
+                SubmissionRow.company_id == tenant.company_id,
+                SubmissionRow.submission_id == submission_id,
+            )
+        )
+        if row is None:
+            raise TenantScopedSubmissionNotFound("submission resource not found")
+        return Submission(
+            submission_id=row.submission_id,
+            company_id=row.company_id,
+            invitation_id=row.invitation_id,
+            applicant_id=row.applicant_id,
+            source_type=SourceType(row.source_type),
+            source_uri=row.source_uri,
+            original_filename=row.original_filename,
+            content_hash=row.content_hash,
+            byte_size=row.byte_size,
+            media_type=row.media_type,
+            candidate_identity_inputs=(
+                {
+                    key: tuple(str(item) for item in values)
+                    for key, values in row.candidate_identity_inputs.items()
+                }
+                if row.candidate_identity_inputs is not None
+                else None
+            ),
+            status=SubmissionStatus(row.status),
+            failure_code=row.failure_code,
+            impact_summary=row.impact_summary,
+            created_at=row.created_at,
+            row_version=row.row_version,
+        )
+
+    def list_submissions(
+        self, context: TenantContext, applicant_id: UUID
+    ) -> tuple[Submission, ...]:
+        tenant = require_tenant_context(context)
+        rows = self._session.scalars(
+            select(SubmissionRow).where(
+                SubmissionRow.company_id == tenant.company_id,
+                SubmissionRow.applicant_id == applicant_id,
+            )
+        ).all()
+        return tuple(self.get_submission(context, row.submission_id) for row in rows)
+
+    def list_submissions_for_invitation(
+        self, context: TenantContext, invitation_id: UUID
+    ) -> tuple[Submission, ...]:
+        tenant = require_tenant_context(context)
+        rows = self._session.scalars(
+            select(SubmissionRow).where(
+                SubmissionRow.company_id == tenant.company_id,
+                SubmissionRow.invitation_id == invitation_id,
+            )
+        ).all()
+        return tuple(self.get_submission(context, row.submission_id) for row in rows)
+
+    def save_analysis(
+        self, context: TenantContext, analysis: SubmissionAnalysis
+    ) -> SubmissionAnalysis:
+        require_tenant_context(context).assert_company(analysis.company_id)
+        self._session.merge(
+            SubmissionAnalysisRow(
+                analysis_id=analysis.analysis_id,
+                company_id=analysis.company_id,
+                submission_id=analysis.submission_id,
+                analysis_version=analysis.analysis_version,
+                extractor_version=analysis.extractor_version,
+                chunk_config_version=analysis.chunk_config_version,
+                claims=list(analysis.claims),
+                conflicts=list(analysis.conflicts),
+                verification_points=list(analysis.verification_points),
+                status=analysis.status.value,
+                created_at=analysis.created_at,
+                failure_code=analysis.failure_code,
+                impact_summary=analysis.impact_summary,
+            )
+        )
+        self._session.flush()
+        return analysis
+
+    def list_analyses(
+        self, context: TenantContext, submission_ids: frozenset[UUID]
+    ) -> tuple[SubmissionAnalysis, ...]:
+        if not submission_ids:
+            return ()
+        tenant = require_tenant_context(context)
+        rows = self._session.scalars(
+            select(SubmissionAnalysisRow).where(
+                SubmissionAnalysisRow.company_id == tenant.company_id,
+                SubmissionAnalysisRow.submission_id.in_(submission_ids),
+            )
+        ).all()
+        return tuple(self._analysis_from_row(row) for row in rows)
+
+    def save_chunks(
+        self, context: TenantContext, chunks: tuple[SubmissionChunk, ...]
+    ) -> tuple[SubmissionChunk, ...]:
+        for chunk in chunks:
+            require_tenant_context(context).assert_company(chunk.company_id)
+            self._session.merge(
+                SubmissionChunkRow(
+                    chunk_id=chunk.chunk_id,
+                    company_id=chunk.company_id,
+                    applicant_id=chunk.applicant_id,
+                    submission_id=chunk.submission_id,
+                    analysis_id=chunk.analysis_id,
+                    source_location=chunk.source_location.model_dump(
+                        mode="json", exclude_none=True
+                    ),
+                    text_object_key=chunk.text_object_key,
+                    source_hash=chunk.source_hash,
+                    chunk_hash=chunk.chunk_hash,
+                    embedding_model=chunk.embedding_model,
+                    embedding_version=chunk.embedding_version,
+                    index_document_id=chunk.index_document_id,
+                    deleted_at=chunk.deleted_at,
+                )
+            )
+        self._session.flush()
+        return chunks
+
+    def list_chunks(
+        self, context: TenantContext, applicant_id: UUID
+    ) -> tuple[SubmissionChunk, ...]:
+        tenant = require_tenant_context(context)
+        rows = self._session.scalars(
+            select(SubmissionChunkRow).where(
+                SubmissionChunkRow.company_id == tenant.company_id,
+                SubmissionChunkRow.applicant_id == applicant_id,
+            )
+        ).all()
+        return tuple(
+            SubmissionChunk(
+                chunk_id=row.chunk_id,
+                company_id=row.company_id,
+                applicant_id=row.applicant_id,
+                submission_id=row.submission_id,
+                analysis_id=row.analysis_id,
+                source_location=SourceLocation.model_validate(row.source_location),
+                text_object_key=row.text_object_key,
+                source_hash=row.source_hash,
+                chunk_hash=row.chunk_hash,
+                embedding_model=row.embedding_model,
+                embedding_version=row.embedding_version,
+                index_document_id=row.index_document_id,
+                deleted_at=row.deleted_at,
+            )
+            for row in rows
+        )
+
+    def get_chunk(self, context: TenantContext, chunk_id: UUID) -> SubmissionChunk:
+        tenant = require_tenant_context(context)
+        row = self._session.scalar(
+            select(SubmissionChunkRow).where(
+                SubmissionChunkRow.company_id == tenant.company_id,
+                SubmissionChunkRow.chunk_id == chunk_id,
+            )
+        )
+        if row is None:
+            raise TenantScopedSubmissionNotFound("submission resource not found")
+        return SubmissionChunk(
+            chunk_id=row.chunk_id,
+            company_id=row.company_id,
+            applicant_id=row.applicant_id,
+            submission_id=row.submission_id,
+            analysis_id=row.analysis_id,
+            source_location=SourceLocation.model_validate(row.source_location),
+            text_object_key=row.text_object_key,
+            source_hash=row.source_hash,
+            chunk_hash=row.chunk_hash,
+            embedding_model=row.embedding_model,
+            embedding_version=row.embedding_version,
+            index_document_id=row.index_document_id,
+            deleted_at=row.deleted_at,
+        )
+
+    def save_git_repository_analysis(
+        self,
+        context: TenantContext,
+        analysis: GitRepositoryAnalysis,
+    ) -> GitRepositoryAnalysis:
+        require_tenant_context(context).assert_company(analysis.company_id)
+        self._session.merge(
+            GitRepositoryAnalysisRow(
+                repository_analysis_id=analysis.repository_analysis_id,
+                company_id=analysis.company_id,
+                submission_id=analysis.submission_id,
+                repository_url=analysis.repository_url,
+                default_branch=analysis.default_branch,
+                pinned_head_sha=analysis.pinned_head_sha,
+                candidate_identity_inputs=analysis.candidate_identity_inputs,
+                limits_applied=analysis.limits_applied,
+                status=analysis.status.value,
+            )
+        )
+        self._session.flush()
+        return analysis
+
+    def list_git_repository_analyses(
+        self, context: TenantContext, submission_ids: frozenset[UUID]
+    ) -> tuple[GitRepositoryAnalysis, ...]:
+        if not submission_ids:
+            return ()
+        tenant = require_tenant_context(context)
+        rows = self._session.scalars(
+            select(GitRepositoryAnalysisRow).where(
+                GitRepositoryAnalysisRow.company_id == tenant.company_id,
+                GitRepositoryAnalysisRow.submission_id.in_(submission_ids),
+            )
+        ).all()
+        return tuple(self._git_repository_from_row(row) for row in rows)
+
+    def save_git_commit_analyses(
+        self,
+        context: TenantContext,
+        analyses: tuple[GitCommitAnalysis, ...],
+    ) -> tuple[GitCommitAnalysis, ...]:
+        for analysis in analyses:
+            require_tenant_context(context).assert_company(analysis.company_id)
+            self._session.merge(
+                GitCommitAnalysisRow(
+                    git_commit_analysis_id=analysis.git_commit_analysis_id,
+                    company_id=analysis.company_id,
+                    repository_analysis_id=analysis.repository_analysis_id,
+                    parent_sha=analysis.parent_sha,
+                    commit_sha=analysis.commit_sha,
+                    author_match_inputs=analysis.author_match_inputs,
+                    change_summary_object_key=analysis.change_summary_object_key,
+                    ownership_confidence=analysis.ownership_confidence,
+                    ownership_class=analysis.ownership_class.value,
+                    ownership_explanation=list(analysis.ownership_explanation),
+                )
+            )
+        self._session.flush()
+        return analyses
+
+    def list_git_commit_analyses(
+        self, context: TenantContext, repository_analysis_ids: frozenset[UUID]
+    ) -> tuple[GitCommitAnalysis, ...]:
+        if not repository_analysis_ids:
+            return ()
+        tenant = require_tenant_context(context)
+        rows = self._session.scalars(
+            select(GitCommitAnalysisRow).where(
+                GitCommitAnalysisRow.company_id == tenant.company_id,
+                GitCommitAnalysisRow.repository_analysis_id.in_(repository_analysis_ids),
+            )
+        ).all()
+        return tuple(self._git_commit_from_row(row) for row in rows)
+
+    def save_code_units(
+        self,
+        context: TenantContext,
+        units: tuple[CandidateCodeUnit, ...],
+    ) -> tuple[CandidateCodeUnit, ...]:
+        for unit in units:
+            require_tenant_context(context).assert_company(unit.company_id)
+            self._session.merge(
+                CandidateCodeUnitRow(
+                    code_unit_id=unit.code_unit_id,
+                    company_id=unit.company_id,
+                    git_commit_analysis_id=unit.git_commit_analysis_id,
+                    path=unit.path,
+                    language=unit.language,
+                    symbol=unit.symbol,
+                    original_line_range=list(unit.original_line_range),
+                    current_line_range=list(unit.current_line_range),
+                    authored_snapshot_key=unit.authored_snapshot_key,
+                    current_snapshot_key=unit.current_snapshot_key,
+                    candidate_owned_regions=[
+                        list(region) for region in unit.candidate_owned_regions
+                    ],
+                    related_test_ids=list(unit.related_test_ids),
+                    dependency_ids=list(unit.dependency_ids),
+                    index_document_ids=list(unit.index_document_ids),
+                )
+            )
+        self._session.flush()
+        return units
+
+    def list_code_units(
+        self, context: TenantContext, commit_analysis_ids: frozenset[UUID]
+    ) -> tuple[CandidateCodeUnit, ...]:
+        if not commit_analysis_ids:
+            return ()
+        tenant = require_tenant_context(context)
+        rows = self._session.scalars(
+            select(CandidateCodeUnitRow).where(
+                CandidateCodeUnitRow.company_id == tenant.company_id,
+                CandidateCodeUnitRow.git_commit_analysis_id.in_(commit_analysis_ids),
+            )
+        ).all()
+        return tuple(self._code_unit_from_row(row) for row in rows)
+
+    def get_code_unit(self, context: TenantContext, code_unit_id: UUID) -> CandidateCodeUnit:
+        tenant = require_tenant_context(context)
+        row = self._session.scalar(
+            select(CandidateCodeUnitRow).where(
+                CandidateCodeUnitRow.company_id == tenant.company_id,
+                CandidateCodeUnitRow.code_unit_id == code_unit_id,
+            )
+        )
+        if row is None:
+            raise TenantScopedSubmissionNotFound("submission resource not found")
+        return self._code_unit_from_row(row)
+
+    def get_git_commit_analysis(
+        self, context: TenantContext, commit_analysis_id: UUID
+    ) -> GitCommitAnalysis:
+        tenant = require_tenant_context(context)
+        row = self._session.scalar(
+            select(GitCommitAnalysisRow).where(
+                GitCommitAnalysisRow.company_id == tenant.company_id,
+                GitCommitAnalysisRow.git_commit_analysis_id == commit_analysis_id,
+            )
+        )
+        if row is None:
+            raise TenantScopedSubmissionNotFound("submission resource not found")
+        return self._git_commit_from_row(row)
+
+    def save_strategy(
+        self, context: TenantContext, strategy: InterviewStrategy
+    ) -> InterviewStrategy:
+        require_tenant_context(context).assert_company(strategy.company_id)
+        self._session.merge(
+            InterviewStrategyRow(
+                interview_strategy_id=strategy.interview_strategy_id,
+                company_id=strategy.company_id,
+                invitation_id=strategy.invitation_id,
+                applicant_id=strategy.applicant_id,
+                competency_model_version_id=strategy.competency_model_version_id,
+                strategy_version=strategy.strategy_version,
+                common_topics=list(strategy.common_topics),
+                verification_points=[
+                    value.model_dump(mode="json") for value in strategy.verification_points
+                ],
+                follow_up_directions=strategy.follow_up_directions,
+                time_budget=strategy.time_budget,
+                required_evidence_plan=strategy.required_evidence_plan,
+                source_reference_candidates=[
+                    value.model_dump(mode="json") for value in strategy.source_reference_candidates
+                ],
+                model_config_version=strategy.model_config_version,
+                status=strategy.status.value,
+            )
+        )
+        self._session.flush()
+        return strategy
+
+    def latest_strategy(
+        self, context: TenantContext, invitation_id: UUID
+    ) -> InterviewStrategy | None:
+        tenant = require_tenant_context(context)
+        row = self._session.scalar(
+            select(InterviewStrategyRow)
+            .where(
+                InterviewStrategyRow.company_id == tenant.company_id,
+                InterviewStrategyRow.invitation_id == invitation_id,
+            )
+            .order_by(InterviewStrategyRow.strategy_version.desc())
+            .limit(1)
+        )
+        if row is None:
+            return None
+        return self._strategy_from_row(row)
+
+    def get_strategy(self, context: TenantContext, strategy_id: UUID) -> InterviewStrategy:
+        tenant = require_tenant_context(context)
+        row = self._session.scalar(
+            select(InterviewStrategyRow).where(
+                InterviewStrategyRow.company_id == tenant.company_id,
+                InterviewStrategyRow.interview_strategy_id == strategy_id,
+            )
+        )
+        if row is None:
+            raise TenantScopedSubmissionNotFound("submission resource not found")
+        return self._strategy_from_row(row)
+
+    @staticmethod
+    def _strategy_from_row(row: InterviewStrategyRow) -> InterviewStrategy:
+        return InterviewStrategy(
+            interview_strategy_id=row.interview_strategy_id,
+            company_id=row.company_id,
+            invitation_id=row.invitation_id,
+            applicant_id=row.applicant_id,
+            competency_model_version_id=row.competency_model_version_id,
+            strategy_version=row.strategy_version,
+            common_topics=tuple(row.common_topics),
+            verification_points=tuple(
+                VerificationPoint.model_validate(value) for value in row.verification_points
+            ),
+            follow_up_directions=row.follow_up_directions,
+            time_budget=row.time_budget,
+            required_evidence_plan=row.required_evidence_plan,
+            source_reference_candidates=tuple(
+                SourceReferenceCandidate.model_validate(value)
+                for value in row.source_reference_candidates
+            ),
+            model_config_version=row.model_config_version,
+            status=StrategyStatus(row.status),
+        )
+
+    @staticmethod
+    def _analysis_from_row(row: SubmissionAnalysisRow) -> SubmissionAnalysis:
+        return SubmissionAnalysis(
+            analysis_id=row.analysis_id,
+            company_id=row.company_id,
+            submission_id=row.submission_id,
+            analysis_version=row.analysis_version,
+            extractor_version=row.extractor_version,
+            chunk_config_version=row.chunk_config_version,
+            claims=tuple(row.claims),
+            conflicts=tuple(row.conflicts),
+            verification_points=tuple(row.verification_points),
+            status=AnalysisStatus(row.status),
+            created_at=row.created_at,
+            failure_code=row.failure_code,
+            impact_summary=row.impact_summary,
+        )
+
+    @staticmethod
+    def _git_repository_from_row(
+        row: GitRepositoryAnalysisRow,
+    ) -> GitRepositoryAnalysis:
+        return GitRepositoryAnalysis(
+            repository_analysis_id=row.repository_analysis_id,
+            company_id=row.company_id,
+            submission_id=row.submission_id,
+            repository_url=row.repository_url,
+            default_branch=row.default_branch,
+            pinned_head_sha=row.pinned_head_sha,
+            candidate_identity_inputs=row.candidate_identity_inputs,
+            limits_applied=row.limits_applied,
+            status=GitAnalysisStatus(row.status),
+        )
+
+    @staticmethod
+    def _git_commit_from_row(row: GitCommitAnalysisRow) -> GitCommitAnalysis:
+        return GitCommitAnalysis(
+            git_commit_analysis_id=row.git_commit_analysis_id,
+            company_id=row.company_id,
+            repository_analysis_id=row.repository_analysis_id,
+            parent_sha=row.parent_sha,
+            commit_sha=row.commit_sha,
+            author_match_inputs=row.author_match_inputs,
+            change_summary_object_key=row.change_summary_object_key,
+            ownership_confidence=row.ownership_confidence,
+            ownership_class=OwnershipClass(row.ownership_class),
+            ownership_explanation=tuple(row.ownership_explanation),
+        )
+
+    @staticmethod
+    def _code_unit_from_row(row: CandidateCodeUnitRow) -> CandidateCodeUnit:
+        return CandidateCodeUnit(
+            code_unit_id=row.code_unit_id,
+            company_id=row.company_id,
+            git_commit_analysis_id=row.git_commit_analysis_id,
+            path=row.path,
+            language=row.language,
+            symbol=row.symbol,
+            original_line_range=tuple(row.original_line_range),
+            current_line_range=tuple(row.current_line_range),
+            authored_snapshot_key=row.authored_snapshot_key,
+            current_snapshot_key=row.current_snapshot_key,
+            candidate_owned_regions=tuple(tuple(region) for region in row.candidate_owned_regions),
+            related_test_ids=tuple(row.related_test_ids),
+            dependency_ids=tuple(row.dependency_ids),
+            index_document_ids=tuple(row.index_document_ids),
+        )
