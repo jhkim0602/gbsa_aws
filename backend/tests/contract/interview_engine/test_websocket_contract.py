@@ -1,8 +1,13 @@
 from datetime import UTC, datetime
+from hashlib import sha256
 from uuid import UUID
 
 import pytest
-from interview_evidence.interview_engine.api.websocket import WebSocketEnvelope
+from interview_evidence.interview_engine.api.websocket import (
+    AudioChunkMetadata,
+    WebSocketEnvelope,
+    validate_audio_frame,
+)
 from pydantic import ValidationError
 
 
@@ -42,3 +47,20 @@ def test_websocket_envelope_rejects_incompatible_values(
 ) -> None:
     with pytest.raises(ValidationError):
         WebSocketEnvelope.model_validate(envelope(**{field: value}))
+
+
+def test_binary_audio_must_match_declared_size_and_digest() -> None:
+    audio = b"\x01\x02\x03\x04"
+    metadata = AudioChunkMetadata(
+        answer_turn_id=UUID("00000000-0000-7000-8000-000000000003"),
+        chunk_sequence=1,
+        codec="pcm_s16le",
+        sample_rate_hz=16000,
+        channel_count=1,
+        byte_length=len(audio),
+        sha256=sha256(audio).hexdigest(),
+    )
+
+    validate_audio_frame(metadata, audio)
+    with pytest.raises(ValueError):
+        validate_audio_frame(metadata, b"\x00")
