@@ -168,17 +168,22 @@ async def test_lane_a_company_to_consented_applicant_journey() -> None:
         assert verified.status_code == 200
         assert verified.json()["state"] == "identity_verified"
 
+        policy = await client.get("/v1/applicant/consents")
+        assert policy.status_code == 200
+        assert "최종 채용 결정은 기업의 사람이 수행" in policy.json()["ai_role"]
+        assert policy.json()["retention_days"] == 180
+
         consent = await client.post(
             "/v1/applicant/consents",
             headers={"Idempotency-Key": "quickstart-consent"},
             json={
-                "policy_version": "2026-08-v1",
+                "policy_version": policy.json()["policy_version"],
                 "accepted_purposes": [
                     "document_analysis",
                     "recording",
                     "ai_assessment",
                 ],
-                "consent_content_digest": "a" * 64,
+                "consent_content_digest": policy.json()["content_digest"],
             },
         )
     assert consent.status_code == 201

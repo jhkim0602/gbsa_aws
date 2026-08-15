@@ -3,6 +3,7 @@ from uuid import UUID
 
 import pytest
 from interview_evidence.company_management.domain.applicant_access import (
+    DEFAULT_CONSENT_POLICY,
     ConsentRecord,
     ConsentRequiredError,
     ProcessingPurpose,
@@ -53,3 +54,12 @@ def test_missing_or_withdrawn_consent_blocks_processing() -> None:
             ProcessingPurpose.AI_ASSESSMENT,
             at=NOW + timedelta(minutes=2),
         )
+
+
+def test_consent_policy_digest_changes_with_displayed_content() -> None:
+    policy = DEFAULT_CONSENT_POLICY
+    changed = policy.model_copy(update={"retention_days": policy.retention_days + 1})
+
+    assert len(policy.content_digest) == 64
+    assert changed.content_digest != policy.content_digest
+    assert policy.required_purposes == frozenset(ProcessingPurpose)

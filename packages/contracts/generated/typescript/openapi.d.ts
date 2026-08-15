@@ -59,7 +59,7 @@ export interface paths {
             readonly path?: never;
             readonly cookie?: never;
         };
-        readonly get?: never;
+        readonly get: operations["getApplicantConsentPolicy"];
         readonly put?: never;
         readonly post: operations["recordApplicantConsent"];
         readonly delete?: never;
@@ -485,6 +485,21 @@ export interface components {
             readonly consent_content_digest: string;
             readonly policy_version: string;
         };
+        readonly ConsentPolicyView: {
+            readonly ai_role: string;
+            readonly content_digest: string;
+            readonly deletion_method: string;
+            readonly policy_version: string;
+            readonly processing_purposes: readonly {
+                readonly description: string;
+                /** @enum {string} */
+                readonly purpose: "document_analysis" | "recording" | "ai_assessment";
+                readonly title: string;
+            }[];
+            readonly recording_notice: string;
+            readonly required_purposes: readonly ("document_analysis" | "recording" | "ai_assessment")[];
+            readonly retention_days: number;
+        };
         readonly ConsentView: {
             /** Format: date-time */
             readonly accepted_at: string;
@@ -885,6 +900,27 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["AnalysisReadiness"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly getApplicantConsentPolicy: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Server-versioned policy content displayed before consent */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ConsentPolicyView"];
                 };
             };
             readonly default: components["responses"]["Error"];

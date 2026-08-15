@@ -265,6 +265,41 @@ class ConsentCreate(BaseModel):
     consent_content_digest: constr(pattern=r"^[a-f0-9]{64}$")
 
 
+class Purpose(StrEnum):
+    document_analysis = "document_analysis"
+    recording = "recording"
+    ai_assessment = "ai_assessment"
+
+
+class ProcessingPurpose(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    purpose: Purpose
+    title: constr(min_length=1)
+    description: constr(min_length=1)
+
+
+class RequiredPurpose(StrEnum):
+    document_analysis = "document_analysis"
+    recording = "recording"
+    ai_assessment = "ai_assessment"
+
+
+class ConsentPolicyView(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    policy_version: constr(min_length=1)
+    ai_role: constr(min_length=1)
+    recording_notice: constr(min_length=1)
+    processing_purposes: list[ProcessingPurpose] = Field(..., min_length=1)
+    retention_days: conint(ge=1)
+    deletion_method: constr(min_length=1)
+    required_purposes: list[RequiredPurpose] = Field(..., min_length=1)
+    content_digest: constr(pattern=r"^[a-f0-9]{64}$")
+
+
 class ConsentView(BaseModel):
     model_config = ConfigDict(
         extra="forbid",

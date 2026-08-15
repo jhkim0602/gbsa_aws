@@ -3,10 +3,29 @@ import { FormEvent, useState } from "react";
 export type ConsentPurpose =
   "document_analysis" | "recording" | "ai_assessment";
 
+export type ConsentPolicy = Readonly<{
+  policyVersion: string;
+  aiRole: string;
+  recordingNotice: string;
+  processingPurposes: ReadonlyArray<{
+    purpose: ConsentPurpose;
+    title: string;
+    description: string;
+  }>;
+  retentionDays: number;
+  deletionMethod: string;
+  requiredPurposes: ConsentPurpose[];
+  contentDigest: string;
+}>;
+
 export type ApplicantAccessApi = {
   exchangeToken(token: string): Promise<void>;
   verifyIdentity(displayName: string, verificationValue: string): Promise<void>;
-  recordConsent(purposes: ConsentPurpose[]): Promise<void>;
+  getConsentPolicy(): Promise<ConsentPolicy>;
+  recordConsent(
+    policy: ConsentPolicy,
+    purposes: ConsentPurpose[],
+  ): Promise<void>;
 };
 
 type Step = "exchange" | "identity" | "consent" | "ready";
@@ -28,6 +47,7 @@ export function ApplicantAccess({
   const [displayName, setDisplayName] = useState("");
   const [verificationValue, setVerificationValue] = useState("");
   const [accepted, setAccepted] = useState<ConsentPurpose[]>([]);
+  const [policy, setPolicy] = useState<ConsentPolicy | null>(null);
 
   async function exchange() {
     await api.exchangeToken(initialToken);
@@ -37,6 +57,7 @@ export function ApplicantAccess({
   async function verify(event: FormEvent) {
     event.preventDefault();
     await api.verifyIdentity(displayName, verificationValue);
+    setPolicy(await api.getConsentPolicy());
     setStep("consent");
   }
 
@@ -50,10 +71,10 @@ export function ApplicantAccess({
 
   async function consent(event: FormEvent) {
     event.preventDefault();
-    if (accepted.length !== PURPOSES.length) {
+    if (!policy || accepted.length !== policy.requiredPurposes.length) {
       return;
     }
-    await api.recordConsent(PURPOSES.map(({ value }) => value));
+    await api.recordConsent(policy, [...policy.requiredPurposes]);
     setStep("ready");
   }
 
@@ -96,17 +117,41 @@ export function ApplicantAccess({
       {step === "consent" && (
         <form onSubmit={consent}>
           <h2>개인정보 및 면접 처리 동의</h2>
-          {PURPOSES.map(({ value, label }) => (
-            <label key={value}>
+          {policy && (
+            <section aria-label="동의 정책">
+              <p>{policy.aiRole}</p>
+              <p>{policy.recordingNotice}</p>
+              <p>보관기간: {policy.retentionDays}일</p>
+              <p>{policy.deletionMethod}</p>
+            </section>
+          )}
+          {(
+            policy?.processingPurposes ??
+            PURPOSES.map((item) => ({
+              purpose: item.value,
+              title: item.label,
+              description: "",
+            }))
+          ).map(({ purpose, title, description }) => (
+            <label key={purpose}>
               <input
                 type="checkbox"
-                checked={accepted.includes(value)}
-                onChange={() => togglePurpose(value)}
+                aria-label={title}
+                checked={accepted.includes(purpose)}
+                onChange={() => togglePurpose(purpose)}
               />
-              {label}
+              <span>
+                {title}
+                {description && <small>{description}</small>}
+              </span>
             </label>
           ))}
-          <button type="submit" disabled={accepted.length !== PURPOSES.length}>
+          <button
+            type="submit"
+            disabled={
+              !policy || accepted.length !== policy.requiredPurposes.length
+            }
+          >
             동의하고 계속
           </button>
         </form>

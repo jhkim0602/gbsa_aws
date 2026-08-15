@@ -1,7 +1,11 @@
 import { useState } from "react";
 import { Navigate, useParams, useSearchParams } from "react-router-dom";
 
-import { ApplicantAccess, type ApplicantAccessApi } from "../features/access";
+import {
+  ApplicantAccess,
+  type ApplicantAccessApi,
+  type ConsentPolicy,
+} from "../features/access";
 import {
   EquipmentCheck,
   createBrowserEquipmentCheckApi,
@@ -110,14 +114,40 @@ const accessApi: ApplicantAccessApi = {
       }),
     });
   },
-  async recordConsent(purposes) {
+  async getConsentPolicy() {
+    const policy = await applicantRequest<{
+      policy_version: string;
+      ai_role: string;
+      recording_notice: string;
+      processing_purposes: Array<{
+        purpose: ConsentPolicy["requiredPurposes"][number];
+        title: string;
+        description: string;
+      }>;
+      retention_days: number;
+      deletion_method: string;
+      required_purposes: ConsentPolicy["requiredPurposes"];
+      content_digest: string;
+    }>("/v1/applicant/consents");
+    return {
+      policyVersion: policy.policy_version,
+      aiRole: policy.ai_role,
+      recordingNotice: policy.recording_notice,
+      processingPurposes: policy.processing_purposes,
+      retentionDays: policy.retention_days,
+      deletionMethod: policy.deletion_method,
+      requiredPurposes: policy.required_purposes,
+      contentDigest: policy.content_digest,
+    };
+  },
+  async recordConsent(policy, purposes) {
     await applicantRequest("/v1/applicant/consents", {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey("consent") },
       body: JSON.stringify({
-        policy_version: "2026-08-v1",
+        policy_version: policy.policyVersion,
         accepted_purposes: purposes,
-        consent_content_digest: "a".repeat(64),
+        consent_content_digest: policy.contentDigest,
       }),
     });
   },

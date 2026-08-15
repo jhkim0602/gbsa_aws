@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from interview_evidence.company_management.domain.applicant_access import (
+    DEFAULT_CONSENT_POLICY,
     ApplicantProfile,
+    ConsentPolicy,
     ConsentRecord,
     ProcessingPurpose,
 )
@@ -15,8 +17,6 @@ from interview_evidence.shared.messaging.outbox import Outbox, OutboxEvent
 from interview_evidence.shared.security.principals import ApplicantPrincipal
 from interview_evidence.shared.tenant import TenantContext
 
-REQUIRED_CONSENT_PURPOSES = frozenset(ProcessingPurpose)
-
 
 class ApplicantAccessService:
     def __init__(
@@ -25,12 +25,15 @@ class ApplicantAccessService:
         outbox: Outbox,
         clock: Clock,
         *,
-        default_retention_days: int = 180,
+        consent_policy: ConsentPolicy = DEFAULT_CONSENT_POLICY,
     ) -> None:
         self._repository = repository
         self._outbox = outbox
         self._clock = clock
-        self._default_retention_days = default_retention_days
+        self._consent_policy = consent_policy
+
+    def get_consent_policy(self) -> ConsentPolicy:
+        return self._consent_policy
 
     def verify_identity(
         self,
@@ -74,8 +77,13 @@ class ApplicantAccessService:
         consent_content_digest: str,
     ) -> ConsentRecord:
         purposes = frozenset(accepted_purposes)
-        if purposes != REQUIRED_CONSENT_PURPOSES:
+        if purposes != self._consent_policy.required_purposes:
             raise ValueError("all required consent purposes must be accepted")
+        if (
+            policy_version != self._consent_policy.policy_version
+            or consent_content_digest != self._consent_policy.content_digest
+        ):
+            raise ValueError("consent policy version or digest is stale")
         invitation = self._repository.get_invitation(context, principal.invitation_id)
         consent = ConsentRecord.accept(
             consent_record_id=new_uuid7(self._clock.now()),
@@ -83,7 +91,7 @@ class ApplicantAccessService:
             invitation_id=principal.invitation_id,
             policy_version=policy_version,
             purposes=tuple(purposes),
-            retention_days=self._default_retention_days,
+            retention_days=self._consent_policy.retention_days,
             accepted_at=self._clock.now(),
             evidence_digest=consent_content_digest,
         )

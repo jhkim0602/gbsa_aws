@@ -52,6 +52,27 @@ class ConsentCreate(BaseModel):
     consent_content_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
+class ConsentPolicyPurposeView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    purpose: ProcessingPurpose
+    title: str
+    description: str
+
+
+class ConsentPolicyView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    policy_version: str
+    ai_role: str
+    recording_notice: str
+    processing_purposes: list[ConsentPolicyPurposeView]
+    retention_days: int
+    deletion_method: str
+    required_purposes: list[ProcessingPurpose]
+    content_digest: str
+
+
 class ConsentView(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -185,6 +206,37 @@ def create_applicant_router(
             state=invitation.status.value,
             expires_at=invitation.expires_at,
             required_actions=["consent"],
+        )
+
+    @router.get(
+        "/applicant/consents",
+        response_model=ConsentPolicyView,
+        operation_id="getApplicantConsentPolicy",
+    )
+    def get_applicant_consent_policy(
+        request: Request,
+        session_cookie: Annotated[
+            str | None,
+            Cookie(alias="iep_applicant_session"),
+        ] = None,
+    ) -> ConsentPolicyView:
+        applicant_scope(request, session_cookie)
+        policy = access_service.get_consent_policy()
+        return ConsentPolicyView(
+            policy_version=policy.policy_version,
+            ai_role=policy.ai_role,
+            recording_notice=policy.recording_notice,
+            processing_purposes=[
+                ConsentPolicyPurposeView.model_validate(item.model_dump())
+                for item in policy.processing_purposes
+            ],
+            retention_days=policy.retention_days,
+            deletion_method=policy.deletion_method,
+            required_purposes=sorted(
+                policy.required_purposes,
+                key=lambda purpose: purpose.value,
+            ),
+            content_digest=policy.content_digest,
         )
 
     @router.post(

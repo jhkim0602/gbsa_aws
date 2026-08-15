@@ -144,9 +144,9 @@ def build_consented_invitation() -> tuple[
     access_service.record_consent(
         applicant_context,
         applicant_principal,
-        policy_version="2026-08-v1",
+        policy_version=access_service.get_consent_policy().policy_version,
         accepted_purposes=tuple(ProcessingPurpose),
-        consent_content_digest="a" * 64,
+        consent_content_digest=access_service.get_consent_policy().content_digest,
     )
     return repository, CompanyManagementPublic(repository, clock), applicant_principal
 

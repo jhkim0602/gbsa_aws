@@ -31,6 +31,7 @@ EXPECTED_OPERATIONS = {
     "exchangeApplicantInvitationToken",
     "revokeApplicantSession",
     "verifyApplicantIdentity",
+    "getApplicantConsentPolicy",
     "recordApplicantConsent",
 }
 
