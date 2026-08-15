@@ -37,7 +37,11 @@ def _upgrade(database_url: str) -> None:
 
 def _runtime(database_url: str):
     return create_production_runtime(
-        {"APP_ENVIRONMENT": "stage", "DATABASE_URL": database_url},
+        {
+            "APP_ENVIRONMENT": "stage",
+            "DATABASE_URL": database_url,
+            "APPLICANT_ACCESS_BASE_URL": "https://applicant.stage.example/access",
+        },
         principal_provider=FakePrincipalProvider(
             company_principals={
                 "company-token": CompanyPrincipal(

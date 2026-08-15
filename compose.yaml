@@ -33,6 +33,7 @@ x-runtime-environment: &runtime-environment
   LOCAL_COMPANY_TOKEN: local-company-token
   LOCAL_COMPANY_ID: 00000000-0000-7000-8000-000000000001
   LOCAL_COMPANY_USER_ID: 00000000-0000-7000-8000-000000000002
+  APPLICANT_ACCESS_BASE_URL: http://localhost:${APPLICANT_INTERVIEW_PORT:-5174}/access
 
 services:
   postgres:

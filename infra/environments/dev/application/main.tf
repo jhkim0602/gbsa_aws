@@ -121,26 +121,27 @@ module "compute" {
     values(local.workflow.queue_arns),
   )
   task_environment = {
-    APP_ENVIRONMENT          = "dev"
-    AWS_REGION               = var.aws_region
-    AURORA_DATABASE          = local.data.aurora_database_name
-    AURORA_ENDPOINT          = local.data.aurora_endpoint
-    AURORA_MASTER_SECRET_ARN = local.data.aurora_master_secret_arn
-    BEDROCK_GUARDRAIL_ID     = local.ai_search.guardrail_id
-    BEDROCK_MODEL_ID         = var.interview_model_id
-    COGNITO_USER_POOL_ID     = data.terraform_remote_state.foundation.outputs.identity.user_pool_id
-    DYNAMODB_TABLE_NAME      = local.data.dynamodb_table_name
-    EVENT_BUS_ARN            = local.workflow.event_bus_arn
-    KMS_KEY_ARN              = local.data.kms_key_arn
-    MEDIA_BUCKET             = local.data.bucket_ids["media"]
-    OPENSEARCH_ENDPOINT      = local.ai_search.collection_endpoint
-    OPENSEARCH_INDEX_NAME    = local.ai_search.vector_index_name
-    SES_FROM_ADDRESS         = "noreply@${var.company_domain}"
-    SOURCE_BUCKET            = local.data.bucket_ids["source"]
-    SQS_ANALYSIS_QUEUE_URL   = local.workflow.queue_urls["analysis"]
-    SQS_DELETION_QUEUE_URL   = local.workflow.queue_urls["deletion"]
-    SQS_MEDIA_QUEUE_URL      = local.workflow.queue_urls["media"]
-    SQS_REPORTING_QUEUE_URL  = local.workflow.queue_urls["reporting"]
+    APPLICANT_ACCESS_BASE_URL = "https://${var.applicant_domain}/access"
+    APP_ENVIRONMENT           = "dev"
+    AWS_REGION                = var.aws_region
+    AURORA_DATABASE           = local.data.aurora_database_name
+    AURORA_ENDPOINT           = local.data.aurora_endpoint
+    AURORA_MASTER_SECRET_ARN  = local.data.aurora_master_secret_arn
+    BEDROCK_GUARDRAIL_ID      = local.ai_search.guardrail_id
+    BEDROCK_MODEL_ID          = var.interview_model_id
+    COGNITO_USER_POOL_ID      = data.terraform_remote_state.foundation.outputs.identity.user_pool_id
+    DYNAMODB_TABLE_NAME       = local.data.dynamodb_table_name
+    EVENT_BUS_ARN             = local.workflow.event_bus_arn
+    KMS_KEY_ARN               = local.data.kms_key_arn
+    MEDIA_BUCKET              = local.data.bucket_ids["media"]
+    OPENSEARCH_ENDPOINT       = local.ai_search.collection_endpoint
+    OPENSEARCH_INDEX_NAME     = local.ai_search.vector_index_name
+    SES_FROM_ADDRESS          = "noreply@${var.company_domain}"
+    SOURCE_BUCKET             = local.data.bucket_ids["source"]
+    SQS_ANALYSIS_QUEUE_URL    = local.workflow.queue_urls["analysis"]
+    SQS_DELETION_QUEUE_URL    = local.workflow.queue_urls["deletion"]
+    SQS_MEDIA_QUEUE_URL       = local.workflow.queue_urls["media"]
+    SQS_REPORTING_QUEUE_URL   = local.workflow.queue_urls["reporting"]
   }
   tags = local.tags
 }

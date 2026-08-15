@@ -152,6 +152,7 @@ def create_production_runtime(
     speech_to_text: SpeechToText | None = None,
     text_to_speech: TextToSpeech | None = None,
 ) -> LocalRuntime:
+    applicant_access_base_url = _applicant_access_base_url(environment)
     aws = None
     if (
         principal_provider is None
@@ -206,6 +207,7 @@ def create_production_runtime(
         outbox=outbox,
         idempotency=resource_idempotency,
         email_sender=email_sender,
+        applicant_access_base_url=applicant_access_base_url,
     )
 
     class RuntimePrincipalProvider:
@@ -354,6 +356,7 @@ def create_production_runtime(
                 hiring_service=lane_a.hiring_service,
                 audit=audit,
                 invitation_email=InvitationEmailHandler(lane_a.email_sender),
+                applicant_access_base_url=applicant_access_base_url,
             ),
             create_company_applicant_router(
                 sessions=lane_a.sessions,
@@ -428,3 +431,10 @@ def create_production_runtime(
             "queues": active_queues,
         },
     )
+
+
+def _applicant_access_base_url(environment: Mapping[str, str]) -> str:
+    value = environment.get("APPLICANT_ACCESS_BASE_URL", "").strip()
+    if not value.startswith(("https://", "http://")) or "?" in value or "#" in value:
+        raise RuntimeError("valid APPLICANT_ACCESS_BASE_URL is required")
+    return value.rstrip("/")

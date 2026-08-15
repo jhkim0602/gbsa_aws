@@ -184,6 +184,7 @@ def test_application_roots_pass_complete_production_adapter_configuration() -> N
         "SQS_MEDIA_QUEUE_URL",
         "SQS_REPORTING_QUEUE_URL",
         "SQS_DELETION_QUEUE_URL",
+        "APPLICANT_ACCESS_BASE_URL",
     }
     for root in roots:
         source = read(root)
