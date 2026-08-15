@@ -317,7 +317,7 @@ decisions and cannot complete deletion while any target remains.
 - [x] T186 Integration — Add configuration-version regression runner and thresholds in `tests/regression/run_regression.py` (FR-051-FR-052, QG-12)
 - [x] T187 [P] Lane C — Add five-concurrent-session and long-running pipeline load scenarios in `tests/load/interview_load.py` (SC-007, SC-013)
 - [x] T188 [P] Lane D — Add Evidence seek performance measurement in `tests/load/evidence_seek.py` (SC-012)
-- [ ] T189 Integration — Add stage CloudFront-to-AWS-service smoke journey in `tests/e2e/test_stage_smoke.py` (QG-13-QG-14)
+- [x] T189 Integration — Add stage CloudFront-to-AWS-service smoke journey in `tests/e2e/test_stage_smoke.py` (QG-13-QG-14)
 - [ ] T190 Integration — Run and record every command/outcome from `specs/001-interview-evidence-platform/quickstart.md`
 - [ ] T191 Integration — Record FR/SC/QG-to-test coverage and zero unresolved critical gaps in `specs/001-interview-evidence-platform/validation-report.md`
 - [ ] T192 Integration — Run `$speckit-converge` and append every remaining spec/plan/code gap to `specs/001-interview-evidence-platform/tasks.md`
