@@ -170,7 +170,11 @@ def test_sqs_long_poll_delivery_can_be_acknowledged_or_retried() -> None:
     client = RecordingClient(
         {"receive_message": {"Messages": [{"ReceiptHandle": "receipt-1", "Body": body}]}}
     )
-    queue = AwsSqsQueue(client, queue_url="https://sqs.invalid/analysis")
+    queue = AwsSqsQueue(
+        client,
+        queue_url="https://sqs.invalid/analysis",
+        wait_time_seconds=1,
+    )
 
     delivery = queue.receive(max_messages=1)[0]
     assert delivery.event_id == event_id
@@ -182,6 +186,7 @@ def test_sqs_long_poll_delivery_can_be_acknowledged_or_retried() -> None:
         "change_message_visibility",
         "delete_message",
     ]
+    assert client.calls[0][1]["WaitTimeSeconds"] == 1
 
 
 def test_sqs_readiness_and_depth_use_queue_attributes() -> None:

@@ -191,9 +191,18 @@ class AwsS3ObjectStorage(ObjectStorage):
 
 
 class AwsSqsQueue(ConsumableQueue):
-    def __init__(self, client: SqsClient, *, queue_url: str) -> None:
+    def __init__(
+        self,
+        client: SqsClient,
+        *,
+        queue_url: str,
+        wait_time_seconds: int = 2,
+    ) -> None:
+        if not 0 <= wait_time_seconds <= 20:
+            raise ValueError("SQS wait time must be between 0 and 20 seconds")
         self._client = client
         self._queue_url = queue_url
+        self._wait_time_seconds = wait_time_seconds
 
     def publish(
         self,
@@ -227,7 +236,7 @@ class AwsSqsQueue(ConsumableQueue):
             response = self._client.receive_message(
                 QueueUrl=self._queue_url,
                 MaxNumberOfMessages=max(1, min(max_messages, 10)),
-                WaitTimeSeconds=20,
+                WaitTimeSeconds=self._wait_time_seconds,
                 VisibilityTimeout=60,
             )
         except Exception as error:

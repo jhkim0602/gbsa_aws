@@ -118,10 +118,12 @@ def create_aws_runtime_dependencies(
         environment,
         cast(SecretsManagerClient, factory("secretsmanager")),
     )
+    sqs_wait_time_seconds = int(environment.get("SQS_WAIT_TIME_SECONDS", "2"))
     queues = {
         name: AwsSqsQueue(
             cast(SqsClient, factory("sqs")),
             queue_url=_required(environment, f"SQS_{name.upper()}_QUEUE_URL"),
+            wait_time_seconds=sqs_wait_time_seconds,
         )
         for name in ("analysis", "media", "reporting", "deletion")
     }

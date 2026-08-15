@@ -112,3 +112,8 @@ def test_make_compose_up_builds_and_waits_for_health() -> None:
     assert "docker compose up -d --build --wait" in makefile
     assert "test-local-production-parity:" in makefile
     assert "scripts/verify_local_production_parity.sh" in makefile
+
+    parity_script = (ROOT / "scripts" / "verify_local_production_parity.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "interview_evidence.runtime.parity worker-roundtrip" in parity_script

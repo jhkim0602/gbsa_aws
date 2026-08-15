@@ -21,6 +21,10 @@ from interview_evidence.runtime.local_production import (
     create_local_aws_runtime_dependencies,
 )
 from interview_evidence.shared.aws_clients.ports import ObjectStorage
+from interview_evidence.shared.database import RequestScopedDatabase
+from interview_evidence.shared.ids import SystemClock, new_uuid7
+from interview_evidence.shared.messaging.outbox import OutboxEvent
+from interview_evidence.shared.persistence import SQLOutbox, SQLProcessedMessageStore
 from interview_evidence.shared.tenant import ActorType, TenantContext
 from interview_evidence.submission_analysis.adapters.search import (
     SearchCandidate,
@@ -182,6 +186,55 @@ def run_aws_adapters(environment: Mapping[str, str]) -> dict[str, object]:
     }
 
 
+def run_worker_roundtrip(environment: Mapping[str, str]) -> dict[str, object]:
+    database = RequestScopedDatabase(_required(environment, "DATABASE_URL"))
+    clock = SystemClock()
+    occurred_at = clock.now()
+    event_id = new_uuid7(occurred_at)
+    probe_id = new_uuid7(occurred_at)
+    token = database.begin_scope()
+    try:
+        SQLOutbox(database.session).append(
+            OutboxEvent(
+                outbox_event_id=event_id,
+                company_id=LOCAL_COMPANY_ID,
+                aggregate_type="system_parity",
+                aggregate_id=probe_id,
+                aggregate_version=1,
+                event_type="system.parity_probe",
+                event_version=1,
+                payload={"probe_id": str(probe_id)},
+                idempotency_key=f"local-worker-parity-{event_id}",
+                trace_id=f"local-worker-parity-{event_id}",
+                occurred_at=occurred_at,
+            )
+        )
+        database.session.commit()
+    finally:
+        database.end_scope(token)
+
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        token = database.begin_scope()
+        try:
+            processed = SQLProcessedMessageStore(database.session).contains(
+                consumer_name="analysis-worker",
+                event_id=event_id,
+                event_version=1,
+            )
+        finally:
+            database.end_scope(token)
+        if processed:
+            return {
+                "phase": "worker-roundtrip",
+                "status": "ok",
+                "event_id": str(event_id),
+                "consumer": "analysis-worker",
+            }
+        time.sleep(0.25)
+    raise TimeoutError("worker parity event was not processed")
+
+
 def _wait_for_search_candidates(
     search: SearchIndex,
     context: TenantContext,
@@ -250,13 +303,17 @@ def _required(environment: Mapping[str, str], name: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("phase", choices=("write", "read", "adapters"))
+    parser.add_argument(
+        "phase",
+        choices=("write", "read", "adapters", "worker-roundtrip"),
+    )
     args = parser.parse_args()
     environment = dict(os.environ)
     runners = {
         "write": run_api_write,
         "read": run_api_read,
         "adapters": run_aws_adapters,
+        "worker-roundtrip": run_worker_roundtrip,
     }
     print(json.dumps(runners[args.phase](environment), sort_keys=True))
 

@@ -14,6 +14,8 @@ compose=(docker --context "${DOCKER_CONTEXT}" compose)
   uv run --no-sync python -m interview_evidence.runtime.parity read
 "${compose[@]}" exec -T api \
   uv run --no-sync python -m interview_evidence.runtime.parity adapters
+"${compose[@]}" exec -T api \
+  uv run --no-sync python -m interview_evidence.runtime.parity worker-roundtrip
 
 "${compose[@]}" stop opensearch
 ready_status="$(

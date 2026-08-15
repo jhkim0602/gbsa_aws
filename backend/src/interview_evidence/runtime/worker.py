@@ -48,6 +48,7 @@ from interview_evidence.workers.analysis.pipeline import SubmissionAnalysisPipel
 from interview_evidence.workers.reporting.report import CriterionInput, ReportGenerator
 
 EVENT_QUEUE_ROUTING = {
+    "system.parity_probe": "analysis",
     "invitation.consent_completed": "analysis",
     "submission.analysis_requested": "analysis",
     "submission.analysis_completed": "analysis",
@@ -63,6 +64,15 @@ EVENT_QUEUE_ROUTING = {
     "deletion.target_verified": "deletion",
     "retention.expired": "deletion",
 }
+
+
+class ParityProbeEventHandler:
+    def __call__(self, context: TenantContext, event: OutboxEvent) -> object:
+        context.assert_company(event.company_id)
+        probe_id = UUID(str(event.payload["probe_id"]))
+        if event.aggregate_type != "system_parity" or probe_id != event.aggregate_id:
+            raise ValueError("invalid parity probe event")
+        return {"probe_id": str(probe_id), "status": "processed"}
 
 
 @dataclass(slots=True)
@@ -278,10 +288,11 @@ def create_local_worker_runtime() -> WorkerRuntime:
         queues=queues,
         processed=InMemoryProcessedMessageStore(),
         handlers={
+            "system.parity_probe": ParityProbeEventHandler(),
             "submission.analysis_requested": AnalysisRequestedEventHandler(
                 lane_b,
                 analysis_handler,
-            )
+            ),
         },
         clock=SystemClock(),
     )
@@ -367,6 +378,7 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
         queues=aws.queues,
         processed=SQLProcessedMessageStore(database.session),
         handlers={
+            "system.parity_probe": ParityProbeEventHandler(),
             "submission.analysis_requested": AnalysisRequestedEventHandler(
                 lane_b,
                 analysis_handler,

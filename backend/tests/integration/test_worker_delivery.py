@@ -3,7 +3,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
-from interview_evidence.runtime.worker import create_environment_worker_runtime
+from interview_evidence.runtime.worker import (
+    EVENT_QUEUE_ROUTING,
+    ParityProbeEventHandler,
+    create_environment_worker_runtime,
+)
 from interview_evidence.shared.aws_clients.ports import InMemoryQueue
 from interview_evidence.shared.ids import FrozenClock
 from interview_evidence.shared.messaging.outbox import (
@@ -205,3 +209,41 @@ def test_worker_records_queue_depth_handler_latency_and_retry_outcome() -> None:
         record.name == "worker_delivery" and record.dimensions["outcome"] == "retrying"
         for record in metrics.records
     )
+
+
+def test_parity_probe_uses_real_worker_delivery_contract() -> None:
+    probe_event = _event().model_copy(
+        update={
+            "aggregate_type": "system_parity",
+            "event_type": "system.parity_probe",
+            "payload": {"probe_id": str(AGGREGATE_ID)},
+            "idempotency_key": "system-parity-probe-0001",
+        }
+    )
+    outbox = InMemoryOutbox()
+    queue = InMemoryQueue()
+    processed = InMemoryProcessedMessageStore()
+    outbox.append(probe_event)
+
+    dispatcher = OutboxDispatcher(
+        outbox=outbox,
+        queues={"analysis": queue},
+        routing=EVENT_QUEUE_ROUTING,
+    )
+    consumer = MessageConsumer(
+        consumer_name="analysis-worker",
+        queue_name="analysis",
+        queue=queue,
+        processed=processed,
+        handlers={"system.parity_probe": ParityProbeEventHandler()},
+        clock=FrozenClock(NOW),
+    )
+
+    assert dispatcher.dispatch_once() == 1
+    assert consumer.consume_once(max_messages=1) == 1
+    assert processed.contains(
+        consumer_name="analysis-worker",
+        event_id=EVENT_ID,
+        event_version=1,
+    )
+    assert EVENT_QUEUE_ROUTING["system.parity_probe"] == "analysis"
