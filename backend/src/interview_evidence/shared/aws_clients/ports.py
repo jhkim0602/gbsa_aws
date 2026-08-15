@@ -19,6 +19,9 @@ class UploadIntent:
     namespace: str
     byte_size: int
     sha256: str
+    object_key: str
+    url: str
+    required_headers: Mapping[str, str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +60,7 @@ class EmailMessage:
     company_id: UUID
     template_id: str
     recipient_ref: UUID
+    recipient_address_sha256: str
     template_data: Mapping[str, Any]
 
 
@@ -136,6 +140,7 @@ class EmailSender(Protocol):
         context: TenantContext,
         template_id: str,
         recipient_ref: UUID,
+        recipient_address: str,
         template_data: Mapping[str, Any],
     ) -> UUID: ...
 
@@ -163,6 +168,9 @@ class InMemoryObjectStorage:
             namespace=namespace,
             byte_size=byte_size,
             sha256=sha256,
+            object_key=(f"tenants/{tenant.company_id}/{namespace}/{self._ids.next()}"),
+            url="https://uploads.local/presigned",
+            required_headers={"x-amz-checksum-sha256": sha256},
         )
         self.intents.append(intent)
         return intent
@@ -278,6 +286,7 @@ class InMemoryEmailSender:
         context: TenantContext,
         template_id: str,
         recipient_ref: UUID,
+        recipient_address: str,
         template_data: Mapping[str, Any],
     ) -> UUID:
         tenant = require_tenant_context(context)
@@ -286,6 +295,9 @@ class InMemoryEmailSender:
             company_id=tenant.company_id,
             template_id=template_id,
             recipient_ref=recipient_ref,
+            recipient_address_sha256=sha256(
+                recipient_address.strip().casefold().encode("utf-8")
+            ).hexdigest(),
             template_data=deepcopy(dict(template_data)),
         )
         self.messages.append(message)

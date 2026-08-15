@@ -104,12 +104,15 @@ locals {
   tags = merge(var.tags, {
     Component = "compute"
   })
-  environment = [
+  environment = concat([
     for key, value in var.task_environment : {
       name  = key
       value = value
     }
-  ]
+    ], [{
+      name  = "MEDIACONVERT_ROLE_ARN"
+      value = aws_iam_role.media_convert.arn
+  }])
   effective_task_role_arn = (
     var.create_task_role ? aws_iam_role.task[0].arn : var.task_role_arn
   )
@@ -209,6 +212,42 @@ resource "aws_iam_role" "task" {
   tags = local.tags
 }
 
+resource "aws_iam_role" "media_convert" {
+  name = "${var.name}-media-convert"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "mediaconvert.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+  tags = local.tags
+}
+
+resource "aws_iam_role_policy" "media_convert" {
+  name = "tenant-media-read-write"
+  role = aws_iam_role.media_convert.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+        ]
+        Resource = var.data_resource_arns
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
+        Resource = var.kms_key_arns
+      },
+    ]
+  })
+}
+
 resource "aws_iam_role_policy" "task" {
   name = "application-boundaries"
   role = local.effective_task_role_name
@@ -247,8 +286,13 @@ resource "aws_iam_role_policy" "task" {
           "bedrock:InvokeModel",
           "bedrock:InvokeModelWithResponseStream",
           "bedrock:Retrieve",
+          "cognito-idp:GetUser",
+          "mediaconvert:CreateJob",
           "polly:SynthesizeSpeech",
+          "ses:SendEmail",
           "textract:AnalyzeDocument",
+          "transcribe:GetTranscriptionJob",
+          "transcribe:StartTranscriptionJob",
           "transcribe:StartStreamTranscription",
         ]
         Resource = "*"
@@ -257,6 +301,12 @@ resource "aws_iam_role_policy" "task" {
             "aws:RequestedRegion" = data.aws_region.current.name
           }
         }
+      },
+      {
+        Sid      = "PassMediaConvertRole"
+        Effect   = "Allow"
+        Action   = ["iam:PassRole"]
+        Resource = aws_iam_role.media_convert.arn
       },
       {
         Sid      = "DecryptRuntimeData"
@@ -532,4 +582,8 @@ output "worker_repository_url" {
 
 output "task_role_arn" {
   value = local.effective_task_role_arn
+}
+
+output "media_convert_role_arn" {
+  value = aws_iam_role.media_convert.arn
 }

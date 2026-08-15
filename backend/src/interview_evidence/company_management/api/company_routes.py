@@ -431,6 +431,7 @@ def create_company_router(
                     InvitationEmailCommand(
                         invitation_id=issuance.invitation.invitation_id,
                         applicant_ref=issuance.invitation.applicant_id,
+                        recipient_address=issuance.invitation.applicant_email,
                         invitation_url=(
                             f"{applicant_access_base_url}?token={issuance.token.raw_token}"
                         ),

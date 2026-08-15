@@ -49,6 +49,8 @@ def test_deterministic_ports_keep_tenant_scope_and_record_calls() -> None:
     result = model.generate(context, {"criterion_id": "criterion-1"})
 
     assert upload.company_id == context.company_id
+    assert str(context.company_id) in upload.object_key
+    assert upload.required_headers["x-amz-checksum-sha256"] == "a" * 64
     assert queue.messages[0].company_id == context.company_id
     assert hits[0].company_id == context.company_id
     assert result == {"question": "설계 선택을 설명해 주세요."}
@@ -68,6 +70,7 @@ def test_speech_and_email_fakes_are_deterministic_and_tenant_scoped() -> None:
         context,
         "invitation-v1",
         UUID("00000000-0000-7000-8000-000000000011"),
+        "applicant@example.com",
         {"invitation_id": "00000000-0000-7000-8000-000000000012"},
     )
 
@@ -76,4 +79,5 @@ def test_speech_and_email_fakes_are_deterministic_and_tenant_scoped() -> None:
     assert speech_to_text.calls[0].company_id == context.company_id
     assert text_to_speech.calls[0].company_id == context.company_id
     assert email.messages[0].company_id == context.company_id
+    assert email.messages[0].recipient_address_sha256
     assert message_id == email.messages[0].message_id

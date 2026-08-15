@@ -4,7 +4,7 @@ from uuid import UUID
 
 from interview_evidence.shared.aws_clients.ports import AIModel
 from interview_evidence.shared.ids import Clock, new_uuid7
-from interview_evidence.shared.messaging.outbox import InMemoryOutbox, OutboxEvent
+from interview_evidence.shared.messaging.outbox import Outbox, OutboxEvent
 from interview_evidence.shared.tenant import TenantContext
 from interview_evidence.submission_analysis.domain.source import (
     SourceReferenceCandidate,
@@ -30,7 +30,7 @@ class StrategyService:
         *,
         model_config_version: str,
         repository: SubmissionRepository | None = None,
-        outbox: InMemoryOutbox | None = None,
+        outbox: Outbox | None = None,
         clock: Clock | None = None,
     ) -> None:
         if any(value is not None for value in (repository, outbox, clock)) and not all(

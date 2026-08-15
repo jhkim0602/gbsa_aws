@@ -29,11 +29,12 @@ run "stage_equivalent_local_plan" {
   }
 
   variables {
-    hosted_zone_id   = "Z0000000000000000000"
-    company_domain   = "company.stage.example.com"
-    applicant_domain = "applicant.stage.example.com"
-    api_image        = "000000000000.dkr.ecr.ap-northeast-2.amazonaws.com/iep-api:local"
-    worker_image     = "000000000000.dkr.ecr.ap-northeast-2.amazonaws.com/iep-worker:local"
+    hosted_zone_id     = "Z0000000000000000000"
+    company_domain     = "company.stage.example.com"
+    applicant_domain   = "applicant.stage.example.com"
+    api_image          = "000000000000.dkr.ecr.ap-northeast-2.amazonaws.com/iep-api:local"
+    worker_image       = "000000000000.dkr.ecr.ap-northeast-2.amazonaws.com/iep-worker:local"
+    interview_model_id = "local-model-id"
   }
 
   assert {

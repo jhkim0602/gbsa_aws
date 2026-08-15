@@ -1,0 +1,76 @@
+from __future__ import annotations
+
+import json
+
+import pytest
+from interview_evidence.runtime.aws import create_aws_runtime_dependencies
+
+
+class FakeClient:
+    def __init__(self, service: str) -> None:
+        self.service = service
+
+    def get_secret_value(self, *, SecretId: str) -> dict[str, object]:
+        assert SecretId == "secret-arn"
+        return {
+            "SecretString": json.dumps(
+                {
+                    "username": "platform",
+                    "password": "p@ss word",
+                    "port": 5432,
+                }
+            )
+        }
+
+
+def _environment() -> dict[str, str]:
+    return {
+        "AWS_REGION": "ap-northeast-2",
+        "AURORA_ENDPOINT": "database.internal",
+        "AURORA_DATABASE": "interview_evidence",
+        "AURORA_MASTER_SECRET_ARN": "secret-arn",
+        "SOURCE_BUCKET": "source-bucket",
+        "MEDIA_BUCKET": "media-bucket",
+        "KMS_KEY_ARN": "kms-key",
+        "DYNAMODB_TABLE_NAME": "interview-context",
+        "OPENSEARCH_ENDPOINT": "https://search.invalid",
+        "OPENSEARCH_INDEX_NAME": "candidate-source-v1",
+        "BEDROCK_MODEL_ID": "model-id",
+        "BEDROCK_GUARDRAIL_ID": "guardrail-id",
+        "SES_FROM_ADDRESS": "noreply@example.com",
+        "MEDIACONVERT_ROLE_ARN": "arn:aws:iam::123456789012:role/media",
+        "SQS_ANALYSIS_QUEUE_URL": "https://sqs.invalid/analysis",
+        "SQS_MEDIA_QUEUE_URL": "https://sqs.invalid/media",
+        "SQS_REPORTING_QUEUE_URL": "https://sqs.invalid/reporting",
+        "SQS_DELETION_QUEUE_URL": "https://sqs.invalid/deletion",
+    }
+
+
+def test_aws_runtime_factory_builds_all_production_dependencies() -> None:
+    dependencies = create_aws_runtime_dependencies(
+        _environment(),
+        client_factory=lambda service: FakeClient(service),
+    )
+    assert dependencies.database_url.startswith("postgresql+psycopg://platform:")
+    assert set(dependencies.queues) == {
+        "analysis",
+        "media",
+        "reporting",
+        "deletion",
+    }
+    assert dependencies.object_storage is not None
+    assert dependencies.recent_context is not None
+    assert dependencies.search_index is not None
+
+
+def test_aws_runtime_factory_fails_closed_when_configuration_is_missing() -> None:
+    environment = _environment()
+    environment.pop("SOURCE_BUCKET")
+    with pytest.raises(
+        RuntimeError,
+        match="required production setting is missing: SOURCE_BUCKET",
+    ):
+        create_aws_runtime_dependencies(
+            environment,
+            client_factory=lambda service: FakeClient(service),
+        )

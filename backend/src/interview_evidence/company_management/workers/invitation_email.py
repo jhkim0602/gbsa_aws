@@ -11,6 +11,7 @@ from interview_evidence.shared.tenant import TenantContext
 class InvitationEmailCommand:
     invitation_id: UUID
     applicant_ref: UUID
+    recipient_address: str = field(repr=False)
     invitation_url: str = field(repr=False)
 
     def __repr__(self) -> str:
@@ -18,6 +19,7 @@ class InvitationEmailCommand:
             "InvitationEmailCommand("
             f"invitation_id={self.invitation_id!r}, "
             f"applicant_ref={self.applicant_ref!r}, "
+            "recipient_address='[REDACTED]', "
             "invitation_url='[REDACTED]')"
         )
 
@@ -35,6 +37,7 @@ class InvitationEmailHandler:
             context,
             template_id="applicant-invitation-v1",
             recipient_ref=command.applicant_ref,
+            recipient_address=command.recipient_address,
             template_data={
                 "invitation_id": str(command.invitation_id),
                 "invitation_url": command.invitation_url,

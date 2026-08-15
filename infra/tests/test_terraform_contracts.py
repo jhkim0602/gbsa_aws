@@ -163,6 +163,44 @@ def test_application_roots_pass_secret_identifiers_without_secret_values() -> No
         assert "MIGRATION_DATABASE_URL" not in source
 
 
+def test_application_roots_pass_complete_production_adapter_configuration() -> None:
+    roots = (
+        ROOT / "environments" / "dev" / "application" / "main.tf",
+        ROOT / "environments" / "stage" / "main.tf",
+        ROOT / "environments" / "prod" / "main.tf",
+    )
+    required = {
+        "AWS_REGION",
+        "SOURCE_BUCKET",
+        "MEDIA_BUCKET",
+        "KMS_KEY_ARN",
+        "DYNAMODB_TABLE_NAME",
+        "OPENSEARCH_ENDPOINT",
+        "OPENSEARCH_INDEX_NAME",
+        "BEDROCK_MODEL_ID",
+        "BEDROCK_GUARDRAIL_ID",
+        "SES_FROM_ADDRESS",
+        "SQS_ANALYSIS_QUEUE_URL",
+        "SQS_MEDIA_QUEUE_URL",
+        "SQS_REPORTING_QUEUE_URL",
+        "SQS_DELETION_QUEUE_URL",
+    }
+    for root in roots:
+        source = read(root)
+        for name in required:
+            assert name in source, f"{root.parent.name} missing {name}"
+
+    compute = read(ROOT / "modules" / "compute" / "main.tf")
+    assert 'Principal = { Service = "mediaconvert.amazonaws.com" }' in compute
+    assert '"mediaconvert:CreateJob"' in compute
+    assert '"iam:PassRole"' in compute
+    assert '"transcribe:StartTranscriptionJob"' in compute
+    assert '"transcribe:GetTranscriptionJob"' in compute
+    assert '"cognito-idp:GetUser"' in compute
+    assert '"ses:SendEmail"' in compute
+    assert "MEDIACONVERT_ROLE_ARN" in compute
+
+
 def test_async_ai_identity_and_audit_resources_enforce_safety_controls() -> None:
     async_workflow = read(ROOT / "modules" / "async-workflow" / "main.tf")
     ai_search = read(ROOT / "modules" / "ai-search" / "main.tf")

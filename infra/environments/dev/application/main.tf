@@ -44,6 +44,10 @@ variable "worker_image" {
   type = string
 }
 
+variable "interview_model_id" {
+  type = string
+}
+
 provider "aws" {
   region = var.aws_region
 
@@ -82,9 +86,10 @@ data "terraform_remote_state" "data_ai" {
 }
 
 locals {
-  name     = data.terraform_remote_state.foundation.outputs.name
-  data     = data.terraform_remote_state.data_ai.outputs.data
-  workflow = data.terraform_remote_state.data_ai.outputs.workflow
+  name      = data.terraform_remote_state.foundation.outputs.name
+  data      = data.terraform_remote_state.data_ai.outputs.data
+  workflow  = data.terraform_remote_state.data_ai.outputs.workflow
+  ai_search = data.terraform_remote_state.data_ai.outputs.ai_search
   tags = {
     Environment = "dev"
   }
@@ -117,12 +122,25 @@ module "compute" {
   )
   task_environment = {
     APP_ENVIRONMENT          = "dev"
+    AWS_REGION               = var.aws_region
     AURORA_DATABASE          = local.data.aurora_database_name
     AURORA_ENDPOINT          = local.data.aurora_endpoint
     AURORA_MASTER_SECRET_ARN = local.data.aurora_master_secret_arn
+    BEDROCK_GUARDRAIL_ID     = local.ai_search.guardrail_id
+    BEDROCK_MODEL_ID         = var.interview_model_id
     COGNITO_USER_POOL_ID     = data.terraform_remote_state.foundation.outputs.identity.user_pool_id
-    DYNAMODB_TABLE_ARN       = local.data.dynamodb_table_arn
+    DYNAMODB_TABLE_NAME      = local.data.dynamodb_table_name
     EVENT_BUS_ARN            = local.workflow.event_bus_arn
+    KMS_KEY_ARN              = local.data.kms_key_arn
+    MEDIA_BUCKET             = local.data.bucket_ids["media"]
+    OPENSEARCH_ENDPOINT      = local.ai_search.collection_endpoint
+    OPENSEARCH_INDEX_NAME    = local.ai_search.vector_index_name
+    SES_FROM_ADDRESS         = "noreply@${var.company_domain}"
+    SOURCE_BUCKET            = local.data.bucket_ids["source"]
+    SQS_ANALYSIS_QUEUE_URL   = local.workflow.queue_urls["analysis"]
+    SQS_DELETION_QUEUE_URL   = local.workflow.queue_urls["deletion"]
+    SQS_MEDIA_QUEUE_URL      = local.workflow.queue_urls["media"]
+    SQS_REPORTING_QUEUE_URL  = local.workflow.queue_urls["reporting"]
   }
   tags = local.tags
 }

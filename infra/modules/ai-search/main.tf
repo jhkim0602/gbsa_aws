@@ -289,3 +289,7 @@ output "guardrail_id" {
 output "index_mapping_parameter_arn" {
   value = aws_ssm_parameter.index_mapping.arn
 }
+
+output "vector_index_name" {
+  value = var.vector_index_name
+}

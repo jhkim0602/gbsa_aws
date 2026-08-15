@@ -13,9 +13,11 @@ def test_invitation_email_command_redacts_the_raw_token_from_representations() -
     applicant_id = UUID("00000000-0000-7000-8000-000000000002")
     company_id = UUID("00000000-0000-7000-8000-000000000003")
     secret_url = "https://applicant.example/access?token=secret-invitation-token"
+    recipient_address = "applicant@example.com"
     command = InvitationEmailCommand(
         invitation_id=invitation_id,
         applicant_ref=applicant_id,
+        recipient_address=recipient_address,
         invitation_url=secret_url,
     )
     sender = InMemoryEmailSender()
@@ -29,6 +31,8 @@ def test_invitation_email_command_redacts_the_raw_token_from_representations() -
     )
 
     assert "secret-invitation-token" not in repr(command)
+    assert recipient_address not in repr(command)
     handler.handle(context, command)
     assert sender.messages[0].template_data["invitation_url"] == secret_url
     assert sender.messages[0].company_id == company_id
+    assert sender.messages[0].recipient_address_sha256

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Protocol
 from uuid import UUID
 
 from interview_evidence.shared.tenant import TenantContext, require_tenant_context
@@ -26,6 +27,22 @@ class SearchCandidate:
     vector_score: float
     lexical_score: float
     exact_symbol_score: float
+
+
+class SearchIndex(Protocol):
+    def add(self, document: SearchDocument) -> None: ...
+
+    def delete(self, context: TenantContext, document_id: str) -> bool: ...
+
+    def candidates(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        query: str,
+        query_vector: tuple[float, ...],
+        exact_symbol: str | None,
+    ) -> tuple[SearchCandidate, ...]: ...
 
 
 class InMemorySearchIndex:

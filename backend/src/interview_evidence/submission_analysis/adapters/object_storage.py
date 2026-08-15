@@ -7,6 +7,11 @@ from uuid import UUID
 from interview_evidence.shared.aws_clients.ports import ObjectStorage
 from interview_evidence.shared.ids import Clock, SystemClock
 from interview_evidence.shared.tenant import TenantContext
+from interview_evidence.shared.uploads import (
+    InMemoryUploadIntentStore,
+    StoredUploadIntent,
+    UploadIntentStore,
+)
 
 
 class UploadIntentNotFound(PermissionError):
@@ -38,11 +43,12 @@ class ScopedSubmissionStorage:
         *,
         clock: Clock | None = None,
         upload_ttl: timedelta = timedelta(minutes=15),
+        intent_store: UploadIntentStore | None = None,
     ) -> None:
         self._storage = storage
         self._clock = clock or SystemClock()
         self._upload_ttl = upload_ttl
-        self._intents: dict[UUID, ScopedUploadIntent] = {}
+        self._intent_store = intent_store or InMemoryUploadIntentStore()
 
     def create_upload_intent(
         self,
@@ -63,7 +69,6 @@ class ScopedSubmissionStorage:
             byte_size,
             sha256,
         )
-        object_key = f"tenants/{context.company_id}/{namespace}/{base.object_id}"
         intent = ScopedUploadIntent(
             upload_id=base.object_id,
             company_id=context.company_id,
@@ -74,16 +79,33 @@ class ScopedSubmissionStorage:
             media_type=media_type,
             byte_size=byte_size,
             sha256=sha256,
-            object_key=object_key,
+            object_key=base.object_key,
             method="PUT",
-            url=f"https://uploads.local/{base.object_id}",
+            url=base.url,
             required_headers={
+                **base.required_headers,
                 "content-type": media_type,
-                "x-amz-checksum-sha256": sha256,
             },
             expires_at=self._clock.now() + self._upload_ttl,
         )
-        self._intents[intent.upload_id] = intent
+        self._intent_store.save(
+            StoredUploadIntent(
+                upload_id=intent.upload_id,
+                company_id=intent.company_id,
+                invitation_id=intent.invitation_id,
+                applicant_id=intent.applicant_id,
+                source_type=intent.source_type,
+                original_filename=intent.original_filename,
+                media_type=intent.media_type,
+                byte_size=intent.byte_size,
+                sha256=intent.sha256,
+                object_key=intent.object_key,
+                method=intent.method,
+                url=intent.url,
+                required_headers=intent.required_headers,
+                expires_at=intent.expires_at,
+            )
+        )
         return intent
 
     def resolve(
@@ -93,25 +115,25 @@ class ScopedSubmissionStorage:
         upload_id: UUID,
         applicant_id: UUID,
     ) -> ScopedUploadIntent:
-        intent = self._intents.get(upload_id)
-        if (
-            intent is None
-            or intent.company_id != context.company_id
-            or intent.applicant_id != applicant_id
-            or self._clock.now() >= intent.expires_at
-        ):
+        intent = self._intent_store.get(context, upload_id, applicant_id)
+        if intent is None or self._clock.now() >= intent.expires_at:
             raise UploadIntentNotFound("upload intent not found")
-        return intent
+        return ScopedUploadIntent(
+            upload_id=intent.upload_id,
+            company_id=intent.company_id,
+            invitation_id=intent.invitation_id,
+            applicant_id=intent.applicant_id,
+            source_type=intent.source_type,
+            original_filename=intent.original_filename,
+            media_type=intent.media_type,
+            byte_size=intent.byte_size,
+            sha256=intent.sha256,
+            object_key=intent.object_key,
+            method=intent.method,
+            url=intent.url,
+            required_headers=intent.required_headers,
+            expires_at=intent.expires_at,
+        )
 
     def delete_object_key(self, context: TenantContext, object_key: str) -> bool:
-        matches = [
-            upload_id
-            for upload_id, intent in self._intents.items()
-            if intent.company_id == context.company_id and intent.object_key == object_key
-        ]
-        for upload_id in matches:
-            self._intents.pop(upload_id, None)
-        return not any(
-            intent.company_id == context.company_id and intent.object_key == object_key
-            for intent in self._intents.values()
-        )
+        return self._intent_store.delete(context, object_key)

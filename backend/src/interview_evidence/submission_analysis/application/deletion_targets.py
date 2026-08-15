@@ -9,7 +9,7 @@ from interview_evidence.shared.tenant import TenantContext
 from interview_evidence.submission_analysis.adapters.object_storage import (
     ScopedSubmissionStorage,
 )
-from interview_evidence.submission_analysis.adapters.search import InMemorySearchIndex
+from interview_evidence.submission_analysis.adapters.search import SearchIndex
 from interview_evidence.submission_analysis.repositories.postgres import (
     SubmissionRepository,
 )
@@ -49,7 +49,7 @@ class InMemorySubmissionTargetDeleter:
         *,
         repository: SubmissionRepository | None = None,
         storage: ScopedSubmissionStorage | None = None,
-        search_index: InMemorySearchIndex | None = None,
+        search_index: SearchIndex | None = None,
     ) -> None:
         self.calls: list[SubmissionDeletionTarget] = []
         self._receipts: dict[tuple[UUID, str], SubmissionDeletionReceipt] = {}

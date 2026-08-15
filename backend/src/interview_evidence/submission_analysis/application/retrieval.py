@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from interview_evidence.shared.tenant import TenantContext
-from interview_evidence.submission_analysis.adapters.search import InMemorySearchIndex
+from interview_evidence.submission_analysis.adapters.search import SearchIndex
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,7 +28,7 @@ class RetrievalResult:
 class HybridRetriever:
     def __init__(
         self,
-        index: InMemorySearchIndex,
+        index: SearchIndex,
         config: HybridRetrievalConfig,
     ) -> None:
         self._index = index

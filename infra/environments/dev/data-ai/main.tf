@@ -120,6 +120,7 @@ output "data" {
     aurora_master_secret_arn     = module.data.aurora_master_secret_arn
     application_secret_arn       = module.data.application_secret_arn
     dynamodb_table_arn           = module.data.dynamodb_table_arn
+    dynamodb_table_name          = module.data.dynamodb_table_name
   }
   sensitive = true
 }
@@ -140,6 +141,7 @@ output "ai_search" {
     collection_endpoint         = module.ai_search.collection_endpoint
     knowledge_base_id           = module.ai_search.knowledge_base_id
     guardrail_id                = module.ai_search.guardrail_id
+    vector_index_name           = module.ai_search.vector_index_name
     index_mapping_parameter_arn = module.ai_search.index_mapping_parameter_arn
   }
 }

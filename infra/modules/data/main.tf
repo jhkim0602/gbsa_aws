@@ -261,3 +261,7 @@ output "application_secret_arn" {
 output "dynamodb_table_arn" {
   value = aws_dynamodb_table.interview_context.arn
 }
+
+output "dynamodb_table_name" {
+  value = aws_dynamodb_table.interview_context.name
+}
