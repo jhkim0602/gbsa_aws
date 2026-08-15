@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from uuid import UUID
 
 from fastapi import APIRouter, FastAPI, Request, Response
 from starlette.middleware.base import RequestResponseEndpoint
+from starlette.types import Receive, Scope, Send
 
 from interview_evidence.shared.ids import new_uuid7
 from interview_evidence.shared.observability import (
@@ -61,4 +63,259 @@ def _request_id(candidate: str | None) -> str:
     return str(new_uuid7())
 
 
-app = create_app()
+@dataclass(frozen=True, slots=True)
+class LocalRuntime:
+    app: FastAPI
+    lanes: Mapping[str, object]
+    boundaries: Mapping[str, object]
+    worker_handlers: Mapping[str, object]
+
+
+def create_local_runtime() -> LocalRuntime:
+    from interview_evidence.company_management.adapters.company_auth import CompanyAuthAdapter
+    from interview_evidence.company_management.api import create_lane_a_runtime
+    from interview_evidence.company_management.api.applicant_routes import (
+        create_applicant_router as create_company_applicant_router,
+    )
+    from interview_evidence.company_management.api.company_routes import (
+        create_company_router as create_hiring_router,
+    )
+    from interview_evidence.company_management.application.company_service import (
+        CompanyManagementPublic,
+    )
+    from interview_evidence.company_management.workers.invitation_email import (
+        InvitationEmailHandler,
+    )
+    from interview_evidence.integration.company_submission import (
+        CompanySubmissionAuthorization,
+    )
+    from interview_evidence.integration.interview_reporting import (
+        InterviewReportingBoundary,
+    )
+    from interview_evidence.integration.reporting_company import (
+        ReportingCompanyBoundary,
+    )
+    from interview_evidence.integration.submission_interview import (
+        SubmissionInterviewBoundary,
+    )
+    from interview_evidence.interview_engine.api import create_lane_c_runtime
+    from interview_evidence.interview_engine.api.applicant_routes import (
+        create_applicant_interview_router,
+    )
+    from interview_evidence.interview_engine.api.websocket import (
+        ProtocolStreamHandler,
+        create_interview_websocket_router,
+    )
+    from interview_evidence.interview_engine.application.deletion_targets import (
+        InMemoryInterviewTargetDeleter,
+        InterviewDeletionTargets,
+    )
+    from interview_evidence.interview_engine.application.public import InterviewEnginePublic
+    from interview_evidence.reporting.adapters.playback import ScopedPlaybackLocator
+    from interview_evidence.reporting.api import create_lane_d_runtime
+    from interview_evidence.reporting.api.company_routes import (
+        create_company_router as create_reporting_router,
+    )
+    from interview_evidence.reporting.application.evidence_service import EvidenceService
+    from interview_evidence.reporting.application.public import ReportingPublic
+    from interview_evidence.reporting.application.transcript_service import TranscriptService
+    from interview_evidence.shared.audit import InMemoryAuditAppender
+    from interview_evidence.shared.aws_clients.ports import InMemoryObjectStorage
+    from interview_evidence.shared.ids import SystemClock
+    from interview_evidence.shared.security.principals import (
+        ApplicantPrincipal,
+        CompanyPrincipal,
+        FakePrincipalProvider,
+        PrincipalProvider,
+    )
+    from interview_evidence.shared.tenant import TenantContext
+    from interview_evidence.submission_analysis.adapters.search import InMemorySearchIndex
+    from interview_evidence.submission_analysis.api import create_lane_b_runtime
+    from interview_evidence.submission_analysis.api.applicant_routes import (
+        create_applicant_submission_router,
+    )
+    from interview_evidence.submission_analysis.application.deletion_targets import (
+        InMemorySubmissionTargetDeleter,
+        SubmissionDeletionTargets,
+    )
+    from interview_evidence.submission_analysis.application.public import (
+        SubmissionAnalysisPublic,
+    )
+    from interview_evidence.submission_analysis.application.retrieval import (
+        HybridRetrievalConfig,
+        HybridRetriever,
+    )
+    from interview_evidence.workers.analysis.handlers import (
+        AnalysisJob,
+        AnalysisJobHandler,
+        AnalysisResult,
+        JobStatus,
+    )
+    from interview_evidence.workers.reporting.media import MediaPostProcessor
+    from interview_evidence.workers.reporting.report import ReportGenerator
+
+    clock = SystemClock()
+    audit = InMemoryAuditAppender()
+    object_storage = InMemoryObjectStorage()
+    company_principals = FakePrincipalProvider()
+    lane_a = create_lane_a_runtime(
+        principal_provider=company_principals,
+        audit=audit,
+        clock=clock,
+    )
+
+    class RuntimePrincipalProvider:
+        def __init__(self, company_provider: PrincipalProvider) -> None:
+            self._company_provider = company_provider
+
+        def get_company_principal(self, credential: str) -> CompanyPrincipal:
+            return self._company_provider.get_company_principal(credential)
+
+        def get_applicant_principal(self, credential: str) -> ApplicantPrincipal:
+            return lane_a.sessions.get_applicant_principal(credential)
+
+    principals = RuntimePrincipalProvider(company_principals)
+    company_public = CompanyManagementPublic(lane_a.repository, clock)
+    company_submission = CompanySubmissionAuthorization(company_public)
+    lane_b = create_lane_b_runtime(
+        principal_provider=principals,
+        authorization=company_submission,
+        object_storage=object_storage,
+        audit=audit,
+        clock=clock,
+    )
+    submission_public = SubmissionAnalysisPublic(
+        repository=lane_b.repository,
+        retriever=HybridRetriever(InMemorySearchIndex(), HybridRetrievalConfig()),
+        deletion_targets=SubmissionDeletionTargets(lane_b.repository),
+        target_deleter=InMemorySubmissionTargetDeleter(),
+    )
+    submission_interview = SubmissionInterviewBoundary(submission_public)
+    lane_c = create_lane_c_runtime(
+        principal_provider=principals,
+        authorization=submission_interview,
+        object_storage=object_storage,
+        audit=audit,
+        clock=clock,
+    )
+    lane_d = create_lane_d_runtime(
+        principal_provider=principals,
+        audit=audit,
+        clock=clock,
+    )
+
+    interview_public = InterviewEnginePublic(
+        repository=lane_c.repository,
+        deletion_targets=InterviewDeletionTargets(lane_c.repository),
+        target_deleter=InMemoryInterviewTargetDeleter(),
+    )
+    media_processor = MediaPostProcessor(lane_d.repository)
+    interview_reporting = InterviewReportingBoundary(
+        interview=interview_public,
+        transcript_service=TranscriptService(lane_d.repository),
+        media_processor=media_processor,
+    )
+    reporting_public = ReportingPublic(
+        repository=lane_d.repository,
+        deletion_service=lane_d.deletion_service,
+    )
+    reporting_company = ReportingCompanyBoundary(reporting_public)
+
+    class LocalAnalysisProcessor:
+        def process(
+            self,
+            _context: TenantContext,
+            job: AnalysisJob,
+        ) -> AnalysisResult:
+            return AnalysisResult(
+                status=JobStatus.READY,
+                analysis_id=new_uuid7(),
+                impact_code=None,
+            )
+
+    root = create_app(
+        [
+            create_hiring_router(
+                auth=CompanyAuthAdapter(company_principals),
+                company_service=lane_a.company_service,
+                criteria_service=lane_a.criteria_service,
+                hiring_service=lane_a.hiring_service,
+                audit=audit,
+                invitation_email=InvitationEmailHandler(lane_a.email_sender),
+            ),
+            create_company_applicant_router(
+                sessions=lane_a.sessions,
+                access_service=lane_a.applicant_access_service,
+            ),
+            create_applicant_submission_router(
+                principal_provider=principals,
+                authorization=company_submission,
+                service=lane_b.service,
+                audit=audit,
+            ),
+            create_applicant_interview_router(
+                principal_provider=principals,
+                service=lane_c.service,
+                audit=audit,
+            ),
+            create_interview_websocket_router(
+                principal_provider=principals,
+                handler=ProtocolStreamHandler(session_service=lane_c.service),
+            ),
+            create_reporting_router(
+                principal_provider=principals,
+                repository=lane_d.repository,
+                audit=audit,
+                clock=clock,
+                deletion_service=lane_d.deletion_service,
+                playback=ScopedPlaybackLocator(),
+            ),
+        ]
+    )
+    root.exception_handlers.update(lane_d.app.exception_handlers)
+    return LocalRuntime(
+        app=root,
+        lanes={
+            "company_management": lane_a,
+            "submission_analysis": lane_b,
+            "interview_engine": lane_c,
+            "reporting": lane_d,
+        },
+        boundaries={
+            "company_submission": company_submission,
+            "submission_interview": submission_interview,
+            "interview_reporting": interview_reporting,
+            "reporting_company": reporting_company,
+        },
+        worker_handlers={
+            "invitation_email": InvitationEmailHandler(lane_a.email_sender),
+            "submission_analysis": AnalysisJobHandler(
+                LocalAnalysisProcessor(),
+                lane_b.outbox,
+                clock,
+                max_attempts=3,
+            ),
+            "media_postprocess": media_processor,
+            "report_generation": ReportGenerator(
+                lane_d.repository,
+                EvidenceService(lane_d.repository),
+            ),
+            "privacy_deletion": lane_d.deletion_service,
+        },
+    )
+
+
+class LazyLocalApplication:
+    def __init__(self) -> None:
+        self._runtime: LocalRuntime | None = None
+
+    def _application(self) -> FastAPI:
+        if self._runtime is None:
+            self._runtime = create_local_runtime()
+        return self._runtime.app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        await self._application()(scope, receive, send)
+
+
+app = LazyLocalApplication()

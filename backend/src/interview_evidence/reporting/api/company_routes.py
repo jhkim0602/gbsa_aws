@@ -24,6 +24,7 @@ from interview_evidence.reporting.domain.deletion import DeletionManifest
 from interview_evidence.reporting.domain.report import Report
 from interview_evidence.reporting.domain.review import Decision, HumanReview, ReviewType
 from interview_evidence.reporting.repositories.postgres import (
+    InMemoryReportingRepository,
     ReportingRepository,
     TenantScopedReportingNotFound,
 )
@@ -409,11 +410,12 @@ def create_company_router(
 def create_lane_d_runtime(
     *,
     principal_provider: PrincipalProvider,
-    repository: ReportingRepository,
+    repository: ReportingRepository | None = None,
     audit: AuditAppender,
     clock: Clock,
     deletion_service: DeletionService | None = None,
 ) -> LaneDRuntime:
+    active_repository = repository or InMemoryReportingRepository()
     app = FastAPI(title="Interview Evidence Reporting")
 
     @app.exception_handler(TenantScopedReportingNotFound)
@@ -423,24 +425,28 @@ def create_lane_d_runtime(
     ) -> JSONResponse:
         return JSONResponse(status_code=404, content={"detail": "resource not found"})
 
-    service = deletion_service or DeletionService(repository)
+    service = deletion_service or DeletionService(active_repository)
     app.include_router(
         create_company_router(
             principal_provider=principal_provider,
-            repository=repository,
+            repository=active_repository,
             audit=audit,
             clock=clock,
             deletion_service=service,
             playback=ScopedPlaybackLocator(),
         )
     )
-    return LaneDRuntime(app=app, repository=repository, deletion_service=service)
+    return LaneDRuntime(
+        app=app,
+        repository=active_repository,
+        deletion_service=service,
+    )
 
 
 def create_lane_d_app(
     *,
     principal_provider: PrincipalProvider,
-    repository: ReportingRepository,
+    repository: ReportingRepository | None = None,
     audit: AuditAppender,
     clock: Clock,
 ) -> FastAPI:
