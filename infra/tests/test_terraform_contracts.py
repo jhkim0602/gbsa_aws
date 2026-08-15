@@ -76,10 +76,7 @@ def test_modules_define_required_aws_resources_without_provisioners() -> None:
 
 def test_dev_roots_use_distinct_native_lockfile_state_keys() -> None:
     roots = ("foundation", "data-ai", "application")
-    sources = {
-        root: read(ROOT / "environments" / "dev" / root / "main.tf")
-        for root in roots
-    }
+    sources = {root: read(ROOT / "environments" / "dev" / root / "main.tf") for root in roots}
     for root, source in sources.items():
         assert 'backend "s3"' in source
         assert "use_lockfile = true" in source
@@ -111,7 +108,7 @@ def test_all_roots_pin_region_and_default_security_tags() -> None:
         source = read(path)
         assert 'default = "ap-northeast-2"' in source
         assert "default_tags" in source
-        assert "ManagedBy   = \"Terraform\"" in source
+        assert 'ManagedBy   = "Terraform"' in source
 
 
 def test_network_and_edge_keep_application_origins_private() -> None:
@@ -153,10 +150,10 @@ def test_async_ai_identity_and_audit_resources_enforce_safety_controls() -> None
 
     assert "redrive_policy" in async_workflow
     assert "deadLetterTargetArn" in async_workflow
-    assert 'message_retention_seconds         = 1209600' in async_workflow
+    assert "message_retention_seconds         = 1209600" in async_workflow
     assert "AllowFromPublic = false" in ai_search
-    assert "company_id   = { type = \"keyword\" }" in ai_search
-    assert "applicant_id = { type = \"keyword\" }" in ai_search
+    assert 'company_id   = { type = "keyword" }' in ai_search
+    assert 'applicant_id = { type = "keyword" }' in ai_search
     assert "aws_ssm_parameter" in ai_search
     assert "aws_bedrock_guardrail" in ai_search
     assert "minimum_length                   = 14" in identity
