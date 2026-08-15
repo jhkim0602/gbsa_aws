@@ -22,6 +22,49 @@ class InterviewSessionState(StrEnum):
     REVIEWABLE = "reviewable"
 
 
+class EquipmentStatus(StrEnum):
+    READY = "ready"
+    WARNING = "warning"
+    FAILED = "failed"
+
+
+class EquipmentComponent(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    status: EquipmentStatus
+    sanitized_code: str | None = Field(default=None, max_length=100)
+
+
+class EquipmentCheck(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    equipment_check_id: UUID
+    company_id: UUID
+    invitation_id: UUID
+    applicant_id: UUID
+    camera: EquipmentComponent
+    microphone: EquipmentComponent
+    network: EquipmentComponent
+    overall_status: EquipmentStatus
+    checked_at: datetime
+
+    @model_validator(mode="after")
+    def overall_status_matches_components(self) -> EquipmentCheck:
+        statuses = (self.camera.status, self.microphone.status, self.network.status)
+        expected = (
+            EquipmentStatus.FAILED
+            if EquipmentStatus.FAILED in statuses
+            else (
+                EquipmentStatus.WARNING
+                if EquipmentStatus.WARNING in statuses
+                else EquipmentStatus.READY
+            )
+        )
+        if self.overall_status is not expected:
+            raise ValueError("equipment overall status does not match components")
+        return self
+
+
 SESSION_TRANSITIONS: dict[InterviewSessionState, frozenset[InterviewSessionState]] = {
     InterviewSessionState.PREPARING: frozenset({InterviewSessionState.IN_PROGRESS}),
     InterviewSessionState.IN_PROGRESS: frozenset(

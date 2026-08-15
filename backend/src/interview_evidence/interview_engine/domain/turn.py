@@ -92,3 +92,22 @@ class RecordingChunk(BaseModel):
         if self.session_end_ms <= self.session_start_ms:
             raise ValueError("recording chunk range must be increasing")
         return self
+
+
+class QuestionSourceReference(BaseModel):
+    """A reproducible explanation for a question, never applicant-answer Evidence."""
+
+    model_config = ConfigDict(frozen=True)
+
+    source_reference_id: UUID
+    company_id: UUID
+    interview_session_id: UUID
+    question_turn_id: UUID
+    source_id: UUID
+    source_type: str = Field(min_length=1, max_length=100)
+    locator: dict[str, object]
+    relevance_score: float = Field(ge=0)
+    ownership_confidence: float = Field(ge=0, le=1)
+    retrieval_config_version: str = Field(min_length=1, max_length=100)
+    model_config_version: str = Field(min_length=1, max_length=100)
+    created_at: datetime
