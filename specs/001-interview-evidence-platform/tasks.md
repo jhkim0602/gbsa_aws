@@ -320,7 +320,7 @@ decisions and cannot complete deletion while any target remains.
 - [x] T189 Integration — Add stage CloudFront-to-AWS-service smoke journey in `tests/e2e/test_stage_smoke.py` (QG-13-QG-14)
 - [x] T190 Integration — Run and record every command/outcome from `specs/001-interview-evidence-platform/quickstart.md`
 - [x] T191 Integration — Record FR/SC/QG-to-test coverage and zero unresolved critical gaps in `specs/001-interview-evidence-platform/validation-report.md`
-- [ ] T192 Integration — Run `$speckit-converge` and append every remaining spec/plan/code gap to `specs/001-interview-evidence-platform/tasks.md`
+- [x] T192 Integration — Run `$speckit-converge` and append every remaining spec/plan/code gap to `specs/001-interview-evidence-platform/tasks.md`
 
 **Final Checkpoint**: QG-01 through QG-16 pass, contract generation is clean, all migrations have one
 merged head, all four lane suites and the thin end-to-end journey pass, and no critical convergence
@@ -430,3 +430,16 @@ additional degraded modes or richer review UI.
 - Shared contract changes merge separately before consumer implementation.
 - A completed task checkbox is updated on the integration branch after its commit is accepted.
 - Final completion requires the merged quickstart and convergence pass, not four isolated green lanes.
+
+## Phase 8: Convergence
+
+- [ ] T193 Integration — CRITICAL: Replace the deployment entry points with an environment-selected production runtime that wires durable repositories and cloud adapters while preserving the explicit local runtime per plan R-001/R-006 and the fixed AWS topology (contradicts)
+- [ ] T194 Integration — CRITICAL: Add shared durable OutboxEvent, ProcessedMessage, AuditEvent, upload-intent, applicant-session and command-idempotency persistence with request-scoped transactions per Constitution V, plan R-005 and the shared data model (missing)
+- [ ] T195 Integration — CRITICAL: Implement tenant-scoped production adapters for S3, SQS, SES, Cognito, DynamoDB, OpenSearch Serverless, Bedrock, Transcribe, Polly, Textract and MediaConvert per the fixed AWS constraints and QG-13-QG-15 (missing)
+- [ ] T196 Integration — CRITICAL: Implement outbox dispatch, SQS long polling, processed-message idempotency and the real document/Git/strategy/media/report/deletion worker pipelines per FR-017-FR-022, FR-037-FR-042 and FR-050 (partial)
+- [ ] T197 Lane C — CRITICAL: Connect the applicant interview route to the WebSocket protocol, server sequence store, audio worklet/STT stream, recording chunk upload, reconnect and degraded-mode controls per FR-023-FR-036 and US3 (partial)
+- [ ] T198 Lane A — CRITICAL: Implement Cognito-backed company authentication plus durable invitation-token and applicant-session exchange, expiry and revocation per FR-006 and FR-013-FR-015 (partial)
+- [ ] T199 Lane A — Complete the company criteria and campaign UI for detailed evidence rules, prohibited topics, duration and interviewer persona/voice preview per FR-007-FR-009 (partial)
+- [ ] T200 Lane A — Present server-versioned AI role, recording, retention and deletion policy content before consent and bind the accepted digest to the displayed policy per FR-002 and FR-014 (partial)
+- [ ] T201 Integration — Add production store deletion verification, dependency-aware readiness and queue/latency/deletion metrics per FR-047 and FR-050-FR-051 (partial)
+- [ ] T202 Integration — Add LocalStack/PostgreSQL production-composition parity tests covering API, worker, auth, persistence, AWS adapters, restart recovery and failure isolation per plan R-014 and QG-13-QG-15 (missing)
