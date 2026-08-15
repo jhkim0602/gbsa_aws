@@ -292,7 +292,7 @@ decisions and cannot complete deletion while any target remains.
 - [x] T167 [P] Lane A — Implement CloudWatch, X-Ray, alarms, budgets and audit resources in `infra/modules/observability/main.tf` (FR-051)
 - [x] T168 Lane A — Compose separated dev roots and S3 lockfile backends in `infra/environments/dev/foundation/main.tf`, `infra/environments/dev/data-ai/main.tf`, and `infra/environments/dev/application/main.tf` (PD-26, QG-16)
 - [x] T169 [P] Lane A — Add stage and prod roots with independent state, roles, KMS and data stores in `infra/environments/stage/main.tf` and `infra/environments/prod/main.tf` (QG-16)
-- [ ] T170 Integration — Add saved-plan, approval, migration, ECS and frontend deployment stages in `.github/workflows/deploy.yml` (QG-13-QG-16)
+- [x] T170 Integration — Add saved-plan, approval, migration, ECS and frontend deployment stages in `.github/workflows/deploy.yml` (QG-13-QG-16)
 
 ### Merge Train and Real Adapters (Integration Owner)
 
