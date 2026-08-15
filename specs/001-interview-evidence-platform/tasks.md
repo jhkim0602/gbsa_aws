@@ -298,7 +298,7 @@ decisions and cannot complete deletion while any target remains.
 
 - [x] T171 Integration — Merge lane Alembic heads and prove empty/previous-snapshot upgrade in `backend/alembic/versions/merge/m_001_lane_merge.py` (QG-16)
 - [x] T172 Integration — Replace Lane A campaign/consent fakes for Lane B and add real boundary tests in `backend/tests/integration/cross_module/test_a_to_b.py`
-- [ ] T173 Integration — Replace Lane B strategy/retrieval fakes for Lane C and add real boundary tests in `backend/tests/integration/cross_module/test_b_to_c.py`
+- [x] T173 Integration — Replace Lane B strategy/retrieval fakes for Lane C and add real boundary tests in `backend/tests/integration/cross_module/test_b_to_c.py`
 - [ ] T174 Integration — Replace Lane C Turn/media fakes for Lane D and add real boundary tests in `backend/tests/integration/cross_module/test_c_to_d.py`
 - [ ] T175 Integration — Connect Lane D report/deletion projections to Lane A company views in `backend/tests/integration/cross_module/test_d_to_a.py`
 - [ ] T176 Integration — Wire all router fragments and worker handlers in `backend/src/interview_evidence/main.py`
