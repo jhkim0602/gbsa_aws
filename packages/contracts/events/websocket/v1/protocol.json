@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://interview-evidence.local/contracts/websocket/v1/protocol.json",
+  "title": "InterviewWebSocketMessage",
+  "oneOf": [
+    {
+      "$ref": "./client-message.json"
+    },
+    {
+      "$ref": "./server-message.json"
+    }
+  ]
+}

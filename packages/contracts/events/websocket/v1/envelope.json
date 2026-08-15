@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://interview-evidence.local/contracts/websocket/v1/envelope.json",
+  "title": "WebSocketEnvelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "message_type",
+    "session_id",
+    "sequence",
+    "idempotency_key",
+    "correlation_id",
+    "sent_at",
+    "payload"
+  ],
+  "properties": {
+    "protocol_version": {
+      "const": "1.0"
+    },
+    "message_type": {
+      "type": "string",
+      "pattern": "^[a-z]+(?:\\.[a-z_]+)+$"
+    },
+    "session_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 200
+    },
+    "correlation_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "payload": {
+      "type": "object"
+    }
+  }
+}

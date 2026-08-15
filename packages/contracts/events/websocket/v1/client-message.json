@@ -1,0 +1,275 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://interview-evidence.local/contracts/websocket/v1/client-message.json",
+  "title": "ClientMessage",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/SessionStart"
+    },
+    {
+      "$ref": "#/$defs/AudioChunkBegin"
+    },
+    {
+      "$ref": "#/$defs/AnswerComplete"
+    },
+    {
+      "$ref": "#/$defs/QuestionRepeat"
+    },
+    {
+      "$ref": "#/$defs/SessionResume"
+    },
+    {
+      "$ref": "#/$defs/ClientAck"
+    },
+    {
+      "$ref": "#/$defs/HeartbeatPing"
+    }
+  ],
+  "$defs": {
+    "Base": {
+      "$ref": "./envelope.json"
+    },
+    "SessionStart": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/Base"
+        },
+        {
+          "properties": {
+            "message_type": {
+              "const": "session.start"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["equipment_check_id", "expected_state"],
+              "properties": {
+                "equipment_check_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "expected_state": {
+                  "const": "preparing"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "AudioChunkBegin": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/Base"
+        },
+        {
+          "properties": {
+            "message_type": {
+              "const": "audio.chunk.begin"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "answer_turn_id",
+                "chunk_sequence",
+                "codec",
+                "sample_rate_hz",
+                "channel_count",
+                "byte_length",
+                "sha256"
+              ],
+              "properties": {
+                "answer_turn_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "chunk_sequence": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "codec": {
+                  "const": "pcm_s16le"
+                },
+                "sample_rate_hz": {
+                  "const": 16000
+                },
+                "channel_count": {
+                  "const": 1
+                },
+                "byte_length": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "AnswerComplete": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/Base"
+        },
+        {
+          "properties": {
+            "message_type": {
+              "const": "answer.complete"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "answer_turn_id",
+                "last_audio_chunk_sequence",
+                "last_recording_chunk_sequence",
+                "expected_state"
+              ],
+              "properties": {
+                "answer_turn_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "last_audio_chunk_sequence": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "last_recording_chunk_sequence": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "expected_state": {
+                  "const": "awaiting_answer"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "QuestionRepeat": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/Base"
+        },
+        {
+          "properties": {
+            "message_type": {
+              "const": "question.repeat"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["question_turn_id", "mode"],
+              "properties": {
+                "question_turn_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "mode": {
+                  "enum": ["repeat", "clarify"]
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "SessionResume": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/Base"
+        },
+        {
+          "properties": {
+            "message_type": {
+              "const": "session.resume"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "last_applied_server_sequence",
+                "last_final_turn_id",
+                "last_uploaded_recording_chunk_sequence"
+              ],
+              "properties": {
+                "last_applied_server_sequence": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "last_final_turn_id": {
+                  "type": ["string", "null"],
+                  "format": "uuid"
+                },
+                "last_uploaded_recording_chunk_sequence": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "ClientAck": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/Base"
+        },
+        {
+          "properties": {
+            "message_type": {
+              "const": "client.ack"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["server_event_id", "applied_sequence"],
+              "properties": {
+                "server_event_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "applied_sequence": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "HeartbeatPing": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/Base"
+        },
+        {
+          "properties": {
+            "message_type": {
+              "const": "heartbeat.ping"
+            },
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["client_monotonic_ms"],
+              "properties": {
+                "client_monotonic_ms": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

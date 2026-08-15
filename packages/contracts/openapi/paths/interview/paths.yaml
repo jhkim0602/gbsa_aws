@@ -1,0 +1,95 @@
+/applicant/equipment-checks:
+  post:
+    operationId: recordEquipmentCheck
+    x-owner-lane: C
+    tags:
+    - Interview
+    security:
+    - ApplicantSession: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/EquipmentCheckCreate
+    responses:
+      '201':
+        description: Equipment readiness record
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/EquipmentCheck
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/applicant/interview-sessions:
+  post:
+    operationId: createInterviewSession
+    x-owner-lane: C
+    tags:
+    - Interview
+    security:
+    - ApplicantSession: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/InterviewSessionCreate
+    responses:
+      '201':
+        description: Server-authoritative interview session
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/InterviewSessionView
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/applicant/interview-sessions/{session_id}/resume:
+  get:
+    operationId: getInterviewResumeSnapshot
+    x-owner-lane: C
+    tags:
+    - Interview
+    security:
+    - ApplicantSession: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/SessionId
+    responses:
+      '200':
+        description: Authoritative recovery snapshot
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/InterviewResumeSnapshot
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/applicant/interview-sessions/{session_id}/media-upload-intents:
+  post:
+    operationId: createRecordingUploadIntent
+    x-owner-lane: C
+    tags:
+    - Interview
+    security:
+    - ApplicantSession: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/SessionId
+    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/RecordingUploadIntentCreate
+    responses:
+      '201':
+        description: Scoped recording chunk upload intent
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/UploadIntent
+      default:
+        $ref: ../../root.yaml#/components/responses/Error

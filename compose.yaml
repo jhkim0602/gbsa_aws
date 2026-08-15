@@ -1,0 +1,129 @@
+name: interview-evidence-platform
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-interview_evidence}
+      POSTGRES_USER: ${POSTGRES_USER:-iep}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-only-password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-iep} -d ${POSTGRES_DB:-interview_evidence}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  dynamodb:
+    image: amazon/dynamodb-local:2.6.1
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/data"]
+    ports:
+      - "${DYNAMODB_PORT:-8000}:8000"
+    volumes:
+      - dynamodb-data:/data
+
+  localstack:
+    image: localstack/localstack:3.8
+    environment:
+      SERVICES: s3,sqs
+      AWS_DEFAULT_REGION: ${AWS_REGION:-ap-northeast-2}
+      DEBUG: ${LOCALSTACK_DEBUG:-0}
+    ports:
+      - "${LOCALSTACK_PORT:-4566}:4566"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - localstack-data:/var/lib/localstack
+
+  opensearch:
+    image: opensearchproject/opensearch:2.18.0
+    environment:
+      discovery.type: single-node
+      plugins.security.disabled: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "${OPENSEARCH_PORT:-9200}:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+
+  api:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: backend/Containerfile
+      target: api
+    env_file:
+      - .env
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+
+  company-console:
+    profiles: ["app"]
+    image: node:22-alpine
+    working_dir: /workspace
+    command:
+      [
+        "npm",
+        "run",
+        "dev",
+        "--workspace",
+        "@iep/company-console",
+        "--",
+        "--host",
+        "0.0.0.0",
+      ]
+    volumes:
+      - .:/workspace
+      - root-node-modules:/workspace/node_modules
+    ports:
+      - "${COMPANY_CONSOLE_PORT:-5173}:5173"
+
+  applicant-interview:
+    profiles: ["app"]
+    image: node:22-alpine
+    working_dir: /workspace
+    command:
+      [
+        "npm",
+        "run",
+        "dev",
+        "--workspace",
+        "@iep/applicant-interview",
+        "--",
+        "--host",
+        "0.0.0.0",
+      ]
+    volumes:
+      - .:/workspace
+      - root-node-modules:/workspace/node_modules
+    ports:
+      - "${APPLICANT_INTERVIEW_PORT:-5174}:5174"
+
+volumes:
+  postgres-data:
+  dynamodb-data:
+  localstack-data:
+  opensearch-data:
+  root-node-modules:

@@ -1,0 +1,85 @@
+/applicant/submissions/upload-intents:
+  post:
+    operationId: createSubmissionUploadIntent
+    x-owner-lane: B
+    tags:
+    - Submission
+    security:
+    - ApplicantSession: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/UploadIntentCreate
+    responses:
+      '201':
+        description: Scoped short-lived upload intent
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/UploadIntent
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/applicant/submissions:
+  get:
+    operationId: listApplicantSubmissions
+    x-owner-lane: B
+    tags:
+    - Submission
+    security:
+    - ApplicantSession: []
+    responses:
+      '200':
+        description: Current applicant submission statuses
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: ../../root.yaml#/components/schemas/SubmissionView
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+  post:
+    operationId: registerApplicantSubmission
+    x-owner-lane: B
+    tags:
+    - Submission
+    security:
+    - ApplicantSession: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/SubmissionCreate
+    responses:
+      '202':
+        description: Submission accepted for analysis
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/SubmissionView
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/applicant/analysis-status:
+  get:
+    operationId: getApplicantAnalysisStatus
+    x-owner-lane: B
+    tags:
+    - Submission
+    security:
+    - ApplicantSession: []
+    responses:
+      '200':
+        description: Aggregate analysis and strategy readiness
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/AnalysisReadiness
+      default:
+        $ref: ../../root.yaml#/components/responses/Error

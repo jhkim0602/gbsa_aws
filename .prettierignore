@@ -1,0 +1,16 @@
+.venv
+.agents
+.specify
+node_modules
+dist
+build
+coverage
+htmlcov
+packages/contracts/generated
+packages/contracts/openapi
+package-lock.json
+uv.lock
+specs
+docs
+AI_*.md
+docs/architecture.html

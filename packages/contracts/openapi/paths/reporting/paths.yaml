@@ -1,0 +1,177 @@
+/interview-sessions/{session_id}/report:
+  get:
+    operationId: getInterviewReport
+    x-owner-lane: D
+    tags:
+    - Reporting
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/SessionId
+    responses:
+      '200':
+        description: AI original plus human review projection
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/ReportView
+      '202':
+        description: Report is still being generated
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/ProcessingStatus
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/interview-sessions/{session_id}/timeline:
+  get:
+    operationId: getInterviewTimeline
+    x-owner-lane: D
+    tags:
+    - Reporting
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/SessionId
+    - name: query
+      in: query
+      schema:
+        type: string
+        maxLength: 200
+    responses:
+      '200':
+        description: Timeline entries and signed playback locator
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/TimelineView
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/reports/{report_id}/items/{report_item_id}/reviews:
+  post:
+    operationId: createHumanAssessmentReview
+    x-owner-lane: D
+    tags:
+    - Reporting
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/ReportId
+    - $ref: ../../root.yaml#/components/parameters/ReportItemId
+    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/HumanAssessmentReviewCreate
+    responses:
+      '201':
+        description: Append-only human assessment review
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/HumanReviewView
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/interview-sessions/{session_id}/review-artifacts:
+  post:
+    operationId: createReviewArtifact
+    x-owner-lane: D
+    tags:
+    - Reporting
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/SessionId
+    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/ReviewArtifactCreate
+    responses:
+      '201':
+        description: Note or bookmark created
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/HumanReviewView
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/invitations/{invitation_id}/final-decisions:
+  post:
+    operationId: recordHumanFinalDecision
+    x-owner-lane: D
+    tags:
+    - Reporting
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/InvitationId
+    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/FinalDecisionCreate
+    responses:
+      '201':
+        description: Human-authored final decision record
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/HumanReviewView
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/privacy/deletion-requests:
+  post:
+    operationId: createDeletionRequest
+    x-owner-lane: D
+    tags:
+    - Privacy
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/DeletionRequestCreate
+    responses:
+      '202':
+        description: Deletion manifest accepted
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/DeletionStatus
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/privacy/deletion-requests/{deletion_request_id}:
+  get:
+    operationId: getDeletionRequest
+    x-owner-lane: D
+    tags:
+    - Privacy
+    security:
+    - CompanyBearer: []
+    parameters:
+    - name: deletion_request_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: Per-store deletion and verification state
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/DeletionStatus
+      default:
+        $ref: ../../root.yaml#/components/responses/Error

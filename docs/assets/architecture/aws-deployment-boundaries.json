@@ -1,0 +1,48 @@
+{
+  "title": "Production Deployment Boundaries",
+  "subtitle": "ap-northeast-2 · Multi-AZ · private compute and evidence data",
+  "theme": "light",
+  "size": "1400x900",
+  "nodes": [
+    {"id": "users", "service": "users", "label": "기업 사용자 · 지원자", "x": 0, "y": 1},
+    {"id": "cloudfront", "service": "cloudfront", "label": "Amazon CloudFront", "x": 1, "y": 1, "container": "region"},
+    {"id": "waf", "service": "waf", "label": "AWS WAF", "x": 1, "y": 2, "container": "region"},
+    {"id": "web", "service": "s3", "label": "Amazon S3", "sublabel": "Private web origin", "x": 2, "y": 0, "container": "region"},
+    {"id": "alb", "service": "elb", "label": "Application Load Balancer", "x": 2, "y": 1, "container": "public"},
+    {"id": "ecs-a", "service": "fargate", "label": "AWS Fargate", "sublabel": "API · Workers A", "x": 3, "y": 1, "container": "private-a"},
+    {"id": "aurora-a", "service": "aurora", "label": "Amazon Aurora", "sublabel": "Writer", "x": 4, "y": 1, "container": "data-a"},
+    {"id": "ecs-b", "service": "fargate", "label": "AWS Fargate", "sublabel": "API · Workers B", "x": 3, "y": 3, "container": "private-b"},
+    {"id": "aurora-b", "service": "aurora", "label": "Amazon Aurora", "sublabel": "Reader · failover", "x": 4, "y": 3, "container": "data-b"},
+    {"id": "endpoint", "service": "privatelink", "label": "VPC Endpoints", "sublabel": "Private AWS access", "x": 5, "y": 2, "container": "vpc"},
+    {"id": "objects", "service": "s3", "label": "Amazon S3", "sublabel": "Documents · media", "x": 7, "y": 0, "container": "region"},
+    {"id": "bedrock", "service": "bedrock", "label": "Amazon Bedrock", "sublabel": "LLM · KB", "x": 7, "y": 1, "container": "region"},
+    {"id": "sqs", "service": "sqs", "label": "Amazon SQS", "sublabel": "Queue · DLQ", "x": 7, "y": 2, "container": "region"},
+    {"id": "stepfn", "service": "step-functions", "label": "AWS Step Functions", "sublabel": "Analysis · deletion", "x": 7, "y": 3, "container": "region"},
+    {"id": "cloudwatch", "service": "cloudwatch", "label": "Amazon CloudWatch", "sublabel": "Metrics · logs", "x": 7, "y": 4, "container": "region"}
+  ],
+  "connections": [
+    {"source": "users", "target": "cloudfront", "label": "HTTPS", "style": "solid", "step_number": 1},
+    {"source": "waf", "target": "cloudfront", "label": "Web ACL", "style": "dashed", "source_port": "top", "target_port": "left"},
+    {"source": "cloudfront", "target": "web", "label": "OAC", "style": "solid", "source_port": "top", "target_port": "left"},
+    {"source": "cloudfront", "target": "alb", "label": "/api · /ws", "style": "solid", "step_number": 2},
+    {"source": "alb", "target": "ecs-a", "style": "solid", "step_number": 3, "source_port": "right", "target_port": "left"},
+    {"source": "ecs-a", "target": "aurora-a", "label": "SQL", "style": "solid"},
+    {"source": "ecs-b", "target": "aurora-b", "label": "SQL", "style": "solid"},
+    {"source": "endpoint", "target": "objects", "label": "Objects", "style": "solid", "source_port": "top", "target_port": "left"},
+    {"source": "endpoint", "target": "bedrock", "label": "Inference", "style": "solid", "source_port": "right", "target_port": "left"},
+    {"source": "endpoint", "target": "sqs", "label": "Jobs", "style": "solid", "source_port": "bottom", "target_port": "left"},
+    {"source": "sqs", "target": "stepfn", "label": "Orchestrate", "style": "solid", "source_port": "bottom", "target_port": "top"}
+  ],
+  "containers": [
+    {"id": "cloud", "type": "aws-cloud", "label": "AWS Cloud", "children": ["region"]},
+    {"id": "region", "type": "region", "label": "ap-northeast-2", "parent": "cloud", "children": ["vpc", "cloudfront", "waf", "web", "objects", "bedrock", "sqs", "stepfn", "cloudwatch"]},
+    {"id": "vpc", "type": "vpc", "label": "Production VPC · minimum 2 AZ", "parent": "region", "children": ["az-a", "az-b", "endpoint"]},
+    {"id": "az-a", "type": "az", "label": "Availability Zone A", "parent": "vpc", "children": ["public", "private-a", "data-a"]},
+    {"id": "az-b", "type": "az", "label": "Availability Zone B", "parent": "vpc", "children": ["private-b", "data-b"]},
+    {"id": "public", "type": "public-subnet", "label": "Public subnet", "parent": "az-a", "children": ["alb"]},
+    {"id": "private-a", "type": "private-subnet", "label": "Private app subnet A", "parent": "az-a", "children": ["ecs-a"]},
+    {"id": "data-a", "type": "private-subnet", "label": "Private data subnet A", "parent": "az-a", "children": ["aurora-a"]},
+    {"id": "private-b", "type": "private-subnet", "label": "Private app subnet B", "parent": "az-b", "children": ["ecs-b"]},
+    {"id": "data-b", "type": "private-subnet", "label": "Private data subnet B", "parent": "az-b", "children": ["aurora-b"]}
+  ]
+}

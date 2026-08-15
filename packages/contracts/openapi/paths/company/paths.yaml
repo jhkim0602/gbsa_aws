@@ -1,0 +1,277 @@
+/me:
+  get:
+    operationId: getCurrentCompanyUser
+    x-owner-lane: A
+    tags:
+    - Company
+    security:
+    - CompanyBearer: []
+    responses:
+      '200':
+        description: Authenticated company user and tenant
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/CompanyUserView
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/positions:
+  get:
+    operationId: listPositions
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/Cursor
+    - $ref: ../../root.yaml#/components/parameters/Limit
+    responses:
+      '200':
+        description: Tenant-scoped positions
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/PositionPage
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+  post:
+    operationId: createPosition
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/PositionCreate
+    responses:
+      '201':
+        description: Position created
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/Position
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/positions/{position_id}/competency-model-versions:
+  post:
+    operationId: createCompetencyModelVersion
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/PositionId
+    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/CompetencyModelVersionCreate
+    responses:
+      '201':
+        description: Immutable draft version created
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/CompetencyModelVersion
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/competency-model-versions/{version_id}/publish:
+  post:
+    operationId: publishCompetencyModelVersion
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/VersionId
+    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
+    - $ref: ../../root.yaml#/components/parameters/IfMatchVersion
+    responses:
+      '200':
+        description: Published immutable criterion version
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/CompetencyModelVersion
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/campaigns:
+  post:
+    operationId: createCampaign
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/CampaignCreate
+    responses:
+      '201':
+        description: Campaign created
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/Campaign
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/campaigns/{campaign_id}/publish:
+  post:
+    operationId: publishCampaign
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/CampaignId
+    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
+    - $ref: ../../root.yaml#/components/parameters/IfMatchVersion
+    responses:
+      '200':
+        description: Published campaign
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/Campaign
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/campaigns/{campaign_id}/invitations:
+  get:
+    operationId: listInvitations
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/CampaignId
+    - $ref: ../../root.yaml#/components/parameters/Cursor
+    - $ref: ../../root.yaml#/components/parameters/Limit
+    responses:
+      '200':
+        description: Invitations and progress projections
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/InvitationPage
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+  post:
+    operationId: createInvitations
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/CampaignId
+    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/InvitationBatchCreate
+    responses:
+      '202':
+        description: Invitations accepted for issuance
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/InvitationBatchResult
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/applicant/access/exchange:
+  post:
+    operationId: exchangeApplicantInvitationToken
+    x-owner-lane: A
+    tags:
+    - Applicant Access
+    security: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/ApplicantTokenExchange
+    responses:
+      '204':
+        description: 'Scoped, expiring HttpOnly session cookie set. Raw invitation
+          token is not returned.
+
+          '
+        headers:
+          Set-Cookie:
+            schema:
+              type: string
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/applicant/identity-verifications:
+  post:
+    operationId: verifyApplicantIdentity
+    x-owner-lane: A
+    tags:
+    - Applicant Access
+    security:
+    - ApplicantSession: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/ApplicantIdentityVerification
+    responses:
+      '200':
+        description: Verified applicant access state
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/ApplicantAccessState
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/applicant/consents:
+  post:
+    operationId: recordApplicantConsent
+    x-owner-lane: A
+    tags:
+    - Applicant Access
+    security:
+    - ApplicantSession: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/ConsentCreate
+    responses:
+      '201':
+        description: Immutable consent record
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/ConsentView
+      default:
+        $ref: ../../root.yaml#/components/responses/Error

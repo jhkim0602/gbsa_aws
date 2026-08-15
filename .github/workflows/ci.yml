@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  workspace:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.9.28"
+          enable-cache: true
+
+      - run: npm ci
+      - run: uv sync --frozen --no-editable
+      - run: make format-check
+      - run: make lint
+      - run: make typecheck
+      - run: make test-foundation
+      - run: make contracts-check
+      - run: make boundaries-check
+      - run: make migration-check

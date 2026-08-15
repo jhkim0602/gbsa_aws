@@ -1,0 +1,13 @@
+{
+  "name": "@iep/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "types": "generated/typescript/openapi.d.ts",
+  "files": [
+    "generated"
+  ],
+  "scripts": {
+    "generate": "python ../../scripts/generate_contracts.py",
+    "check": "python ../../scripts/generate_contracts.py --check"
+  }
+}
