@@ -11,6 +11,8 @@ RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml uv.lock README.md ./
 COPY backend/src ./backend/src
+COPY backend/alembic.ini ./backend/alembic.ini
+COPY backend/alembic ./backend/alembic
 
 RUN uv sync --frozen --no-dev --no-editable
 

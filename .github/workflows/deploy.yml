@@ -1,0 +1,388 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Deployment environment
+        type: choice
+        options: [dev, stage, prod]
+        default: dev
+        required: true
+      dev_root:
+        description: Terraform root used when environment is dev
+        type: choice
+        options: [foundation, data-ai, application]
+        default: application
+        required: true
+      apply_infrastructure:
+        description: Apply the reviewed Terraform plan before application deployment
+        type: boolean
+        default: true
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-northeast-2
+  TERRAFORM_VERSION: 1.13.3
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    environment: ${{ format('{0}-plan', inputs.environment) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.9.28"
+          enable-cache: true
+
+      - run: npm ci
+      - run: uv sync --frozen --no-editable
+      - run: npm run test:workspace
+      - name: Build browser applications
+        env:
+          VITE_API_BASE_URL: ${{ vars.PUBLIC_API_BASE_URL }}
+        run: npm run build
+
+      - name: Save browser artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-apps-${{ github.run_id }}
+          path: |
+            apps/company-console/dist
+            apps/applicant-interview/dist
+          if-no-files-found: error
+          retention-days: 1
+
+  terraform_plan:
+    runs-on: ubuntu-latest
+    environment: ${{ format('{0}-plan', inputs.environment) }}
+    outputs:
+      root: ${{ steps.target.outputs.root }}
+      resource_name: ${{ steps.target.outputs.resource_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Select immutable Terraform root
+        id: target
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          DEV_ROOT: ${{ inputs.dev_root }}
+          RESOURCE_PREFIX: ${{ vars.RESOURCE_PREFIX }}
+        run: |
+          set -euo pipefail
+          if [[ "$ENVIRONMENT" == "dev" ]]; then
+            ROOT="infra/environments/dev/$DEV_ROOT"
+          else
+            ROOT="infra/environments/$ENVIRONMENT"
+          fi
+          NAME="${RESOURCE_PREFIX:-iep-$ENVIRONMENT}"
+          echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+          echo "resource_name=$NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Initialize remote state
+        working-directory: ${{ steps.target.outputs.root }}
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.TERRAFORM_STATE_BUCKET }}" \
+            -backend-config="region=$AWS_REGION"
+
+      - name: Write environment variables
+        env:
+          TF_VARS_JSON: ${{ secrets.TF_VARS_JSON }}
+          ROOT: ${{ steps.target.outputs.root }}
+        run: |
+          set -euo pipefail
+          test -n "$TF_VARS_JSON"
+          printf '%s' "$TF_VARS_JSON" > "$ROOT/terraform.tfvars.json"
+
+      - name: Create saved plan
+        working-directory: ${{ steps.target.outputs.root }}
+        run: terraform plan -input=false -out=tfplan
+
+      - name: Create review artifact
+        env:
+          ROOT: ${{ steps.target.outputs.root }}
+        run: |
+          set -euo pipefail
+          mkdir -p .deploy-plan
+          cp "$ROOT/tfplan" .deploy-plan/tfplan
+          terraform -chdir="$ROOT" show -no-color tfplan > .deploy-plan/tfplan.txt
+
+      - name: Upload saved plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ github.run_id }}
+          path: .deploy-plan
+          if-no-files-found: error
+          retention-days: 1
+
+  approval:
+    needs: [terraform_plan]
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ format('{0}-approval', inputs.environment) }}
+    steps:
+      - run: echo "Reviewed Terraform plan approved for ${{ inputs.environment }}"
+
+  terraform_apply:
+    needs: [terraform_plan, approval]
+    runs-on: ubuntu-latest
+    environment: ${{ format('{0}-deploy', inputs.environment) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Initialize approved root
+        working-directory: ${{ needs.terraform_plan.outputs.root }}
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.TERRAFORM_STATE_BUCKET }}" \
+            -backend-config="region=$AWS_REGION"
+
+      - name: Download saved plan
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan-${{ github.run_id }}
+          path: .deploy-plan
+
+      - name: Apply exact saved plan
+        if: ${{ inputs.apply_infrastructure }}
+        working-directory: ${{ needs.terraform_plan.outputs.root }}
+        run: |
+          cp "$GITHUB_WORKSPACE/.deploy-plan/tfplan" tfplan
+          terraform apply -input=false tfplan
+
+  build_images:
+    needs: [terraform_plan, terraform_apply]
+    if: ${{ inputs.environment != 'dev' || inputs.dev_root == 'application' }}
+    runs-on: ubuntu-latest
+    environment: ${{ format('{0}-deploy', inputs.environment) }}
+    outputs:
+      api_image: ${{ steps.images.outputs.api_image }}
+      worker_image: ${{ steps.images.outputs.worker_image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and publish immutable images
+        id: images
+        env:
+          RESOURCE_NAME: ${{ needs.terraform_plan.outputs.resource_name }}
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          REGISTRY="$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+          API_IMAGE="$REGISTRY/$RESOURCE_NAME/api:$GITHUB_SHA"
+          WORKER_IMAGE="$REGISTRY/$RESOURCE_NAME/worker:$GITHUB_SHA"
+          docker build --target api --tag "$API_IMAGE" --file backend/Containerfile .
+          docker build --target worker --tag "$WORKER_IMAGE" --file backend/Containerfile .
+          docker push "$API_IMAGE"
+          docker push "$WORKER_IMAGE"
+          echo "api_image=$API_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "worker_image=$WORKER_IMAGE" >> "$GITHUB_OUTPUT"
+
+  render_task_definitions:
+    needs: [terraform_plan, build_images]
+    runs-on: ubuntu-latest
+    environment: ${{ format('{0}-deploy', inputs.environment) }}
+    outputs:
+      api_task_definition: ${{ steps.register.outputs.api_task_definition }}
+      worker_task_definition: ${{ steps.register.outputs.worker_task_definition }}
+      resource_name: ${{ needs.terraform_plan.outputs.resource_name }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Register image-owned task definition revisions
+        id: register
+        env:
+          RESOURCE_NAME: ${{ needs.terraform_plan.outputs.resource_name }}
+          API_IMAGE: ${{ needs.build_images.outputs.api_image }}
+          WORKER_IMAGE: ${{ needs.build_images.outputs.worker_image }}
+        run: |
+          set -euo pipefail
+          for SERVICE in api worker; do
+            aws ecs describe-task-definition \
+              --task-definition "$RESOURCE_NAME-$SERVICE" \
+              --query taskDefinition > "$SERVICE-current.json"
+            IMAGE_VAR="${SERVICE^^}_IMAGE"
+            jq --arg image "${!IMAGE_VAR}" --arg service "$SERVICE" '
+              del(
+                .compatibilities,
+                .enableFaultInjection,
+                .registeredAt,
+                .registeredBy,
+                .requiresAttributes,
+                .revision,
+                .status,
+                .taskDefinitionArn
+              )
+              | .containerDefinitions |= map(
+                  if .name == $service then .image = $image else . end
+                )
+            ' "$SERVICE-current.json" > "$SERVICE-next.json"
+          done
+          API_TASK_DEFINITION="$(aws ecs register-task-definition \
+            --cli-input-json file://api-next.json \
+            --query taskDefinition.taskDefinitionArn \
+            --output text)"
+          WORKER_TASK_DEFINITION="$(aws ecs register-task-definition \
+            --cli-input-json file://worker-next.json \
+            --query taskDefinition.taskDefinitionArn \
+            --output text)"
+          echo "api_task_definition=$API_TASK_DEFINITION" >> "$GITHUB_OUTPUT"
+          echo "worker_task_definition=$WORKER_TASK_DEFINITION" >> "$GITHUB_OUTPUT"
+
+  migrate_database:
+    needs: [render_task_definitions]
+    runs-on: ubuntu-latest
+    environment: ${{ format('{0}-deploy', inputs.environment) }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Run Alembic in the private ECS network
+        env:
+          RESOURCE_NAME: ${{ needs.render_task_definitions.outputs.resource_name }}
+          WORKER_TASK_DEFINITION: ${{ needs.render_task_definitions.outputs.worker_task_definition }}
+        run: |
+          set -euo pipefail
+          CLUSTER="$RESOURCE_NAME"
+          SERVICE="$RESOURCE_NAME-worker"
+          NETWORK_CONFIGURATION="$(aws ecs describe-services \
+            --cluster "$CLUSTER" \
+            --services "$SERVICE" \
+            --query 'services[0].networkConfiguration' \
+            --output json)"
+          OVERRIDES="$(jq -nc '{
+            containerOverrides: [{
+              name: "worker",
+              command: [
+                "uv", "run", "--no-sync", "python",
+                "-m", "interview_evidence.migrate"
+              ]
+            }]
+          }')"
+          TASK_ARN="$(aws ecs run-task \
+            --cluster "$CLUSTER" \
+            --launch-type FARGATE \
+            --task-definition "$WORKER_TASK_DEFINITION" \
+            --network-configuration "$NETWORK_CONFIGURATION" \
+            --overrides "$OVERRIDES" \
+            --query 'tasks[0].taskArn' \
+            --output text)"
+          test "$TASK_ARN" != "None"
+          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK_ARN"
+          EXIT_CODE="$(aws ecs describe-tasks \
+            --cluster "$CLUSTER" \
+            --tasks "$TASK_ARN" \
+            --query 'tasks[0].containers[?name==`worker`].exitCode | [0]' \
+            --output text)"
+          test "$EXIT_CODE" = "0"
+
+  deploy_ecs:
+    needs: [render_task_definitions, migrate_database]
+    runs-on: ubuntu-latest
+    environment: ${{ format('{0}-deploy', inputs.environment) }}
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Promote task definition revisions
+        env:
+          RESOURCE_NAME: ${{ needs.render_task_definitions.outputs.resource_name }}
+          API_TASK_DEFINITION: ${{ needs.render_task_definitions.outputs.api_task_definition }}
+          WORKER_TASK_DEFINITION: ${{ needs.render_task_definitions.outputs.worker_task_definition }}
+        run: |
+          set -euo pipefail
+          aws ecs update-service \
+            --cluster "$RESOURCE_NAME" \
+            --service "$RESOURCE_NAME-api" \
+            --task-definition "$API_TASK_DEFINITION" \
+            --force-new-deployment
+          aws ecs update-service \
+            --cluster "$RESOURCE_NAME" \
+            --service "$RESOURCE_NAME-worker" \
+            --task-definition "$WORKER_TASK_DEFINITION" \
+            --force-new-deployment
+          aws ecs wait services-stable \
+            --cluster "$RESOURCE_NAME" \
+            --services "$RESOURCE_NAME-api" "$RESOURCE_NAME-worker"
+
+  deploy_frontends:
+    needs: [quality, deploy_ecs]
+    runs-on: ubuntu-latest
+    environment: ${{ format('{0}-deploy', inputs.environment) }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: browser-apps-${{ github.run_id }}
+          path: browser-apps
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Publish private SPA origins and invalidate edge caches
+        env:
+          COMPANY_SPA_BUCKET: ${{ vars.COMPANY_SPA_BUCKET }}
+          APPLICANT_SPA_BUCKET: ${{ vars.APPLICANT_SPA_BUCKET }}
+          COMPANY_DISTRIBUTION_ID: ${{ vars.COMPANY_DISTRIBUTION_ID }}
+          APPLICANT_DISTRIBUTION_ID: ${{ vars.APPLICANT_DISTRIBUTION_ID }}
+        run: |
+          set -euo pipefail
+          aws s3 sync browser-apps/apps/company-console/dist \
+            "s3://$COMPANY_SPA_BUCKET" --delete
+          aws s3 sync browser-apps/apps/applicant-interview/dist \
+            "s3://$APPLICANT_SPA_BUCKET" --delete
+          aws cloudfront create-invalidation \
+            --distribution-id "$COMPANY_DISTRIBUTION_ID" --paths '/*'
+          aws cloudfront create-invalidation \
+            --distribution-id "$APPLICANT_DISTRIBUTION_ID" --paths '/*'
