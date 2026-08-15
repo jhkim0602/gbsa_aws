@@ -5,8 +5,14 @@ from datetime import datetime
 from typing import Protocol, TypeVar
 from uuid import UUID
 
-from sqlalchemy import JSON, DateTime, Integer, String, Text, Uuid, select
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+from sqlalchemy import JSON, DateTime, Integer, String, Text, Uuid, delete, select
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    InstrumentedAttribute,
+    Mapped,
+    Session,
+    mapped_column,
+)
 
 from interview_evidence.interview_engine.domain.session import (
     EquipmentCheck,
@@ -190,6 +196,13 @@ class InterviewRepository(Protocol):
         context: TenantContext,
         session_id: UUID,
     ) -> tuple[QuestionSourceReference, ...]: ...
+    def delete_and_verify_target(
+        self,
+        context: TenantContext,
+        *,
+        resource_type: str,
+        resource_id: UUID,
+    ) -> bool: ...
 
 
 class InMemoryInterviewRepository:
@@ -403,10 +416,68 @@ class InMemoryInterviewRepository:
             and reference.interview_session_id == session_id
         )
 
+    def delete_and_verify_target(
+        self,
+        context: TenantContext,
+        *,
+        resource_type: str,
+        resource_id: UUID,
+    ) -> bool:
+        tenant = require_tenant_context(context)
+        if resource_type == "interview_session":
+            session = self.sessions.get(resource_id)
+            if session is not None:
+                tenant.assert_company(session.company_id)
+                self.sessions.pop(resource_id, None)
+            return resource_id not in self.sessions
+        if resource_type == "interview_turn":
+            turn = self.turns.get(resource_id)
+            if turn is not None:
+                tenant.assert_company(turn.company_id)
+                self.turns.pop(resource_id, None)
+            return resource_id not in self.turns
+        if resource_type == "session_checkpoint":
+            checkpoint = self.checkpoints.get(resource_id)
+            if checkpoint is not None:
+                tenant.assert_company(checkpoint.company_id)
+                self.checkpoints.pop(resource_id, None)
+            return resource_id not in self.checkpoints
+        if resource_type == "question_source_reference":
+            source_reference = self.question_source_references.get(resource_id)
+            if source_reference is not None:
+                tenant.assert_company(source_reference.company_id)
+                self.question_source_references.pop(resource_id, None)
+            return resource_id not in self.question_source_references
+        if resource_type == "recording_chunk":
+            recording_chunk = self.recording_chunks.get(resource_id)
+            if recording_chunk is not None:
+                tenant.assert_company(recording_chunk.company_id)
+                self.recording_chunks.pop(resource_id, None)
+            return resource_id not in self.recording_chunks
+        raise ValueError("unsupported interview deletion target")
+
 
 class SqlAlchemyInterviewRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
+
+    def _delete_row(
+        self,
+        context: TenantContext,
+        *,
+        row_type: type[Base],
+        company_column: InstrumentedAttribute[UUID],
+        id_column: InstrumentedAttribute[UUID],
+        resource_id: UUID,
+    ) -> bool:
+        tenant = require_tenant_context(context)
+        predicate = (
+            company_column == tenant.company_id,
+            id_column == resource_id,
+        )
+        self._session.execute(delete(row_type).where(*predicate))
+        self._session.flush()
+        return self._session.scalar(select(row_type).where(*predicate)) is None
 
     def save_session(self, context: TenantContext, interview: InterviewSession) -> InterviewSession:
         require_tenant_context(context).assert_company(interview.company_id)
@@ -687,6 +758,58 @@ class SqlAlchemyInterviewRepository:
             )
         )
         return tuple(self._source_reference_domain(row) for row in rows)
+
+    def delete_and_verify_target(
+        self,
+        context: TenantContext,
+        *,
+        resource_type: str,
+        resource_id: UUID,
+    ) -> bool:
+        row: tuple[
+            type[Base],
+            InstrumentedAttribute[UUID],
+            InstrumentedAttribute[UUID],
+        ]
+        if resource_type == "interview_session":
+            row = (
+                InterviewSessionRow,
+                InterviewSessionRow.company_id,
+                InterviewSessionRow.interview_session_id,
+            )
+        elif resource_type == "interview_turn":
+            row = (
+                InterviewTurnRow,
+                InterviewTurnRow.company_id,
+                InterviewTurnRow.turn_id,
+            )
+        elif resource_type == "session_checkpoint":
+            row = (
+                SessionCheckpointRow,
+                SessionCheckpointRow.company_id,
+                SessionCheckpointRow.checkpoint_id,
+            )
+        elif resource_type == "question_source_reference":
+            row = (
+                QuestionSourceReferenceRow,
+                QuestionSourceReferenceRow.company_id,
+                QuestionSourceReferenceRow.source_reference_id,
+            )
+        elif resource_type == "recording_chunk":
+            row = (
+                RecordingChunkRow,
+                RecordingChunkRow.company_id,
+                RecordingChunkRow.recording_chunk_id,
+            )
+        else:
+            raise ValueError("unsupported interview deletion target")
+        return self._delete_row(
+            context,
+            row_type=row[0],
+            company_column=row[1],
+            id_column=row[2],
+            resource_id=resource_id,
+        )
 
     def list_session_source_references(
         self,

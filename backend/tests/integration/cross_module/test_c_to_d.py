@@ -61,9 +61,7 @@ def build_boundary(
             invitation_id=UUID("00000000-0000-7000-8000-000000000008"),
             applicant_id=UUID("00000000-0000-7000-8000-000000000009"),
             interview_strategy_id=UUID("00000000-0000-7000-8000-000000000010"),
-            competency_model_version_id=UUID(
-                "00000000-0000-7000-8000-000000000011"
-            ),
+            competency_model_version_id=UUID("00000000-0000-7000-8000-000000000011"),
             state=state,
             session_sequence=8,
             row_version=9,
@@ -117,15 +115,12 @@ def build_boundary(
         interview_repository.save_recording_chunk(
             context(),
             RecordingChunk(
-                recording_chunk_id=UUID(
-                    f"00000000-0000-7000-8000-{sequence:012d}"
-                ),
+                recording_chunk_id=UUID(f"00000000-0000-7000-8000-{sequence:012d}"),
                 company_id=COMPANY_ID,
                 interview_session_id=SESSION_ID,
                 sequence=sequence,
                 object_key=(
-                    f"companies/{COMPANY_ID}/sessions/{SESSION_ID}/"
-                    f"recording/chunks/{sequence:06d}"
+                    f"companies/{COMPANY_ID}/sessions/{SESSION_ID}/recording/chunks/{sequence:06d}"
                 ),
                 content_hash=digest,
                 byte_size=1024,
@@ -185,9 +180,7 @@ def test_lane_d_uses_real_final_turns_and_verified_media_boundary() -> None:
     assert projected.recording.status == "partial"
     assert projected.recording.missing_ranges == ((2000, 2500),)
     assert all("000002" not in segment.source_audio_key for segment in transcripts)
-    assert projected.competency_model_version_id == UUID(
-        "00000000-0000-7000-8000-000000000011"
-    )
+    assert projected.competency_model_version_id == UUID("00000000-0000-7000-8000-000000000011")
 
 
 def test_lane_d_boundary_rejects_unfinished_or_cross_tenant_session() -> None:

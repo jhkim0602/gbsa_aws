@@ -307,10 +307,10 @@ decisions and cannot complete deletion while any target remains.
 
 ### Full Quality Gates
 
-- [ ] T179 [P] Integration — Add the company-to-human-decision thin journey in `tests/e2e/test_thin_journey.py` (FR-001-FR-052, QG-01)
-- [ ] T180 [P] Integration — Add cross-route, worker, search, object and hot-view tenant isolation suite in `tests/e2e/test_tenant_isolation.py` (SC-014, QG-04, QG-10)
-- [ ] T181 [P] Integration — Add full-store deletion residue and retry suite in `tests/e2e/test_deletion_residue.py` (SC-015, QG-05-QG-06)
-- [ ] T182 [P] Integration — Add no-AI-final-decision and no-nonverbal-scoring static/runtime suite in `tests/e2e/test_human_control.py` (SC-011, QG-03, QG-07)
+- [x] T179 [P] Integration — Add the company-to-human-decision thin journey in `tests/e2e/test_thin_journey.py` (FR-001-FR-052, QG-01)
+- [x] T180 [P] Integration — Add cross-route, worker, search, object and hot-view tenant isolation suite in `tests/e2e/test_tenant_isolation.py` (SC-014, QG-04, QG-10)
+- [x] T181 [P] Integration — Add full-store deletion residue and retry suite in `tests/e2e/test_deletion_residue.py` (SC-015, QG-05-QG-06)
+- [x] T182 [P] Integration — Add no-AI-final-decision and no-nonverbal-scoring static/runtime suite in `tests/e2e/test_human_control.py` (SC-011, QG-03, QG-07)
 - [ ] T183 [P] Lane B — Add fixed Korean document/code retrieval corpus and expected sources in `tests/regression/retrieval/cases.jsonl` (SC-002, QG-09-QG-10, QG-15)
 - [ ] T184 [P] Lane C — Add fixed safe-question, duplicate, forbidden and degraded-mode corpus in `tests/regression/questions/cases.jsonl` (FR-029, QG-12)
 - [ ] T185 [P] Lane D — Add Evidence-state and unsupported-claim regression corpus in `tests/regression/evidence/cases.jsonl` (SC-004-SC-005, SC-016, QG-02, QG-12)

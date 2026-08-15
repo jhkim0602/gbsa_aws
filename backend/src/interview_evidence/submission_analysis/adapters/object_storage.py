@@ -102,3 +102,16 @@ class ScopedSubmissionStorage:
         ):
             raise UploadIntentNotFound("upload intent not found")
         return intent
+
+    def delete_object_key(self, context: TenantContext, object_key: str) -> bool:
+        matches = [
+            upload_id
+            for upload_id, intent in self._intents.items()
+            if intent.company_id == context.company_id and intent.object_key == object_key
+        ]
+        for upload_id in matches:
+            self._intents.pop(upload_id, None)
+        return not any(
+            intent.company_id == context.company_id and intent.object_key == object_key
+            for intent in self._intents.values()
+        )

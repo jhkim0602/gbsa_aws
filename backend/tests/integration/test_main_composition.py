@@ -52,6 +52,10 @@ def test_main_composes_all_lane_routers_boundaries_and_workers() -> None:
         )
     ) == ("/v1/applicant/interview-sessions/00000000-0000-7000-8000-000000000001/stream")
     assert set(runtime.boundaries) == {
+        "company_management",
+        "submission_analysis",
+        "interview_engine",
+        "reporting",
         "company_submission",
         "submission_interview",
         "interview_reporting",

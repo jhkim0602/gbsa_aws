@@ -5,6 +5,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
+from interview_evidence.company_management.application.deletion_targets import (
+    CompanyDeletionReceipt,
+    CompanyDeletionTarget,
+    CompanyDeletionTargets,
+    InMemoryCompanyTargetDeleter,
+)
 from interview_evidence.company_management.domain.company import Position
 from interview_evidence.company_management.domain.hiring import (
     InvitationStateChange,
@@ -150,9 +156,18 @@ class CompanyService:
 class CompanyManagementPublic:
     """Only the frozen Lane A application contract exposed to other lanes."""
 
-    def __init__(self, repository: CompanyRepository, clock: Clock) -> None:
+    def __init__(
+        self,
+        repository: CompanyRepository,
+        clock: Clock,
+        *,
+        deletion_targets: CompanyDeletionTargets | None = None,
+        target_deleter: InMemoryCompanyTargetDeleter | None = None,
+    ) -> None:
         self._repository = repository
         self._clock = clock
+        self._deletion_targets = deletion_targets
+        self._target_deleter = target_deleter
 
     def get_campaign_snapshot(
         self,
@@ -288,3 +303,28 @@ class CompanyManagementPublic:
             state=updated.status.value,
             row_version=updated.row_version,
         )
+
+    def enumerate_company_deletion_targets(
+        self,
+        context: TenantContext,
+        *,
+        invitation_id: UUID,
+        applicant_id: UUID,
+    ) -> tuple[CompanyDeletionTarget, ...]:
+        if self._deletion_targets is None:
+            raise RuntimeError("company deletion target adapter is not configured")
+        return self._deletion_targets.enumerate_owned_targets(
+            context,
+            invitation_id=invitation_id,
+            applicant_id=applicant_id,
+        )
+
+    def delete_company_target(
+        self,
+        context: TenantContext,
+        *,
+        target: CompanyDeletionTarget,
+    ) -> CompanyDeletionReceipt:
+        if self._target_deleter is None:
+            raise RuntimeError("company deletion executor is not configured")
+        return self._target_deleter.delete_and_verify(context, target)

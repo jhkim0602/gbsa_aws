@@ -14,6 +14,7 @@ from interview_evidence.shared.observability import (
     configure_structured_logging,
     reset_trace_context,
 )
+from interview_evidence.shared.security.principals import PrincipalProvider
 
 
 def create_app(public_routers: Iterable[APIRouter] = ()) -> FastAPI:
@@ -69,9 +70,13 @@ class LocalRuntime:
     lanes: Mapping[str, object]
     boundaries: Mapping[str, object]
     worker_handlers: Mapping[str, object]
+    resources: Mapping[str, object]
 
 
-def create_local_runtime() -> LocalRuntime:
+def create_local_runtime(
+    *,
+    company_principal_provider: PrincipalProvider | None = None,
+) -> LocalRuntime:
     from interview_evidence.company_management.adapters.company_auth import CompanyAuthAdapter
     from interview_evidence.company_management.api import create_lane_a_runtime
     from interview_evidence.company_management.api.applicant_routes import (
@@ -83,6 +88,10 @@ def create_local_runtime() -> LocalRuntime:
     from interview_evidence.company_management.application.company_service import (
         CompanyManagementPublic,
     )
+    from interview_evidence.company_management.application.deletion_targets import (
+        CompanyDeletionTargets,
+        InMemoryCompanyTargetDeleter,
+    )
     from interview_evidence.company_management.workers.invitation_email import (
         InvitationEmailHandler,
     )
@@ -92,6 +101,7 @@ def create_local_runtime() -> LocalRuntime:
     from interview_evidence.integration.interview_reporting import (
         InterviewReportingBoundary,
     )
+    from interview_evidence.integration.privacy_deletion import PrivacyDeletionBoundary
     from interview_evidence.integration.reporting_company import (
         ReportingCompanyBoundary,
     )
@@ -116,6 +126,7 @@ def create_local_runtime() -> LocalRuntime:
     from interview_evidence.reporting.api.company_routes import (
         create_company_router as create_reporting_router,
     )
+    from interview_evidence.reporting.application.deletion_service import DeletionService
     from interview_evidence.reporting.application.evidence_service import EvidenceService
     from interview_evidence.reporting.application.public import ReportingPublic
     from interview_evidence.reporting.application.transcript_service import TranscriptService
@@ -126,7 +137,6 @@ def create_local_runtime() -> LocalRuntime:
         ApplicantPrincipal,
         CompanyPrincipal,
         FakePrincipalProvider,
-        PrincipalProvider,
     )
     from interview_evidence.shared.tenant import TenantContext
     from interview_evidence.submission_analysis.adapters.search import InMemorySearchIndex
@@ -157,7 +167,7 @@ def create_local_runtime() -> LocalRuntime:
     clock = SystemClock()
     audit = InMemoryAuditAppender()
     object_storage = InMemoryObjectStorage()
-    company_principals = FakePrincipalProvider()
+    company_principals = company_principal_provider or FakePrincipalProvider()
     lane_a = create_lane_a_runtime(
         principal_provider=company_principals,
         audit=audit,
@@ -175,7 +185,19 @@ def create_local_runtime() -> LocalRuntime:
             return lane_a.sessions.get_applicant_principal(credential)
 
     principals = RuntimePrincipalProvider(company_principals)
-    company_public = CompanyManagementPublic(lane_a.repository, clock)
+    company_public = CompanyManagementPublic(
+        lane_a.repository,
+        clock,
+        deletion_targets=CompanyDeletionTargets(
+            lane_a.repository,
+            lane_a.outbox,
+            clock,
+        ),
+        target_deleter=InMemoryCompanyTargetDeleter(
+            lane_a.repository,
+            audit,
+        ),
+    )
     company_submission = CompanySubmissionAuthorization(company_public)
     lane_b = create_lane_b_runtime(
         principal_provider=principals,
@@ -184,11 +206,16 @@ def create_local_runtime() -> LocalRuntime:
         audit=audit,
         clock=clock,
     )
+    search_index = InMemorySearchIndex()
     submission_public = SubmissionAnalysisPublic(
         repository=lane_b.repository,
-        retriever=HybridRetriever(InMemorySearchIndex(), HybridRetrievalConfig()),
+        retriever=HybridRetriever(search_index, HybridRetrievalConfig()),
         deletion_targets=SubmissionDeletionTargets(lane_b.repository),
-        target_deleter=InMemorySubmissionTargetDeleter(),
+        target_deleter=InMemorySubmissionTargetDeleter(
+            repository=lane_b.repository,
+            storage=lane_b.storage,
+            search_index=search_index,
+        ),
     )
     submission_interview = SubmissionInterviewBoundary(submission_public)
     lane_c = create_lane_c_runtime(
@@ -198,7 +225,7 @@ def create_local_runtime() -> LocalRuntime:
         audit=audit,
         clock=clock,
     )
-    lane_d = create_lane_d_runtime(
+    base_lane_d = create_lane_d_runtime(
         principal_provider=principals,
         audit=audit,
         clock=clock,
@@ -207,7 +234,38 @@ def create_local_runtime() -> LocalRuntime:
     interview_public = InterviewEnginePublic(
         repository=lane_c.repository,
         deletion_targets=InterviewDeletionTargets(lane_c.repository),
-        target_deleter=InMemoryInterviewTargetDeleter(),
+        target_deleter=InMemoryInterviewTargetDeleter(
+            repository=lane_c.repository,
+            hot_view=lane_c.hot_view,
+        ),
+    )
+    base_reporting_public = ReportingPublic(
+        repository=base_lane_d.repository,
+        deletion_service=base_lane_d.deletion_service,
+    )
+    privacy_deletion = PrivacyDeletionBoundary(
+        company=company_public,
+        submission=submission_public,
+        interview=interview_public,
+        reporting=base_reporting_public,
+        clock=clock,
+    )
+    deletion_service = DeletionService(
+        base_lane_d.repository,
+        enumerators=(privacy_deletion.enumerate,),
+        executors={
+            "A": privacy_deletion.execute_company,
+            "B": privacy_deletion.execute_submission,
+            "C": privacy_deletion.execute_interview,
+            "D": privacy_deletion.execute_reporting,
+        },
+    )
+    lane_d = create_lane_d_runtime(
+        principal_provider=principals,
+        repository=base_lane_d.repository,
+        audit=audit,
+        clock=clock,
+        deletion_service=deletion_service,
     )
     media_processor = MediaPostProcessor(lane_d.repository)
     interview_reporting = InterviewReportingBoundary(
@@ -282,6 +340,10 @@ def create_local_runtime() -> LocalRuntime:
             "reporting": lane_d,
         },
         boundaries={
+            "company_management": company_public,
+            "submission_analysis": submission_public,
+            "interview_engine": interview_public,
+            "reporting": reporting_public,
             "company_submission": company_submission,
             "submission_interview": submission_interview,
             "interview_reporting": interview_reporting,
@@ -301,6 +363,14 @@ def create_local_runtime() -> LocalRuntime:
                 EvidenceService(lane_d.repository),
             ),
             "privacy_deletion": lane_d.deletion_service,
+        },
+        resources={
+            "audit": audit,
+            "clock": clock,
+            "company_principals": company_principals,
+            "object_storage": object_storage,
+            "search_index": search_index,
+            "privacy_deletion": privacy_deletion,
         },
     )
 

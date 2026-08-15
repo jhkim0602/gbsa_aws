@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
+from interview_evidence.interview_engine.adapters.recent_context import InMemoryRecentContext
 from interview_evidence.interview_engine.repositories.postgres import InterviewRepository
 from interview_evidence.shared.ids import CommandMeta
 from interview_evidence.shared.tenant import TenantContext
@@ -38,9 +39,16 @@ class InterviewTargetDeleter(Protocol):
 
 
 class InMemoryInterviewTargetDeleter:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        repository: InterviewRepository | None = None,
+        hot_view: InMemoryRecentContext | None = None,
+    ) -> None:
         self.calls: list[InterviewDeletionTarget] = []
         self._receipts: dict[tuple[UUID, str], InterviewDeletionReceipt] = {}
+        self._repository = repository
+        self._hot_view = hot_view
 
     def delete_and_verify(
         self,
@@ -56,15 +64,38 @@ class InMemoryInterviewTargetDeleter:
         if existing is not None:
             return existing
         self.calls.append(target)
+        verified_absent = self._delete_and_verify(context, target)
         receipt = InterviewDeletionReceipt(
             company_id=context.company_id,
             store=target.store,
             resource_type=target.resource_type,
             resource_id=target.resource_id,
-            verified_absent=True,
+            verified_absent=verified_absent,
         )
         self._receipts[key] = receipt
         return receipt
+
+    def _delete_and_verify(
+        self,
+        context: TenantContext,
+        target: InterviewDeletionTarget,
+    ) -> bool:
+        if target.store == "dynamodb":
+            if self._hot_view is None:
+                return True
+            session_id = UUID(target.resource_id.removeprefix("SESSION#"))
+            self._hot_view.delete(context, session_id)
+            return self._hot_view.get(context, session_id) is None
+        if target.store == "s3":
+            return True
+        if target.store != "aurora" or self._repository is None:
+            return True
+
+        return self._repository.delete_and_verify_target(
+            context,
+            resource_type=target.resource_type,
+            resource_id=UUID(target.resource_id),
+        )
 
 
 class InterviewDeletionTargets:

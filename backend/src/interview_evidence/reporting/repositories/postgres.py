@@ -251,6 +251,7 @@ class InMemoryReportingRepository:
         self.reports: dict[UUID, Report] = {}
         self.reviews: dict[UUID, HumanReview] = {}
         self.deletions: dict[UUID, tuple[DeletionRequest, DeletionManifest]] = {}
+        self.verified_external_deletions: set[tuple[str, str]] = set()
 
     @staticmethod
     def _scoped(
@@ -419,6 +420,70 @@ class InMemoryReportingRepository:
         self._assert(context, request)
         self.deletions[request.deletion_request_id] = (request, manifest)
         return manifest
+
+    def delete_and_verify_target(
+        self,
+        context: TenantContext,
+        *,
+        store: str,
+        target_type: str,
+        resource_id: str,
+    ) -> bool:
+        tenant = require_tenant_context(context)
+        if store != "aurora":
+            self.verified_external_deletions.add((store, resource_id))
+            return (store, resource_id) in self.verified_external_deletions
+
+        resource_uuid = UUID(resource_id)
+        if target_type == "transcript_segment":
+            segment = self.transcripts.get(resource_uuid)
+            if segment is not None:
+                tenant.assert_company(segment.company_id)
+                self.transcripts.pop(resource_uuid, None)
+            return resource_uuid not in self.transcripts
+        if target_type == "recording_asset":
+            asset = self.recording_assets.get(resource_uuid)
+            if asset is not None:
+                tenant.assert_company(asset.company_id)
+                self.recording_assets.pop(resource_uuid, None)
+            return resource_uuid not in self.recording_assets
+        if target_type == "session_event":
+            event = self.session_events.get(resource_uuid)
+            if event is not None:
+                tenant.assert_company(event.company_id)
+                self.session_events.pop(resource_uuid, None)
+            return resource_uuid not in self.session_events
+        if target_type == "human_review":
+            review = self.reviews.get(resource_uuid)
+            if review is not None:
+                tenant.assert_company(review.company_id)
+                self.reviews.pop(resource_uuid, None)
+            return resource_uuid not in self.reviews
+        if target_type == "report":
+            report = self.reports.get(resource_uuid)
+            if report is not None:
+                tenant.assert_company(report.company_id)
+                self.reports.pop(resource_uuid, None)
+            return resource_uuid not in self.reports
+
+        if target_type in {"report_item", "evidence"}:
+            return all(
+                (
+                    target_type == "report_item"
+                    and all(item.report_item_id != resource_uuid for item in report.items)
+                )
+                or (
+                    target_type == "evidence"
+                    and all(
+                        evidence.evidence_id != resource_uuid
+                        for item in report.items
+                        for evidence in item.evidence
+                    )
+                )
+                for report in self.reports.values()
+                if report.company_id == tenant.company_id
+            )
+        raise ValueError("unsupported reporting deletion target")
 
 
 class SQLAlchemyReportingRepository:

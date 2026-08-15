@@ -6,6 +6,10 @@ from uuid import UUID
 
 from interview_evidence.shared.ids import CommandMeta
 from interview_evidence.shared.tenant import TenantContext
+from interview_evidence.submission_analysis.adapters.object_storage import (
+    ScopedSubmissionStorage,
+)
+from interview_evidence.submission_analysis.adapters.search import InMemorySearchIndex
 from interview_evidence.submission_analysis.repositories.postgres import (
     SubmissionRepository,
 )
@@ -40,9 +44,18 @@ class SubmissionTargetDeleter(Protocol):
 
 
 class InMemorySubmissionTargetDeleter:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        repository: SubmissionRepository | None = None,
+        storage: ScopedSubmissionStorage | None = None,
+        search_index: InMemorySearchIndex | None = None,
+    ) -> None:
         self.calls: list[SubmissionDeletionTarget] = []
         self._receipts: dict[tuple[UUID, str], SubmissionDeletionReceipt] = {}
+        self._repository = repository
+        self._storage = storage
+        self._search_index = search_index
 
     def delete_and_verify(
         self,
@@ -58,15 +71,36 @@ class InMemorySubmissionTargetDeleter:
         if existing is not None:
             return existing
         self.calls.append(target)
+        verified_absent = self._delete_and_verify(context, target)
         receipt = SubmissionDeletionReceipt(
             company_id=context.company_id,
             resource_type=target.resource_type,
             resource_id=target.resource_id,
             store=target.store,
-            verified_absent=True,
+            verified_absent=verified_absent,
         )
         self._receipts[key] = receipt
         return receipt
+
+    def _delete_and_verify(
+        self,
+        context: TenantContext,
+        target: SubmissionDeletionTarget,
+    ) -> bool:
+        if target.store == "opensearch" and self._search_index is not None:
+            return self._search_index.delete(context, target.resource_id)
+        if target.store == "s3":
+            if self._storage is None:
+                return True
+            return self._storage.delete_object_key(context, target.resource_id)
+        if target.store != "aurora" or self._repository is None:
+            return True
+
+        return self._repository.delete_and_verify_target(
+            context,
+            resource_type=target.resource_type,
+            resource_id=UUID(target.resource_id),
+        )
 
 
 class SubmissionDeletionTargets:

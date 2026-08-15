@@ -5,6 +5,7 @@ from datetime import datetime
 from uuid import UUID
 
 from interview_evidence.company_management.repositories.postgres import CompanyRepository
+from interview_evidence.shared.audit import InMemoryAuditAppender
 from interview_evidence.shared.ids import Clock, new_uuid7
 from interview_evidence.shared.messaging.outbox import InMemoryOutbox, OutboxEvent
 from interview_evidence.shared.tenant import TenantContext
@@ -17,6 +18,56 @@ class CompanyDeletionTarget:
     store: str
     resource_type: str
     resource_id: UUID
+
+
+@dataclass(frozen=True, slots=True)
+class CompanyDeletionReceipt:
+    store: str
+    resource_type: str
+    resource_id: UUID
+    verified_absent: bool
+
+
+class InMemoryCompanyTargetDeleter:
+    def __init__(
+        self,
+        repository: CompanyRepository,
+        audit: InMemoryAuditAppender,
+    ) -> None:
+        self._repository = repository
+        self._audit = audit
+
+    def delete_and_verify(
+        self,
+        context: TenantContext,
+        target: CompanyDeletionTarget,
+    ) -> CompanyDeletionReceipt:
+        context.assert_company(target.company_id)
+        if target.owner_lane != "A" or target.store != "aurora":
+            raise PermissionError("deletion target is not owned by Lane A")
+        resource_id = target.resource_id
+        if target.resource_type == "audit_event":
+            self._audit.events = [
+                event
+                for event in self._audit.events
+                if not (event.company_id == context.company_id and event.resource_id == resource_id)
+            ]
+            absent = not any(
+                event.company_id == context.company_id and event.resource_id == resource_id
+                for event in self._audit.events
+            )
+        else:
+            absent = self._repository.delete_and_verify_target(
+                context,
+                resource_type=target.resource_type,
+                resource_id=resource_id,
+            )
+        return CompanyDeletionReceipt(
+            store=target.store,
+            resource_type=target.resource_type,
+            resource_id=resource_id,
+            verified_absent=absent,
+        )
 
 
 class CompanyDeletionTargets:

@@ -35,6 +35,14 @@ class InMemorySearchIndex:
     def add(self, document: SearchDocument) -> None:
         self._documents[document.document_id] = document
 
+    def delete(self, context: TenantContext, document_id: str) -> bool:
+        tenant = require_tenant_context(context)
+        document = self._documents.get(document_id)
+        if document is not None:
+            tenant.assert_company(document.company_id)
+            self._documents.pop(document_id, None)
+        return document_id not in self._documents
+
     def candidates(
         self,
         context: TenantContext,

@@ -17,7 +17,13 @@ from sqlalchemy import (
     delete,
     select,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    InstrumentedAttribute,
+    Mapped,
+    Session,
+    mapped_column,
+)
 
 from interview_evidence.company_management.domain.applicant_access import (
     ApplicantProfile,
@@ -254,6 +260,13 @@ class CompanyRepository(Protocol):
     def get_latest_consent(
         self, context: TenantContext, invitation_id: UUID
     ) -> ConsentRecord | None: ...
+    def delete_and_verify_target(
+        self,
+        context: TenantContext,
+        *,
+        resource_type: str,
+        resource_id: UUID,
+    ) -> bool: ...
 
 
 class InMemoryCompanyRepository:
@@ -400,6 +413,46 @@ class InMemoryCompanyRepository:
         ]
         return max(matches, key=lambda consent: consent.accepted_at, default=None)
 
+    def delete_and_verify_target(
+        self,
+        context: TenantContext,
+        *,
+        resource_type: str,
+        resource_id: UUID,
+    ) -> bool:
+        tenant = require_tenant_context(context)
+        if resource_type == "consent_record":
+            consent = self.consents.get(resource_id)
+            if consent is not None:
+                tenant.assert_company(consent.company_id)
+                self.consents.pop(resource_id, None)
+            return resource_id not in self.consents
+        if resource_type == "applicant_profile":
+            profile = self.applicant_profiles.get(resource_id)
+            if profile is not None:
+                tenant.assert_company(profile.company_id)
+                self.applicant_profiles.pop(resource_id, None)
+            return resource_id not in self.applicant_profiles
+        if resource_type == "invitation_state_history":
+            self.invitation_history = [
+                change
+                for change in self.invitation_history
+                if not (
+                    change.company_id == tenant.company_id and change.invitation_id == resource_id
+                )
+            ]
+            return not any(
+                change.company_id == tenant.company_id and change.invitation_id == resource_id
+                for change in self.invitation_history
+            )
+        if resource_type == "invitation":
+            invitation = self.invitations.get(resource_id)
+            if invitation is not None:
+                tenant.assert_company(invitation.company_id)
+                self.invitations.pop(resource_id, None)
+            return resource_id not in self.invitations
+        raise ValueError("unsupported company deletion target")
+
 
 class SqlAlchemyCompanyRepository:
     """PostgreSQL-compatible repository with mandatory tenant predicates."""
@@ -410,6 +463,24 @@ class SqlAlchemyCompanyRepository:
     @staticmethod
     def _tenant(context: TenantContext) -> TenantContext:
         return require_tenant_context(context)
+
+    def _delete_row(
+        self,
+        context: TenantContext,
+        *,
+        row_type: type[Base],
+        company_column: InstrumentedAttribute[UUID],
+        id_column: InstrumentedAttribute[UUID],
+        resource_id: UUID,
+    ) -> bool:
+        tenant = self._tenant(context)
+        predicate = (
+            company_column == tenant.company_id,
+            id_column == resource_id,
+        )
+        self._session.execute(delete(row_type).where(*predicate))
+        self._session.flush()
+        return self._session.scalar(select(row_type).where(*predicate)) is None
 
     def save_company(self, context: TenantContext, company: Company) -> Company:
         self._tenant(context).assert_company(company.company_id)
@@ -793,4 +864,52 @@ class SqlAlchemyCompanyRepository:
             accepted_at=row.accepted_at,
             withdrawn_at=row.withdrawn_at,
             evidence_digest=row.evidence_digest,
+        )
+
+    def delete_and_verify_target(
+        self,
+        context: TenantContext,
+        *,
+        resource_type: str,
+        resource_id: UUID,
+    ) -> bool:
+        if resource_type == "invitation_state_history":
+            return self._delete_row(
+                context,
+                row_type=InvitationStateHistoryRow,
+                company_column=InvitationStateHistoryRow.company_id,
+                id_column=InvitationStateHistoryRow.invitation_id,
+                resource_id=resource_id,
+            )
+        row: tuple[
+            type[Base],
+            InstrumentedAttribute[UUID],
+            InstrumentedAttribute[UUID],
+        ]
+        if resource_type == "consent_record":
+            row = (
+                ConsentRecordRow,
+                ConsentRecordRow.company_id,
+                ConsentRecordRow.consent_record_id,
+            )
+        elif resource_type == "applicant_profile":
+            row = (
+                ApplicantProfileRow,
+                ApplicantProfileRow.company_id,
+                ApplicantProfileRow.applicant_id,
+            )
+        elif resource_type == "invitation":
+            row = (
+                InvitationRow,
+                InvitationRow.company_id,
+                InvitationRow.invitation_id,
+            )
+        else:
+            raise ValueError("unsupported company deletion target")
+        return self._delete_row(
+            context,
+            row_type=row[0],
+            company_column=row[1],
+            id_column=row[2],
+            resource_id=resource_id,
         )

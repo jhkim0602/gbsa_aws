@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
@@ -14,7 +15,19 @@ from interview_evidence.reporting.repositories.postgres import ReportingReposito
 from interview_evidence.shared.ids import new_uuid7
 from interview_evidence.shared.tenant import TenantContext
 
-TargetEnumerator = Callable[[TenantContext, str, UUID], tuple[DeletionTarget, ...]]
+
+@dataclass(frozen=True, slots=True)
+class DeletionTargetSpec:
+    owner_lane: str
+    store: str
+    target_type: str
+    resource_id: str
+
+
+TargetEnumerator = Callable[
+    [TenantContext, str, UUID],
+    tuple[DeletionTarget | DeletionTargetSpec, ...],
+]
 TargetExecutor = Callable[[TenantContext, DeletionTarget], bool]
 
 
@@ -51,10 +64,22 @@ class DeletionService:
             policy_snapshot=policy_snapshot,
             requested_at=occurred_at,
         )
-        targets = tuple(
-            target
+        candidates = tuple(
+            candidate
             for enumerator in self._enumerators
-            for target in enumerator(context, scope_type, scope_id)
+            for candidate in enumerator(context, scope_type, scope_id)
+        )
+        targets = tuple(
+            candidate
+            if isinstance(candidate, DeletionTarget)
+            else DeletionTarget.pending(
+                target_id=new_uuid7(occurred_at),
+                owner_lane=candidate.owner_lane,
+                store=candidate.store,
+                target_type=candidate.target_type,
+                resource_id=candidate.resource_id,
+            )
+            for candidate in candidates
         )
         manifest = DeletionManifest(
             manifest_id=new_uuid7(occurred_at),

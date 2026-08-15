@@ -5,8 +5,14 @@ from datetime import datetime
 from typing import Protocol, TypeVar
 from uuid import UUID
 
-from sqlalchemy import JSON, DateTime, Float, Integer, String, Uuid, select
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+from sqlalchemy import JSON, DateTime, Float, Integer, String, Uuid, delete, select
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    InstrumentedAttribute,
+    Mapped,
+    Session,
+    mapped_column,
+)
 
 from interview_evidence.shared.tenant import TenantContext, require_tenant_context
 from interview_evidence.submission_analysis.domain.git_analysis import (
@@ -226,6 +232,13 @@ class SubmissionRepository(Protocol):
         self, context: TenantContext, invitation_id: UUID
     ) -> InterviewStrategy | None: ...
     def get_strategy(self, context: TenantContext, strategy_id: UUID) -> InterviewStrategy: ...
+    def delete_and_verify_target(
+        self,
+        context: TenantContext,
+        *,
+        resource_type: str,
+        resource_id: UUID,
+    ) -> bool: ...
 
 
 class InMemorySubmissionRepository:
@@ -411,10 +424,80 @@ class InMemorySubmissionRepository:
     def get_strategy(self, context: TenantContext, strategy_id: UUID) -> InterviewStrategy:
         return self._scoped(context, self.strategies, strategy_id)
 
+    def delete_and_verify_target(
+        self,
+        context: TenantContext,
+        *,
+        resource_type: str,
+        resource_id: UUID,
+    ) -> bool:
+        tenant = require_tenant_context(context)
+        if resource_type == "submission":
+            submission = self.submissions.get(resource_id)
+            if submission is not None:
+                tenant.assert_company(submission.company_id)
+                self.submissions.pop(resource_id, None)
+            return resource_id not in self.submissions
+        if resource_type == "submission_analysis":
+            analysis = self.analyses.get(resource_id)
+            if analysis is not None:
+                tenant.assert_company(analysis.company_id)
+                self.analyses.pop(resource_id, None)
+            return resource_id not in self.analyses
+        if resource_type == "submission_chunk":
+            chunk = self.chunks.get(resource_id)
+            if chunk is not None:
+                tenant.assert_company(chunk.company_id)
+                self.chunks.pop(resource_id, None)
+            return resource_id not in self.chunks
+        if resource_type == "git_repository_analysis":
+            repository_analysis = self.git_repositories.get(resource_id)
+            if repository_analysis is not None:
+                tenant.assert_company(repository_analysis.company_id)
+                self.git_repositories.pop(resource_id, None)
+            return resource_id not in self.git_repositories
+        if resource_type == "git_commit_analysis":
+            commit_analysis = self.git_commits.get(resource_id)
+            if commit_analysis is not None:
+                tenant.assert_company(commit_analysis.company_id)
+                self.git_commits.pop(resource_id, None)
+            return resource_id not in self.git_commits
+        if resource_type == "candidate_code_unit":
+            code_unit = self.code_units.get(resource_id)
+            if code_unit is not None:
+                tenant.assert_company(code_unit.company_id)
+                self.code_units.pop(resource_id, None)
+            return resource_id not in self.code_units
+        if resource_type == "interview_strategy":
+            strategy = self.strategies.get(resource_id)
+            if strategy is not None:
+                tenant.assert_company(strategy.company_id)
+                self.strategies.pop(resource_id, None)
+            return resource_id not in self.strategies
+        raise ValueError("unsupported submission deletion target")
+
 
 class SqlAlchemySubmissionRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
+
+    def _delete_row(
+        self,
+        context: TenantContext,
+        *,
+        row_type: type[Base],
+        company_column: InstrumentedAttribute[UUID],
+        id_column: InstrumentedAttribute[UUID],
+        resource_id: UUID,
+    ) -> bool:
+        tenant = require_tenant_context(context)
+        predicate = (
+            company_column == tenant.company_id,
+            id_column == resource_id,
+        )
+        self._session.execute(delete(row_type).where(*predicate))
+        self._session.flush()
+        return self._session.scalar(select(row_type).where(*predicate)) is None
 
     def save_submission(self, context: TenantContext, submission: Submission) -> Submission:
         require_tenant_context(context).assert_company(submission.company_id)
@@ -829,6 +912,66 @@ class SqlAlchemySubmissionRepository:
         if row is None:
             raise TenantScopedSubmissionNotFound("submission resource not found")
         return self._strategy_from_row(row)
+
+    def delete_and_verify_target(
+        self,
+        context: TenantContext,
+        *,
+        resource_type: str,
+        resource_id: UUID,
+    ) -> bool:
+        row: tuple[
+            type[Base],
+            InstrumentedAttribute[UUID],
+            InstrumentedAttribute[UUID],
+        ]
+        if resource_type == "submission":
+            row = (SubmissionRow, SubmissionRow.company_id, SubmissionRow.submission_id)
+        elif resource_type == "submission_analysis":
+            row = (
+                SubmissionAnalysisRow,
+                SubmissionAnalysisRow.company_id,
+                SubmissionAnalysisRow.analysis_id,
+            )
+        elif resource_type == "submission_chunk":
+            row = (
+                SubmissionChunkRow,
+                SubmissionChunkRow.company_id,
+                SubmissionChunkRow.chunk_id,
+            )
+        elif resource_type == "git_repository_analysis":
+            row = (
+                GitRepositoryAnalysisRow,
+                GitRepositoryAnalysisRow.company_id,
+                GitRepositoryAnalysisRow.repository_analysis_id,
+            )
+        elif resource_type == "git_commit_analysis":
+            row = (
+                GitCommitAnalysisRow,
+                GitCommitAnalysisRow.company_id,
+                GitCommitAnalysisRow.git_commit_analysis_id,
+            )
+        elif resource_type == "candidate_code_unit":
+            row = (
+                CandidateCodeUnitRow,
+                CandidateCodeUnitRow.company_id,
+                CandidateCodeUnitRow.code_unit_id,
+            )
+        elif resource_type == "interview_strategy":
+            row = (
+                InterviewStrategyRow,
+                InterviewStrategyRow.company_id,
+                InterviewStrategyRow.interview_strategy_id,
+            )
+        else:
+            raise ValueError("unsupported submission deletion target")
+        return self._delete_row(
+            context,
+            row_type=row[0],
+            company_column=row[1],
+            id_column=row[2],
+            resource_id=resource_id,
+        )
 
     @staticmethod
     def _strategy_from_row(row: InterviewStrategyRow) -> InterviewStrategy:
