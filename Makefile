@@ -1,5 +1,6 @@
 SHELL := /bin/bash
 UV_CACHE_DIR ?= .uv-cache
+DOCKER_CONTEXT ?= default
 
 .PHONY: bootstrap boundaries-check build compose-down compose-up contracts-check contracts-generate \
 	format-check infra-format-check infra-plan-dev infra-security-check infra-validate lint migrate \
@@ -13,10 +14,10 @@ build:
 	npm run build
 
 compose-up:
-	docker compose up -d postgres dynamodb localstack opensearch
+	DOCKER_CONTEXT=$(DOCKER_CONTEXT) docker compose up -d --build --wait
 
 compose-down:
-	docker compose down
+	DOCKER_CONTEXT=$(DOCKER_CONTEXT) docker compose down
 
 contracts-generate:
 	npm run contracts:generate

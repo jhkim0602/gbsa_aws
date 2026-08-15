@@ -303,7 +303,7 @@ decisions and cannot complete deletion while any target remains.
 - [x] T175 Integration — Connect Lane D report/deletion projections to Lane A company views in `backend/tests/integration/cross_module/test_d_to_a.py`
 - [x] T176 Integration — Wire all router fragments and worker handlers in `backend/src/interview_evidence/main.py`
 - [x] T177 Integration — Wire all feature routes without changing lane feature internals in `apps/company-console/src/app/featureRoutes.ts` and `apps/applicant-interview/src/app/featureRoutes.ts`
-- [ ] T178 Integration — Complete local production-contract composition and health checks in `compose.yaml` (QG-11)
+- [x] T178 Integration — Complete local production-contract composition and health checks in `compose.yaml` (QG-11)
 
 ### Full Quality Gates
 
