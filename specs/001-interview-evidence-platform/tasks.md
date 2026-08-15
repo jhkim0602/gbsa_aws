@@ -443,3 +443,11 @@ additional degraded modes or richer review UI.
 - [X] T200 Lane A — Present server-versioned AI role, recording, retention and deletion policy content before consent and bind the accepted digest to the displayed policy per FR-002 and FR-014 (partial)
 - [X] T201 Integration — Add production store deletion verification, dependency-aware readiness and queue/latency/deletion metrics per FR-047 and FR-050-FR-051 (partial)
 - [X] T202 Integration — Add LocalStack/PostgreSQL production-composition parity tests covering API, worker, auth, persistence, AWS adapters, restart recovery and failure isolation per plan R-014 and QG-13-QG-15 (missing)
+
+## Phase 9: Convergence
+
+- [X] T203 Lane C — CRITICAL: Wire production WebSocket audio transcription, answer finalization, initial question and follow-up question generation into the real interview runtime per FR-023-FR-036 and US3 (partial)
+- [X] T204 Lane C — CRITICAL: Replace production interview command in-memory idempotency with PostgreSQL-backed result persistence across API task restarts per Constitution V and FR-032/FR-034 (contradicts)
+- [X] T205 Lane B — Connect bounded public Git fetch, commit identity, code-unit and exact-symbol analysis to the production submission worker pipeline per FR-017-FR-022 (partial)
+- [X] T206 Integration — Inject environment-specific applicant invitation access URLs into local, stage and production hiring routes per FR-013 and US2/AC1 (partial)
+- [X] T207 Integration — Extend local-production parity with a real outbox-to-SQS-to-worker-to-PostgreSQL processing round trip per plan R-014, T202 and QG-14 (partial)
