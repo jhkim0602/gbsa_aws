@@ -26,10 +26,7 @@ jobs:
 
       - run: npm ci
       - run: uv sync --frozen --no-editable
-      - run: make format-check
-      - run: make lint
-      - run: make typecheck
-      - run: make test-foundation
+      - run: npm run test:workspace
       - run: make contracts-check
       - run: make boundaries-check
       - run: make migration-check
