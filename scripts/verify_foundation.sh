@@ -4,10 +4,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-make format-check
-make lint
-make typecheck
-make test-foundation
+npm run format:check
+npm run lint
+npm run typecheck
+UV_CACHE_DIR="${UV_CACHE_DIR:-.uv-cache}" uv run --no-sync pytest backend/tests/contract backend/tests/unit/shared
 make contracts-check
 make boundaries-check
 make migration-check

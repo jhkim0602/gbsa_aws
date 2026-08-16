@@ -84,7 +84,7 @@ all four worktrees can start from the same `foundation-v1` commit.
 **Goal**: A company creates a position with a fixed criterion version, invites an applicant directly, and records
 identity and consent with complete tenant isolation.
 
-**Independent Test**: Run `make test-lane-a demo-lane-a` with only shared fakes for B/C/D.
+**Independent Test**: Run `pytest backend/tests/{unit,integration}/company_management` with only shared fakes for B/C/D.
 
 ### Tests for User Story 1
 
@@ -129,7 +129,7 @@ identity and consent with complete tenant isolation.
 **Goal**: A consented applicant submits documents and a public repository; analysis creates
 traceable source chunks and a versioned interview strategy.
 
-**Independent Test**: Run `make test-lane-b demo-lane-b` with Lane A authorization fixtures and
+**Independent Test**: Run `pytest backend/tests/{unit,integration}/submission_analysis` with Lane A authorization fixtures and
 Lane C/D fakes.
 
 ### Tests for User Story 2
@@ -178,7 +178,7 @@ no cross-tenant search results.
 **Goal**: A prepared applicant completes an idempotent, server-authoritative interview that recovers
 from connection and dependency failures.
 
-**Independent Test**: Run `make test-lane-c demo-lane-c` with a frozen Strategy fixture and
+**Independent Test**: Run `pytest backend/tests/{unit,integration}/interview_engine` with a frozen Strategy fixture and
 deterministic speech/search/model fakes.
 
 ### Tests for User Story 3
@@ -234,7 +234,7 @@ duplicate Turn or assessment signal from technical failures.
 **Goal**: A company reviews transcript/video-linked Evidence, preserves AI and human versions, records
 a human-only decision, and verifies privacy deletion.
 
-**Independent Test**: Run `make test-lane-d demo-lane-d` with a completed-session fixture.
+**Independent Test**: Run `pytest backend/tests/{unit,integration}/reporting` with a completed-session fixture.
 
 ### Tests for User Story 4
 

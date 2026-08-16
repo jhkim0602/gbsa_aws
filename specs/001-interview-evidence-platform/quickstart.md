@@ -23,7 +23,7 @@ make bootstrap
 make compose-up
 make migrate
 make seed-contract-fixtures
-make test-company-browser
+npm run test:e2e:company
 ```
 
 Expected:
@@ -55,7 +55,7 @@ Expected:
 ## 3. Run the Foundation Test Set
 
 ```bash
-make test-foundation
+uv run --no-sync pytest backend/tests/contract backend/tests/unit/shared
 ```
 
 Expected:
@@ -73,8 +73,7 @@ Each lane uses contract fakes for dependencies that have not merged.
 ### Lane A — Platform and Hiring
 
 ```bash
-make test-lane-a
-make demo-lane-a
+uv run --no-sync pytest backend/tests/unit/company_management backend/tests/integration/company_management
 ```
 
 Expected journey:
@@ -89,8 +88,7 @@ Expected journey:
 ### Lane B — Submission and RAG
 
 ```bash
-make test-lane-b
-make demo-lane-b
+uv run --no-sync pytest backend/tests/unit/submission_analysis backend/tests/integration/submission_analysis
 ```
 
 Expected journey:
@@ -105,8 +103,7 @@ Expected journey:
 ### Lane C — Live Interview
 
 ```bash
-make test-lane-c
-make demo-lane-c
+uv run --no-sync pytest backend/tests/unit/interview_engine backend/tests/integration/interview_engine
 ```
 
 Expected journey:
@@ -122,8 +119,7 @@ Expected journey:
 ### Lane D — Evidence and Review
 
 ```bash
-make test-lane-d
-make demo-lane-d
+uv run --no-sync pytest backend/tests/unit/reporting backend/tests/integration/reporting
 ```
 
 Expected journey:
@@ -139,8 +135,7 @@ Expected journey:
 ## 5. Run the Merged Thin End-to-End Journey
 
 ```bash
-make test-integration
-make test-e2e-thin
+uv run --no-sync pytest backend/tests/integration/cross_module tests/e2e/test_thin_journey.py
 ```
 
 Expected:
@@ -169,9 +164,9 @@ At the end:
 ## 6. Run Failure, Privacy and Regression Gates
 
 ```bash
-make test-recovery
-make test-tenant-isolation
-make test-deletion-residue
+uv run --no-sync pytest backend/tests/integration/interview_engine/test_idempotency.py \
+  backend/tests/integration/interview_engine/test_session_recovery.py \
+  tests/e2e/test_tenant_isolation.py tests/e2e/test_deletion_residue.py
 make test-ai-regression
 make test-load-pilot
 ```
@@ -213,8 +208,7 @@ Follow [parallel-workstreams.md](./parallel-workstreams.md), then run after each
 ```bash
 make contracts-check
 make migration-check
-make test-prior-lanes
-make test-e2e-thin
+uv run --no-sync pytest backend/tests/unit backend/tests/integration tests/e2e/test_thin_journey.py
 ```
 
 Expected:
@@ -245,7 +239,7 @@ reference captures.
 npm run test --workspace apps/company-console -- --run
 npm run typecheck --workspace apps/company-console
 npm run build --workspace apps/company-console
-make test-company-browser
+npm run test:e2e:company
 ```
 
 Expected:

@@ -42,18 +42,18 @@ Cross-lane calls use only generated contracts, public application interfaces or 
 ## Validation
 
 ```bash
-make format-check
-make lint
-make typecheck
-make test-foundation
+npm run test:workspace
 make contracts-check
 make boundaries-check
 make migration-check
-make test-company-browser
+npm run test:e2e:company
 ```
 
-`make test-company-browser` requires the local Compose services and Google Chrome. It verifies
-the rendered company console, real API responses and primary route navigation.
+`npm run test:workspace` runs formatting, lint, typecheck and every unit, contract, integration
+and end-to-end test in one pass. It is exactly what CI runs.
+
+The browser journeys require the local Compose services and Chrome. They verify the rendered
+company console, real API responses and primary route navigation.
 
 The complete thin journey is defined in
 `specs/001-interview-evidence-platform/quickstart.md`.
