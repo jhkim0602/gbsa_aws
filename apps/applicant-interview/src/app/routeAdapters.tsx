@@ -1,3 +1,4 @@
+import type { components } from "@iep/contracts/generated/typescript/openapi";
 import { useState } from "react";
 import {
   Navigate,
@@ -6,11 +7,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 
-import {
-  ApplicantAccess,
-  type ApplicantAccessApi,
-  type ConsentPolicy,
-} from "../features/access";
+import { ApplicantAccess, type ApplicantAccessApi } from "../features/access";
 import {
   EquipmentCheck,
   createBrowserEquipmentCheckApi,
@@ -72,11 +69,9 @@ export function createRecordingUploadApi(
 ): RecordingUploadApi {
   return {
     async upload(chunk: StoredMediaChunk) {
-      const intent = await applicantRequest<{
-        method: string;
-        url: string;
-        required_headers: Record<string, string>;
-      }>(`/v1/applicant/interview-sessions/${sessionId}/media-upload-intents`, {
+      const intent = await applicantRequest<
+        components["schemas"]["UploadIntent"]
+      >(`/v1/applicant/interview-sessions/${sessionId}/media-upload-intents`, {
         method: "POST",
         headers: {
           "Idempotency-Key": `recording-${sessionId}-${chunk.sequence}`,
@@ -120,20 +115,9 @@ const accessApi: ApplicantAccessApi = {
     });
   },
   async getConsentPolicy() {
-    const policy = await applicantRequest<{
-      policy_version: string;
-      ai_role: string;
-      recording_notice: string;
-      processing_purposes: Array<{
-        purpose: ConsentPolicy["requiredPurposes"][number];
-        title: string;
-        description: string;
-      }>;
-      retention_days: number;
-      deletion_method: string;
-      required_purposes: ConsentPolicy["requiredPurposes"];
-      content_digest: string;
-    }>("/v1/applicant/consents");
+    const policy = await applicantRequest<
+      components["schemas"]["ConsentPolicyView"]
+    >("/v1/applicant/consents");
     return {
       policyVersion: policy.policy_version,
       aiRole: policy.ai_role,
@@ -141,7 +125,7 @@ const accessApi: ApplicantAccessApi = {
       processingPurposes: policy.processing_purposes,
       retentionDays: policy.retention_days,
       deletionMethod: policy.deletion_method,
-      requiredPurposes: policy.required_purposes,
+      requiredPurposes: [...policy.required_purposes],
       contentDigest: policy.content_digest,
     };
   },
@@ -171,12 +155,9 @@ async function sha256(file: File) {
 const submissionApi: SubmissionWorkspaceApi = {
   async uploadDocument(file) {
     const digest = await sha256(file);
-    const intent = await applicantRequest<{
-      upload_id: string;
-      method: string;
-      url: string;
-      required_headers: Record<string, string>;
-    }>("/v1/applicant/submissions/upload-intents", {
+    const intent = await applicantRequest<
+      components["schemas"]["UploadIntent"]
+    >("/v1/applicant/submissions/upload-intents", {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey("upload-intent") },
       body: JSON.stringify({
@@ -210,15 +191,13 @@ const submissionApi: SubmissionWorkspaceApi = {
     });
   },
   async getReadiness() {
-    const readiness = await applicantRequest<{
-      overall_status: "waiting" | "analyzing" | "ready" | "partial" | "failed";
-      interview_ready: boolean;
-      impact_summary?: string;
-    }>("/v1/applicant/analysis-status");
+    const readiness = await applicantRequest<
+      components["schemas"]["AnalysisReadiness"]
+    >("/v1/applicant/analysis-status");
     return {
       overallStatus: readiness.overall_status,
       interviewReady: readiness.interview_ready,
-      impactSummary: readiness.impact_summary,
+      impactSummary: readiness.impact_summary ?? undefined,
     };
   },
 };
@@ -262,22 +241,20 @@ export function InterviewRoute() {
 
   async function start(result: EquipmentCheckResult) {
     try {
-      const check = await applicantRequest<{ equipment_check_id: string }>(
-        "/v1/applicant/equipment-checks",
-        {
-          method: "POST",
-          headers: { "Idempotency-Key": idempotencyKey("equipment") },
-          body: JSON.stringify({
-            camera: serializeEquipmentComponent(result.camera),
-            microphone: serializeEquipmentComponent(result.microphone),
-            network: serializeEquipmentComponent(result.network),
-          }),
-        },
-      );
-      const session = await applicantRequest<{
-        interview_session_id: string;
-        websocket_path: string;
-      }>("/v1/applicant/interview-sessions", {
+      const check = await applicantRequest<
+        components["schemas"]["EquipmentCheck"]
+      >("/v1/applicant/equipment-checks", {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey("equipment") },
+        body: JSON.stringify({
+          camera: serializeEquipmentComponent(result.camera),
+          microphone: serializeEquipmentComponent(result.microphone),
+          network: serializeEquipmentComponent(result.network),
+        }),
+      });
+      const session = await applicantRequest<
+        components["schemas"]["InterviewSessionView"]
+      >("/v1/applicant/interview-sessions", {
         method: "POST",
         headers: { "Idempotency-Key": idempotencyKey("interview") },
         body: JSON.stringify({

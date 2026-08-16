@@ -50,17 +50,17 @@ export type CompanyCriterionVersion = Readonly<{
     weight: number;
     required: boolean;
     verificationGuide: {
-      observableDimensions: string[];
-      strongAnswerSignals: string[];
-      weakAnswerSignals: string[];
-      followUpDirections: string[];
+      observableDimensions: readonly string[];
+      strongAnswerSignals: readonly string[];
+      weakAnswerSignals: readonly string[];
+      followUpDirections: readonly string[];
       maxFollowUps: number;
       timeBudgetSeconds: number;
     };
     abstainGuidance: string;
-    commonQuestions: string[];
+    commonQuestions: readonly string[];
   }>;
-  prohibitedTopics: string[];
+  prohibitedTopics: readonly string[];
   interviewDurationMinutes: number;
 }>;
 

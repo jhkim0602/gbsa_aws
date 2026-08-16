@@ -1,3 +1,5 @@
+import type { components } from "@iep/contracts/generated/typescript/openapi";
+
 import {
   getCompanyAccessToken,
   type CompanyAuthConfig,
@@ -56,12 +58,8 @@ export async function companyRequest<T>(
 
 export const companyWorkspaceApi: CompanyWorkspaceApi = {
   async getCurrentUser() {
-    const result = await companyRequest<{
-      company_user_id: string;
-      company_id: string;
-      email: string;
-      status: string;
-    }>("/v1/me");
+    const result =
+      await companyRequest<components["schemas"]["CompanyUserView"]>("/v1/me");
     return {
       companyUserId: result.company_user_id,
       companyId: result.company_id,
@@ -83,18 +81,7 @@ export const companyWorkspaceApi: CompanyWorkspaceApi = {
   },
 };
 
-type PositionResponse = Readonly<{
-  position_id: string;
-  title: string;
-  description: string;
-  role_type?: string | null;
-  headcount?: number | null;
-  recruitment_start_at?: string | null;
-  recruitment_end_at?: string | null;
-  status: string;
-  row_version: number;
-  created_at: string;
-}>;
+type PositionResponse = components["schemas"]["Position"];
 
 function toCompanyPosition(position: PositionResponse) {
   return {

@@ -26,6 +26,8 @@ import {
   type HiringWorkspaceApi,
 } from "../features/hiring";
 import { ReviewWorkspace, type ReviewApi } from "../features/review";
+import type { components } from "@iep/contracts/generated/typescript/openapi";
+
 import {
   companyAuthConfig as AUTH_CONFIG,
   companyRequest,
@@ -35,7 +37,7 @@ import {
 
 const hiringApi: HiringWorkspaceApi = {
   async createPosition(input) {
-    const result = await companyRequest<{ position_id: string }>(
+    const result = await companyRequest<components["schemas"]["Position"]>(
       "/v1/positions",
       {
         method: "POST",
@@ -53,10 +55,9 @@ const hiringApi: HiringWorkspaceApi = {
     return { positionId: result.position_id };
   },
   async publishCriteria(positionId, input) {
-    const draft = await companyRequest<{
-      competency_model_version_id: string;
-      row_version: number;
-    }>(`/v1/positions/${positionId}/competency-model-versions`, {
+    const draft = await companyRequest<
+      components["schemas"]["CompetencyModelVersion"]
+    >(`/v1/positions/${positionId}/competency-model-versions`, {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey("criteria") },
       body: JSON.stringify({
@@ -90,9 +91,9 @@ const hiringApi: HiringWorkspaceApi = {
         interview_duration_minutes: input.interviewDurationMinutes,
       }),
     });
-    const published = await companyRequest<{
-      competency_model_version_id: string;
-    }>(
+    const published = await companyRequest<
+      components["schemas"]["CompetencyModelVersion"]
+    >(
       `/v1/competency-model-versions/${draft.competency_model_version_id}/publish`,
       {
         method: "POST",
@@ -108,22 +109,9 @@ const hiringApi: HiringWorkspaceApi = {
 
 const positionInvitationApi: PositionInvitationApi = {
   async listInvitations(positionId) {
-    const result = await companyRequest<{
-      items: Array<{
-        invitation_id: string;
-        position_id: string;
-        competency_model_version_id: string;
-        applicant_email: string;
-        applicant_display_name?: string | null;
-        status: string;
-        expires_at: string;
-        row_version: number;
-        analysis_status?: string | null;
-        interview_status?: string | null;
-        report_status?: string | null;
-        interview_session_id?: string | null;
-      }>;
-    }>(`/v1/positions/${positionId}/invitations?limit=100`);
+    const result = await companyRequest<
+      components["schemas"]["InvitationPage"]
+    >(`/v1/positions/${positionId}/invitations?limit=100`);
     return result.items.map((invitation) => ({
       invitationId: invitation.invitation_id,
       positionId: invitation.position_id,
@@ -140,20 +128,9 @@ const positionInvitationApi: PositionInvitationApi = {
     }));
   },
   async createInvitations(positionId, applicants, expiresInDays) {
-    const result = await companyRequest<{
-      accepted_count: number;
-      rejected_count: number;
-      invitations: Array<{
-        invitation_id: string;
-        position_id: string;
-        competency_model_version_id: string;
-        applicant_email: string;
-        applicant_display_name?: string | null;
-        status: string;
-        expires_at: string;
-        row_version: number;
-      }>;
-    }>(`/v1/positions/${positionId}/invitations`, {
+    const result = await companyRequest<
+      components["schemas"]["InvitationBatchResult"]
+    >(`/v1/positions/${positionId}/invitations`, {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey("invitation-batch") },
       body: JSON.stringify({
@@ -187,30 +164,22 @@ const companyOperationsApi: CompanyOperationsApi = {
   ...companyWorkspaceApi,
   listInvitations: positionInvitationApi.listInvitations,
   async updatePosition(input) {
-    const result = await companyRequest<{
-      position_id: string;
-      title: string;
-      description: string;
-      role_type?: string | null;
-      headcount?: number | null;
-      recruitment_start_at?: string | null;
-      recruitment_end_at?: string | null;
-      status: string;
-      row_version: number;
-      created_at: string;
-    }>(`/v1/positions/${input.positionId}`, {
-      method: "PATCH",
-      headers: { "If-Match-Version": String(input.rowVersion) },
-      body: JSON.stringify({
-        title: input.title,
-        description: input.description,
-        role_type: input.roleType ?? null,
-        headcount: input.headcount ?? null,
-        recruitment_start_at: input.recruitmentStartAt ?? null,
-        recruitment_end_at: input.recruitmentEndAt ?? null,
-        status: input.status,
-      }),
-    });
+    const result = await companyRequest<components["schemas"]["Position"]>(
+      `/v1/positions/${input.positionId}`,
+      {
+        method: "PATCH",
+        headers: { "If-Match-Version": String(input.rowVersion) },
+        body: JSON.stringify({
+          title: input.title,
+          description: input.description,
+          role_type: input.roleType ?? null,
+          headcount: input.headcount ?? null,
+          recruitment_start_at: input.recruitmentStartAt ?? null,
+          recruitment_end_at: input.recruitmentEndAt ?? null,
+          status: input.status,
+        }),
+      },
+    );
     return {
       positionId: result.position_id,
       title: result.title,
@@ -225,41 +194,9 @@ const companyOperationsApi: CompanyOperationsApi = {
     };
   },
   async listCriterionVersions(positionId) {
-    const result = await companyRequest<{
-      items: Array<{
-        competency_model_version_id: string;
-        position_id: string;
-        version_number: number;
-        status: "draft" | "published" | "retired";
-        row_version: number;
-        published_at?: string | null;
-        job_requirements: Array<{
-          requirement_type: "required" | "preferred";
-          statement: string;
-          priority: number;
-          criterion_code: string;
-        }>;
-        criteria: Array<{
-          code: string;
-          name: string;
-          description: string;
-          weight: number;
-          required: boolean;
-          verification_guide: {
-            observable_dimensions: string[];
-            strong_answer_signals: string[];
-            weak_answer_signals: string[];
-            follow_up_directions: string[];
-            max_follow_ups: number;
-            time_budget_seconds: number;
-          };
-          abstain_guidance: string;
-          common_questions: string[];
-        }>;
-        prohibited_topics: string[];
-        interview_duration_minutes: number;
-      }>;
-    }>(`/v1/positions/${positionId}/competency-model-versions?limit=100`);
+    const result = await companyRequest<
+      components["schemas"]["CompetencyModelVersionPage"]
+    >(`/v1/positions/${positionId}/competency-model-versions?limit=100`);
     return result.items.map((version) => ({
       versionId: version.competency_model_version_id,
       positionId: version.position_id,
@@ -290,7 +227,7 @@ const companyOperationsApi: CompanyOperationsApi = {
           timeBudgetSeconds: criterion.verification_guide.time_budget_seconds,
         },
         abstainGuidance: criterion.abstain_guidance,
-        commonQuestions: criterion.common_questions,
+        commonQuestions: criterion.common_questions ?? [],
       })),
       prohibitedTopics: version.prohibited_topics,
       interviewDurationMinutes: version.interview_duration_minutes,
@@ -299,60 +236,9 @@ const companyOperationsApi: CompanyOperationsApi = {
   publishCriteria: hiringApi.publishCriteria,
 };
 
-type ReportResponse = {
-  report_id: string;
-  summary: string;
-  status: string;
-  items: Array<{
-    report_item_id: string;
-    criterion_id: string;
-    assessment_state:
-      | "confirmed"
-      | "partially_confirmed"
-      | "insufficient_evidence"
-      | "needs_follow_up";
-    observation: string;
-    evidence: Array<{
-      evidence_id: string;
-      video_start_ms: number;
-      video_end_ms: number;
-    }>;
-  }>;
-};
+type ReportResponse = components["schemas"]["ReportView"];
 
-type TimelineResponse = {
-  entries: Array<{
-    entry_id: string;
-    entry_type: "question" | "answer" | "event" | "evidence";
-    start_ms: number;
-    end_ms: number;
-    text: string | null;
-    question_rationale: {
-      criterion_id: string;
-      verification_target_type:
-        | "not_mentioned"
-        | "claim_found"
-        | "detail_missing"
-        | "source_conflict"
-        | "ownership_uncertain";
-      objective: string;
-      question_type: string;
-      retrieval_version: string;
-      generation_version: string;
-      policy_result: string;
-      source_references: Array<{
-        source_id: string;
-        source_type: string;
-        locator: Record<string, unknown>;
-        excerpt: string;
-      }>;
-    } | null;
-  }>;
-  playback: {
-    status: "ready" | "partial" | "processing" | "unavailable";
-    url: string | null;
-  };
-};
+type TimelineResponse = components["schemas"]["TimelineView"];
 
 export function CompanyHomeRoute() {
   if (AUTH_CONFIG && !getCompanyAccessToken(localStorage)) {
@@ -558,7 +444,7 @@ export function ReviewRoute() {
               type: entry.entry_type,
               startMs: entry.start_ms,
               endMs: entry.end_ms,
-              text: entry.text,
+              text: entry.text ?? null,
               questionRationale: entry.question_rationale
                 ? {
                     criterionId: entry.question_rationale.criterion_id,
