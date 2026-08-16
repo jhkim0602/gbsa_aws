@@ -10,7 +10,7 @@
 
 | Person | Lane | Primary deliverable | Branch |
 |---|---|---|---|
-| Person 1 | A — Platform & Hiring | tenant-safe company, campaign, invitation and infrastructure foundation | `feature/001-lane-a-platform` |
+| Person 1 | A — Platform & Hiring | tenant-safe company, position-owned invitation and infrastructure foundation | `feature/001-lane-a-platform` |
 | Person 2 | B — Submission & RAG | traceable document/code analysis and interview strategy | `feature/001-lane-b-analysis` |
 | Person 3 | C — Live Interview | recoverable real-time interview and applicant room | `feature/001-lane-c-interview` |
 | Person 4 | D — Evidence & Review | timeline, Evidence report, human review and deletion | `feature/001-lane-d-reporting` |
@@ -100,7 +100,7 @@ mergeable.
 
 1. Freeze lane branches briefly and update them from the current integration branch.
 2. Merge Lane A; run foundation, tenant and invitation/consent tests.
-3. Merge Lane B; replace campaign/consent fakes and run submission-to-strategy integration.
+3. Merge Lane B; replace position-hiring/consent fakes and run submission-to-strategy integration.
 4. Merge Lane C; replace strategy fake and run start-to-completion plus reconnect integration.
 5. Merge Lane D; replace completed-session fake and run report-to-Evidence-to-human-decision flow.
 6. Create an Alembic merge revision and verify upgrade from an empty database and the previous
@@ -136,3 +136,26 @@ Each lane is complete only when:
 - migration upgrade and downgrade are demonstrated;
 - the lane's quickstart slice passes against fakes and then real merged producers;
 - the PR documents all FR, SC and QG coverage.
+
+## Reference UI/UX Alignment Handoff
+
+Reference work follows the same ownership model as domain implementation:
+
+1. Integration owns the checked-in captures, screen-intent map, shared shells, route hierarchy,
+   browser E2E and final visual regression gate (`T211`, `T212`, `T218`).
+2. Lane A owns company overview/position configuration and applicant access/consent (`T213`, `T215`).
+3. Lane B owns applicant material submission and analysis-readiness UI (`T216`).
+4. Lane C owns equipment, live interview, reconnect/degraded and completion UI (`T217`).
+5. Lane D owns candidate pipeline, candidate overview and Evidence review (`T214`).
+
+The downloaded Figma code is not an ownership exception. Contributors may inspect it, but they
+must reimplement patterns inside their owned feature directory and must not introduce its mock
+companies, candidates, scores or local demo router.
+
+After each lane UI task:
+
+- run the lane component suite and TypeScript check;
+- capture 1440px and 390px implementation screenshots;
+- verify the primary action remains reachable without horizontal clipping;
+- run the browser journey for every route changed;
+- hand the captures and test results to Integration for `T218`.

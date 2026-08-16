@@ -24,6 +24,7 @@ from interview_evidence.interview_engine.application.context_reconciliation impo
 from interview_evidence.interview_engine.application.idempotency import InMemoryIdempotencyStore
 from interview_evidence.interview_engine.application.interview_plan import (
     InterviewPlan,
+    VerificationTargetPlan,
 )
 from interview_evidence.interview_engine.application.interview_service import InterviewService
 from interview_evidence.interview_engine.application.question_generator import QuestionGenerator
@@ -37,7 +38,10 @@ from interview_evidence.interview_engine.domain.session import (
     InterviewSession,
     InterviewSessionState,
 )
-from interview_evidence.interview_engine.domain.turn import TurnSpeaker
+from interview_evidence.interview_engine.domain.turn import (
+    TurnSpeaker,
+    VerificationProgressState,
+)
 from interview_evidence.interview_engine.repositories.postgres import (
     InMemoryInterviewRepository,
 )
@@ -48,6 +52,7 @@ from interview_evidence.shared.aws_clients.ports import (
     InMemoryObjectStorage,
 )
 from interview_evidence.shared.ids import FrozenClock
+from interview_evidence.shared.messaging.outbox import InMemoryOutbox
 from interview_evidence.shared.security.principals import ApplicantPrincipal
 from interview_evidence.shared.tenant import ActorType, TenantContext
 
@@ -60,6 +65,7 @@ STRATEGY_ID = UUID("00000000-0000-7000-8000-000000000005")
 MODEL_VERSION_ID = UUID("00000000-0000-7000-8000-000000000006")
 CRITERION_ID = UUID("00000000-0000-7000-8000-000000000007")
 ANSWER_TURN_ID = UUID("00000000-0000-7000-8000-000000000008")
+SECOND_ANSWER_TURN_ID = UUID("00000000-0000-7000-8000-000000000012")
 
 
 class EmptyRetrieval:
@@ -88,6 +94,19 @@ class FixedPlanProvider:
             model_config_version="question-model-v1",
             retrieval_config_version="hybrid-v1",
             voice_id="Seoyeon",
+            verification_targets=(
+                VerificationTargetPlan(
+                    verification_target_id=UUID("00000000-0000-7000-8000-000000000011"),
+                    criterion_id=CRITERION_ID,
+                    criterion_text="운영 장애에서 원인 분석과 복구 역할을 확인한다.",
+                    target_type="detail_missing",
+                    objective="자료에서 확인되지 않은 원인 분석과 직접 복구 역할을 확인한다.",
+                    missing_dimensions=("원인 분석", "직접 복구"),
+                    follow_up_directions=("본인이 직접 수행한 복구 작업",),
+                    max_follow_ups=1,
+                    common_question="최근 해결한 기술 문제를 설명해 주세요?",
+                ),
+            ),
         )
 
 
@@ -144,7 +163,8 @@ def test_real_stream_handler_creates_initial_and_follow_up_questions() -> None:
         ),
     )
     idempotency = InMemoryIdempotencyStore()
-    checkpoints = CheckpointService(repository)
+    outbox = InMemoryOutbox()
+    checkpoints = CheckpointService(repository, outbox)
     reconciler = ContextReconciler(repository, InMemoryRecentContext())
     recovery = RecoveryService(
         repository=repository,
@@ -196,6 +216,7 @@ def test_real_stream_handler_creates_initial_and_follow_up_questions() -> None:
                 }
             )
         ),
+        outbox=outbox,
     )
     live = LiveInterviewHandler(
         repository=repository,
@@ -279,9 +300,69 @@ def test_real_stream_handler_creates_initial_and_follow_up_questions() -> None:
     assert (
         repository.get_session(context(), SESSION_ID).state is InterviewSessionState.AWAITING_ANSWER
     )
+    progress = repository.list_verification_progress(context(), SESSION_ID)
+    assert len(progress) == 1
+    assert progress[0].state is VerificationProgressState.IN_PROGRESS
+    assert progress[0].follow_up_count == 1
+    rationales = repository.list_question_rationales(context(), SESSION_ID)
+    assert [rationale.question_type for rationale in rationales] == [
+        "common",
+        "follow_up",
+    ]
+    assert rationales[1].objective.startswith("자료에서 확인되지 않은")
     final_turns = repository.list_final_turns(context(), SESSION_ID)
     assert [turn.speaker for turn in final_turns] == [
         TurnSpeaker.INTERVIEWER,
         TurnSpeaker.APPLICANT,
         TurnSpeaker.INTERVIEWER,
     ]
+
+    second_transcript = protocol.handle_audio(
+        context(),
+        principal(),
+        envelope(
+            "audio.chunk.begin",
+            sequence=follow_up.sequence,
+            key="audio-chunk-0002",
+        ),
+        AudioChunkMetadata(
+            answer_turn_id=SECOND_ANSWER_TURN_ID,
+            chunk_sequence=2,
+            codec="pcm_s16le",
+            sample_rate_hz=16000,
+            channel_count=1,
+            byte_length=len(audio),
+            sha256=sha256(audio).hexdigest(),
+        ),
+        audio,
+    )
+    assert second_transcript[0].message_type == "transcript.final"
+
+    completed = protocol.handle(
+        context(),
+        principal(),
+        envelope(
+            "answer.complete",
+            sequence=follow_up.sequence,
+            key="answer-complete-0002",
+            payload={
+                "answer_turn_id": str(SECOND_ANSWER_TURN_ID),
+                "last_recording_chunk_sequence": 0,
+            },
+        ),
+    )
+
+    assert completed.message_type == "session.completed"
+    assert repository.get_session(context(), SESSION_ID).state is InterviewSessionState.COMPLETED
+    assert (
+        repository.list_verification_progress(
+            context(),
+            SESSION_ID,
+        )[0].state
+        is VerificationProgressState.COMPLETED
+    )
+    completion_events = [
+        event for event in outbox.pending() if event.event_type == "interview.completed"
+    ]
+    assert len(completion_events) == 1
+    assert completion_events[0].payload["last_turn_id"] == str(SECOND_ANSWER_TURN_ID)

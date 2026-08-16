@@ -197,14 +197,28 @@ async def test_company_routes_do_not_reveal_another_tenants_position() -> None:
                 "Idempotency-Key": "cross-tenant-denial",
             },
             json={
+                "job_requirements": [
+                    {
+                        "requirement_type": "required",
+                        "statement": "문제 해결 경험",
+                        "priority": 1,
+                        "criterion_code": "PROBLEM_SOLVING",
+                    }
+                ],
                 "criteria": [
                     {
                         "code": "PROBLEM_SOLVING",
                         "name": "문제 해결",
                         "description": "대안을 비교한다.",
                         "weight": 1,
-                        "good_evidence": {},
-                        "weak_evidence": {},
+                        "verification_guide": {
+                            "observable_dimensions": ["상황", "행동", "결과"],
+                            "strong_answer_signals": ["판단 근거가 구체적임"],
+                            "weak_answer_signals": ["결과만 언급함"],
+                            "follow_up_directions": ["본인이 수행한 행동"],
+                            "max_follow_ups": 1,
+                            "time_budget_seconds": 300,
+                        },
                         "abstain_guidance": "근거가 없으면 보류한다.",
                         "common_questions": [],
                         "required": True,
@@ -212,7 +226,6 @@ async def test_company_routes_do_not_reveal_another_tenants_position() -> None:
                 ],
                 "prohibited_topics": [],
                 "interview_duration_minutes": 30,
-                "persona_definition": {"name": "면접관"},
             },
         )
         assert mutated.status_code == 404

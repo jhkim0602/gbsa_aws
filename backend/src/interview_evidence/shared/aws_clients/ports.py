@@ -71,6 +71,13 @@ class TextToSpeechCall:
 
 
 @dataclass(frozen=True, slots=True)
+class TextEmbeddingCall:
+    company_id: UUID
+    text_sha256: str
+    dimensions: int
+
+
+@dataclass(frozen=True, slots=True)
 class EmailMessage:
     message_id: UUID
     company_id: UUID
@@ -140,6 +147,18 @@ class AIModel(Protocol):
         context: TenantContext,
         model_input: Mapping[str, Any],
     ) -> Mapping[str, Any]: ...
+
+
+class TextEmbedder(Protocol):
+    model_id: str
+
+    def embed(
+        self,
+        context: TenantContext,
+        text: str,
+        *,
+        dimensions: int = 1024,
+    ) -> tuple[float, ...]: ...
 
 
 class SpeechToText(Protocol):
@@ -352,6 +371,35 @@ class DeterministicAIModel:
         tenant = require_tenant_context(context)
         self.calls.append((tenant.company_id, deepcopy(dict(model_input))))
         return deepcopy(self._response)
+
+
+class StaticTextEmbedder:
+    model_id = "test-static-embedding"
+
+    def __init__(self, vector: Sequence[float]) -> None:
+        self._vector = tuple(float(value) for value in vector)
+        self.calls: list[TextEmbeddingCall] = []
+
+    def embed(
+        self,
+        context: TenantContext,
+        text: str,
+        *,
+        dimensions: int = 1024,
+    ) -> tuple[float, ...]:
+        tenant = require_tenant_context(context)
+        if not text.strip():
+            raise ValueError("embedding text must not be blank")
+        if dimensions != len(self._vector):
+            raise ValueError("configured embedding dimensions do not match requested dimensions")
+        self.calls.append(
+            TextEmbeddingCall(
+                company_id=tenant.company_id,
+                text_sha256=sha256(text.encode("utf-8")).hexdigest(),
+                dimensions=dimensions,
+            )
+        )
+        return self._vector
 
 
 class DeterministicSpeechToText:

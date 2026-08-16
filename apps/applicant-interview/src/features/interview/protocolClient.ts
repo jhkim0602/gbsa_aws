@@ -207,6 +207,20 @@ export class InterviewProtocolClient {
       return;
     }
 
+    if (envelope.message_type === "session.completed") {
+      const current = this.options.store.getState();
+      current.applyServerState({
+        state: "completed",
+        serverSequence: envelope.sequence,
+        lastFinalTurnId:
+          readString(envelope.payload.last_turn_id) ?? current.lastFinalTurnId,
+        lastVerifiedRecordingChunkSequence:
+          current.lastVerifiedRecordingChunkSequence,
+        degradedModes: current.degradedModes,
+      });
+      return;
+    }
+
     if (envelope.message_type === "question.preparing") {
       const current = this.options.store.getState();
       const degradedMode = readString(envelope.payload.degraded_mode);

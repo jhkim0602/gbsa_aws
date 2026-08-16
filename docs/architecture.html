@@ -502,9 +502,17 @@ hr{border:none;border-top:.5pt solid var(--rule);margin:5mm 0;}
 <div class="page cover">
   <div class="cover-bar"></div>
   <div class="cover-body">
-    <div class="cover-eyebrow">Architecture Design Document</div>
+    <div class="cover-eyebrow">Historical Architecture Baseline</div>
     <h1>Interview Evidence<br>Platform</h1>
-    <div class="sub">IT/개발 직군 특화 AI 구조화 면접 플랫폼</div>
+    <div class="sub">IT/개발 직군 특화 AI 구조화 면접 플랫폼 · 001 기준선</div>
+    <div style="margin-bottom:7mm;padding:4mm 5mm;border-left:3px solid var(--warn);background:var(--warn-soft);font-size:8.2pt;line-height:1.55;color:var(--ink);">
+      <strong>검색 아키텍처 대체 안내</strong><br>
+      이 문서는 초기 001 설계 기준선을 보존합니다. 현재 구현의 기업 기준 기반 RAG,
+      Aurora PostgreSQL <code>pgvector</code>·전문검색, OpenSearch 제거 결정은
+      <a href="aws-architecture.svg">AWS 배포 구성도</a>,
+      <a href="aws-ai-rag-flow.svg">AI/RAG 흐름도</a>,
+      <a href="../specs/002-criterion-grounded-rag/quickstart.md">002 운영 문서</a>를 기준으로 합니다.
+    </div>
     <div class="kicker">
       기업의 평가 기준으로 질문하고, 지원자의 실무 산출물과 실제 답변에서
       채용 판단의 근거를 만드는 AI 구조화 면접 SaaS.

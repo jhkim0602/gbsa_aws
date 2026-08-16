@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
+from hashlib import sha256
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from fastapi import FastAPI
@@ -19,11 +20,29 @@ from interview_evidence.company_management.application.applicant_access_service 
 from interview_evidence.company_management.application.company_service import CompanyService
 from interview_evidence.company_management.application.criteria_service import CriteriaService
 from interview_evidence.company_management.application.hiring_service import HiringService
-from interview_evidence.company_management.domain.company import Company, CompanyUser
+from interview_evidence.company_management.application.interviewer_service import (
+    InterviewerProfileService,
+)
+from interview_evidence.company_management.domain.company import (
+    Company,
+    CompanyUser,
+    Position,
+    PositionStatus,
+)
+from interview_evidence.company_management.domain.criteria import (
+    CompetencyModelStatus,
+    CompetencyModelVersion,
+    CriterionVerificationGuide,
+    EvaluationCriterion,
+    JobRequirement,
+    RequirementType,
+)
+from interview_evidence.company_management.domain.hiring import Invitation, InvitationStatus
 from interview_evidence.company_management.repositories.postgres import (
     CompanyRepository,
     InMemoryCompanyRepository,
     SqlAlchemyCompanyRepository,
+    TenantScopedResourceNotFound,
 )
 from interview_evidence.company_management.workers.invitation_email import (
     InvitationEmailHandler,
@@ -54,6 +73,7 @@ class LaneARuntime:
     email_sender: EmailSender
     company_service: CompanyService
     criteria_service: CriteriaService
+    interviewer_service: InterviewerProfileService
     hiring_service: HiringService
     applicant_access_service: ApplicantAccessService
 
@@ -88,6 +108,11 @@ def create_lane_a_runtime(
         active_clock,
         active_idempotency,
     )
+    interviewer_service = InterviewerProfileService(
+        active_repository,
+        active_clock,
+        active_idempotency,
+    )
     hiring_service = HiringService(
         active_repository,
         active_sessions,
@@ -103,6 +128,7 @@ def create_lane_a_runtime(
         auth=CompanyAuthAdapter(principal_provider),
         company_service=company_service,
         criteria_service=criteria_service,
+        interviewer_service=interviewer_service,
         hiring_service=hiring_service,
         audit=active_audit,
         invitation_email=InvitationEmailHandler(active_email_sender),
@@ -111,6 +137,7 @@ def create_lane_a_runtime(
     applicant_router = create_applicant_router(
         sessions=active_sessions,
         access_service=access_service,
+        clock=active_clock,
     )
     return LaneARuntime(
         app=create_app([company_router, applicant_router]),
@@ -121,6 +148,7 @@ def create_lane_a_runtime(
         email_sender=active_email_sender,
         company_service=company_service,
         criteria_service=criteria_service,
+        interviewer_service=interviewer_service,
         hiring_service=hiring_service,
         applicant_access_service=access_service,
     )
@@ -194,3 +222,133 @@ def ensure_company_principal(
             last_seen_at=now,
         ),
     )
+
+
+def ensure_local_demo_recruiting(
+    session: Session,
+    *,
+    company_id: UUID,
+    company_user_id: UUID,
+    now: datetime,
+) -> UUID:
+    """Seed one local-only recruiting workspace without resetting existing demo progress."""
+    context = TenantContext(
+        company_id=company_id,
+        actor_type=ActorType.COMPANY_USER,
+        actor_id=company_user_id,
+        request_id=uuid5(NAMESPACE_URL, f"local-recruiting-demo:{company_id}"),
+        trace_id="local-recruiting-demo",
+    )
+    repository = SqlAlchemyCompanyRepository(session)
+    position_id = uuid5(NAMESPACE_URL, f"local-recruiting-demo-position:{company_id}")
+    version_id = uuid5(NAMESPACE_URL, f"local-recruiting-demo-version:{company_id}")
+
+    try:
+        repository.get_position(context, position_id)
+    except TenantScopedResourceNotFound:
+        repository.save_position(
+            context,
+            Position(
+                position_id=position_id,
+                company_id=company_id,
+                title="로컬 데모 백엔드 엔지니어",
+                description="지원자 초대와 면접 진행 상태를 확인하는 로컬 데모 포지션입니다.",
+                role_type="백엔드 개발",
+                headcount=3,
+                recruitment_start_at=now.date(),
+                recruitment_end_at=(now + timedelta(days=45)).date(),
+                created_by=company_user_id,
+                status=PositionStatus.ACTIVE,
+                created_at=now,
+            ),
+        )
+
+    try:
+        repository.get_criterion_version(context, version_id)
+    except TenantScopedResourceNotFound:
+        criterion = EvaluationCriterion(
+            criterion_id=uuid5(NAMESPACE_URL, f"{version_id}:problem-solving"),
+            code="PROBLEM_SOLVING",
+            name="운영 문제 해결",
+            description="서비스 운영 문제를 분석하고 복구하는 역량",
+            weight=1,
+            verification_guide=CriterionVerificationGuide(
+                observable_dimensions=("문제 상황", "본인 행동", "결과"),
+                strong_answer_signals=("판단 근거와 직접 수행한 행동이 구체적이다.",),
+                weak_answer_signals=("팀의 결과만 설명하고 본인 행동이 불명확하다.",),
+                follow_up_directions=("직접 수행한 분석과 복구 작업",),
+                max_follow_ups=2,
+                time_budget_seconds=300,
+            ),
+            good_evidence={"signals": ["구체적인 상황과 직접 수행한 행동"]},
+            weak_evidence={"signals": ["역할과 결과가 불명확한 설명"]},
+            abstain_guidance="답변 근거가 부족하면 판단을 유보한다.",
+            common_questions=("운영 문제를 해결한 경험을 설명해 주세요.",),
+            required=True,
+        )
+        repository.save_criterion_version(
+            context,
+            CompetencyModelVersion(
+                competency_model_version_id=version_id,
+                company_id=company_id,
+                position_id=position_id,
+                version_number=1,
+                job_requirements=(
+                    JobRequirement(
+                        job_requirement_id=uuid5(NAMESPACE_URL, f"{version_id}:requirement"),
+                        requirement_type=RequirementType.PREFERRED,
+                        statement="클라우드 환경의 장애 분석과 복구 경험",
+                        priority=4,
+                        criterion_code=criterion.code,
+                    ),
+                ),
+                criteria=(criterion,),
+                prohibited_topics=("직무와 무관한 개인정보",),
+                interview_duration_minutes=30,
+                status=CompetencyModelStatus.PUBLISHED,
+                row_version=2,
+                published_at=now,
+            ),
+        )
+
+    # One applicant per recruiter phase, plus a reviewed case, so every dashboard metric has data.
+    demo_applicants = (
+        ("김하늘", "kim.haneul@example.test", InvitationStatus.INVITED),
+        ("정유진", "jung.yujin@example.test", InvitationStatus.ANALYZING),
+        ("윤지후", "yoon.jihu@example.test", InvitationStatus.READY),
+        ("오세린", "oh.serin@example.test", InvitationStatus.COMPLETED),
+        ("강민재", "kang.minjae@example.test", InvitationStatus.REVIEWED),
+    )
+    for index, (display_name, email, status) in enumerate(demo_applicants, start=1):
+        invitation_id = uuid5(NAMESPACE_URL, f"{position_id}:invitation:{index}")
+        try:
+            repository.get_invitation(context, invitation_id)
+            continue
+        except TenantScopedResourceNotFound:
+            pass
+        expires_at = (
+            now - timedelta(days=1)
+            if status is InvitationStatus.EXPIRED
+            else now + timedelta(days=14)
+        )
+        repository.save_invitation(
+            context,
+            Invitation(
+                invitation_id=invitation_id,
+                company_id=company_id,
+                position_id=position_id,
+                competency_model_version_id=version_id,
+                applicant_id=uuid5(NAMESPACE_URL, f"{invitation_id}:applicant"),
+                applicant_email_normalized=email,
+                applicant_display_name=display_name,
+                token_hash=sha256(f"local-demo:{invitation_id}".encode()).hexdigest(),
+                expires_at=expires_at,
+                status=status,
+                identity_verified_at=(
+                    None if status in {InvitationStatus.INVITED, InvitationStatus.EXPIRED} else now
+                ),
+                last_state_actor_type="system",
+                row_version=index,
+            ),
+        )
+    return position_id

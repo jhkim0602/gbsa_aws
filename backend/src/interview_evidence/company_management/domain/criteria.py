@@ -21,6 +21,53 @@ class CompetencyModelStatus(StrEnum):
     RETIRED = "retired"
 
 
+def _system_persona_definition() -> dict[str, object]:
+    return {
+        "mode": "system_managed",
+        "tone": "neutral",
+        "voice_id": "Seoyeon",
+    }
+
+
+class RequirementType(StrEnum):
+    REQUIRED = "required"
+    PREFERRED = "preferred"
+
+
+class JobRequirement(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    job_requirement_id: UUID
+    requirement_type: RequirementType
+    statement: str = Field(min_length=1, max_length=4000)
+    priority: int = Field(ge=1, le=5)
+    criterion_code: str = Field(pattern=r"^[A-Z0-9_-]{2,40}$")
+
+
+class CriterionVerificationGuide(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    observable_dimensions: tuple[str, ...] = Field(min_length=1, max_length=12)
+    strong_answer_signals: tuple[str, ...] = Field(min_length=1, max_length=12)
+    weak_answer_signals: tuple[str, ...] = Field(min_length=1, max_length=12)
+    follow_up_directions: tuple[str, ...] = Field(min_length=1, max_length=8)
+    max_follow_ups: int = Field(ge=0, le=3)
+    time_budget_seconds: int = Field(ge=60, le=1800)
+
+    @field_validator(
+        "observable_dimensions",
+        "strong_answer_signals",
+        "weak_answer_signals",
+        "follow_up_directions",
+    )
+    @classmethod
+    def entries_are_non_blank(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(item.strip() for item in value)
+        if any(not item for item in normalized):
+            raise ValueError("verification guide entries must not be blank")
+        return normalized
+
+
 class EvaluationCriterion(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -29,6 +76,16 @@ class EvaluationCriterion(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str = Field(min_length=1, max_length=4000)
     weight: float = Field(ge=0)
+    verification_guide: CriterionVerificationGuide = Field(
+        default_factory=lambda: CriterionVerificationGuide(
+            observable_dimensions=("구체적인 상황", "본인 행동", "결과"),
+            strong_answer_signals=("본인 행동과 판단 근거가 구체적이다.",),
+            weak_answer_signals=("팀 활동 또는 결과만 언급한다.",),
+            follow_up_directions=("본인이 직접 수행한 행동",),
+            max_follow_ups=1,
+            time_budget_seconds=300,
+        )
+    )
     good_evidence: dict[str, object]
     weak_evidence: dict[str, object]
     abstain_guidance: str = Field(min_length=1, max_length=4000)
@@ -43,10 +100,11 @@ class CompetencyModelVersion(BaseModel):
     company_id: UUID
     position_id: UUID
     version_number: int = Field(ge=1)
+    job_requirements: tuple[JobRequirement, ...] = ()
     criteria: tuple[EvaluationCriterion, ...] = Field(min_length=1)
     prohibited_topics: tuple[str, ...] = ()
     interview_duration_minutes: int = Field(ge=10, le=120)
-    persona_definition: dict[str, object]
+    persona_definition: dict[str, object] = Field(default_factory=_system_persona_definition)
     status: CompetencyModelStatus = CompetencyModelStatus.DRAFT
     row_version: int = Field(default=1, ge=1)
     published_at: datetime | None = None
@@ -67,6 +125,18 @@ class CompetencyModelVersion(BaseModel):
             raise ValueError("published competency versions require published_at")
         return self
 
+    @model_validator(mode="after")
+    def requirements_reference_known_criteria(self) -> CompetencyModelVersion:
+        criterion_codes = {criterion.code for criterion in self.criteria}
+        unknown = {
+            requirement.criterion_code
+            for requirement in self.job_requirements
+            if requirement.criterion_code not in criterion_codes
+        }
+        if unknown:
+            raise ValueError("job requirement criterion must exist in the same version")
+        return self
+
     @classmethod
     def create(
         cls,
@@ -75,20 +145,27 @@ class CompetencyModelVersion(BaseModel):
         company_id: UUID,
         position_id: UUID,
         version_number: int,
+        job_requirements: tuple[JobRequirement, ...] = (),
         criteria: tuple[EvaluationCriterion, ...],
         prohibited_topics: tuple[str, ...],
         interview_duration_minutes: int,
-        persona_definition: dict[str, object],
+        persona_definition: dict[str, object] | None = None,
     ) -> CompetencyModelVersion:
         return cls(
             competency_model_version_id=competency_model_version_id,
             company_id=company_id,
             position_id=position_id,
             version_number=version_number,
+            job_requirements=job_requirements,
             criteria=criteria,
             prohibited_topics=prohibited_topics,
             interview_duration_minutes=interview_duration_minutes,
-            persona_definition=persona_definition,
+            persona_definition=persona_definition
+            or {
+                "mode": "system_managed",
+                "tone": "neutral",
+                "voice_id": "Seoyeon",
+            },
         )
 
     def publish(

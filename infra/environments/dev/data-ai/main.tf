@@ -24,11 +24,6 @@ variable "state_bucket" {
   type = string
 }
 
-variable "embedding_model_arn" {
-  type    = string
-  default = "arn:aws:bedrock:ap-northeast-2::foundation-model/amazon.titan-embed-text-v2:0"
-}
-
 variable "alarm_email" {
   type    = string
   default = null
@@ -87,15 +82,8 @@ module "async_workflow" {
 module "ai_search" {
   source = "../../../modules/ai-search"
 
-  name                 = local.name
-  vpc_id               = data.terraform_remote_state.foundation.outputs.network.vpc_id
-  private_subnet_ids   = data.terraform_remote_state.foundation.outputs.network.private_subnet_ids
-  security_group_ids   = [data.terraform_remote_state.foundation.outputs.network.endpoint_security_group_id]
-  source_bucket_arn    = module.data.bucket_arns["source"]
-  application_role_arn = data.terraform_remote_state.foundation.outputs.identity.application_runtime_role_arn
-  kms_key_arn          = module.data.kms_key_arn
-  embedding_model_arn  = var.embedding_model_arn
-  tags                 = local.tags
+  name = local.name
+  tags = local.tags
 }
 
 module "observability" {
@@ -137,11 +125,6 @@ output "workflow" {
 
 output "ai_search" {
   value = {
-    collection_arn              = module.ai_search.collection_arn
-    collection_endpoint         = module.ai_search.collection_endpoint
-    knowledge_base_id           = module.ai_search.knowledge_base_id
-    guardrail_id                = module.ai_search.guardrail_id
-    vector_index_name           = module.ai_search.vector_index_name
-    index_mapping_parameter_arn = module.ai_search.index_mapping_parameter_arn
+    guardrail_id = module.ai_search.guardrail_id
   }
 }

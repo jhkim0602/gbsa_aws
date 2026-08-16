@@ -6,24 +6,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from interview_evidence.company_management.domain.criteria import (
-    CompetencyModelStatus,
-    CompetencyModelVersion,
-)
-
-
-class CampaignCriterionVersionImmutableError(ValueError):
-    """Raised when a campaign is moved to a different criterion version."""
-
 
 class InvitationStateError(ValueError):
     """Raised for invalid or stale invitation state transitions."""
-
-
-class CampaignStatus(StrEnum):
-    DRAFT = "draft"
-    PUBLISHED = "published"
-    CLOSED = "closed"
 
 
 class InvitationStatus(StrEnum):
@@ -101,70 +86,13 @@ ALLOWED_INVITATION_TRANSITIONS: dict[InvitationStatus, set[InvitationStatus]] = 
 }
 
 
-class Campaign(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    campaign_id: UUID
-    company_id: UUID
-    position_id: UUID
-    competency_model_version_id: UUID
-    name: str = Field(min_length=1, max_length=200)
-    candidate_instructions: str = Field(min_length=1, max_length=10_000)
-    status: CampaignStatus = CampaignStatus.DRAFT
-    row_version: int = Field(default=1, ge=1)
-    published_at: datetime | None = None
-
-    @classmethod
-    def create(
-        cls,
-        *,
-        campaign_id: UUID,
-        company_id: UUID,
-        position_id: UUID,
-        competency_model_version: CompetencyModelVersion,
-        name: str,
-        candidate_instructions: str,
-    ) -> Campaign:
-        if competency_model_version.status is not CompetencyModelStatus.PUBLISHED:
-            raise ValueError("campaigns require a published competency model version")
-        if competency_model_version.company_id != company_id:
-            raise ValueError("criterion version belongs to another company")
-        if competency_model_version.position_id != position_id:
-            raise ValueError("criterion version belongs to another position")
-        return cls(
-            campaign_id=campaign_id,
-            company_id=company_id,
-            position_id=position_id,
-            competency_model_version_id=(competency_model_version.competency_model_version_id),
-            name=name,
-            candidate_instructions=candidate_instructions,
-        )
-
-    def pin_criterion_version(self, version_id: UUID) -> Campaign:
-        if version_id != self.competency_model_version_id:
-            raise CampaignCriterionVersionImmutableError("campaign criterion version is immutable")
-        return self
-
-    def publish(self, *, expected_version: int, published_at: datetime) -> Campaign:
-        if expected_version != self.row_version:
-            raise ValueError("stale campaign version")
-        if self.status is not CampaignStatus.DRAFT:
-            raise ValueError("only draft campaigns can be published")
-        return self.model_copy(
-            update={
-                "status": CampaignStatus.PUBLISHED,
-                "published_at": published_at,
-                "row_version": self.row_version + 1,
-            }
-        )
-
-
 class Invitation(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     invitation_id: UUID
     company_id: UUID
-    campaign_id: UUID
+    position_id: UUID
+    competency_model_version_id: UUID
     applicant_id: UUID
     applicant_email_normalized: str = Field(min_length=3, max_length=320)
     applicant_display_name: str = Field(min_length=1, max_length=200)
@@ -190,7 +118,8 @@ class Invitation(BaseModel):
         *,
         invitation_id: UUID,
         company_id: UUID,
-        campaign_id: UUID,
+        position_id: UUID,
+        competency_model_version_id: UUID,
         applicant_id: UUID,
         applicant_email: str,
         applicant_display_name: str,
@@ -200,7 +129,8 @@ class Invitation(BaseModel):
         return cls(
             invitation_id=invitation_id,
             company_id=company_id,
-            campaign_id=campaign_id,
+            position_id=position_id,
+            competency_model_version_id=competency_model_version_id,
             applicant_id=applicant_id,
             applicant_email_normalized=applicant_email,
             applicant_display_name=applicant_display_name,

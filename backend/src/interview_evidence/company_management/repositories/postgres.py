@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from datetime import date, datetime
 from typing import Protocol, TypeVar
 from uuid import UUID
 
 from sqlalchemy import (
     JSON,
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -34,17 +35,20 @@ from interview_evidence.company_management.domain.company import (
     Company,
     CompanyUser,
     CompanyUserStatus,
+    InterviewerProfile,
+    InterviewerTone,
     Position,
     PositionStatus,
 )
 from interview_evidence.company_management.domain.criteria import (
     CompetencyModelStatus,
     CompetencyModelVersion,
+    CriterionVerificationGuide,
     EvaluationCriterion,
+    JobRequirement,
+    RequirementType,
 )
 from interview_evidence.company_management.domain.hiring import (
-    Campaign,
-    CampaignStatus,
     Invitation,
     InvitationStateChange,
     InvitationStatus,
@@ -100,8 +104,26 @@ class PositionRow(Base):
     company_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("companies.company_id"), index=True)
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(String(20_000))
+    role_type: Mapped[str | None] = mapped_column(String(100))
+    headcount: Mapped[int | None] = mapped_column(Integer)
+    recruitment_start_at: Mapped[date | None] = mapped_column(Date)
+    recruitment_end_at: Mapped[date | None] = mapped_column(Date)
     created_by: Mapped[UUID] = mapped_column(Uuid)
     status: Mapped[str] = mapped_column(String(30))
+    row_version: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class InterviewerProfileRow(Base):
+    __tablename__ = "interviewer_profiles"
+
+    company_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("companies.company_id"), primary_key=True
+    )
+    interviewer_profile_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+    tone: Mapped[str] = mapped_column(String(30))
+    voice_id: Mapped[str] = mapped_column(String(100))
     row_version: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
@@ -135,6 +157,7 @@ class EvaluationCriterionRow(Base):
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(String(4000))
     weight: Mapped[float] = mapped_column(Float)
+    verification_guide: Mapped[dict[str, object]] = mapped_column(JSON)
     good_evidence: Mapped[dict[str, object]] = mapped_column(JSON)
     weak_evidence: Mapped[dict[str, object]] = mapped_column(JSON)
     abstain_guidance: Mapped[str] = mapped_column(String(4000))
@@ -142,20 +165,21 @@ class EvaluationCriterionRow(Base):
     required: Mapped[bool] = mapped_column(Boolean)
 
 
-class CampaignRow(Base):
-    __tablename__ = "campaigns"
+class JobRequirementRow(Base):
+    __tablename__ = "job_requirements"
 
-    campaign_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    position_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("positions.position_id"))
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     competency_model_version_id: Mapped[UUID] = mapped_column(
-        Uuid, ForeignKey("competency_model_versions.competency_model_version_id")
+        Uuid,
+        ForeignKey("competency_model_versions.competency_model_version_id"),
+        primary_key=True,
+        index=True,
     )
-    name: Mapped[str] = mapped_column(String(200))
-    candidate_instructions: Mapped[str] = mapped_column(String(10_000))
-    status: Mapped[str] = mapped_column(String(30))
-    row_version: Mapped[int] = mapped_column(Integer)
-    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    job_requirement_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    requirement_type: Mapped[str] = mapped_column(String(20))
+    statement: Mapped[str] = mapped_column(String(4000))
+    priority: Mapped[int] = mapped_column(Integer)
+    criterion_code: Mapped[str] = mapped_column(String(40))
 
 
 class InvitationRow(Base):
@@ -163,7 +187,10 @@ class InvitationRow(Base):
 
     invitation_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    campaign_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("campaigns.campaign_id"))
+    position_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("positions.position_id"))
+    competency_model_version_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("competency_model_versions.competency_model_version_id")
+    )
     applicant_id: Mapped[UUID] = mapped_column(Uuid, unique=True)
     applicant_email_normalized: Mapped[str] = mapped_column(String(320))
     applicant_display_name: Mapped[str] = mapped_column(String(200))
@@ -234,6 +261,15 @@ class CompanyRepository(Protocol):
     def save_position(self, context: TenantContext, position: Position) -> Position: ...
     def get_position(self, context: TenantContext, position_id: UUID) -> Position: ...
     def list_positions(self, context: TenantContext) -> tuple[Position, ...]: ...
+    def save_interviewer_profile(
+        self, context: TenantContext, profile: InterviewerProfile
+    ) -> InterviewerProfile: ...
+    def get_interviewer_profile(
+        self, context: TenantContext, profile_id: UUID
+    ) -> InterviewerProfile: ...
+    def list_interviewer_profiles(
+        self, context: TenantContext
+    ) -> tuple[InterviewerProfile, ...]: ...
     def save_criterion_version(
         self, context: TenantContext, version: CompetencyModelVersion
     ) -> CompetencyModelVersion: ...
@@ -243,12 +279,10 @@ class CompanyRepository(Protocol):
     def list_criterion_versions(
         self, context: TenantContext, position_id: UUID
     ) -> tuple[CompetencyModelVersion, ...]: ...
-    def save_campaign(self, context: TenantContext, campaign: Campaign) -> Campaign: ...
-    def get_campaign(self, context: TenantContext, campaign_id: UUID) -> Campaign: ...
     def save_invitation(self, context: TenantContext, invitation: Invitation) -> Invitation: ...
     def get_invitation(self, context: TenantContext, invitation_id: UUID) -> Invitation: ...
     def list_invitations(
-        self, context: TenantContext, campaign_id: UUID
+        self, context: TenantContext, position_id: UUID
     ) -> tuple[Invitation, ...]: ...
     def append_invitation_state_change(
         self, context: TenantContext, change: InvitationStateChange
@@ -274,8 +308,8 @@ class InMemoryCompanyRepository:
         self.companies: dict[UUID, Company] = {}
         self.company_users: dict[UUID, CompanyUser] = {}
         self.positions: dict[UUID, Position] = {}
+        self.interviewer_profiles: dict[UUID, InterviewerProfile] = {}
         self.criterion_versions: dict[UUID, CompetencyModelVersion] = {}
-        self.campaigns: dict[UUID, Campaign] = {}
         self.invitations: dict[UUID, Invitation] = {}
         self.invitation_history: list[InvitationStateChange] = []
         self.applicant_profiles: dict[UUID, ApplicantProfile] = {}
@@ -328,6 +362,26 @@ class InMemoryCompanyRepository:
             if position.company_id == tenant.company_id
         )
 
+    def save_interviewer_profile(
+        self, context: TenantContext, profile: InterviewerProfile
+    ) -> InterviewerProfile:
+        self._tenant(context, profile.company_id)
+        self.interviewer_profiles[profile.interviewer_profile_id] = profile
+        return profile
+
+    def get_interviewer_profile(
+        self, context: TenantContext, profile_id: UUID
+    ) -> InterviewerProfile:
+        return self._scoped(context, self.interviewer_profiles, profile_id)
+
+    def list_interviewer_profiles(self, context: TenantContext) -> tuple[InterviewerProfile, ...]:
+        tenant = require_tenant_context(context)
+        return tuple(
+            profile
+            for profile in self.interviewer_profiles.values()
+            if profile.company_id == tenant.company_id
+        )
+
     def save_criterion_version(
         self, context: TenantContext, version: CompetencyModelVersion
     ) -> CompetencyModelVersion:
@@ -352,32 +406,23 @@ class InMemoryCompanyRepository:
             if version.company_id == tenant.company_id and version.position_id == position_id
         )
 
-    def save_campaign(self, context: TenantContext, campaign: Campaign) -> Campaign:
-        self._tenant(context, campaign.company_id)
-        self.get_position(context, campaign.position_id)
-        self.get_criterion_version(context, campaign.competency_model_version_id)
-        self.campaigns[campaign.campaign_id] = campaign
-        return campaign
-
-    def get_campaign(self, context: TenantContext, campaign_id: UUID) -> Campaign:
-        return self._scoped(context, self.campaigns, campaign_id)
-
     def save_invitation(self, context: TenantContext, invitation: Invitation) -> Invitation:
         self._tenant(context, invitation.company_id)
-        self.get_campaign(context, invitation.campaign_id)
+        self.get_position(context, invitation.position_id)
+        self.get_criterion_version(context, invitation.competency_model_version_id)
         self.invitations[invitation.invitation_id] = invitation
         return invitation
 
     def get_invitation(self, context: TenantContext, invitation_id: UUID) -> Invitation:
         return self._scoped(context, self.invitations, invitation_id)
 
-    def list_invitations(self, context: TenantContext, campaign_id: UUID) -> tuple[Invitation, ...]:
+    def list_invitations(self, context: TenantContext, position_id: UUID) -> tuple[Invitation, ...]:
         tenant = require_tenant_context(context)
-        self.get_campaign(context, campaign_id)
+        self.get_position(context, position_id)
         return tuple(
             invitation
             for invitation in self.invitations.values()
-            if invitation.company_id == tenant.company_id and invitation.campaign_id == campaign_id
+            if invitation.company_id == tenant.company_id and invitation.position_id == position_id
         )
 
     def append_invitation_state_change(
@@ -544,6 +589,10 @@ class SqlAlchemyCompanyRepository:
                 company_id=position.company_id,
                 title=position.title,
                 description=position.description,
+                role_type=position.role_type,
+                headcount=position.headcount,
+                recruitment_start_at=position.recruitment_start_at,
+                recruitment_end_at=position.recruitment_end_at,
                 created_by=position.created_by,
                 status=position.status.value,
                 row_version=position.row_version,
@@ -568,6 +617,10 @@ class SqlAlchemyCompanyRepository:
             company_id=row.company_id,
             title=row.title,
             description=row.description,
+            role_type=row.role_type,
+            headcount=row.headcount,
+            recruitment_start_at=row.recruitment_start_at,
+            recruitment_end_at=row.recruitment_end_at,
             created_by=row.created_by,
             status=PositionStatus(row.status),
             row_version=row.row_version,
@@ -580,6 +633,57 @@ class SqlAlchemyCompanyRepository:
             select(PositionRow).where(PositionRow.company_id == tenant.company_id)
         ).all()
         return tuple(self.get_position(context, row.position_id) for row in rows)
+
+    def save_interviewer_profile(
+        self, context: TenantContext, profile: InterviewerProfile
+    ) -> InterviewerProfile:
+        self._tenant(context).assert_company(profile.company_id)
+        self._session.merge(
+            InterviewerProfileRow(
+                company_id=profile.company_id,
+                interviewer_profile_id=profile.interviewer_profile_id,
+                name=profile.name,
+                tone=profile.tone.value,
+                voice_id=profile.voice_id,
+                row_version=profile.row_version,
+                created_at=profile.created_at,
+            )
+        )
+        self._session.flush()
+        return profile
+
+    def get_interviewer_profile(
+        self, context: TenantContext, profile_id: UUID
+    ) -> InterviewerProfile:
+        tenant = self._tenant(context)
+        row = self._session.scalar(
+            select(InterviewerProfileRow).where(
+                InterviewerProfileRow.company_id == tenant.company_id,
+                InterviewerProfileRow.interviewer_profile_id == profile_id,
+            )
+        )
+        if row is None:
+            raise TenantScopedResourceNotFound("tenant-scoped resource not found")
+        return InterviewerProfile(
+            interviewer_profile_id=row.interviewer_profile_id,
+            company_id=row.company_id,
+            name=row.name,
+            tone=InterviewerTone(row.tone),
+            voice_id=row.voice_id,
+            row_version=row.row_version,
+            created_at=row.created_at,
+        )
+
+    def list_interviewer_profiles(self, context: TenantContext) -> tuple[InterviewerProfile, ...]:
+        tenant = self._tenant(context)
+        rows = self._session.scalars(
+            select(InterviewerProfileRow)
+            .where(InterviewerProfileRow.company_id == tenant.company_id)
+            .order_by(InterviewerProfileRow.created_at, InterviewerProfileRow.name)
+        ).all()
+        return tuple(
+            self.get_interviewer_profile(context, row.interviewer_profile_id) for row in rows
+        )
 
     def save_criterion_version(
         self, context: TenantContext, version: CompetencyModelVersion
@@ -606,6 +710,27 @@ class SqlAlchemyCompanyRepository:
                 == version.competency_model_version_id,
             )
         )
+        self._session.execute(
+            delete(JobRequirementRow).where(
+                JobRequirementRow.company_id == version.company_id,
+                JobRequirementRow.competency_model_version_id
+                == version.competency_model_version_id,
+            )
+        )
+        self._session.add_all(
+            [
+                JobRequirementRow(
+                    company_id=version.company_id,
+                    competency_model_version_id=version.competency_model_version_id,
+                    job_requirement_id=requirement.job_requirement_id,
+                    requirement_type=requirement.requirement_type.value,
+                    statement=requirement.statement,
+                    priority=requirement.priority,
+                    criterion_code=requirement.criterion_code,
+                )
+                for requirement in version.job_requirements
+            ]
+        )
         self._session.add_all(
             [
                 EvaluationCriterionRow(
@@ -616,6 +741,7 @@ class SqlAlchemyCompanyRepository:
                     name=criterion.name,
                     description=criterion.description,
                     weight=criterion.weight,
+                    verification_guide=criterion.verification_guide.model_dump(mode="json"),
                     good_evidence=criterion.good_evidence,
                     weak_evidence=criterion.weak_evidence,
                     abstain_guidance=criterion.abstain_guidance,
@@ -648,11 +774,29 @@ class SqlAlchemyCompanyRepository:
             )
             .order_by(EvaluationCriterionRow.code)
         ).all()
+        requirement_rows = self._session.scalars(
+            select(JobRequirementRow)
+            .where(
+                JobRequirementRow.company_id == tenant.company_id,
+                JobRequirementRow.competency_model_version_id == version_id,
+            )
+            .order_by(JobRequirementRow.priority, JobRequirementRow.statement)
+        ).all()
         return CompetencyModelVersion(
             competency_model_version_id=row.competency_model_version_id,
             company_id=row.company_id,
             position_id=row.position_id,
             version_number=row.version_number,
+            job_requirements=tuple(
+                JobRequirement(
+                    job_requirement_id=requirement.job_requirement_id,
+                    requirement_type=RequirementType(requirement.requirement_type),
+                    statement=requirement.statement,
+                    priority=requirement.priority,
+                    criterion_code=requirement.criterion_code,
+                )
+                for requirement in requirement_rows
+            ),
             criteria=tuple(
                 EvaluationCriterion(
                     criterion_id=criterion.criterion_id,
@@ -660,6 +804,9 @@ class SqlAlchemyCompanyRepository:
                     name=criterion.name,
                     description=criterion.description,
                     weight=criterion.weight,
+                    verification_guide=CriterionVerificationGuide.model_validate(
+                        criterion.verification_guide
+                    ),
                     good_evidence=criterion.good_evidence,
                     weak_evidence=criterion.weak_evidence,
                     abstain_guidance=criterion.abstain_guidance,
@@ -690,53 +837,14 @@ class SqlAlchemyCompanyRepository:
             self.get_criterion_version(context, row.competency_model_version_id) for row in rows
         )
 
-    def save_campaign(self, context: TenantContext, campaign: Campaign) -> Campaign:
-        self._tenant(context).assert_company(campaign.company_id)
-        self._session.merge(
-            CampaignRow(
-                campaign_id=campaign.campaign_id,
-                company_id=campaign.company_id,
-                position_id=campaign.position_id,
-                competency_model_version_id=campaign.competency_model_version_id,
-                name=campaign.name,
-                candidate_instructions=campaign.candidate_instructions,
-                status=campaign.status.value,
-                row_version=campaign.row_version,
-                published_at=campaign.published_at,
-            )
-        )
-        self._session.flush()
-        return campaign
-
-    def get_campaign(self, context: TenantContext, campaign_id: UUID) -> Campaign:
-        tenant = self._tenant(context)
-        row = self._session.scalar(
-            select(CampaignRow).where(
-                CampaignRow.company_id == tenant.company_id,
-                CampaignRow.campaign_id == campaign_id,
-            )
-        )
-        if row is None:
-            raise TenantScopedResourceNotFound("tenant-scoped resource not found")
-        return Campaign(
-            campaign_id=row.campaign_id,
-            company_id=row.company_id,
-            position_id=row.position_id,
-            competency_model_version_id=row.competency_model_version_id,
-            name=row.name,
-            candidate_instructions=row.candidate_instructions,
-            status=CampaignStatus(row.status),
-            row_version=row.row_version,
-            published_at=row.published_at,
-        )
-
     def save_invitation(self, context: TenantContext, invitation: Invitation) -> Invitation:
         self._tenant(context).assert_company(invitation.company_id)
         self._session.merge(
             InvitationRow(
                 invitation_id=invitation.invitation_id,
                 company_id=invitation.company_id,
-                campaign_id=invitation.campaign_id,
+                position_id=invitation.position_id,
+                competency_model_version_id=invitation.competency_model_version_id,
                 applicant_id=invitation.applicant_id,
                 applicant_email_normalized=invitation.applicant_email_normalized,
                 applicant_display_name=invitation.applicant_display_name,
@@ -764,7 +872,8 @@ class SqlAlchemyCompanyRepository:
         return Invitation(
             invitation_id=row.invitation_id,
             company_id=row.company_id,
-            campaign_id=row.campaign_id,
+            position_id=row.position_id,
+            competency_model_version_id=row.competency_model_version_id,
             applicant_id=row.applicant_id,
             applicant_email_normalized=row.applicant_email_normalized,
             applicant_display_name=row.applicant_display_name,
@@ -776,12 +885,12 @@ class SqlAlchemyCompanyRepository:
             row_version=row.row_version,
         )
 
-    def list_invitations(self, context: TenantContext, campaign_id: UUID) -> tuple[Invitation, ...]:
+    def list_invitations(self, context: TenantContext, position_id: UUID) -> tuple[Invitation, ...]:
         tenant = self._tenant(context)
         rows = self._session.scalars(
             select(InvitationRow).where(
                 InvitationRow.company_id == tenant.company_id,
-                InvitationRow.campaign_id == campaign_id,
+                InvitationRow.position_id == position_id,
             )
         ).all()
         return tuple(self.get_invitation(context, row.invitation_id) for row in rows)

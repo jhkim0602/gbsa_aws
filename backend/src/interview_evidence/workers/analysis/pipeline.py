@@ -3,9 +3,9 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from typing import Protocol
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
-from interview_evidence.shared.aws_clients.ports import AIModel
+from interview_evidence.shared.aws_clients.ports import AIModel, TextEmbedder
 from interview_evidence.shared.ids import Clock, new_uuid7
 from interview_evidence.shared.messaging.outbox import Outbox
 from interview_evidence.shared.tenant import TenantContext
@@ -13,8 +13,17 @@ from interview_evidence.submission_analysis.adapters.search import (
     SearchDocument,
     SearchIndex,
 )
+from interview_evidence.submission_analysis.application.retrieval import (
+    HybridRetrievalConfig,
+    HybridRetriever,
+)
 from interview_evidence.submission_analysis.application.strategy_service import (
     StrategyService,
+)
+from interview_evidence.submission_analysis.application.verification_map import (
+    CriterionVerificationInput,
+    RequirementVerificationInput,
+    VerificationMapBuilder,
 )
 from interview_evidence.submission_analysis.domain.git_analysis import (
     CandidateCodeUnit,
@@ -60,9 +69,35 @@ from interview_evidence.workers.analysis.handlers import (
 
 
 @dataclass(frozen=True, slots=True)
+class AnalysisCriterion:
+    criterion_id: UUID
+    code: str
+    name: str
+    description: str
+    required: bool
+    weight: float
+    observable_dimensions: tuple[str, ...]
+    follow_up_directions: tuple[str, ...]
+    max_follow_ups: int
+    time_budget_seconds: int
+
+
+@dataclass(frozen=True, slots=True)
+class AnalysisRequirement:
+    job_requirement_id: UUID
+    statement: str
+    criterion_code: str
+    required: bool
+    priority: int
+
+
+@dataclass(frozen=True, slots=True)
 class AnalysisAxis:
     competency_model_version_id: UUID
     criterion_ids: tuple[UUID, ...]
+    version_number: int = 1
+    criteria: tuple[AnalysisCriterion, ...] = ()
+    requirements: tuple[AnalysisRequirement, ...] = ()
 
 
 class AnalysisAxisProvider(Protocol):
@@ -81,6 +116,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
         repository: SubmissionRepository,
         extractor: DocumentExtractionAdapter,
         search_index: SearchIndex,
+        text_embedder: TextEmbedder,
         strategy_model: AIModel,
         axis_provider: AnalysisAxisProvider,
         outbox: Outbox,
@@ -90,16 +126,15 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
         self._repository = repository
         self._extractor = extractor
         self._search_index = search_index
+        self._text_embedder = text_embedder
         self._strategy_model = strategy_model
         self._axis_provider = axis_provider
         self._outbox = outbox
         self._clock = clock
         self._git_fetcher = git_fetcher
 
-    @staticmethod
-    def embed(text: str) -> tuple[float, ...]:
-        digest = hashlib.sha256(text.encode("utf-8")).digest()
-        return tuple((digest[index % len(digest)] - 127.5) / 127.5 for index in range(1024))
+    def embed(self, context: TenantContext, text: str) -> tuple[float, ...]:
+        return self._text_embedder.embed(context, text, dimensions=1024)
 
     def process(self, context: TenantContext, job: AnalysisJob) -> AnalysisResult:
         existing = next(
@@ -153,6 +188,11 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
         )
         if not drafts:
             raise NonRetryableAnalysisError("document_contains_no_indexable_chunks")
+        axis = self._axis_provider.get_axis(
+            context,
+            invitation_id=submission.invitation_id,
+        )
+        self._index_criterion_axis(context, axis)
         occurred_at = self._clock.now()
         analysis = self._repository.save_analysis(
             context,
@@ -184,9 +224,9 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                 ),
                 source_hash=draft.source_hash,
                 chunk_hash=draft.chunk_hash,
-                embedding_model="deterministic-sha256-1024",
-                embedding_version="v1",
-                index_document_id=f"submission-chunk-{new_uuid7(occurred_at)}",
+                embedding_model=self._text_embedder.model_id,
+                embedding_version="titan-v2",
+                index_document_id=str(new_uuid7(occurred_at)),
             )
             for draft in drafts
         )
@@ -201,10 +241,18 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     applicant_id=submission.applicant_id,
                     source_id=chunk.chunk_id,
                     text=draft.text,
-                    vector=self.embed(draft.text),
+                    vector=self.embed(context, draft.text),
                     symbols=(),
                     locator=locator,
                     ownership_confidence=1.0,
+                    invitation_id=submission.invitation_id,
+                    competency_model_version_id=axis.competency_model_version_id,
+                    document_type="submission_chunk",
+                    source_type="submission_chunk",
+                    source_version=str(job.analysis_version),
+                    content_hash=chunk.chunk_hash,
+                    embedding_model=self._text_embedder.model_id,
+                    embedding_version="titan-v2",
                 )
             )
             candidates.append(
@@ -217,10 +265,6 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     ownership_confidence=1.0,
                 )
             )
-        axis = self._axis_provider.get_axis(
-            context,
-            invitation_id=submission.invitation_id,
-        )
         StrategyService(
             self._strategy_model,
             model_config_version="strategy-v1",
@@ -235,6 +279,14 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
             criterion_ids=axis.criterion_ids,
             source_candidates=tuple(candidates),
             strategy_version=1,
+        )
+        self._build_verification_map(
+            context,
+            submission=submission,
+            axis=axis,
+            material_version=(
+                f"submission-{submission.submission_id}-analysis-{job.analysis_version}"
+            ),
         )
         self._repository.save_submission(
             context,
@@ -353,6 +405,11 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
         )
         self._repository.save_git_commit_analyses(context, commits)
         files = {file.path: file.content.decode("utf-8") for file in snapshot.files}
+        axis = self._axis_provider.get_axis(
+            context,
+            invitation_id=submission.invitation_id,
+        )
+        self._index_criterion_axis(context, axis)
         code_units: list[CandidateCodeUnit] = []
         candidates: list[SourceReferenceCandidate] = []
         commit_by_sha = {
@@ -375,7 +432,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     related_files=related,
                 ):
                     code_unit_id = new_uuid7(occurred_at)
-                    document_id = f"code-unit-{code_unit_id}"
+                    document_id = str(code_unit_id)
                     unit = CandidateCodeUnit(
                         code_unit_id=code_unit_id,
                         company_id=context.company_id,
@@ -416,10 +473,20 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                             applicant_id=submission.applicant_id,
                             source_id=unit.code_unit_id,
                             text=f"{unit.symbol} {files[path]}",
-                            vector=self.embed(files[path]),
+                            vector=self.embed(context, files[path]),
                             symbols=(unit.symbol,),
                             locator=locator,
                             ownership_confidence=commit_analysis.ownership_confidence,
+                            invitation_id=submission.invitation_id,
+                            competency_model_version_id=axis.competency_model_version_id,
+                            document_type="code_unit",
+                            source_type="candidate_code_unit",
+                            source_version=commit_sha,
+                            content_hash=submission.content_hash or "0" * 64,
+                            embedding_model=self._text_embedder.model_id,
+                            embedding_version="titan-v2",
+                            path=unit.path,
+                            symbol=unit.symbol,
                         )
                     )
                     candidates.append(
@@ -463,7 +530,6 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                 created_at=occurred_at,
             ),
         )
-        axis = self._axis_provider.get_axis(context, invitation_id=submission.invitation_id)
         StrategyService(
             self._strategy_model,
             model_config_version="strategy-v1",
@@ -479,6 +545,14 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
             source_candidates=tuple(candidates),
             strategy_version=1,
         )
+        self._build_verification_map(
+            context,
+            submission=submission,
+            axis=axis,
+            material_version=(
+                f"submission-{submission.submission_id}-analysis-{job.analysis_version}"
+            ),
+        )
         self._repository.save_git_repository_analysis(
             context,
             repository_analysis.model_copy(update={"status": GitAnalysisStatus.READY}),
@@ -488,6 +562,130 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
             analyzing.transition(SubmissionStatus.READY),
         )
         return AnalysisResult(status=JobStatus.READY, analysis_id=analysis.analysis_id)
+
+    def _index_criterion_axis(
+        self,
+        context: TenantContext,
+        axis: AnalysisAxis,
+    ) -> None:
+        for criterion in axis.criteria:
+            text = " ".join(
+                (
+                    criterion.name,
+                    criterion.description,
+                    *criterion.observable_dimensions,
+                    *criterion.follow_up_directions,
+                )
+            )
+            self._search_index.add(
+                SearchDocument(
+                    document_id=str(
+                        uuid5(
+                            NAMESPACE_URL,
+                            (
+                                f"{axis.competency_model_version_id}:"
+                                f"criterion:{criterion.criterion_id}"
+                            ),
+                        )
+                    ),
+                    company_id=context.company_id,
+                    applicant_id=UUID(int=0),
+                    source_id=criterion.criterion_id,
+                    text=text,
+                    vector=self.embed(context, text),
+                    symbols=(),
+                    locator={"criterion_code": criterion.code},
+                    ownership_confidence=1.0,
+                    competency_model_version_id=axis.competency_model_version_id,
+                    criterion_id=criterion.criterion_id,
+                    document_type="criterion_guide",
+                    source_type="criterion_guide",
+                    source_version=str(axis.version_number),
+                    content_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                    embedding_model=self._text_embedder.model_id,
+                    embedding_version="titan-v2",
+                )
+            )
+        for requirement in axis.requirements:
+            self._search_index.add(
+                SearchDocument(
+                    document_id=str(
+                        uuid5(
+                            NAMESPACE_URL,
+                            (
+                                f"{axis.competency_model_version_id}:"
+                                f"requirement:{requirement.job_requirement_id}"
+                            ),
+                        )
+                    ),
+                    company_id=context.company_id,
+                    applicant_id=UUID(int=0),
+                    source_id=requirement.job_requirement_id,
+                    text=requirement.statement,
+                    vector=self.embed(context, requirement.statement),
+                    symbols=(),
+                    locator={"criterion_code": requirement.criterion_code},
+                    ownership_confidence=1.0,
+                    competency_model_version_id=axis.competency_model_version_id,
+                    document_type="job_requirement",
+                    source_type="job_requirement",
+                    source_version=str(axis.version_number),
+                    content_hash=hashlib.sha256(requirement.statement.encode("utf-8")).hexdigest(),
+                    embedding_model=self._text_embedder.model_id,
+                    embedding_version="titan-v2",
+                )
+            )
+
+    def _build_verification_map(
+        self,
+        context: TenantContext,
+        *,
+        submission: Submission,
+        axis: AnalysisAxis,
+        material_version: str,
+    ) -> None:
+        if not axis.criteria:
+            return
+        VerificationMapBuilder(
+            repository=self._repository,
+            retriever=HybridRetriever(
+                self._search_index,
+                HybridRetrievalConfig(),
+            ),
+            embedder=self._text_embedder,
+            clock=self._clock,
+        ).build(
+            context,
+            applicant_id=submission.applicant_id,
+            invitation_id=submission.invitation_id,
+            competency_model_version_id=axis.competency_model_version_id,
+            criterion_version=axis.version_number,
+            criteria=tuple(
+                CriterionVerificationInput(
+                    criterion_id=criterion.criterion_id,
+                    code=criterion.code,
+                    name=criterion.name,
+                    description=criterion.description,
+                    required=criterion.required,
+                    weight=criterion.weight,
+                    observable_dimensions=criterion.observable_dimensions,
+                    follow_up_directions=criterion.follow_up_directions,
+                    max_follow_ups=criterion.max_follow_ups,
+                    time_budget_seconds=criterion.time_budget_seconds,
+                )
+                for criterion in axis.criteria
+            ),
+            requirements=tuple(
+                RequirementVerificationInput(
+                    statement=requirement.statement,
+                    criterion_code=requirement.criterion_code,
+                    required=requirement.required,
+                    priority=requirement.priority,
+                )
+                for requirement in axis.requirements
+            ),
+            material_version=material_version,
+        )
 
     @staticmethod
     def _to_analyzing(submission: Submission) -> Submission:

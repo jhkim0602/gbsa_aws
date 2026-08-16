@@ -116,7 +116,7 @@ def test_production_deleters_require_verified_absence_and_record_metrics() -> No
         SubmissionDeletionTarget(
             company_id=COMPANY_ID,
             owner_lane="B",
-            store="opensearch",
+            store="retrieval",
             resource_type="submission_chunk_index",
             resource_id="chunk-index-1",
         ),

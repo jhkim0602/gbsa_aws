@@ -5,13 +5,17 @@ from uuid import UUID
 
 from interview_evidence.company_management.application.company_service import (
     CompanyManagementPublic,
+    CriterionSnapshot,
 )
 from interview_evidence.interview_engine.adapters.retrieval_client import RetrievalRecord
 from interview_evidence.interview_engine.application.authorization import (
     InterviewAuthorization,
     InterviewAuthorizationDenied,
 )
-from interview_evidence.interview_engine.application.interview_plan import InterviewPlan
+from interview_evidence.interview_engine.application.interview_plan import (
+    InterviewPlan,
+    VerificationTargetPlan,
+)
 from interview_evidence.shared.security.principals import ApplicantPrincipal
 from interview_evidence.shared.tenant import TenantContext
 from interview_evidence.submission_analysis.application.public import SubmissionAnalysisPublic
@@ -23,6 +27,8 @@ class BoundaryRetrievalRecord:
     score: float
     locator: dict[str, object]
     ownership_confidence: float
+    excerpt: str
+    source_type: str
 
 
 class SubmissionInterviewBoundary:
@@ -76,6 +82,8 @@ class SubmissionInterviewBoundary:
         context: TenantContext,
         *,
         applicant_id: UUID,
+        invitation_id: UUID,
+        competency_model_version_id: UUID,
         query: str,
         query_vector: tuple[float, ...],
         criterion_id: UUID,
@@ -86,6 +94,8 @@ class SubmissionInterviewBoundary:
         results = self._submission.retrieve_context(
             context,
             applicant_id=applicant_id,
+            invitation_id=invitation_id,
+            competency_model_version_id=competency_model_version_id,
             query=query,
             query_vector=query_vector,
             criterion_id=criterion_id,
@@ -99,6 +109,8 @@ class SubmissionInterviewBoundary:
                 score=result.score,
                 locator=dict(result.locator),
                 ownership_confidence=result.ownership_confidence,
+                excerpt=result.excerpt,
+                source_type=result.source_type,
             )
             for result in results
         )
@@ -121,6 +133,49 @@ class SubmissionInterviewBoundary:
         ):
             raise PermissionError("interview plan is outside tenant scope")
         criterion_ids = tuple(criterion.criterion_id for criterion in criteria.criteria)
+        verification_map = self._submission.get_verification_map(
+            context,
+            applicant_id=strategy.applicant_id,
+            invitation_id=strategy.invitation_id,
+            competency_model_version_id=competency_model_version_id,
+        )
+        criteria_by_id = {criterion.criterion_id: criterion for criterion in criteria.criteria}
+        requirements_by_code: dict[str, list[str]] = {}
+        for requirement in criteria.job_requirements:
+            requirements_by_code.setdefault(
+                requirement.criterion_code,
+                [],
+            ).append(requirement.statement)
+        verification_targets = tuple(
+            VerificationTargetPlan(
+                verification_target_id=target.verification_target_id,
+                criterion_id=target.criterion_id,
+                criterion_text=_criterion_text(
+                    criteria_by_id[target.criterion_id],
+                    tuple(
+                        requirements_by_code.get(
+                            criteria_by_id[target.criterion_id].code,
+                            (),
+                        )
+                    ),
+                ),
+                target_type=target.target_type,
+                objective=target.objective,
+                missing_dimensions=target.missing_dimensions,
+                follow_up_directions=_string_tuple(
+                    criteria_by_id[target.criterion_id].verification_guide.get(
+                        "follow_up_directions"
+                    )
+                ),
+                max_follow_ups=target.max_follow_ups,
+                common_question=next(
+                    iter(criteria_by_id[target.criterion_id].common_questions),
+                    "해당 경험에서 본인이 직접 수행한 작업을 설명해 주세요?",
+                ),
+            )
+            for target in (verification_map.targets if verification_map else ())
+            if target.criterion_id in criteria_by_id
+        )
         verification_prompt = next(
             (
                 point.prompt
@@ -139,7 +194,13 @@ class SubmissionInterviewBoundary:
             "",
         )
         initial_question = _as_question(
-            verification_prompt or common_question or "최근 해결한 기술 문제를 설명해 주세요"
+            (
+                verification_targets[0].common_question
+                if verification_targets
+                else verification_prompt
+            )
+            or common_question
+            or "최근 해결한 기술 문제를 설명해 주세요"
         )
         fallback_question = _as_question(
             common_question or "그 판단 과정과 결과를 구체적으로 설명해 주세요"
@@ -152,11 +213,36 @@ class SubmissionInterviewBoundary:
             fallback_question=fallback_question,
             remaining_time_seconds=criteria.interview_duration_minutes * 60,
             model_config_version=strategy.model_config_version,
-            retrieval_config_version="hybrid-v1",
+            retrieval_config_version="aurora-hybrid-v1",
             voice_id=str(persona.get("voice_id", "Seoyeon")),
+            verification_targets=verification_targets,
         )
 
 
 def _as_question(value: str) -> str:
     text = value.strip()
     return text if text.endswith("?") else f"{text}?"
+
+
+def _criterion_text(
+    criterion: CriterionSnapshot,
+    requirements: tuple[str, ...],
+) -> str:
+    guide = criterion.verification_guide
+    dimensions = _string_tuple(guide.get("observable_dimensions"))
+    return "\n".join(
+        value
+        for value in (
+            criterion.name,
+            criterion.description,
+            *requirements,
+            *dimensions,
+        )
+        if value.strip()
+    )
+
+
+def _string_tuple(value: object) -> tuple[str, ...]:
+    if not isinstance(value, list | tuple):
+        return ()
+    return tuple(str(item) for item in value)

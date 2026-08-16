@@ -14,8 +14,12 @@ from interview_evidence.interview_engine.application.checkpoints import Checkpoi
 from interview_evidence.interview_engine.application.context_builder import (
     ContextBuilder,
     ContextTurn,
+    RetrievedSourceContext,
 )
 from interview_evidence.interview_engine.application.idempotency import IdempotencyStore
+from interview_evidence.interview_engine.application.interview_plan import (
+    VerificationTargetPlan,
+)
 from interview_evidence.interview_engine.application.question_generator import (
     QuestionGenerationUnavailable,
     QuestionGenerator,
@@ -30,12 +34,16 @@ from interview_evidence.interview_engine.domain.session import InterviewSessionS
 from interview_evidence.interview_engine.domain.turn import (
     HotViewSyncStatus,
     InterviewTurn,
+    QuestionRationale,
     QuestionSourceReference,
     TurnSpeaker,
     TurnStatus,
+    VerificationProgress,
+    VerificationProgressState,
 )
 from interview_evidence.interview_engine.repositories.postgres import InterviewRepository
 from interview_evidence.shared.ids import new_uuid7
+from interview_evidence.shared.messaging.outbox import Outbox, OutboxEvent
 from interview_evidence.shared.tenant import TenantContext
 
 
@@ -61,6 +69,7 @@ class InterviewService:
         generator: QuestionGenerator,
         policy: QuestionPolicy,
         speech: SpeechSynthesisAdapter,
+        outbox: Outbox | None = None,
     ) -> None:
         self._repository = repository
         self._idempotency = idempotency
@@ -71,6 +80,7 @@ class InterviewService:
         self._generator = generator
         self._policy = policy
         self._speech = speech
+        self._outbox = outbox
         self._state_machine = SessionStateMachine()
 
     def finalize_answer_and_generate(
@@ -90,11 +100,14 @@ class InterviewService:
         fallback_question: str,
         remaining_criterion_ids: tuple[UUID, ...],
         remaining_time_seconds: int,
-        query_vector: tuple[float, ...],
+        query_vector: tuple[float, ...] | None,
         model_config_version: str,
         retrieval_config_version: str,
         voice_id: str,
         occurred_at: datetime,
+        answered_target: VerificationTargetPlan | None = None,
+        question_target: VerificationTargetPlan | None = None,
+        existing_progress: VerificationProgress | None = None,
     ) -> InterviewPipelineResult:
         return self._idempotency.execute(
             context,
@@ -130,6 +143,9 @@ class InterviewService:
                 retrieval_config_version=retrieval_config_version,
                 voice_id=voice_id,
                 occurred_at=occurred_at,
+                answered_target=answered_target,
+                question_target=question_target,
+                existing_progress=existing_progress,
             ),
             occurred_at=occurred_at,
         )
@@ -151,11 +167,14 @@ class InterviewService:
         fallback_question: str,
         remaining_criterion_ids: tuple[UUID, ...],
         remaining_time_seconds: int,
-        query_vector: tuple[float, ...],
+        query_vector: tuple[float, ...] | None,
         model_config_version: str,
         retrieval_config_version: str,
         voice_id: str,
         occurred_at: datetime,
+        answered_target: VerificationTargetPlan | None,
+        question_target: VerificationTargetPlan | None,
+        existing_progress: VerificationProgress | None,
     ) -> InterviewPipelineResult:
         answer = self._recovery.finalize_answer(
             context,
@@ -171,9 +190,21 @@ class InterviewService:
             raise ValueError("stale answer cannot generate a new question")
 
         session = self._repository.get_session(context, session_id)
+        self._record_answer_progress(
+            context,
+            session_id=session_id,
+            applicant_id=session.applicant_id,
+            answer_turn_id=answer_turn_id,
+            answered_target=answered_target,
+            question_target=question_target,
+            existing_progress=existing_progress,
+            occurred_at=occurred_at,
+        )
         retrieval = self._retrieval.retrieve(
             context,
             applicant_id=session.applicant_id,
+            invitation_id=session.invitation_id,
+            competency_model_version_id=session.competency_model_version_id,
             session_id=session_id,
             query=answer_text,
             query_vector=query_vector,
@@ -194,6 +225,20 @@ class InterviewService:
             remaining_criterion_ids=remaining_criterion_ids,
             remaining_time_seconds=remaining_time_seconds,
             retrieved_source_ids=tuple(hit.source_id for hit in retrieval.hits),
+            retrieved_sources=tuple(
+                RetrievedSourceContext(
+                    source_id=hit.source_id,
+                    source_type=hit.source_type,
+                    locator=hit.locator,
+                    excerpt=hit.excerpt,
+                    score=hit.score,
+                )
+                for hit in retrieval.hits
+            ),
+            criterion_text=(question_target.criterion_text if question_target else ""),
+            verification_objective=(question_target.objective if question_target else ""),
+            missing_dimensions=(question_target.missing_dimensions if question_target else ()),
+            follow_up_directions=(question_target.follow_up_directions if question_target else ()),
         )
         try:
             draft = self._generator.generate(
@@ -278,6 +323,7 @@ class InterviewService:
                     else "submission_chunk"
                 ),
                 locator=retrieved_by_id[source_id].locator,
+                excerpt=retrieved_by_id[source_id].excerpt[:2000],
                 relevance_score=retrieved_by_id[source_id].score,
                 ownership_confidence=retrieved_by_id[source_id].ownership_confidence,
                 retrieval_config_version=question.retrieval_config_version,
@@ -287,6 +333,40 @@ class InterviewService:
             for source_id in question.source_reference_ids
         )
         self._repository.save_question_source_references(context, references)
+        if question_target is not None:
+            self._repository.save_question_rationale(
+                context,
+                QuestionRationale(
+                    question_rationale_id=new_uuid7(occurred_at),
+                    company_id=session.company_id,
+                    interview_session_id=session_id,
+                    question_turn_id=question_turn.turn_id,
+                    applicant_id=session.applicant_id,
+                    competency_model_version_id=(session.competency_model_version_id),
+                    criterion_id=question_target.criterion_id,
+                    verification_target_id=(question_target.verification_target_id),
+                    verification_target_type=question_target.target_type,
+                    objective=question_target.objective,
+                    question_type=(
+                        "follow_up"
+                        if answered_target is not None
+                        and answered_target.verification_target_id
+                        == question_target.verification_target_id
+                        else "personalized"
+                    ),
+                    retrieval_version=retrieval_config_version,
+                    generation_version=model_config_version,
+                    policy_result=(
+                        "accepted"
+                        if policy_result.accepted
+                        else ",".join(policy_result.reason_codes)
+                    ),
+                    source_reference_ids=tuple(
+                        reference.source_reference_id for reference in references
+                    ),
+                    created_at=occurred_at,
+                ),
+            )
         speech = self._speech.synthesize(
             context,
             text=question.text,
@@ -330,4 +410,137 @@ class InterviewService:
             source_references=references,
             speech=speech,
             policy_reason_codes=policy_result.reason_codes,
+        )
+
+    def finalize_answer_and_complete(
+        self,
+        context: TenantContext,
+        *,
+        session_id: UUID,
+        expected_sequence: int,
+        answer_turn_id: UUID,
+        answer_text: str,
+        last_recording_chunk_sequence: int,
+        idempotency_key: str,
+        answered_target: VerificationTargetPlan,
+        existing_progress: VerificationProgress | None,
+        occurred_at: datetime,
+    ) -> RecoveryMessage:
+        answer = self._recovery.finalize_answer(
+            context,
+            session_id=session_id,
+            expected_sequence=expected_sequence,
+            answer_turn_id=answer_turn_id,
+            text=answer_text,
+            last_recording_chunk_sequence=last_recording_chunk_sequence,
+            idempotency_key=idempotency_key,
+            occurred_at=occurred_at,
+        )
+        if answer.message_type != "answer.accepted":
+            return answer
+        session = self._repository.get_session(context, session_id)
+        self._record_answer_progress(
+            context,
+            session_id=session_id,
+            applicant_id=session.applicant_id,
+            answer_turn_id=answer_turn_id,
+            answered_target=answered_target,
+            question_target=None,
+            existing_progress=existing_progress,
+            occurred_at=occurred_at,
+        )
+        in_progress = self._state_machine.transition(
+            session,
+            expected_sequence=session.session_sequence,
+            target=InterviewSessionState.IN_PROGRESS,
+        )
+        completed = self._state_machine.transition(
+            in_progress,
+            expected_sequence=in_progress.session_sequence,
+            target=InterviewSessionState.COMPLETED,
+        ).model_copy(update={"completed_at": occurred_at})
+        self._repository.save_session(context, completed)
+        self._checkpoints.create(
+            context,
+            session_id=session_id,
+            last_final_turn_id=answer_turn_id,
+            last_media_chunk_sequence=last_recording_chunk_sequence,
+            pending_turn_id=None,
+            hot_view_sync_status=HotViewSyncStatus.PENDING,
+            occurred_at=occurred_at,
+        )
+        if self._outbox is not None:
+            self._outbox.append(
+                OutboxEvent(
+                    outbox_event_id=new_uuid7(occurred_at),
+                    company_id=session.company_id,
+                    aggregate_type="interview_session",
+                    aggregate_id=session_id,
+                    aggregate_version=completed.session_sequence,
+                    event_type="interview.completed",
+                    event_version=1,
+                    payload={
+                        "interview_session_id": str(session_id),
+                        "invitation_id": str(session.invitation_id),
+                        "last_turn_id": str(answer_turn_id),
+                        "completed_at": occurred_at.isoformat(),
+                        "media_status": "pending",
+                    },
+                    idempotency_key=f"interview-completed-{session_id}",
+                    trace_id=context.trace_id,
+                    occurred_at=occurred_at,
+                )
+            )
+        return answer
+
+    def _record_answer_progress(
+        self,
+        context: TenantContext,
+        *,
+        session_id: UUID,
+        applicant_id: UUID,
+        answer_turn_id: UUID,
+        answered_target: VerificationTargetPlan | None,
+        question_target: VerificationTargetPlan | None,
+        existing_progress: VerificationProgress | None,
+        occurred_at: datetime,
+    ) -> None:
+        if answered_target is None:
+            return
+        follows_same_target = (
+            question_target is not None
+            and question_target.verification_target_id == answered_target.verification_target_id
+        )
+        self._repository.save_verification_progress(
+            context,
+            VerificationProgress(
+                verification_progress_id=(
+                    existing_progress.verification_progress_id
+                    if existing_progress is not None
+                    else new_uuid7(occurred_at)
+                ),
+                company_id=context.company_id,
+                interview_session_id=session_id,
+                applicant_id=applicant_id,
+                verification_target_id=(answered_target.verification_target_id),
+                criterion_id=answered_target.criterion_id,
+                state=(
+                    VerificationProgressState.IN_PROGRESS
+                    if follows_same_target
+                    else VerificationProgressState.COMPLETED
+                ),
+                follow_up_count=(
+                    (existing_progress.follow_up_count if existing_progress else 0)
+                    + (1 if follows_same_target else 0)
+                ),
+                final_answer_turn_ids=tuple(
+                    dict.fromkeys(
+                        (
+                            *(existing_progress.final_answer_turn_ids if existing_progress else ()),
+                            answer_turn_id,
+                        )
+                    )
+                ),
+                updated_at=occurred_at,
+            ),
         )

@@ -1,5 +1,5 @@
-from datetime import datetime
-from typing import Annotated
+from datetime import date, datetime
+from typing import Annotated, Protocol
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
@@ -12,9 +12,17 @@ from interview_evidence.company_management.application.hiring_service import (
     ApplicantInvitationInput,
     HiringService,
 )
-from interview_evidence.company_management.domain.company import Position
+from interview_evidence.company_management.application.interviewer_service import (
+    InterviewerProfileService,
+)
+from interview_evidence.company_management.domain.company import (
+    InterviewerProfile,
+    InterviewerTone,
+    Position,
+    PositionStatus,
+)
 from interview_evidence.company_management.domain.criteria import CompetencyModelVersion
-from interview_evidence.company_management.domain.hiring import Campaign, Invitation
+from interview_evidence.company_management.domain.hiring import Invitation
 from interview_evidence.company_management.repositories.postgres import (
     TenantScopedResourceNotFound,
 )
@@ -44,6 +52,10 @@ class PositionCreate(BaseModel):
 
     title: str = Field(min_length=1, max_length=200)
     description: str = Field(min_length=1, max_length=20_000)
+    role_type: str | None = Field(default=None, max_length=100)
+    headcount: int | None = Field(default=None, ge=1, le=10_000)
+    recruitment_start_at: date | None = None
+    recruitment_end_at: date | None = None
 
 
 class PositionView(PositionCreate):
@@ -53,10 +65,35 @@ class PositionView(PositionCreate):
     created_at: datetime
 
 
+class PositionUpdate(PositionCreate):
+    status: PositionStatus
+
+
 class PositionPage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[PositionView]
+    next_cursor: str | None = None
+
+
+class InterviewerProfileCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=80)
+    tone: InterviewerTone
+    voice_id: str = Field(min_length=1, max_length=100)
+
+
+class InterviewerProfileView(InterviewerProfileCreate):
+    interviewer_profile_id: UUID
+    row_version: int
+    created_at: datetime
+
+
+class InterviewerProfilePage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[InterviewerProfileView]
     next_cursor: str | None = None
 
 
@@ -67,23 +104,46 @@ class EvaluationCriterionInput(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str = Field(min_length=1, max_length=4000)
     weight: float = Field(ge=0)
-    good_evidence: dict[str, object]
-    weak_evidence: dict[str, object]
+    verification_guide: "CriterionVerificationGuideInput"
+    good_evidence: dict[str, object] = Field(default_factory=dict)
+    weak_evidence: dict[str, object] = Field(default_factory=dict)
     abstain_guidance: str = Field(min_length=1)
     common_questions: tuple[str, ...] = ()
     required: bool
 
 
+class JobRequirementInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    requirement_type: str = Field(pattern=r"^(required|preferred)$")
+    statement: str = Field(min_length=1, max_length=4000)
+    priority: int = Field(ge=1, le=5)
+    criterion_code: str = Field(pattern=r"^[A-Z0-9_-]{2,40}$")
+
+
+class CriterionVerificationGuideInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    observable_dimensions: tuple[str, ...] = Field(min_length=1, max_length=12)
+    strong_answer_signals: tuple[str, ...] = Field(min_length=1, max_length=12)
+    weak_answer_signals: tuple[str, ...] = Field(min_length=1, max_length=12)
+    follow_up_directions: tuple[str, ...] = Field(min_length=1, max_length=8)
+    max_follow_ups: int = Field(ge=0, le=3)
+    time_budget_seconds: int = Field(ge=60, le=1800)
+
+
 class CompetencyModelVersionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    job_requirements: tuple[JobRequirementInput, ...] = Field(min_length=1, max_length=50)
     criteria: tuple[EvaluationCriterionInput, ...] = Field(min_length=1)
     prohibited_topics: tuple[str, ...]
     interview_duration_minutes: int = Field(ge=10, le=120)
-    persona_definition: dict[str, object]
+    persona_definition: dict[str, object] | None = None
 
 
 class CompetencyModelVersionView(CompetencyModelVersionCreate):
+    job_requirements: tuple[JobRequirementInput, ...] = Field(max_length=50)
     competency_model_version_id: UUID
     position_id: UUID
     version_number: int
@@ -92,20 +152,11 @@ class CompetencyModelVersionView(CompetencyModelVersionCreate):
     published_at: datetime | None
 
 
-class CampaignCreate(BaseModel):
+class CompetencyModelVersionPage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    position_id: UUID
-    competency_model_version_id: UUID
-    name: str = Field(min_length=1, max_length=200)
-    candidate_instructions: str = Field(min_length=1, max_length=10_000)
-
-
-class CampaignView(CampaignCreate):
-    campaign_id: UUID
-    status: str
-    row_version: int
-    published_at: datetime | None
+    items: list[CompetencyModelVersionView]
+    next_cursor: str | None = None
 
 
 class ApplicantInvitationRequest(BaseModel):
@@ -126,14 +177,34 @@ class InvitationView(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     invitation_id: UUID
-    campaign_id: UUID
+    position_id: UUID
+    competency_model_version_id: UUID
     applicant_email: str
+    applicant_display_name: str | None = None
     status: str
     expires_at: datetime
     row_version: int
     analysis_status: str | None = None
     interview_status: str | None = None
     report_status: str | None = None
+    interview_session_id: UUID | None = None
+
+
+class InvitationSessionSnapshot(Protocol):
+    @property
+    def interview_session_id(self) -> UUID: ...
+
+    @property
+    def state(self) -> str: ...
+
+
+class InvitationSessionResolver(Protocol):
+    def find_session_for_invitation(
+        self,
+        context: TenantContext,
+        *,
+        invitation_id: UUID,
+    ) -> InvitationSessionSnapshot | None: ...
 
 
 class InvitationPage(BaseModel):
@@ -163,10 +234,12 @@ def create_company_router(
     auth: CompanyAuthAdapter,
     company_service: CompanyService,
     criteria_service: CriteriaService,
+    interviewer_service: InterviewerProfileService,
     hiring_service: HiringService,
     audit: AuditAppender,
     invitation_email: InvitationEmailHandler | None = None,
     applicant_access_base_url: str = "https://applicant.local/access",
+    interview_sessions: InvitationSessionResolver | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1")
 
@@ -232,6 +305,10 @@ def create_company_router(
             scope.principal,
             title=body.title,
             description=body.description,
+            role_type=body.role_type,
+            headcount=body.headcount,
+            recruitment_start_at=body.recruitment_start_at,
+            recruitment_end_at=body.recruitment_end_at,
             idempotency_key=idempotency_key,
         )
         audit.append(
@@ -243,6 +320,108 @@ def create_company_router(
             metadata={"row_version": position.row_version},
         )
         return _position_view(position)
+
+    @router.get(
+        "/positions/{position_id}",
+        response_model=PositionView,
+        operation_id="getPosition",
+    )
+    def get_position(position_id: UUID, scope: Scope) -> PositionView:
+        try:
+            position = company_service.get_position(scope.context, position_id)
+        except TenantScopedResourceNotFound as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        return _position_view(position)
+
+    @router.patch(
+        "/positions/{position_id}",
+        response_model=PositionView,
+        operation_id="updatePosition",
+    )
+    def update_position(
+        position_id: UUID,
+        body: PositionUpdate,
+        scope: Scope,
+        if_match_version: IfMatchVersion,
+    ) -> PositionView:
+        try:
+            position = company_service.update_position(
+                scope.context,
+                position_id=position_id,
+                expected_version=if_match_version,
+                title=body.title,
+                description=body.description,
+                role_type=body.role_type,
+                headcount=body.headcount,
+                recruitment_start_at=body.recruitment_start_at,
+                recruitment_end_at=body.recruitment_end_at,
+                status=body.status,
+            )
+        except TenantScopedResourceNotFound as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        except ValueError as error:
+            code = (
+                status.HTTP_409_CONFLICT
+                if "stale" in str(error)
+                else status.HTTP_422_UNPROCESSABLE_ENTITY
+            )
+            raise HTTPException(status_code=code, detail=str(error)) from error
+        audit.append(
+            scope.context,
+            action="position.updated",
+            resource_type="position",
+            resource_id=position.position_id,
+            result="success",
+            metadata={
+                "row_version": position.row_version,
+                "status": position.status.value,
+            },
+        )
+        return _position_view(position)
+
+    @router.get(
+        "/interviewer-profiles",
+        response_model=InterviewerProfilePage,
+        operation_id="listInterviewerProfiles",
+    )
+    def list_interviewer_profiles(
+        scope: Scope,
+        cursor: Annotated[str | None, Query(max_length=512)] = None,
+        limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    ) -> InterviewerProfilePage:
+        del cursor
+        profiles = interviewer_service.list(scope.context)[:limit]
+        return InterviewerProfilePage(
+            items=[_interviewer_profile_view(profile) for profile in profiles]
+        )
+
+    @router.post(
+        "/interviewer-profiles",
+        response_model=InterviewerProfileView,
+        status_code=status.HTTP_201_CREATED,
+        operation_id="createInterviewerProfile",
+    )
+    def create_interviewer_profile(
+        body: InterviewerProfileCreate,
+        scope: Scope,
+        idempotency_key: IdempotencyKey,
+    ) -> InterviewerProfileView:
+        profile = interviewer_service.create(
+            scope.context,
+            name=body.name,
+            tone=body.tone,
+            voice_id=body.voice_id,
+            idempotency_key=idempotency_key,
+        )
+        audit.append(
+            scope.context,
+            action="interviewer_profile.created",
+            resource_type="interviewer_profile",
+            resource_id=profile.interviewer_profile_id,
+            result="success",
+            metadata={"row_version": profile.row_version, "tone": profile.tone.value},
+        )
+        return _interviewer_profile_view(profile)
 
     @router.post(
         "/positions/{position_id}/competency-model-versions",
@@ -260,10 +439,10 @@ def create_company_router(
             version = criteria_service.create_version(
                 scope.context,
                 position_id=position_id,
+                job_requirements=tuple(item.model_dump() for item in body.job_requirements),
                 criteria=tuple(item.model_dump() for item in body.criteria),
                 prohibited_topics=body.prohibited_topics,
                 interview_duration_minutes=body.interview_duration_minutes,
-                persona_definition=body.persona_definition,
                 idempotency_key=idempotency_key,
             )
         except TenantScopedResourceNotFound as error:
@@ -277,6 +456,24 @@ def create_company_router(
             metadata={"row_version": version.row_version},
         )
         return _criterion_view(version)
+
+    @router.get(
+        "/positions/{position_id}/competency-model-versions",
+        response_model=CompetencyModelVersionPage,
+        operation_id="listCompetencyModelVersions",
+    )
+    def list_competency_model_versions(
+        position_id: UUID,
+        scope: Scope,
+        cursor: Annotated[str | None, Query(max_length=512)] = None,
+        limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    ) -> CompetencyModelVersionPage:
+        del cursor
+        try:
+            versions = criteria_service.list_versions(scope.context, position_id)[:limit]
+        except TenantScopedResourceNotFound as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        return CompetencyModelVersionPage(items=[_criterion_view(version) for version in versions])
 
     @router.post(
         "/competency-model-versions/{version_id}/publish",
@@ -308,94 +505,41 @@ def create_company_router(
         )
         return _criterion_view(version)
 
-    @router.post(
-        "/campaigns",
-        response_model=CampaignView,
-        status_code=status.HTTP_201_CREATED,
-        operation_id="createCampaign",
-    )
-    def create_campaign(
-        body: CampaignCreate,
-        scope: Scope,
-        idempotency_key: IdempotencyKey,
-    ) -> CampaignView:
-        try:
-            campaign = hiring_service.create_campaign(
-                scope.context,
-                position_id=body.position_id,
-                competency_model_version_id=body.competency_model_version_id,
-                name=body.name,
-                candidate_instructions=body.candidate_instructions,
-                idempotency_key=idempotency_key,
-            )
-        except TenantScopedResourceNotFound as error:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
-        audit.append(
-            scope.context,
-            action="campaign.created",
-            resource_type="campaign",
-            resource_id=campaign.campaign_id,
-            result="success",
-            metadata={"row_version": campaign.row_version},
-        )
-        return _campaign_view(campaign)
-
-    @router.post(
-        "/campaigns/{campaign_id}/publish",
-        response_model=CampaignView,
-        operation_id="publishCampaign",
-    )
-    def publish_campaign(
-        campaign_id: UUID,
-        scope: Scope,
-        idempotency_key: IdempotencyKey,
-        if_match_version: IfMatchVersion,
-    ) -> CampaignView:
-        del idempotency_key
-        try:
-            campaign = hiring_service.publish_campaign(
-                scope.context,
-                campaign_id=campaign_id,
-                expected_version=if_match_version,
-            )
-        except TenantScopedResourceNotFound as error:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
-        audit.append(
-            scope.context,
-            action="campaign.published",
-            resource_type="campaign",
-            resource_id=campaign.campaign_id,
-            result="success",
-            metadata={"row_version": campaign.row_version},
-        )
-        return _campaign_view(campaign)
-
     @router.get(
-        "/campaigns/{campaign_id}/invitations",
+        "/positions/{position_id}/invitations",
         response_model=InvitationPage,
         operation_id="listInvitations",
     )
     def list_invitations(
-        campaign_id: UUID,
+        position_id: UUID,
         scope: Scope,
         cursor: Annotated[str | None, Query(max_length=512)] = None,
         limit: Annotated[int, Query(ge=1, le=100)] = 50,
     ) -> InvitationPage:
         del cursor
         try:
-            invitations = hiring_service.list_invitations(scope.context, campaign_id)[:limit]
+            invitations = hiring_service.list_invitations(scope.context, position_id)[:limit]
         except TenantScopedResourceNotFound as error:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
-        return InvitationPage(items=[_invitation_view(invitation) for invitation in invitations])
+        return InvitationPage(
+            items=[
+                _invitation_view(
+                    invitation,
+                    interview_sessions=interview_sessions,
+                    context=scope.context,
+                )
+                for invitation in invitations
+            ]
+        )
 
     @router.post(
-        "/campaigns/{campaign_id}/invitations",
+        "/positions/{position_id}/invitations",
         response_model=InvitationBatchResult,
         status_code=status.HTTP_202_ACCEPTED,
         operation_id="createInvitations",
     )
     def create_invitations(
-        campaign_id: UUID,
+        position_id: UUID,
         body: InvitationBatchCreate,
         scope: Scope,
         idempotency_key: IdempotencyKey,
@@ -404,7 +548,7 @@ def create_company_router(
         try:
             issuances = hiring_service.issue_invitations(
                 scope.context,
-                campaign_id=campaign_id,
+                position_id=position_id,
                 applicants=tuple(
                     ApplicantInvitationInput(
                         email=applicant.email,
@@ -419,8 +563,8 @@ def create_company_router(
         audit.append(
             scope.context,
             action="invitation.batch_created",
-            resource_type="campaign",
-            resource_id=campaign_id,
+            resource_type="position",
+            resource_id=position_id,
             result="success",
             metadata={"accepted_count": len(issuances), "rejected_count": 0},
         )
@@ -440,7 +584,14 @@ def create_company_router(
         return InvitationBatchResult(
             accepted_count=len(issuances),
             rejected_count=0,
-            invitations=[_invitation_view(issuance.invitation) for issuance in issuances],
+            invitations=[
+                _invitation_view(
+                    issuance.invitation,
+                    interview_sessions=interview_sessions,
+                    context=scope.context,
+                )
+                for issuance in issuances
+            ],
         )
 
     return router
@@ -460,9 +611,24 @@ def _position_view(position: Position) -> PositionView:
         position_id=position.position_id,
         title=position.title,
         description=position.description,
+        role_type=position.role_type,
+        headcount=position.headcount,
+        recruitment_start_at=position.recruitment_start_at,
+        recruitment_end_at=position.recruitment_end_at,
         status=position.status.value,
         row_version=position.row_version,
         created_at=position.created_at,
+    )
+
+
+def _interviewer_profile_view(profile: InterviewerProfile) -> InterviewerProfileView:
+    return InterviewerProfileView(
+        interviewer_profile_id=profile.interviewer_profile_id,
+        name=profile.name,
+        tone=profile.tone,
+        voice_id=profile.voice_id,
+        row_version=profile.row_version,
+        created_at=profile.created_at,
     )
 
 
@@ -471,6 +637,12 @@ def _criterion_view(version: CompetencyModelVersion) -> CompetencyModelVersionVi
         competency_model_version_id=version.competency_model_version_id,
         position_id=version.position_id,
         version_number=version.version_number,
+        job_requirements=[
+            JobRequirementInput.model_validate(
+                requirement.model_dump(exclude={"job_requirement_id"})
+            )
+            for requirement in version.job_requirements
+        ],
         criteria=[
             EvaluationCriterionInput.model_validate(criterion.model_dump(exclude={"criterion_id"}))
             for criterion in version.criteria
@@ -484,25 +656,29 @@ def _criterion_view(version: CompetencyModelVersion) -> CompetencyModelVersionVi
     )
 
 
-def _campaign_view(campaign: Campaign) -> CampaignView:
-    return CampaignView(
-        campaign_id=campaign.campaign_id,
-        position_id=campaign.position_id,
-        competency_model_version_id=campaign.competency_model_version_id,
-        name=campaign.name,
-        candidate_instructions=campaign.candidate_instructions,
-        status=campaign.status.value,
-        row_version=campaign.row_version,
-        published_at=campaign.published_at,
+def _invitation_view(
+    invitation: Invitation,
+    *,
+    interview_sessions: InvitationSessionResolver | None = None,
+    context: TenantContext | None = None,
+) -> InvitationView:
+    session = (
+        interview_sessions.find_session_for_invitation(
+            context,
+            invitation_id=invitation.invitation_id,
+        )
+        if interview_sessions is not None and context is not None
+        else None
     )
-
-
-def _invitation_view(invitation: Invitation) -> InvitationView:
     return InvitationView(
         invitation_id=invitation.invitation_id,
-        campaign_id=invitation.campaign_id,
+        position_id=invitation.position_id,
+        competency_model_version_id=invitation.competency_model_version_id,
         applicant_email=invitation.applicant_email,
+        applicant_display_name=invitation.applicant_display_name,
         status=invitation.status.value,
         expires_at=invitation.expires_at,
         row_version=invitation.row_version,
+        interview_status=session.state if session is not None else None,
+        interview_session_id=(session.interview_session_id if session is not None else None),
     )

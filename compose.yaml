@@ -14,9 +14,7 @@ x-runtime-environment: &runtime-environment
   KMS_KEY_ARN: local-kms-key
   DYNAMODB_ENDPOINT_URL: http://dynamodb:8000
   DYNAMODB_TABLE_NAME: iep-local-interview-context
-  OPENSEARCH_ENDPOINT: http://opensearch:9200
-  OPENSEARCH_INDEX_NAME: candidate-source-v1
-  OPENSEARCH_SIGN_REQUESTS: "false"
+  RETRIEVAL_BACKEND: aurora
   SQS_ANALYSIS_QUEUE_URL: http://localstack:4566/000000000000/iep-analysis
   SQS_MEDIA_QUEUE_URL: http://localstack:4566/000000000000/iep-media
   SQS_REPORTING_QUEUE_URL: http://localstack:4566/000000000000/iep-reporting
@@ -30,15 +28,17 @@ x-runtime-environment: &runtime-environment
   SMTP_HOST: mailpit
   SMTP_PORT: "1025"
   BEDROCK_MODEL_ID: local-deterministic-model
+  BEDROCK_EMBEDDING_MODEL_ID: amazon.titan-embed-text-v2:0
   MEDIACONVERT_ROLE_ARN: arn:aws:iam::000000000000:role/local-mediaconvert
   LOCAL_COMPANY_TOKEN: local-company-token
   LOCAL_COMPANY_ID: 00000000-0000-7000-8000-000000000001
   LOCAL_COMPANY_USER_ID: 00000000-0000-7000-8000-000000000002
+  LOCAL_DEMO_DATA_ENABLED: ${LOCAL_DEMO_DATA_ENABLED:-true}
   APPLICANT_ACCESS_BASE_URL: http://localhost:${APPLICANT_INTERVIEW_PORT:-5174}/access
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-interview_evidence}
       POSTGRES_USER: ${POSTGRES_USER:-iep}
@@ -100,23 +100,6 @@ services:
       timeout: 5s
       retries: 20
 
-  opensearch:
-    image: opensearchproject/opensearch:2.18.0
-    environment:
-      discovery.type: single-node
-      DISABLE_INSTALL_DEMO_CONFIG: "true"
-      DISABLE_SECURITY_PLUGIN: "true"
-      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
-    ports:
-      - "${OPENSEARCH_PORT:-9200}:9200"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-    volumes:
-      - opensearch-data:/usr/share/opensearch/data
-
   local-init:
     build:
       context: .
@@ -138,8 +121,6 @@ services:
       localstack:
         condition: service_healthy
       mailpit:
-        condition: service_healthy
-      opensearch:
         condition: service_healthy
     restart: "no"
 
@@ -217,8 +198,6 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_healthy
-      opensearch:
-        condition: service_healthy
       local-seed:
         condition: service_completed_successfully
 
@@ -240,8 +219,6 @@ services:
       dynamodb:
         condition: service_healthy
       localstack:
-        condition: service_healthy
-      opensearch:
         condition: service_healthy
       local-seed:
         condition: service_completed_successfully
@@ -285,4 +262,3 @@ services:
 volumes:
   postgres-data:
   localstack-data:
-  opensearch-data:

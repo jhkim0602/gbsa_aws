@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from enum import StrEnum
 from typing import Any, Literal
 from uuid import UUID
@@ -66,12 +67,29 @@ class PositionCreate(BaseModel):
     )
     title: constr(min_length=1, max_length=200)
     description: constr(min_length=1, max_length=20000)
+    role_type: constr(max_length=100) | None = None
+    headcount: conint(ge=1, le=10000) | None = None
+    recruitment_start_at: date | None = None
+    recruitment_end_at: date | None = None
 
 
 class Status1(StrEnum):
     draft = "draft"
     active = "active"
     closed = "closed"
+
+
+class PositionUpdate(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    title: constr(min_length=1, max_length=200)
+    description: constr(min_length=1, max_length=20000)
+    role_type: constr(max_length=100) | None = None
+    headcount: conint(ge=1, le=10000) | None = None
+    recruitment_start_at: date | None = None
+    recruitment_end_at: date | None = None
+    status: Status1
 
 
 class Position(PositionCreate):
@@ -92,6 +110,90 @@ class PositionPage(BaseModel):
     next_cursor: str | None = None
 
 
+class Tone(StrEnum):
+    calm = "calm"
+    friendly = "friendly"
+    analytical = "analytical"
+    concise = "concise"
+
+
+class InterviewerProfileCreate(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    name: constr(min_length=1, max_length=80)
+    tone: Tone
+    voice_id: constr(min_length=1, max_length=100)
+
+
+class InterviewerProfile(InterviewerProfileCreate):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    interviewer_profile_id: UUID
+    row_version: conint(ge=1)
+    created_at: AwareDatetime
+
+
+class InterviewerProfilePage(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    items: list[InterviewerProfile]
+    next_cursor: str | None = None
+
+
+class RequirementType(StrEnum):
+    required = "required"
+    preferred = "preferred"
+
+
+class JobRequirementInput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    requirement_type: RequirementType
+    statement: constr(min_length=1, max_length=4000)
+    priority: conint(ge=1, le=5)
+    criterion_code: constr(pattern=r"^[A-Z0-9_-]{2,40}$")
+
+
+class ObservableDimension(RootModel[constr(min_length=1, max_length=500)]):
+    root: constr(min_length=1, max_length=500)
+
+
+class StrongAnswerSignal(RootModel[constr(min_length=1, max_length=1000)]):
+    root: constr(min_length=1, max_length=1000)
+
+
+class WeakAnswerSignal(RootModel[constr(min_length=1, max_length=1000)]):
+    root: constr(min_length=1, max_length=1000)
+
+
+class FollowUpDirection(RootModel[constr(min_length=1, max_length=500)]):
+    root: constr(min_length=1, max_length=500)
+
+
+class CriterionVerificationGuide(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    observable_dimensions: list[ObservableDimension] = Field(
+        ..., max_length=12, min_length=1
+    )
+    strong_answer_signals: list[StrongAnswerSignal] = Field(
+        ..., max_length=12, min_length=1
+    )
+    weak_answer_signals: list[WeakAnswerSignal] = Field(
+        ..., max_length=12, min_length=1
+    )
+    follow_up_directions: list[FollowUpDirection] = Field(
+        ..., max_length=8, min_length=1
+    )
+    max_follow_ups: conint(ge=0, le=3)
+    time_budget_seconds: conint(ge=60, le=1800)
+
+
 class EvaluationCriterionInput(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -100,8 +202,9 @@ class EvaluationCriterionInput(BaseModel):
     name: constr(min_length=1, max_length=200)
     description: constr(min_length=1, max_length=4000)
     weight: confloat(ge=0.0)
-    good_evidence: dict[str, Any]
-    weak_evidence: dict[str, Any]
+    verification_guide: CriterionVerificationGuide
+    good_evidence: dict[str, Any] | None = None
+    weak_evidence: dict[str, Any] | None = None
     abstain_guidance: constr(min_length=1)
     common_questions: list[str] | None = None
     required: bool
@@ -111,54 +214,53 @@ class CompetencyModelVersionCreate(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    criteria: list[EvaluationCriterionInput] = Field(..., min_length=1)
+    job_requirements: list[JobRequirementInput] = Field(
+        ..., max_length=50, min_length=1
+    )
+    criteria: list[EvaluationCriterionInput] = Field(..., max_length=12, min_length=1)
     prohibited_topics: list[str]
     interview_duration_minutes: conint(ge=10, le=120)
-    persona_definition: dict[str, Any]
+    persona_definition: dict[str, Any] | None = Field(
+        None,
+        description="System-managed compatibility field; recruiter clients must not set it.",
+    )
 
 
-class Status2(StrEnum):
+class Status3(StrEnum):
     draft = "draft"
     published = "published"
     retired = "retired"
 
 
-class CompetencyModelVersion(CompetencyModelVersionCreate):
+class CompetencyModelVersion(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
     competency_model_version_id: UUID
     position_id: UUID
     version_number: conint(ge=1)
-    status: Status2
-    row_version: conint(ge=1)
-    published_at: AwareDatetime | None = None
-
-
-class CampaignCreate(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
+    job_requirements: list[JobRequirementInput] = Field(
+        ...,
+        description="Legacy versions can be empty; new version requests require at least one item.",
+        max_length=50,
     )
-    position_id: UUID
-    competency_model_version_id: UUID
-    name: constr(min_length=1, max_length=200)
-    candidate_instructions: constr(min_length=1, max_length=10000)
-
-
-class Status3(StrEnum):
-    draft = "draft"
-    published = "published"
-    closed = "closed"
-
-
-class Campaign(CampaignCreate):
-    model_config = ConfigDict(
-        extra="forbid",
+    criteria: list[EvaluationCriterionInput] = Field(..., max_length=12, min_length=1)
+    prohibited_topics: list[str]
+    interview_duration_minutes: conint(ge=10, le=120)
+    persona_definition: dict[str, Any] | None = Field(
+        None, description="System-managed compatibility field."
     )
-    campaign_id: UUID
     status: Status3
     row_version: conint(ge=1)
     published_at: AwareDatetime | None = None
+
+
+class CompetencyModelVersionPage(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    items: list[CompetencyModelVersion]
+    next_cursor: str | None = None
 
 
 class Applicant(BaseModel):
@@ -198,14 +300,17 @@ class InvitationView(BaseModel):
         extra="forbid",
     )
     invitation_id: UUID
-    campaign_id: UUID
+    position_id: UUID
+    competency_model_version_id: UUID
     applicant_email: EmailStr
+    applicant_display_name: constr(min_length=1, max_length=200) | None = None
     status: Status4
     expires_at: AwareDatetime
     row_version: conint(ge=1)
     analysis_status: str | None = None
     interview_status: str | None = None
     report_status: str | None = None
+    interview_session_id: UUID | None = None
 
 
 class InvitationPage(BaseModel):
@@ -534,6 +639,45 @@ class Status7(StrEnum):
     failed = "failed"
 
 
+class VerificationTargetType(StrEnum):
+    not_mentioned = "not_mentioned"
+    claim_found = "claim_found"
+    detail_missing = "detail_missing"
+    source_conflict = "source_conflict"
+    ownership_uncertain = "ownership_uncertain"
+
+
+class QuestionType(StrEnum):
+    common = "common"
+    personalized = "personalized"
+    follow_up = "follow_up"
+    degraded = "degraded"
+
+
+class SourceReference(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    source_id: UUID
+    source_type: str
+    locator: dict[str, Any]
+    excerpt: constr(max_length=2000)
+
+
+class QuestionRationaleView(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    criterion_id: UUID
+    verification_target_type: VerificationTargetType
+    objective: constr(min_length=1, max_length=4000)
+    question_type: QuestionType
+    retrieval_version: constr(min_length=1, max_length=200)
+    generation_version: constr(min_length=1, max_length=200)
+    policy_result: constr(min_length=1, max_length=200)
+    source_references: list[SourceReference]
+
+
 class EntryType(StrEnum):
     question = "question"
     answer = "answer"
@@ -551,6 +695,7 @@ class Entry(BaseModel):
     end_ms: conint(ge=0)
     text: str | None = None
     technical_failure: bool | None = False
+    question_rationale: QuestionRationaleView | None = None
 
 
 class Status8(StrEnum):

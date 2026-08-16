@@ -27,6 +27,8 @@ from interview_evidence.submission_analysis.repositories.postgres import (
     SubmissionRepository,
 )
 
+MAX_PUBLIC_GIT_PROJECTS = 3
+
 
 @dataclass(frozen=True, slots=True)
 class AnalysisReadiness:
@@ -143,6 +145,19 @@ class SubmissionService:
             source_type=source_type,
             public_url=public_url,
         )
+        if source_type is SourceType.PUBLIC_GIT:
+            existing_projects = tuple(
+                submission
+                for submission in self._repository.list_submissions(
+                    context,
+                    principal.applicant_id,
+                )
+                if submission.invitation_id == principal.invitation_id
+                and submission.source_type is SourceType.PUBLIC_GIT
+                and submission.status is not SubmissionStatus.DELETED
+            )
+            if len(existing_projects) >= MAX_PUBLIC_GIT_PROJECTS:
+                raise ValueError("up to 3 public Git project URLs are allowed")
         submission = Submission(
             submission_id=new_uuid7(self._clock.now()),
             company_id=context.company_id,

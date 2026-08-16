@@ -1,6 +1,6 @@
 # Data Model: Interview Evidence Platform
 
-**Status**: Design baseline for contract freeze
+**Status**: Implemented contract baseline; no schema change required for reference UI alignment
 
 **Canonical rule**: Aurora records are durable truth unless this document explicitly labels a
 store as a derived view. Every tenant-owned row includes `company_id`.
@@ -25,7 +25,7 @@ store as a derived view. Every tenant-owned row includes `company_id`.
 | Aggregate / Entity | Owner | Other lanes may store |
 |---|---|---|
 | Company, CompanyUser, Position, CompetencyModelVersion, EvaluationCriterion | Lane A | Stable ID and immutable version only |
-| Campaign, Invitation, ConsentRecord, ApplicantProfile | Lane A | Stable ID, status projection and consent authorization result |
+| Invitation, ConsentRecord, ApplicantProfile | Lane A | Stable ID, position/version scope, status projection and consent authorization result |
 | Submission, SubmissionAnalysis, SubmissionChunk | Lane B | Stable ID, analysis status and source locator |
 | GitRepositoryAnalysis, GitCommitAnalysis, CandidateCodeUnit | Lane B | Stable ID and source locator |
 | InterviewStrategy | Lane B | Stable ID, criterion version and strategy version |
@@ -37,6 +37,21 @@ store as a derived view. Every tenant-owned row includes `company_id`.
 | DeletionRequest, DeletionManifest, DeletionTarget | Lane D | Target lanes update only their target receipt/result |
 | AuditEvent | Lane A technical primitive | Each lane appends through the public audit interface |
 | OutboxEvent, ProcessedMessage | Integration-owned primitive | Each lane writes through shared interface |
+
+## UI Projection Rules
+
+The Figma reference is not a data source. UI projections follow these rules:
+
+1. Dashboard counts, position rows, applicant states, report items, scores and activity entries come
+   only from tenant-scoped public APIs or are omitted.
+2. A visual status label maps an existing domain or contract state; the UI does not create a second
+   business state machine.
+3. Position configuration collects only fields persisted by `Position`,
+   `CompetencyModelVersion`, `EvaluationCriterion` and `Invitation`.
+4. Candidate review reads immutable AI report data and append-only `HumanReview`; client state may
+   select a timeline range but cannot mutate Evidence.
+5. Responsive layout state, open navigation, active tab and form focus are ephemeral UI state and
+   are never promoted to durable domain entities.
 
 ## Lane A — Platform and Hiring
 
@@ -87,7 +102,8 @@ store as a derived view. Every tenant-owned row includes `company_id`.
 | `interview_duration_minutes` | integer | Positive configured range |
 | `published_at` | timestamp | Required once published |
 
-Published versions are immutable. A campaign references exactly one published version.
+Published versions are immutable. Each invitation records the exact published version selected
+when it is issued, so later position changes cannot alter an existing interview.
 
 ### EvaluationCriterion
 
@@ -102,24 +118,13 @@ Published versions are immutable. A campaign references exactly one published ve
 | `common_questions` | JSON array | Versioned prompts, not generated results |
 | `required` | boolean | Drives coverage priority |
 
-### Campaign
-
-| Field | Type | Rules |
-|---|---|---|
-| `campaign_id` | UUID | Primary key |
-| `company_id`, `position_id` | UUID | Tenant-scoped FKs |
-| `competency_model_version_id` | UUID | Immutable once first invitation is issued |
-| `name` | text | Required |
-| `status` | enum | `draft`, `published`, `closed` |
-| `candidate_instructions` | text | Korean v1 |
-| `published_at`, `closed_at` | timestamp | State-dependent |
-
 ### Invitation
 
 | Field | Type | Rules |
 |---|---|---|
 | `invitation_id` | UUID | Primary key |
-| `company_id`, `campaign_id` | UUID | Tenant-scoped FKs |
+| `company_id`, `position_id` | UUID | Tenant-scoped FKs |
+| `competency_model_version_id` | UUID | Immutable published version fixed at issuance |
 | `applicant_email_normalized` | text | Encrypted or protected exact value |
 | `token_hash` | binary/text | Only hash persisted; raw token never logged |
 | `expires_at` | timestamp | Required and finite |
@@ -482,8 +487,8 @@ session in the current tenant context.
 
 ## Cross-Entity Integrity Rules
 
-1. A Campaign, Invitation, Strategy, Session, ReportItem and Evidence chain resolves to one identical
-   `company_id` and `competency_model_version_id`.
+1. A Position-owned Invitation, Strategy, Session, ReportItem and Evidence chain resolves to one
+   identical `company_id` and `competency_model_version_id`.
 2. A Strategy cannot become ready without a valid consent authorization snapshot.
 3. A Session cannot start unless the invitation is active and the Strategy is ready or explicitly
    partial with acknowledged impact.

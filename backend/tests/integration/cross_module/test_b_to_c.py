@@ -90,6 +90,9 @@ def boundary(status: StrategyStatus) -> SubmissionInterviewBoundary:
             symbols=("retry_payment",),
             locator={"page_number": 2},
             ownership_confidence=1.0,
+            invitation_id=INVITATION_ID,
+            competency_model_version_id=CRITERION_VERSION_ID,
+            criterion_id=CRITERION_ID,
         )
     )
     public = SubmissionAnalysisPublic(
@@ -112,6 +115,8 @@ def test_lane_c_uses_real_strategy_and_retrieval_boundary() -> None:
     retrieval = RetrievalClient(provider).retrieve(
         context(),
         applicant_id=APPLICANT_ID,
+        invitation_id=INVITATION_ID,
+        competency_model_version_id=CRITERION_VERSION_ID,
         session_id=UUID("00000000-0000-7000-8000-000000000010"),
         query="payment retry",
         query_vector=(1.0, 0.0),

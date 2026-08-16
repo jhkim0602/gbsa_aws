@@ -94,7 +94,7 @@ class ProductionSubmissionTargetDeleter:
                 context,
                 target.resource_id,
             )
-        elif target.store == "opensearch":
+        elif target.store == "retrieval":
             verified = self._search_index.delete_and_verify(
                 context,
                 target.resource_id,

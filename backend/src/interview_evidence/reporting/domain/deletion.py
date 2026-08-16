@@ -67,7 +67,7 @@ class DeletionTarget:
     ) -> DeletionTarget:
         if owner_lane not in {"A", "B", "C", "D"}:
             raise ValueError("deletion target owner lane is invalid")
-        if store not in {"aurora", "dynamodb", "s3", "opensearch"}:
+        if store not in {"aurora", "dynamodb", "s3", "retrieval"}:
             raise ValueError("deletion target store is invalid")
         return cls(
             target_id=target_id,

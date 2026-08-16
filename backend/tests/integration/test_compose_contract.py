@@ -17,7 +17,6 @@ def test_compose_runs_the_complete_local_production_contract() -> None:
         "dynamodb",
         "localstack",
         "mailpit",
-        "opensearch",
         "api",
         "worker",
         "company-console",
@@ -32,7 +31,7 @@ def test_compose_runs_the_complete_local_production_contract() -> None:
 
     api = services["api"]
     worker = services["worker"]
-    for dependency in ("postgres", "dynamodb", "localstack", "opensearch"):
+    for dependency in ("postgres", "dynamodb", "localstack"):
         assert api["depends_on"][dependency]["condition"] == "service_healthy"
         assert worker["depends_on"][dependency]["condition"] == "service_healthy"
 
@@ -42,8 +41,7 @@ def test_compose_runs_the_complete_local_production_contract() -> None:
     assert services["applicant-interview"]["build"]["target"] == "applicant-interview"
     assert "http://127.0.0.1:8080/health" in services["company-console"]["healthcheck"]["test"]
     assert "http://127.0.0.1:8080/health" in services["applicant-interview"]["healthcheck"]["test"]
-    assert services["opensearch"]["environment"]["DISABLE_SECURITY_PLUGIN"] == "true"
-    assert services["opensearch"]["environment"]["DISABLE_INSTALL_DEMO_CONFIG"] == "true"
+    assert "opensearch" not in services
 
 
 def test_compose_uses_the_production_runtime_after_local_infrastructure_initialization() -> None:
@@ -58,7 +56,6 @@ def test_compose_uses_the_production_runtime_after_local_infrastructure_initiali
     ]
     assert services["local-init"]["depends_on"]["localstack"]["condition"] == "service_healthy"
     assert services["local-init"]["depends_on"]["dynamodb"]["condition"] == "service_healthy"
-    assert services["local-init"]["depends_on"]["opensearch"]["condition"] == "service_healthy"
     assert services["migrate"]["depends_on"]["postgres"]["condition"] == "service_healthy"
     assert (
         services["migrate"]["depends_on"]["local-init"]["condition"]
@@ -75,8 +72,7 @@ def test_compose_uses_the_production_runtime_after_local_infrastructure_initiali
         "SOURCE_BUCKET",
         "MEDIA_BUCKET",
         "DYNAMODB_TABLE_NAME",
-        "OPENSEARCH_ENDPOINT",
-        "OPENSEARCH_INDEX_NAME",
+        "RETRIEVAL_BACKEND",
         "SQS_ANALYSIS_QUEUE_URL",
         "SQS_MEDIA_QUEUE_URL",
         "SQS_REPORTING_QUEUE_URL",
@@ -103,6 +99,16 @@ def test_frontend_images_serve_spa_routes_and_proxy_api_websockets() -> None:
     assert "proxy_pass http://api:8080;" in nginx
     assert "proxy_set_header Upgrade $http_upgrade;" in nginx
     assert "proxy_set_header Connection $connection_upgrade;" in nginx
+
+
+def test_frontend_cache_policy_never_serves_spa_html_for_stale_assets() -> None:
+    nginx = (ROOT / "apps" / "nginx.conf").read_text(encoding="utf-8")
+
+    assert "location ^~ /assets/" in nginx
+    assert "try_files $uri =404;" in nginx
+    assert 'Cache-Control "public, max-age=31536000, immutable"' in nginx
+    assert "location = /index.html" in nginx
+    assert 'Cache-Control "no-store, no-cache, must-revalidate"' in nginx
 
 
 def test_make_compose_up_builds_and_waits_for_health() -> None:

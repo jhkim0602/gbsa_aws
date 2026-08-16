@@ -173,4 +173,39 @@ describe("interview protocol client", () => {
     );
     expect(socket.sent[2]).toBeInstanceOf(ArrayBuffer);
   });
+
+  it("moves the applicant journey to completion on session.completed", () => {
+    const socket = new FakeSocket();
+    const store = createInterviewSessionStore();
+    const client = new InterviewProtocolClient({
+      sessionId: "00000000-0000-7000-8000-000000000421",
+      socketFactory: () => socket,
+      store,
+      onQuestion: vi.fn(),
+    });
+    client.connect();
+    socket.open();
+
+    socket.serverMessage({
+      protocol_version: "1.0",
+      message_type: "session.completed",
+      session_id: "00000000-0000-7000-8000-000000000421",
+      sequence: 9,
+      idempotency_key: "server-completed-0001",
+      correlation_id: "00000000-0000-7000-8000-000000000422",
+      sent_at: "2026-08-15T10:00:02Z",
+      payload: {
+        state: "completed",
+        completed_at: "2026-08-15T10:00:02Z",
+        last_turn_id: "00000000-0000-7000-8000-000000000423",
+        post_processing_status: "queued",
+      },
+    });
+
+    expect(store.getState()).toMatchObject({
+      state: "completed",
+      serverSequence: 9,
+      lastFinalTurnId: "00000000-0000-7000-8000-000000000423",
+    });
+  });
 });

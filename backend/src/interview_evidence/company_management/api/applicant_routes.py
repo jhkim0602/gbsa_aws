@@ -15,6 +15,7 @@ from interview_evidence.company_management.application.applicant_access_service 
     ApplicantAccessService,
 )
 from interview_evidence.company_management.domain.applicant_access import ProcessingPurpose
+from interview_evidence.shared.ids import Clock, SystemClock
 from interview_evidence.shared.security.principals import (
     ApplicantPrincipal,
     PrincipalNotFoundError,
@@ -87,8 +88,10 @@ def create_applicant_router(
     *,
     sessions: ApplicantSessionAdapter,
     access_service: ApplicantAccessService,
+    clock: Clock | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1")
+    active_clock = clock or SystemClock()
 
     def applicant_scope(
         request: Request,
@@ -139,7 +142,7 @@ def create_applicant_router(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED) from error
         max_age = max(
             0,
-            int((cookie.expires_at - datetime.now(cookie.expires_at.tzinfo)).total_seconds()),
+            int((cookie.expires_at - active_clock.now()).total_seconds()),
         )
         response.set_cookie(
             key="iep_applicant_session",

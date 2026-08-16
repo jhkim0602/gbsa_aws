@@ -1,6 +1,7 @@
-# Predeployment Validation Report
+# Predeployment and UI Alignment Validation Report
 
-**Validated commit**: `1622f749951a5ed5a29dbe33800777f6b4d054a5`  
+**Validated baseline**: `b803918` plus the Phase 10/11 acceptance tree; the accepted tree is committed
+after this report and its hash is recorded in the following documentation commit
 **Executed**: 2026-08-15, Asia/Seoul  
 **Environment**: macOS local development host and Docker Engine 28.1.1  
 **Integration reviewer**: Codex Integration Owner (automated implementation review)  
@@ -9,10 +10,15 @@ promotion is approved
 
 ## Verdict
 
-The implementation is ready for deployment preparation. All locally executable contracts,
+The core implementation is ready for deployment preparation. All locally executable contracts,
 application paths, failure modes, privacy controls, migrations, container health checks, regression
 gates, and stage-equivalent Terraform planning pass. No unresolved critical implementation or local
-verification gap is known.
+verification gap is known. The company shell, Overview, position list, guided position flow and
+Evidence review workspace have entered the approved Figma-reference alignment baseline.
+
+Reference alignment is intentionally incomplete rather than represented by demo screens. Applicant
+shell/access/submission/interview work, company candidate pipeline/overview, and the final cross-route
+visual gate remain assigned to T212 and T214-T218.
 
 The following are release gates, not hidden implementation passes:
 
@@ -33,10 +39,13 @@ No AWS apply or production mutation was performed.
 | Lane B migration | `b_001_submission_analysis` |
 | Lane C migration | `c_001_interview_session` |
 | Lane D migration | `d_001_reporting` |
-| Integration head | `merge_001_lane_heads` |
+| Integration merge | `merge_001_lane_heads` |
+| Current integration head | `m_002_runtime_persistence` |
 
 `make contracts-generate`, `make contracts-check`, and `make migration-check` pass without drift.
-Empty databases and databases already at the four lane heads both converge on the integration head.
+Empty databases and databases already at the four lane heads both converge through the merge
+revision to the current integration head. UI reference alignment did not change REST, WebSocket or
+event schemas.
 
 ## Functional Requirement Coverage
 
@@ -54,6 +63,7 @@ Empty databases and databases already at the four lane heads both converge on th
 | FR-046-FR-049 | Retention, full-store deletion, audit redaction, and protected logging tests | PASS |
 | FR-050 | Retry, DLQ, timeout, degraded-mode, and deletion-resume tests | PASS |
 | FR-051-FR-052 | Versioned 19-case regression runner and local load/latency reports | PASS |
+| FR-053-FR-057 | Checked-in reference captures, company shell, API-backed company views, guided hiring, synchronized Evidence review and browser tests | PARTIAL: company baseline passes; T212 and T214-T218 remain |
 
 The complete company-to-human-decision journey also exercises FR-001 through FR-052 through the
 composed FastAPI runtime and the real cross-lane public adapters.
@@ -78,6 +88,9 @@ composed FastAPI runtime and the real cross-lane public adapters.
 | SC-014 | Cross-route, worker, search, object, and hot-view leakage cases 0 | PASS |
 | SC-015 | 31/31 deletion targets verified absent after injected retry | PASS |
 | SC-016 | Unsupported confirmed/partial regression cases 0 | PASS |
+| SC-017 | 13 desktop + 13 mobile reference captures and manifest | PASS |
+| SC-018 | Real Chrome `/company -> /positions -> /hiring`, API and asset checks | PASS |
+| SC-019 | 390px company hiring capture has no clipped primary action | PARTIAL: applicant routes remain under T212/T215-T218 |
 
 ## Quality Gate Coverage
 
@@ -122,6 +135,8 @@ composed FastAPI runtime and the real cross-lane public adapters.
 - Deletion residue: `tests/e2e/test_deletion_residue.py`
 - Human control: `tests/e2e/test_human_control.py`
 - Stage smoke: `tests/e2e/test_stage_smoke.py`
+- Company browser E2E: `tests/browser/company-console.spec.ts`
+- Accepted UI screenshots: `tests/browser/artifacts/`
 - Regression: `tests/regression/run_regression.py`
 - Load and seek: `tests/load/interview_load.py`, `tests/load/evidence_seek.py`
 - Infrastructure contracts: `infra/tests/test_terraform_contracts.py`
@@ -134,6 +149,8 @@ composed FastAPI runtime and the real cross-lane public adapters.
 3. Set the three `STAGE_*_URL` values and run the live stage smoke test.
 4. Confirm Transcribe, Bedrock, MediaConvert, SES, and other managed-service quotas and latency.
 5. Run the pilot measurements explicitly marked above before claiming their population percentages.
+6. Complete T212 and T214-T218, then run the final desktop/mobile visual and applicant browser
+   regression before declaring reference UI alignment complete.
 
 These items do not require local code reconstruction. They are intentionally outside a no-apply
 predeployment validation.

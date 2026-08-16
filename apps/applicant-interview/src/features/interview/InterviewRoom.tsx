@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { Avatar } from "./Avatar";
+import { InterviewComplete } from "./InterviewComplete";
 import type { ConnectionState, InterviewState } from "./sessionStore";
 import "./interview.css";
 
@@ -35,16 +36,30 @@ export function InterviewRoom({
     onCompleteAnswer();
   }
 
+  if (
+    state === "completed" ||
+    state === "report_generating" ||
+    state === "reviewable"
+  ) {
+    return <InterviewComplete />;
+  }
+
   return (
-    <main className="interview-shell">
+    <main className="interview-shell interview-room">
       <header className="interview-header room-header">
         <div>
-          <p className="interview-brand">GBSA Interview Evidence</p>
+          <p className="interview-brand">LIVE INTERVIEW</p>
           <h1>AI 구조화 면접</h1>
         </div>
-        <span className="connection-indicator" data-state={connectionState}>
-          {connectionState === "connected" ? "연결됨" : "연결 확인 중"}
-        </span>
+        <div className="room-statuses">
+          <span className="recording-indicator" data-active={recording}>
+            <i aria-hidden="true" />
+            {recording ? "REC" : "대기"}
+          </span>
+          <span className="connection-indicator" data-state={connectionState}>
+            {connectionState === "connected" ? "연결됨" : "연결 확인 중"}
+          </span>
+        </div>
       </header>
 
       <p className="ai-disclosure">
@@ -83,12 +98,6 @@ export function InterviewRoom({
           않습니다.
         </p>
       )}
-      {state === "completed" && (
-        <p className="room-state-message" role="status">
-          면접이 완료되었습니다. 제출된 답변은 기업 검토자가 확인합니다.
-        </p>
-      )}
-
       <section className="answer-controls">
         <div>
           <strong>

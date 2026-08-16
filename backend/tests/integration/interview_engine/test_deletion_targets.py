@@ -9,11 +9,14 @@ from interview_evidence.interview_engine.domain.session import InterviewSession
 from interview_evidence.interview_engine.domain.turn import (
     HotViewSyncStatus,
     InterviewTurn,
+    QuestionRationale,
     QuestionSourceReference,
     RecordingChunk,
     RecordingUploadStatus,
     TurnSpeaker,
     TurnStatus,
+    VerificationProgress,
+    VerificationProgressState,
 )
 from interview_evidence.interview_engine.repositories.postgres import (
     InMemoryInterviewRepository,
@@ -85,6 +88,42 @@ def test_deletion_enumerates_all_lane_c_durable_and_derived_targets() -> None:
             ),
         ),
     )
+    repository.save_verification_progress(
+        context(),
+        VerificationProgress(
+            verification_progress_id=UUID("00000000-0000-7000-8000-000000000014"),
+            company_id=COMPANY_ID,
+            interview_session_id=SESSION_ID,
+            applicant_id=UUID("00000000-0000-7000-8000-000000000007"),
+            verification_target_id=UUID("00000000-0000-7000-8000-000000000015"),
+            criterion_id=UUID("00000000-0000-7000-8000-000000000010"),
+            state=VerificationProgressState.IN_PROGRESS,
+            follow_up_count=1,
+            final_answer_turn_ids=(),
+            updated_at=NOW,
+        ),
+    )
+    repository.save_question_rationale(
+        context(),
+        QuestionRationale(
+            question_rationale_id=UUID("00000000-0000-7000-8000-000000000016"),
+            company_id=COMPANY_ID,
+            interview_session_id=SESSION_ID,
+            question_turn_id=TURN_ID,
+            applicant_id=UUID("00000000-0000-7000-8000-000000000007"),
+            competency_model_version_id=UUID("00000000-0000-7000-8000-000000000009"),
+            criterion_id=UUID("00000000-0000-7000-8000-000000000010"),
+            verification_target_id=UUID("00000000-0000-7000-8000-000000000015"),
+            verification_target_type="detail_missing",
+            objective="원인 분석과 복구 역할 확인",
+            question_type="follow_up",
+            retrieval_version="aurora-hybrid-v1",
+            generation_version="question-model-v2",
+            policy_result="accepted",
+            source_reference_ids=(UUID("00000000-0000-7000-8000-000000000011"),),
+            created_at=NOW,
+        ),
+    )
     CheckpointService(repository).create(
         context(),
         session_id=SESSION_ID,
@@ -123,6 +162,8 @@ def test_deletion_enumerates_all_lane_c_durable_and_derived_targets() -> None:
     assert ("aurora", "session_checkpoint") in identities
     assert ("aurora", "question_source_reference") in identities
     assert ("aurora", "recording_chunk") in identities
+    assert ("aurora", "verification_progress") in identities
+    assert ("aurora", "question_rationale") in identities
     assert ("dynamodb", "interview_hot_view") in identities
     assert ("s3", "recording_chunk_object") in identities
     assert all(target.owner_lane == "C" for target in targets)

@@ -26,6 +26,9 @@ from interview_evidence.shared.ids import SystemClock, new_uuid7
 from interview_evidence.shared.messaging.outbox import OutboxEvent
 from interview_evidence.shared.persistence import SQLOutbox, SQLProcessedMessageStore
 from interview_evidence.shared.tenant import ActorType, TenantContext
+from interview_evidence.submission_analysis.adapters.postgres_hybrid import (
+    PostgresHybridSearchIndex,
+)
 from interview_evidence.submission_analysis.adapters.search import (
     SearchCandidate,
     SearchDocument,
@@ -153,7 +156,11 @@ def run_aws_adapters(environment: Mapping[str, str]) -> dict[str, object]:
     if hot_view.get(context, PARITY_SESSION_ID) is not None:
         raise RuntimeError("DynamoDB hot-view deletion failed")
 
-    search = cast(VerifiableSearchIndex, dependencies.search_index)
+    database = RequestScopedDatabase(_required(environment, "DATABASE_URL"))
+    search = cast(
+        VerifiableSearchIndex,
+        dependencies.search_index or PostgresHybridSearchIndex(database.session),
+    )
     document_id = "local-production-parity-document"
     vector = tuple(1.0 if index == 0 else 0.0 for index in range(1024))
     search.add(
@@ -171,9 +178,9 @@ def run_aws_adapters(environment: Mapping[str, str]) -> dict[str, object]:
     )
     candidates = _wait_for_search_candidates(search, context, vector)
     if not any(candidate.document.document_id == document_id for candidate in candidates):
-        raise RuntimeError("OpenSearch tenant-filtered retrieval failed")
+        raise RuntimeError("Aurora tenant-filtered retrieval failed")
     if not search.delete_and_verify(context, document_id):
-        raise RuntimeError("OpenSearch deletion verification failed")
+        raise RuntimeError("Aurora retrieval deletion verification failed")
 
     queue_depths: dict[str, int] = {}
     for name, queue in dependencies.queues.items():

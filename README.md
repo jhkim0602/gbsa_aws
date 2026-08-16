@@ -49,7 +49,11 @@ make test-foundation
 make contracts-check
 make boundaries-check
 make migration-check
+make test-company-browser
 ```
+
+`make test-company-browser` requires the local Compose services and Google Chrome. It verifies
+the rendered company console, real API responses and primary route navigation.
 
 The complete thin journey is defined in
 `specs/001-interview-evidence-platform/quickstart.md`.

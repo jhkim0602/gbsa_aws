@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import json
 import os
-import urllib.error
-import urllib.request
 from collections.abc import Mapping
 from typing import Protocol, cast
 
@@ -74,11 +71,6 @@ def initialize_local_infrastructure(
             BillingMode="PAY_PER_REQUEST",
         )
 
-    _ensure_search_index(
-        endpoint=_required(values, "OPENSEARCH_ENDPOINT"),
-        index_name=_required(values, "OPENSEARCH_INDEX_NAME"),
-    )
-
 
 def _ensure_bucket(client: LocalS3Client, bucket: str, *, region: str) -> None:
     try:
@@ -109,47 +101,6 @@ def _ensure_bucket(client: LocalS3Client, bucket: str, *, region: str) -> None:
             ]
         },
     )
-
-
-def _ensure_search_index(*, endpoint: str, index_name: str) -> None:
-    url = f"{endpoint.rstrip('/')}/{index_name}"
-    try:
-        with urllib.request.urlopen(
-            urllib.request.Request(url, method="HEAD"),
-            timeout=5,
-        ) as response:
-            if response.status == 200:
-                return
-    except urllib.error.HTTPError as error:
-        if error.code != 404:
-            raise
-    mapping = {
-        "settings": {"index": {"knn": True}},
-        "mappings": {
-            "properties": {
-                "company_id": {"type": "keyword"},
-                "applicant_id": {"type": "keyword"},
-                "source_id": {"type": "keyword"},
-                "text": {"type": "text"},
-                "vector": {
-                    "type": "knn_vector",
-                    "dimension": 1024,
-                },
-                "symbols": {"type": "keyword"},
-                "locator": {"type": "object", "enabled": True},
-                "ownership_confidence": {"type": "float"},
-            }
-        },
-    }
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(mapping, separators=(",", ":")).encode("utf-8"),
-        headers={"content-type": "application/json"},
-        method="PUT",
-    )
-    with urllib.request.urlopen(request, timeout=10) as response:
-        if response.status not in {200, 201}:
-            raise RuntimeError("local search index initialization failed")
 
 
 def _required(environment: Mapping[str, str], name: str) -> str:

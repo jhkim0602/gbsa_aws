@@ -126,11 +126,17 @@ def check_lane(lane: str, prefix: str) -> list[str]:
             revisions.append(revision)
 
     revision_ids = {revision.revision for revision in revisions}
+    all_down_revisions: set[str] = set()
+    for path in sorted(VERSIONS_ROOT.glob("*/*.py")):
+        if path.name.startswith("__"):
+            continue
+        try:
+            module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            all_down_revisions.update(normalize_tuple(assigned_value(module, "down_revision")))
+        except (OSError, SyntaxError, ValueError):
+            continue
     referenced = {
-        down_revision
-        for revision in revisions
-        for down_revision in revision.down_revisions
-        if down_revision in revision_ids
+        down_revision for down_revision in all_down_revisions if down_revision in revision_ids
     }
     heads = revision_ids - referenced
     if len(heads) > 1:

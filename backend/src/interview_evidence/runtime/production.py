@@ -89,6 +89,7 @@ from interview_evidence.shared.aws_clients.ports import (
     EmailSender,
     ObjectStorage,
     SpeechToText,
+    TextEmbedder,
     TextToSpeech,
 )
 from interview_evidence.shared.database import RequestScopedDatabase
@@ -110,6 +111,9 @@ from interview_evidence.shared.security.principals import (
     ApplicantPrincipal,
     CompanyPrincipal,
     PrincipalProvider,
+)
+from interview_evidence.submission_analysis.adapters.postgres_hybrid import (
+    PostgresHybridSearchIndex,
 )
 from interview_evidence.submission_analysis.adapters.search import SearchIndex
 from interview_evidence.submission_analysis.api import (
@@ -149,6 +153,7 @@ def create_production_runtime(
     readiness: ReadinessChecker | None = None,
     queues: Mapping[str, ConsumableQueue] | None = None,
     model: AIModel | None = None,
+    embedder: TextEmbedder | None = None,
     speech_to_text: SpeechToText | None = None,
     text_to_speech: TextToSpeech | None = None,
 ) -> LocalRuntime:
@@ -159,8 +164,8 @@ def create_production_runtime(
         or object_storage is None
         or email_sender is None
         or recent_context is None
-        or search_index is None
         or model is None
+        or embedder is None
         or speech_to_text is None
         or text_to_speech is None
     ):
@@ -174,6 +179,7 @@ def create_production_runtime(
         recent_context = recent_context or aws.recent_context
         search_index = search_index or aws.search_index
         model = model or aws.model
+        embedder = embedder or aws.embedder
         speech_to_text = speech_to_text or aws.speech_to_text
         text_to_speech = text_to_speech or aws.text_to_speech
         database_url = aws.database_url
@@ -189,6 +195,7 @@ def create_production_runtime(
 
     clock = SystemClock()
     session = database.session
+    search_index = search_index or PostgresHybridSearchIndex(session)
     audit = SQLAuditAppender(session)
     outbox = SQLOutbox(session)
     resource_idempotency = SQLCommandIdempotencyStore(session)
@@ -268,14 +275,9 @@ def create_production_runtime(
         plan_provider=submission_interview,
         retrieval_provider=submission_interview,
         model=model,
+        text_embedder=embedder,
         speech_to_text=speech_to_text,
         text_to_speech=text_to_speech,
-    )
-    base_lane_d = create_lane_d_runtime(
-        principal_provider=principals,
-        repository=create_reporting_repository(session),
-        audit=audit,
-        clock=clock,
     )
     interview_public = InterviewEnginePublic(
         repository=lane_c.repository,
@@ -286,6 +288,12 @@ def create_production_runtime(
             hot_view=cast(HotViewTargetVerifier, recent_context),
             metrics=active_metrics,
         ),
+    )
+    base_lane_d = create_lane_d_runtime(
+        principal_provider=principals,
+        repository=create_reporting_repository(session),
+        audit=audit,
+        clock=clock,
     )
     base_reporting_public = ReportingPublic(
         repository=base_lane_d.repository,
@@ -316,6 +324,7 @@ def create_production_runtime(
         audit=audit,
         clock=clock,
         deletion_service=deletion_service,
+        rationale_provider=interview_public,
     )
     media_processor = MediaPostProcessor(lane_d.repository)
     interview_reporting = InterviewReportingBoundary(
@@ -353,10 +362,12 @@ def create_production_runtime(
                 auth=CompanyAuthAdapter(active_principal_provider),
                 company_service=lane_a.company_service,
                 criteria_service=lane_a.criteria_service,
+                interviewer_service=lane_a.interviewer_service,
                 hiring_service=lane_a.hiring_service,
                 audit=audit,
                 invitation_email=InvitationEmailHandler(lane_a.email_sender),
                 applicant_access_base_url=applicant_access_base_url,
+                interview_sessions=interview_public,
             ),
             create_company_applicant_router(
                 sessions=lane_a.sessions,
@@ -425,6 +436,7 @@ def create_production_runtime(
             "outbox": outbox,
             "object_storage": object_storage,
             "search_index": search_index,
+            "text_embedder": embedder,
             "privacy_deletion": privacy_deletion,
             "metrics": active_metrics,
             "readiness": readiness,

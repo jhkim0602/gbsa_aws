@@ -5,6 +5,7 @@ node_modules
 dist
 build
 coverage
+.playwright-mcp
 htmlcov
 packages/contracts/generated
 packages/contracts/openapi

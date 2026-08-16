@@ -81,20 +81,20 @@ all four worktrees can start from the same `foundation-v1` commit.
 
 ## Phase 3: User Story 1 — Company Criteria and Invitation (Lane A, Priority P1)
 
-**Goal**: A company creates a fixed criterion version and campaign, invites an applicant, and records
+**Goal**: A company creates a position with a fixed criterion version, invites an applicant directly, and records
 identity and consent with complete tenant isolation.
 
 **Independent Test**: Run `make test-lane-a demo-lane-a` with only shared fakes for B/C/D.
 
 ### Tests for User Story 1
 
-- [X] T036 [P] [US1] Lane A — Add HTTP contract tests for company, position, criteria, campaign, invitation and applicant access routes in `backend/tests/contract/company_management/test_http_contract.py` (FR-006-FR-015)
+- [X] T036 [P] [US1] Lane A — Add HTTP contract tests for company, position, criteria, position invitation and applicant access routes in `backend/tests/contract/company_management/test_http_contract.py` (FR-006-FR-015)
 - [X] T037 [P] [US1] Lane A — Add repository and route cross-tenant denial tests in `backend/tests/integration/company_management/test_tenant_isolation.py` (FR-005, SC-014, QG-04)
-- [X] T038 [P] [US1] Lane A — Add published criterion immutability and campaign version-pin tests in `backend/tests/unit/company_management/test_criterion_versioning.py` (FR-010)
+- [X] T038 [P] [US1] Lane A — Add published criterion immutability and invitation version-pin tests in `backend/tests/unit/company_management/test_criterion_versioning.py` (FR-010)
 - [X] T039 [P] [US1] Lane A — Add invitation entropy, hash-only persistence, expiry, reuse and state-transition tests in `backend/tests/unit/company_management/test_invitation_access.py` (FR-011-FR-013)
 - [X] T040 [P] [US1] Lane A — Add consent-before-processing and withdrawal authorization tests in `backend/tests/unit/company_management/test_consent_policy.py` (FR-014-FR-015, SC-010, QG-05)
 - [X] T041 [P] [US1] Lane A — Add safe audit/log projection tests in `backend/tests/integration/company_management/test_audit_redaction.py` (FR-048-FR-049)
-- [X] T042 [P] [US1] Lane A — Add company position/campaign journey component tests in `apps/company-console/src/features/hiring/__tests__/campaignJourney.test.tsx` (SC-001)
+- [X] T042 [P] [US1] Lane A — Add company position/criterion/invitation journey component tests in `apps/company-console/src/features/hiring/__tests__/hiringJourney.test.tsx` (SC-001)
 - [X] T043 [P] [US1] Lane A — Add applicant token exchange, identity and consent component tests in `apps/applicant-interview/src/features/access/__tests__/accessJourney.test.tsx` (FR-013-FR-015)
 
 ### Implementation for User Story 1
@@ -102,18 +102,18 @@ identity and consent with complete tenant isolation.
 - [X] T044 [US1] Lane A — Create company-domain tables and constraints in `backend/alembic/versions/company/a_001_company_hiring.py` (FR-005-FR-012)
 - [X] T045 [P] [US1] Lane A — Implement Company, CompanyUser and Position domain models in `backend/src/interview_evidence/company_management/domain/company.py` (FR-006-FR-007)
 - [X] T046 [P] [US1] Lane A — Implement CompetencyModelVersion and EvaluationCriterion invariants in `backend/src/interview_evidence/company_management/domain/criteria.py` (FR-008-FR-010)
-- [X] T047 [P] [US1] Lane A — Implement Campaign, Invitation and state transitions in `backend/src/interview_evidence/company_management/domain/hiring.py` (FR-011-FR-012)
+- [X] T047 [P] [US1] Lane A — Implement position-owned Invitation and state transitions in `backend/src/interview_evidence/company_management/domain/hiring.py` (FR-011-FR-012)
 - [X] T048 [P] [US1] Lane A — Implement ConsentRecord, ApplicantProfile and processing authorization in `backend/src/interview_evidence/company_management/domain/applicant_access.py` (FR-013-FR-015)
 - [X] T049 [US1] Lane A — Implement tenant-mandatory company repositories in `backend/src/interview_evidence/company_management/repositories/postgres.py` (FR-005, QG-04)
 - [X] T050 [P] [US1] Lane A — Implement company principal validation and auth adapter in `backend/src/interview_evidence/company_management/adapters/company_auth.py` (FR-006)
 - [X] T051 [P] [US1] Lane A — Implement raw-token exchange, hash verification and scoped applicant session adapter in `backend/src/interview_evidence/company_management/adapters/applicant_session.py` (FR-011, FR-013)
 - [X] T052 [US1] Lane A — Implement company/position application services and public module exports in `backend/src/interview_evidence/company_management/application/company_service.py` (FR-006-FR-007)
 - [X] T053 [US1] Lane A — Implement criterion draft/publish/version services in `backend/src/interview_evidence/company_management/application/criteria_service.py` (FR-008-FR-010)
-- [X] T054 [US1] Lane A — Implement campaign/invitation issuance and state-history services in `backend/src/interview_evidence/company_management/application/hiring_service.py` (FR-011-FR-012)
+- [X] T054 [US1] Lane A — Implement position invitation issuance and state-history services in `backend/src/interview_evidence/company_management/application/hiring_service.py` (FR-011-FR-012)
 - [X] T055 [US1] Lane A — Implement identity and consent services with outbox events in `backend/src/interview_evidence/company_management/application/applicant_access_service.py` (FR-013-FR-015)
 - [X] T056 [US1] Lane A — Implement company and hiring API fragment with protected-resource audit events in `backend/src/interview_evidence/company_management/api/company_routes.py` (FR-006-FR-012, FR-048)
 - [X] T057 [US1] Lane A — Implement applicant access API fragment in `backend/src/interview_evidence/company_management/api/applicant_routes.py` (FR-013-FR-015)
-- [X] T058 [P] [US1] Lane A — Implement Korean company, position and campaign screens in `apps/company-console/src/features/hiring/index.tsx` (FR-001, FR-007-FR-012, SC-001)
+- [X] T058 [P] [US1] Lane A — Implement Korean company, position, criteria and invitation screens in `apps/company-console/src/features/hiring/index.tsx` (FR-001, FR-007-FR-012, SC-001)
 - [X] T059 [P] [US1] Lane A — Implement Korean token exchange, identity and consent screens in `apps/applicant-interview/src/features/access/index.tsx` (FR-001, FR-013-FR-015, SC-010)
 - [X] T060 [P] [US1] Lane A — Implement invitation email event handler without exposing raw tokens in logs in `backend/src/interview_evidence/company_management/workers/invitation_email.py` (FR-011, FR-049)
 - [X] T061 [P] [US1] Lane A — Implement retention-expiry events and owned relational/audit deletion targets in `backend/src/interview_evidence/company_management/application/deletion_targets.py` (FR-046-FR-047)
@@ -297,7 +297,7 @@ decisions and cannot complete deletion while any target remains.
 ### Merge Train and Real Adapters (Integration Owner)
 
 - [x] T171 Integration — Merge lane Alembic heads and prove empty/previous-snapshot upgrade in `backend/alembic/versions/merge/m_001_lane_merge.py` (QG-16)
-- [x] T172 Integration — Replace Lane A campaign/consent fakes for Lane B and add real boundary tests in `backend/tests/integration/cross_module/test_a_to_b.py`
+- [x] T172 Integration — Replace Lane A position-hiring/consent fakes for Lane B and add real boundary tests in `backend/tests/integration/cross_module/test_a_to_b.py`
 - [x] T173 Integration — Replace Lane B strategy/retrieval fakes for Lane C and add real boundary tests in `backend/tests/integration/cross_module/test_b_to_c.py`
 - [x] T174 Integration — Replace Lane C Turn/media fakes for Lane D and add real boundary tests in `backend/tests/integration/cross_module/test_c_to_d.py`
 - [x] T175 Integration — Connect Lane D report/deletion projections to Lane A company views in `backend/tests/integration/cross_module/test_d_to_a.py`
@@ -345,7 +345,7 @@ gap remains.
 ### User Story Dependencies
 
 - **US1 / Lane A**: no runtime dependency on other stories; uses report/analysis/interview projections as fakes.
-- **US2 / Lane B**: consumes frozen campaign/criterion/consent contracts; can finish against fixtures.
+- **US2 / Lane B**: consumes frozen position/criterion/consent contracts; can finish against fixtures.
 - **US3 / Lane C**: consumes frozen strategy/retrieval contracts; can finish against fixtures.
 - **US4 / Lane D**: consumes frozen Turn/media/source contracts; can finish against fixtures.
 - Real producer replacement occurs only in T172-T175, after each producing lane merges.
@@ -414,7 +414,7 @@ Merge and real-adapter replacement happen A -> B -> C -> D using T171-T178.
 
 Each lane first implements the smallest path needed by its independent test:
 
-- Lane A: criterion version → campaign → invitation → consent.
+- Lane A: position → criterion version → invitation → consent.
 - Lane B: submitted fixtures → source retrieval → strategy.
 - Lane C: start → answer → next question → reconnect → complete.
 - Lane D: completed fixture → Evidence report → human decision → deletion.
@@ -439,7 +439,7 @@ additional degraded modes or richer review UI.
 - [X] T196 Integration — CRITICAL: Implement outbox dispatch, SQS long polling, processed-message idempotency and the real document/Git/strategy/media/report/deletion worker pipelines per FR-017-FR-022, FR-037-FR-042 and FR-050 (partial)
 - [X] T197 Lane C — CRITICAL: Connect the applicant interview route to the WebSocket protocol, server sequence store, audio worklet/STT stream, recording chunk upload, reconnect and degraded-mode controls per FR-023-FR-036 and US3 (partial)
 - [X] T198 Lane A — CRITICAL: Implement Cognito-backed company authentication plus durable invitation-token and applicant-session exchange, expiry and revocation per FR-006 and FR-013-FR-015 (partial)
-- [X] T199 Lane A — Complete the company criteria and campaign UI for detailed evidence rules, prohibited topics, duration and interviewer persona/voice preview per FR-007-FR-009 (partial)
+- [X] T199 Lane A — Complete the company criteria and position-management UI for detailed evidence rules, prohibited topics, duration and interviewer persona/voice preview per FR-007-FR-009 (partial)
 - [X] T200 Lane A — Present server-versioned AI role, recording, retention and deletion policy content before consent and bind the accepted digest to the displayed policy per FR-002 and FR-014 (partial)
 - [X] T201 Integration — Add production store deletion verification, dependency-aware readiness and queue/latency/deletion metrics per FR-047 and FR-050-FR-051 (partial)
 - [X] T202 Integration — Add LocalStack/PostgreSQL production-composition parity tests covering API, worker, auth, persistence, AWS adapters, restart recovery and failure isolation per plan R-014 and QG-13-QG-15 (missing)
@@ -451,3 +451,148 @@ additional degraded modes or richer review UI.
 - [X] T205 Lane B — Connect bounded public Git fetch, commit identity, code-unit and exact-symbol analysis to the production submission worker pipeline per FR-017-FR-022 (partial)
 - [X] T206 Integration — Inject environment-specific applicant invitation access URLs into local, stage and production hiring routes per FR-013 and US2/AC1 (partial)
 - [X] T207 Integration — Extend local-production parity with a real outbox-to-SQS-to-worker-to-PostgreSQL processing round trip per plan R-014, T202 and QG-14 (partial)
+
+## Phase 10: Company Console UI/UX
+
+- [X] T208 Integration — Build the responsive company-console application shell, navigation, page hierarchy, shared design tokens and route-level loading/error states based on the approved Figma Make reference without changing public API contracts
+- [X] T209 Lane A — Redesign the position, competency model and invitation workflow as a dense, accessible enterprise hiring workspace while preserving the validated T199 business flow
+- [X] T210 Lane D — Redesign the report, Evidence timeline, human review, decision and deletion-status experience as a synchronized review workspace while preserving Evidence and human-decision boundaries
+
+## Phase 11: Figma Reference Alignment
+
+**Purpose**: Adapt the approved Figma Make information hierarchy to the real product without
+copying demo data, unsupported controls, inline-style structure or the reference's clipped mobile
+layout.
+
+- [X] T211 Integration — Analyze the superseded Figma Make company/candidate screens and map their screen intent to API ownership before the approved recruiter-operations visual baseline replaced the retained captures (FR-053, SC-017)
+- [X] T212 Integration — Align the remaining shared applicant shell, navigation, design tokens and route hierarchy with the approved reference while preserving existing public API contracts (FR-053, FR-055, SC-019)
+- [X] T213 Lane A — Implement the reference-aligned company overview, position list, guided position design and contract-backed AI interviewer configuration experience in `apps/company-console/src/features/company/` and `apps/company-console/src/features/hiring/` (FR-054, FR-056, SC-018)
+- [X] T214 Lane D — Keep the contract-backed session review overview synchronized across video, transcript, Evidence, immutable AI output and human decision while omitting an unsupported candidate-list pipeline rather than introducing mock business records in `apps/company-console/src/features/review/` (FR-054, FR-057)
+- [X] T215 Lane A — Align applicant invitation, identity and consent screens with the reference in `apps/applicant-interview/src/features/access/` (FR-053, FR-055, SC-019)
+- [X] T216 Lane B — Align applicant material submission and analysis-readiness screens with the reference in `apps/applicant-interview/src/features/submissions/` (FR-053-FR-055, SC-019)
+- [X] T217 Lane C — Align equipment check, interview room, reconnect/degraded states and completion screens with the reference in `apps/applicant-interview/src/features/interview/` (FR-053, FR-055, SC-019)
+- [X] T218 Integration — Add desktop/mobile visual and browser E2E coverage for every implemented route, assert no mock business records, and record accepted screenshots under `tests/browser/artifacts/` after T212-T217 (FR-053-FR-057, SC-017-SC-019)
+
+## Phase 12: Recruiter Operations and Applicant Experience
+
+**Purpose**: Replace the superseded Figma capture exercise with a production-oriented recruiter
+console and applicant journey based on the approved sidebar/dashboard references, while using only
+existing public APIs and domain states.
+
+- [X] T219 Integration — Rebuild the company application shell, responsive sidebar, route hierarchy and shared visual tokens for dashboard, positions, recruiting calendar, hiring settings and applicant portal handoff in `apps/company-console/src/app/` without changing public API contracts (FR-053-FR-055)
+- [X] T220 Lane A — Implement the recruiter operations dashboard, tenant-backed position setup progress, monthly recruiting calendar and configured-position inspection in `apps/company-console/src/features/company/` using only `/v1/me` and `/v1/positions` data (FR-007-FR-012, FR-054-FR-056)
+- [X] T221 Lane A — Refine applicant invitation, identity and consent screens in `apps/applicant-interview/src/features/access/` to the shared visual system while preserving token, policy-digest and consent behavior (FR-013-FR-015, FR-053-FR-055)
+- [X] T222 Lane B — Refine applicant submission and readiness screens in `apps/applicant-interview/src/features/submissions/` to the shared visual system while preserving upload, Git and partial-analysis behavior (FR-016-FR-022, FR-053-FR-055)
+- [X] T223 Lane C — Refine equipment check, interview, reconnect/degraded and completion screens in `apps/applicant-interview/src/features/interview/` to the shared visual system while preserving WebSocket, media and recovery behavior (FR-023-FR-036, FR-053-FR-055)
+- [X] T224 Integration — Remove superseded reference captures and capture tooling, add desktop/mobile Chrome E2E for the recruiter calendar and applicant journey, run full React/accessibility verification and record accepted implementation screenshots under `tests/browser/artifacts/` (FR-053-FR-057, SC-018-SC-019)
+
+## Phase 13: Position Invitation Operations
+
+**Purpose**: Turn the existing position invitation contracts into a recruiter-facing operating
+workspace without adding a parallel API or client-only business state.
+
+- [X] T225 Integration — Add position invitation routes, sidebar handoff and route-level API composition in `apps/company-console/src/app/` using the existing `listInvitations` and `createInvitations` contracts (FR-011-FR-012, FR-053-FR-055)
+- [X] T226 Lane A — Implement bulk recipient entry, validation, issuance summary, recipient search/filter, progress/status projection and safe resend actions in `apps/company-console/src/features/hiring/` without logging applicant PII or inventing unsupported business data (FR-011-FR-012, FR-049, FR-054-FR-056)
+- [X] T227 Integration — Add component and real-Chrome E2E coverage for position creation handoff, bulk invitation issuance, recipient status inspection and responsive sidebar behavior, then rebuild the local company console for review (SC-001, SC-017-SC-019)
+
+## Phase 14: Position-Centric Recruiting Operations
+
+**Purpose**: Reframe the recruiter console around applicant throughput and review work instead of
+configuration progress, while reusing the existing position and invitation contracts.
+
+- [X] T228 Integration — Add a position operations route and tenant-backed invitation aggregation in `apps/company-console/src/app/` without introducing a new business API or client-authored applicant state (FR-011-FR-012, FR-053-FR-055)
+- [X] T229 Lane A — Replace the setup-oriented dashboard with applicant funnel, review queue and attention work, and implement a position operations workspace with overview, applicant list and bulk email invitation views in `apps/company-console/src/features/company/` (FR-007-FR-012, FR-054-FR-056)
+- [X] T230 Integration — Add component and real-Chrome E2E coverage for dashboard operations, position drill-down, applicant inspection and bulk invitation handoff, then rebuild API, worker and both SPAs for recruiter review (SC-001, SC-017-SC-019)
+
+## Phase 15: Recruiter Dashboard Information Architecture
+
+**Purpose**: Make the first company-console view answer the recruiter's daily operating questions
+using only existing position and invitation projections.
+
+- [X] T231 Lane A — Recompose the recruiter dashboard around active positions, interviews in progress, reviews pending, completed reviews, position-level operating status, real timestamped activity and priority work in `apps/company-console/src/features/company/`, with component and Chrome regression coverage and no new public API (FR-011-FR-012, FR-053-FR-056, SC-017-SC-019)
+
+## Phase 16: Reusable AI Interviewer Profiles
+
+**Purpose**: Let a company define reusable AI interviewer personas, select one while configuring a
+position and freeze the selected persona into the existing competency version without
+granting the AI any hiring-decision authority.
+
+- [X] T232 Integration — Add backward-compatible company HTTP contracts and generated types for listing and creating tenant-scoped AI interviewer profiles with name, tone and voice only, preserving `persona_definition` as the immutable criterion-version snapshot (FR-003, FR-009-FR-010)
+- [X] T233 Lane A — Implement the AI interviewer profile domain model, tenant-scoped repository, Alembic migration, application service and company API with contract, isolation and quickstart tests in `backend/src/interview_evidence/company_management/` (FR-005-FR-006, FR-009)
+- [X] T234 Integration — Add the `AI 면접관` company navigation route and API adapter in `apps/company-console/src/app/`, keeping shared route code free of Lane A domain state (FR-053-FR-055)
+- [X] T235 Lane A — Build the reusable interviewer profile workspace, position-setup profile selector and inline profile creation flow, and recompose position title/scope entry as a progressive one-decision-at-a-time experience in `apps/company-console/src/features/company/` and `apps/company-console/src/features/hiring/` (FR-007, FR-009-FR-010, FR-056)
+- [X] T236 Integration — Add component and real-Chrome E2E coverage for interviewer creation, reuse inside position setup, inline creation, immutable persona snapshot submission and responsive navigation, then rebuild API, worker and both SPAs (SC-001, SC-017-SC-019)
+
+## Phase 17: Position-Owned Recruiting
+
+**Purpose**: Make Position the single recruiter-facing and technical owner of published criteria,
+applicant invitations and recruiting operations, replacing the superseded intermediate aggregate.
+
+- [X] T237 Integration — Replace superseded recruiting HTTP/module contracts with position-owned invitation and immutable hiring-snapshot contracts, regenerate Python/TypeScript types and update spec/data-model compatibility notes (FR-007-FR-012)
+- [X] T238 Lane A — Remove the superseded recruiting domain/repository/service runtime, migrate invitations to direct `position_id` and `competency_model_version_id` ownership, drop the obsolete intermediary table, and implement position invitation APIs with tenant/version tests (FR-005, FR-010-FR-012)
+- [X] T239 Integration — Update submission, interview, reporting, E2E and worker consumers to use the position hiring snapshot and invitation-fixed criterion version without private cross-module access (FR-010, FR-021, FR-024)
+- [X] T240 Integration — Remove obsolete recruiting and calendar routes/navigation/client storage, rename `채용 설정` to `채용 관리`, and make position detail open directly on the applicant roster and invitation controls (FR-053-FR-056)
+- [X] T241 Lane A — Redesign the AI interviewer workspace as a guided style, voice-preview and identity configuration experience and simplify position management to `직무 설정 → 면접 설계 → 지원자 초대` (FR-007-FR-011, FR-056)
+- [X] T242 Integration — Add migration, contract, tenant, component and real-Chrome E2E coverage for position-owned invitations, direct applicant roster, removed routes and responsive AI interviewer management; rebuild API, worker and both SPAs (SC-001, SC-014, SC-017-SC-019)
+
+## Phase 18: Structured Applicant Import and Roster Review
+
+**Purpose**: Replace free-form bulk invitation entry with a recruiter-oriented table workflow that
+validates imported recipients before transmission and provides a populated local review surface
+without mixing demo records into production data.
+
+- [X] T243 Lane A — Redesign the position applicant workspace and invitation composer in `apps/company-console/src/features/company/` and `apps/company-console/src/features/hiring/` as dense operational tables with editable name/email rows, CSV/JSON import, post-entry validation summaries, case-insensitive duplicate exclusion, valid-row-only issuance and component regression coverage (FR-011-FR-012, FR-049, FR-053-FR-056, SC-001)
+- [X] T244 Integration — Add an explicitly local-only server-backed applicant demo seed and real-browser desktop/mobile verification in `backend/src/interview_evidence/runtime/local_seed.py` and `tests/browser/` for the populated roster and structured import flow, without client-authored production records (FR-054-FR-055, SC-017-SC-019)
+
+## Phase 19: Applicant-Centered Review
+
+**Purpose**: Make each applicant row a navigable operating record and provide one cross-position
+applicant workspace that leads recruiters to source submissions, interview playback, final answers
+and analysis without treating invitation progress as the final review surface.
+
+- [ ] T245 Integration — Extend the invitation projection contract with an optional tenant-scoped `interview_session_id`, resolve it only through the Lane C public boundary, regenerate contracts and add contract/isolation coverage (FR-012, FR-030-FR-031, FR-049)
+- [ ] T246 Lane A — Add `지원자 관리` navigation, a cross-position applicant table, position-row navigation and an applicant detail route with status/submission/interview-analysis availability states in `apps/company-console/src/app/` and `apps/company-console/src/features/company/` (FR-049, FR-053-FR-056, SC-001)
+- [ ] T247 Integration — Seed one explicitly local-only reviewable applicant session with transcript and report projections and connect the applicant detail to the existing evidence review route without creating production demo records (FR-030-FR-034, FR-054-FR-055)
+- [ ] T248 Integration — Add component and real-Chrome desktop/mobile coverage for global applicant navigation, position-row detail entry, pre-interview detail states and reviewable interview evidence; rebuild the local API and company SPA (SC-001, SC-017-SC-019)
+
+## Phase 20: Recruiter Operations Visual Refinement
+
+**Purpose**: Give position and applicant operations a coherent recruiter-specific information
+hierarchy with readable typography, restrained surfaces and consistent progress summaries.
+
+- [X] T249 Lane A — Refine `PositionOperations`, `ApplicantManagement`, applicant tables and invitation panels with recruiter-focused KPI summaries, consistent state filtering, 12px+ operational typography, restrained 6-8px surfaces and responsive component coverage in `apps/company-console/src/features/company/` and `apps/company-console/src/features/hiring/` (FR-053-FR-056, SC-001)
+- [X] T250 Integration — Rebuild the company SPA and perform real-browser desktop/mobile visual QA for position operations and applicant management with populated local data, including overflow and interaction checks (SC-017-SC-019)
+
+## Phase 21: Applicant Comprehensive Report
+
+**Purpose**: Turn the applicant detail route into one recruiter-readable report surface with
+clear progress, source, interview and analysis navigation without fabricating unavailable data.
+
+- [X] T251 Lane A — Redesign `ApplicantDetail` as a responsive comprehensive report with a compact identity header, operational KPI band, accessible `종합 개요 / 제출 자료 / 면접 기록 / 분석 리포트` tabs, status-aware empty states and handoff to existing evidence review in `apps/company-console/src/features/company/` (FR-049, FR-053-FR-056, SC-001)
+- [X] T252 Integration — Rebuild the company SPA and perform populated pre-interview and reviewable-applicant desktop/mobile browser QA for the applicant report, including tab navigation, overflow, focus and evidence-review handoff checks (SC-017-SC-019)
+
+## Phase 22: Recruiter-Facing Applicant Progress
+
+**Purpose**: Keep detailed invitation states internal while presenting a stable four-phase
+recruiting journey that matches the applicant report timeline.
+
+- [X] T253 Lane A — Map internal invitation stages to recruiter-facing `초대·확인 / 자료 제출·분석 / 면접 / 결과 검토` phases and remove user-visible `/9` implementation detail from `ApplicantDetail` with component regression coverage (FR-049, FR-053-FR-056, SC-001)
+- [X] T254 Integration — Rebuild the company SPA and verify four-phase progress in pre-interview and reviewable desktop/mobile applicant reports (SC-017-SC-019)
+
+## Phase 23: Editable Position Operations
+
+**Purpose**: Make a position the complete operating workspace for status, settings, applicants,
+invitations and immutable interview-criterion versions.
+
+- [X] T255 Integration — Add tenant-scoped, optimistic-locking contracts for replacing position settings/status and listing position criterion versions; regenerate shared clients without changing published criterion immutability (FR-007-FR-012, FR-049)
+- [X] T256 Lane A — Implement position revision and `draft → active → closed` transitions with published-criterion activation guard, audit events, tenant/version tests and current criterion-version listing in `backend/src/interview_evidence/company_management/` (FR-005-FR-012, SC-001)
+- [X] T257 Lane A — Refactor `PositionOperations` into recruiter-focused `운영 개요 / 지원자 / 초대 / 채용 설정` tabs, add editable position fields, draft confirmation/closing controls and criterion new-version publishing while keeping applicant rows linked to comprehensive reports (FR-007-FR-012, FR-049, FR-053-FR-056)
+- [X] T258 Integration — Add component and real-browser desktop/mobile coverage for position editing, draft confirmation, four-tab navigation, separated invitation workflow and applicant-detail handoff; rebuild the local API and company SPA (SC-001, SC-017-SC-019)
+
+## Phase 24: Recruiter Position Workspace Redesign
+
+**Purpose**: Recompose a position around applicant operations while keeping quick edits modal,
+criterion history internal and invitation work available without leaving the applicant list.
+
+- [ ] T259 Lane A — Redesign `PositionOperations` and `PositionInvitations` as `지원자 목록 / 지원자 통계 / 면접 단계 / 포지션 정보`, add a collapsible right invitation panel, keep applicant-detail links, expose current configured criteria without version language, and move basic/criterion editing into accessible modals in `apps/company-console/src/features/company/` and `apps/company-console/src/features/hiring/` (FR-007-FR-012, FR-049, FR-053-FR-056, SC-001)
+- [ ] T260 Integration — Rebuild the company SPA and add real-browser desktop/mobile coverage for the redesigned position workspace, invitation-panel collapse, quick-edit and criterion-edit modals, version-language exclusion and applicant-detail handoff (SC-017-SC-019)

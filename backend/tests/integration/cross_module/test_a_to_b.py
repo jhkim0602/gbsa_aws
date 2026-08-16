@@ -94,27 +94,14 @@ def build_consented_invitation() -> tuple[
         persona_definition={"tone": "calm"},
         idempotency_key="cross-criterion",
     )
-    published_criterion = criteria_service.publish_version(
+    criteria_service.publish_version(
         context,
         version_id=criterion.competency_model_version_id,
         expected_version=criterion.row_version,
     )
-    campaign = hiring_service.create_campaign(
-        context,
-        position_id=position.position_id,
-        competency_model_version_id=published_criterion.competency_model_version_id,
-        name="Backend 2026",
-        candidate_instructions="Use a quiet room.",
-        idempotency_key="cross-campaign",
-    )
-    published_campaign = hiring_service.publish_campaign(
-        context,
-        campaign_id=campaign.campaign_id,
-        expected_version=campaign.row_version,
-    )
     issuance = hiring_service.issue_invitations(
         context,
-        campaign_id=published_campaign.campaign_id,
+        position_id=position.position_id,
         applicants=(
             ApplicantInvitationInput(
                 email="applicant@example.com",
@@ -152,7 +139,7 @@ def build_consented_invitation() -> tuple[
 
 
 @pytest.mark.asyncio
-async def test_lane_b_uses_real_campaign_and_consent_boundary() -> None:
+async def test_lane_b_uses_real_position_invitation_and_consent_boundary() -> None:
     repository, company_public, principal = build_consented_invitation()
     storage = InMemoryObjectStorage()
     runtime = create_lane_b_runtime(

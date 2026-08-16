@@ -8,8 +8,6 @@ EXPECTED_OPERATION_IDS = {
     "createPosition",
     "createCompetencyModelVersion",
     "publishCompetencyModelVersion",
-    "createCampaign",
-    "publishCampaign",
     "listInvitations",
     "createInvitations",
     "exchangeApplicantInvitationToken",

@@ -14,6 +14,7 @@ from interview_evidence.runtime.production import create_production_runtime
 from interview_evidence.shared.aws_clients.ports import (
     DeterministicSpeechToText,
     DeterministicTextToSpeech,
+    StaticTextEmbedder,
 )
 from interview_evidence.shared.database import RequestScopedDatabase
 from interview_evidence.shared.operations import DependencyReadiness, NullMetricRecorder
@@ -196,6 +197,7 @@ def create_local_aws_runtime_dependencies(
             from_address=_required(environment, "SES_FROM_ADDRESS"),
         ),
         model=LocalDeterministicModel(),
+        embedder=StaticTextEmbedder(tuple(1.0 if index == 0 else 0.0 for index in range(1024))),
         speech_to_text=DeterministicSpeechToText(
             {"text": "로컬 테스트 최종 답변", "confidence": 0.99}
         ),
@@ -231,7 +233,6 @@ def create_local_production_runtime(environment: Mapping[str, str]) -> LocalRunt
             "object_storage": cast(HealthcheckPort, aws.object_storage).healthcheck,
             "media_storage": cast(HealthcheckPort, aws.media_storage).healthcheck,
             "recent_context": cast(HealthcheckPort, aws.recent_context).healthcheck,
-            "search": cast(HealthcheckPort, aws.search_index).healthcheck,
             **{f"{name}_queue": queue.healthcheck for name, queue in aws.queues.items()},
         }
     )
@@ -248,6 +249,7 @@ def create_local_production_runtime(environment: Mapping[str, str]) -> LocalRunt
         readiness=readiness,
         queues=aws.queues,
         model=aws.model,
+        embedder=aws.embedder,
         speech_to_text=aws.speech_to_text,
         text_to_speech=aws.text_to_speech,
     )

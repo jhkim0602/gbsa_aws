@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -37,6 +43,11 @@ describe("InterviewSession", () => {
           textOnly: boolean;
         }) => void)
       | undefined;
+    let sessionStore:
+      | Parameters<
+          InterviewSessionDependencies["createProtocolClient"]
+        >[0]["store"]
+      | undefined;
     const dependencies: Partial<InterviewSessionDependencies> = {
       socketFactory: vi.fn(),
       mediaDevices: {
@@ -47,6 +58,7 @@ describe("InterviewSession", () => {
       createAudioCapture: vi.fn(() => audioCapture),
       createProtocolClient: vi.fn((input) => {
         onQuestion = input.onQuestion;
+        sessionStore = input.store;
         input.store.getState().setConnectionState("connected");
         input.store.getState().applyServerState({
           state: "awaiting_answer",
@@ -59,6 +71,7 @@ describe("InterviewSession", () => {
       }),
     };
 
+    const onComplete = vi.fn();
     render(
       <InterviewSession
         sessionId="00000000-0000-7000-8000-000000000501"
@@ -66,6 +79,7 @@ describe("InterviewSession", () => {
         websocketUrl="ws://localhost/session"
         recordingApi={{ upload: vi.fn() }}
         dependencies={dependencies}
+        onComplete={onComplete}
       />,
     );
 
@@ -90,6 +104,17 @@ describe("InterviewSession", () => {
     await waitFor(() => expect(protocol.completeAnswer).toHaveBeenCalledOnce());
     expect(recorder.stop).toHaveBeenCalledOnce();
     expect(stopTrack).toHaveBeenCalledOnce();
+
+    act(() => {
+      sessionStore?.getState().applyServerState({
+        state: "completed",
+        serverSequence: 2,
+        lastFinalTurnId: "00000000-0000-7000-8000-000000000503",
+        lastVerifiedRecordingChunkSequence: 0,
+        degradedModes: [],
+      });
+    });
+    await waitFor(() => expect(onComplete).toHaveBeenCalledOnce());
   });
 
   it("replays locally buffered recording chunks after reconnect", async () => {

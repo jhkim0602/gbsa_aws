@@ -55,6 +55,8 @@ class RetrievalRecord:
     score: float
     locator: dict[str, object]
     ownership_confidence: float
+    excerpt: str = "ECS 장애 원인 분석과 복구 경험"
+    source_type: str = "submission_chunk"
 
 
 class ReadyRetrieval:
@@ -63,6 +65,8 @@ class ReadyRetrieval:
         _context: TenantContext,
         *,
         applicant_id: UUID,
+        invitation_id: UUID,
+        competency_model_version_id: UUID,
         query: str,
         query_vector: tuple[float, ...],
         criterion_id: UUID,
@@ -70,7 +74,17 @@ class ReadyRetrieval:
         limit: int,
         exact_symbol: str | None = None,
     ) -> tuple[RetrievalRecord, ...]:
-        del applicant_id, query, query_vector, criterion_id, config_version, limit, exact_symbol
+        del (
+            applicant_id,
+            invitation_id,
+            competency_model_version_id,
+            query,
+            query_vector,
+            criterion_id,
+            config_version,
+            limit,
+            exact_symbol,
+        )
         return (
             RetrievalRecord(
                 source_id=SOURCE_ID,

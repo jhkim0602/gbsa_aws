@@ -13,7 +13,7 @@ from interview_evidence.company_management.domain.criteria import (
     CompetencyModelVersion,
     EvaluationCriterion,
 )
-from interview_evidence.company_management.domain.hiring import Campaign, Invitation
+from interview_evidence.company_management.domain.hiring import Invitation
 from interview_evidence.company_management.repositories.postgres import (
     InMemoryCompanyRepository,
 )
@@ -25,7 +25,6 @@ COMPANY_ID = UUID("00000000-0000-7000-8000-000000000001")
 USER_ID = UUID("00000000-0000-7000-8000-000000000002")
 POSITION_ID = UUID("00000000-0000-7000-8000-000000000003")
 VERSION_ID = UUID("00000000-0000-7000-8000-000000000004")
-CAMPAIGN_ID = UUID("00000000-0000-7000-8000-000000000005")
 INVITATION_ID = UUID("00000000-0000-7000-8000-000000000006")
 APPLICANT_ID = UUID("00000000-0000-7000-8000-000000000007")
 NOW = datetime(2026, 8, 15, 9, 0, tzinfo=UTC)
@@ -71,19 +70,11 @@ def test_owned_targets_and_retention_event_are_tenant_scoped() -> None:
         persona_definition={"name": "면접관"},
     ).publish(expected_version=1, published_at=NOW)
     repository.save_criterion_version(context, version)
-    campaign = Campaign.create(
-        campaign_id=CAMPAIGN_ID,
-        company_id=COMPANY_ID,
-        position_id=POSITION_ID,
-        competency_model_version=version,
-        name="채용",
-        candidate_instructions="안내",
-    ).publish(expected_version=1, published_at=NOW)
-    repository.save_campaign(context, campaign)
     invitation = Invitation.create(
         invitation_id=INVITATION_ID,
         company_id=COMPANY_ID,
-        campaign_id=CAMPAIGN_ID,
+        position_id=POSITION_ID,
+        competency_model_version_id=VERSION_ID,
         applicant_id=APPLICANT_ID,
         applicant_email="applicant@example.com",
         applicant_display_name="홍길동",

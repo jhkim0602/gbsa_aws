@@ -112,6 +112,14 @@ class InterviewDeletionTargets:
         turns = self._repository.list_turns(context, session_id)
         checkpoints = self._repository.list_checkpoints(context, session_id)
         source_references = self._repository.list_session_source_references(context, session_id)
+        verification_progress = self._repository.list_verification_progress(
+            context,
+            session_id,
+        )
+        question_rationales = self._repository.list_question_rationales(
+            context,
+            session_id,
+        )
         chunks = self._repository.list_recording_chunks(context, session_id)
         targets = [
             InterviewDeletionTarget(
@@ -158,6 +166,26 @@ class InterviewDeletionTargets:
                 resource_id=str(reference.source_reference_id),
             )
             for reference in source_references
+        )
+        targets.extend(
+            InterviewDeletionTarget(
+                company_id=context.company_id,
+                owner_lane="C",
+                store="aurora",
+                resource_type="verification_progress",
+                resource_id=str(progress.verification_progress_id),
+            )
+            for progress in verification_progress
+        )
+        targets.extend(
+            InterviewDeletionTarget(
+                company_id=context.company_id,
+                owner_lane="C",
+                store="aurora",
+                resource_type="question_rationale",
+                resource_id=str(rationale.question_rationale_id),
+            )
+            for rationale in question_rationales
         )
         for chunk in chunks:
             targets.extend(

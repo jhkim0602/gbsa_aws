@@ -87,7 +87,7 @@ class InMemorySubmissionTargetDeleter:
         context: TenantContext,
         target: SubmissionDeletionTarget,
     ) -> bool:
-        if target.store == "opensearch" and self._search_index is not None:
+        if target.store == "retrieval" and self._search_index is not None:
             return self._search_index.delete(context, target.resource_id)
         if target.store == "s3":
             if self._storage is None:
@@ -134,6 +134,34 @@ class SubmissionDeletionTargets:
         )
         code_units = self._repository.list_code_units(context, commit_analysis_ids)
         strategy = self._repository.latest_strategy(context, invitation_id)
+        claims = self._repository.list_candidate_claims(
+            context,
+            applicant_id=applicant_id,
+            invitation_id=invitation_id,
+        )
+        conflicts = self._repository.list_claim_conflicts(
+            context,
+            applicant_id=applicant_id,
+            invitation_id=invitation_id,
+        )
+        verification_maps = self._repository.list_verification_maps(
+            context,
+            applicant_id=applicant_id,
+            invitation_id=invitation_id,
+        )
+        verification_targets = tuple(
+            target
+            for verification_map in verification_maps
+            for target in self._repository.list_verification_targets(
+                context,
+                verification_map,
+            )
+        )
+        retrieval_document_ids = self._repository.list_retrieval_document_ids(
+            context,
+            applicant_id=applicant_id,
+            invitation_id=invitation_id,
+        )
         targets: list[SubmissionDeletionTarget] = []
         for submission in submissions:
             targets.append(
@@ -170,7 +198,7 @@ class SubmissionDeletionTargets:
                     SubmissionDeletionTarget(
                         company_id=context.company_id,
                         owner_lane="B",
-                        store="opensearch",
+                        store="retrieval",
                         resource_type="submission_chunk_index",
                         resource_id=chunk.index_document_id,
                     ),
@@ -252,7 +280,7 @@ class SubmissionDeletionTargets:
                 SubmissionDeletionTarget(
                     company_id=context.company_id,
                     owner_lane="B",
-                    store="opensearch",
+                    store="retrieval",
                     resource_type="candidate_code_unit_index",
                     resource_id=document_id,
                 )
@@ -268,4 +296,59 @@ class SubmissionDeletionTargets:
                     resource_id=str(strategy.interview_strategy_id),
                 )
             )
-        return tuple(targets)
+        targets.extend(
+            SubmissionDeletionTarget(
+                company_id=context.company_id,
+                owner_lane="B",
+                store="aurora",
+                resource_type="candidate_claim",
+                resource_id=str(claim.candidate_claim_id),
+            )
+            for claim in claims
+        )
+        targets.extend(
+            SubmissionDeletionTarget(
+                company_id=context.company_id,
+                owner_lane="B",
+                store="aurora",
+                resource_type="claim_conflict",
+                resource_id=str(conflict.claim_conflict_id),
+            )
+            for conflict in conflicts
+        )
+        targets.extend(
+            SubmissionDeletionTarget(
+                company_id=context.company_id,
+                owner_lane="B",
+                store="aurora",
+                resource_type="verification_target",
+                resource_id=str(target.verification_target_id),
+            )
+            for target in verification_targets
+        )
+        targets.extend(
+            SubmissionDeletionTarget(
+                company_id=context.company_id,
+                owner_lane="B",
+                store="aurora",
+                resource_type="candidate_verification_map",
+                resource_id=str(verification_map.candidate_verification_map_id),
+            )
+            for verification_map in verification_maps
+        )
+        targets.extend(
+            SubmissionDeletionTarget(
+                company_id=context.company_id,
+                owner_lane="B",
+                store="retrieval",
+                resource_type="retrieval_document",
+                resource_id=str(document_id),
+            )
+            for document_id in retrieval_document_ids
+        )
+        return tuple(
+            {
+                (target.store, target.resource_type, target.resource_id): target
+                for target in targets
+            }.values()
+        )

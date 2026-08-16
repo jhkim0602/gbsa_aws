@@ -1,8 +1,8 @@
 # Phase 0 Research: Interview Evidence Platform
 
-**Date**: 2026-08-14
+**Date**: 2026-08-15
 
-**Status**: Complete — no unresolved clarifications
+**Status**: Complete — reference UI adaptation decisions added; no unresolved clarifications
 
 This document converts the fixed decisions in the source planning document and constitution into
 implementation choices. It does not reopen product decisions PD-01 through PD-26.
@@ -242,6 +242,46 @@ machine-readable or reviewer-verifiable evidence.
 - Run only unit tests per lane: rejected because most risks are cross-boundary.
 - Defer all end-to-end testing to the end: rejected because incompatible lanes would be discovered
   too late.
+
+## R-017 — Reference-Led UI Adaptation Without Demo Data
+
+**Decision**: Use the published Figma Make site and downloaded source as a reproducible visual and
+interaction reference. Store 1440px and 390px captures plus an intent/API ownership map in the
+repository. Reimplement the patterns inside the existing app shell and lane feature modules rather
+than copying the reference demo state machine or inline styles.
+
+**Rationale**: The reference communicates information hierarchy and product tone, while the
+production application must preserve tenant-scoped APIs, module ownership, accessibility, and
+maintainable feature boundaries. Checked-in captures make the design review repeatable even when the
+hosted reference changes.
+
+**Alternatives considered**:
+
+- Copy the Figma export directly: rejected because it contains mock business data, a single demo
+  router, inline styles, and controls that are not backed by current contracts.
+- Use the hosted page only: rejected because it can change or disappear and its mobile layout clips
+  content.
+- Ignore the reference and continue independent styling: rejected because it would keep visual and
+  interaction intent ambiguous.
+
+## R-018 — Progressive Configuration Within Existing Contracts
+
+**Decision**: Present position, criteria, interview policy and invitation as related
+decision steps with one primary action per step. Collect only fields already supported by the
+published contracts and disable advancement until required values are present.
+
+**Rationale**: This reduces decision load without introducing draft APIs, template behavior or
+fields that the backend silently discards. It also preserves the immutable criterion version fixed
+on each position-owned invitation.
+
+**Alternatives considered**:
+
+- One large configuration form: rejected because it obscures version boundaries and produces a
+  high-error workflow.
+- Add reference-only department, career and avatar catalog values locally: rejected because they
+  would not persist and would mislead users.
+- Change the backend contract during visual alignment: rejected because no contract change is
+  required for the current guided flow.
 
 ## Resolved Unknowns
 

@@ -58,24 +58,50 @@ export function EquipmentCheck({
   }
 
   return (
-    <main className="interview-shell">
+    <main className="interview-shell equipment-screen">
       <header className="interview-header">
-        <p className="interview-brand">GBSA Interview Evidence</p>
+        <p className="interview-brand">STEP 2 OF 4</p>
         <h1>면접 환경 점검</h1>
         <p>카메라, 마이크, 네트워크 상태를 확인합니다.</p>
+        <p className="equipment-assurance">
+          기술 문제는 면접 평가에 영향을 주지 않습니다.
+        </p>
       </header>
 
-      <section className="equipment-panel" aria-live="polite">
-        {(["camera", "microphone", "network"] as const).map((component) => (
-          <div className="equipment-row" key={component}>
-            <span>{LABELS[component].ready.split(" ")[0]}</span>
-            <strong data-status={result?.[component].status ?? "unknown"}>
-              {result ? LABELS[component][result[component].status] : "점검 전"}
-            </strong>
-          </div>
-        ))}
+      <section className="equipment-workspace">
+        <div
+          className="equipment-preview"
+          data-status={result?.camera.status ?? "unknown"}
+          aria-label="카메라 미리보기 상태"
+        >
+          <span aria-hidden="true">
+            {result?.camera.status === "ready" ? "LIVE" : "NO SIGNAL"}
+          </span>
+        </div>
+        <div className="equipment-panel" aria-live="polite">
+          {(["camera", "microphone", "network"] as const).map((component) => (
+            <div className="equipment-row" key={component}>
+              <span
+                className="equipment-status-dot"
+                data-status={result?.[component].status ?? "unknown"}
+                aria-hidden="true"
+              />
+              <div>
+                <span>{LABELS[component].ready.split(" ")[0]}</span>
+                <strong data-status={result?.[component].status ?? "unknown"}>
+                  {result
+                    ? LABELS[component][result[component].status]
+                    : "점검 전"}
+                </strong>
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
 
+      <p className="equipment-notice">
+        브라우저 권한은 장치 점검과 면접 진행에만 사용됩니다.
+      </p>
       <div className="interview-actions">
         <button type="button" className="button-secondary" onClick={check}>
           {checking ? "점검 중" : "장치 점검"}

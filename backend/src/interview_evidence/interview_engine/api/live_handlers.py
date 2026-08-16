@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from hashlib import sha256
 from uuid import UUID
 
 from interview_evidence.interview_engine.adapters.polly import (
@@ -30,8 +29,11 @@ from interview_evidence.interview_engine.domain.session import (
 from interview_evidence.interview_engine.domain.turn import (
     HotViewSyncStatus,
     InterviewTurn,
+    QuestionRationale,
     TurnSpeaker,
     TurnStatus,
+    VerificationProgress,
+    VerificationProgressState,
 )
 from interview_evidence.interview_engine.repositories.postgres import InterviewRepository
 from interview_evidence.shared.aws_clients.ports import SpeechToText
@@ -98,6 +100,7 @@ class LiveInterviewHandler:
         started: InterviewSession,
     ) -> ServerEnvelope:
         plan = self._plan(started, context)
+        initial_target = plan.initial_target()
         question_turn = self._repository.save_turn(
             context,
             InterviewTurn(
@@ -108,12 +111,53 @@ class LiveInterviewHandler:
                 speaker=TurnSpeaker.INTERVIEWER,
                 status=TurnStatus.FINAL,
                 text=plan.initial_question,
-                target_criterion_id=plan.criterion_ids[0],
+                target_criterion_id=(
+                    initial_target.criterion_id
+                    if initial_target is not None
+                    else plan.criterion_ids[0]
+                ),
                 idempotency_key=f"{envelope.idempotency_key}:question",
                 model_config_version=plan.model_config_version,
                 finalized_at=self._clock.now(),
             ),
         )
+        if initial_target is not None:
+            self._repository.save_verification_progress(
+                context,
+                VerificationProgress(
+                    verification_progress_id=new_uuid7(self._clock.now()),
+                    company_id=started.company_id,
+                    interview_session_id=started.interview_session_id,
+                    applicant_id=started.applicant_id,
+                    verification_target_id=(initial_target.verification_target_id),
+                    criterion_id=initial_target.criterion_id,
+                    state=VerificationProgressState.PENDING,
+                    follow_up_count=0,
+                    final_answer_turn_ids=(),
+                    updated_at=self._clock.now(),
+                ),
+            )
+            self._repository.save_question_rationale(
+                context,
+                QuestionRationale(
+                    question_rationale_id=new_uuid7(self._clock.now()),
+                    company_id=started.company_id,
+                    interview_session_id=started.interview_session_id,
+                    question_turn_id=question_turn.turn_id,
+                    applicant_id=started.applicant_id,
+                    competency_model_version_id=(started.competency_model_version_id),
+                    criterion_id=initial_target.criterion_id,
+                    verification_target_id=(initial_target.verification_target_id),
+                    verification_target_type=initial_target.target_type,
+                    objective=initial_target.objective,
+                    question_type="common",
+                    retrieval_version=plan.retrieval_config_version,
+                    generation_version=plan.model_config_version,
+                    policy_result="configured_common_question",
+                    source_reference_ids=(),
+                    created_at=self._clock.now(),
+                ),
+            )
         awaiting = self._state_machine.transition(
             started,
             expected_sequence=started.session_sequence,
@@ -279,20 +323,96 @@ class LiveInterviewHandler:
                 retryable=True,
             )
         plan = self._plan(session, context)
-        previous_questions = tuple(
-            turn.text or ""
-            for turn in self._repository.list_final_turns(context, envelope.session_id)
-            if turn.speaker is TurnSpeaker.INTERVIEWER
+        final_turns = self._repository.list_final_turns(
+            context,
+            envelope.session_id,
         )
-        target = next(
-            (
-                turn.target_criterion_id
-                for turn in reversed(
-                    self._repository.list_final_turns(context, envelope.session_id)
+        previous_questions = tuple(
+            turn.text or "" for turn in final_turns if turn.speaker is TurnSpeaker.INTERVIEWER
+        )
+        previous_question = next(
+            (turn for turn in reversed(final_turns) if turn.speaker is TurnSpeaker.INTERVIEWER),
+            None,
+        )
+        rationale = (
+            self._repository.get_question_rationale(
+                context,
+                question_turn_id=previous_question.turn_id,
+            )
+            if previous_question is not None
+            else None
+        )
+        progress_rows = self._repository.list_verification_progress(
+            context,
+            envelope.session_id,
+        )
+        progress_by_target = {
+            progress.verification_target_id: progress for progress in progress_rows
+        }
+        answered_target = None
+        question_target = None
+        existing_progress = None
+        if rationale is not None and plan.verification_targets:
+            answered_target = plan.target(rationale.verification_target_id)
+            existing_progress = progress_by_target.get(answered_target.verification_target_id)
+            question_target = plan.next_target_after_answer(
+                answered_target_id=answered_target.verification_target_id,
+                follow_up_count=(
+                    existing_progress.follow_up_count if existing_progress is not None else 0
+                ),
+                completed_target_ids=frozenset(
+                    progress.verification_target_id
+                    for progress in progress_rows
+                    if progress.state
+                    in {
+                        VerificationProgressState.COMPLETED,
+                        VerificationProgressState.EXHAUSTED,
+                    }
+                ),
+            )
+            if question_target is None:
+                self._interview_service.finalize_answer_and_complete(
+                    context,
+                    session_id=envelope.session_id,
+                    expected_sequence=envelope.sequence,
+                    answer_turn_id=answer_turn_id,
+                    answer_text=answer.text,
+                    last_recording_chunk_sequence=_non_negative_int(
+                        envelope.payload.get("last_recording_chunk_sequence")
+                    ),
+                    idempotency_key=envelope.idempotency_key,
+                    answered_target=answered_target,
+                    existing_progress=existing_progress,
+                    occurred_at=self._clock.now(),
                 )
-                if turn.speaker is TurnSpeaker.INTERVIEWER and turn.target_criterion_id is not None
-            ),
-            plan.criterion_ids[0],
+                completed = self._repository.get_session(
+                    context,
+                    envelope.session_id,
+                )
+                return self._message(
+                    envelope,
+                    message_type="session.completed",
+                    sequence=completed.session_sequence,
+                    payload={
+                        "state": completed.state.value,
+                        "completed_at": (
+                            completed.completed_at.isoformat()
+                            if completed.completed_at is not None
+                            else self._clock.now().isoformat()
+                        ),
+                        "last_turn_id": str(answer_turn_id),
+                        "post_processing_status": "queued",
+                    },
+                )
+        target = (
+            question_target.criterion_id
+            if question_target is not None
+            else (
+                previous_question.target_criterion_id
+                if previous_question is not None
+                and previous_question.target_criterion_id is not None
+                else plan.criterion_ids[0]
+            )
         )
         result = self._interview_service.finalize_answer_and_generate(
             context,
@@ -311,11 +431,14 @@ class LiveInterviewHandler:
             fallback_question=plan.fallback_question,
             remaining_criterion_ids=plan.criterion_ids,
             remaining_time_seconds=plan.remaining_time_seconds,
-            query_vector=_query_vector(answer.text),
+            query_vector=None,
             model_config_version=plan.model_config_version,
             retrieval_config_version=plan.retrieval_config_version,
             voice_id=plan.voice_id,
             occurred_at=self._clock.now(),
+            answered_target=answered_target,
+            question_target=question_target,
+            existing_progress=existing_progress,
         )
         current = self._repository.get_session(context, envelope.session_id)
         return self._question_message(
@@ -460,8 +583,3 @@ def _non_negative_int(value: object) -> int:
     if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
         return value
     return 0
-
-
-def _query_vector(text: str) -> tuple[float, ...]:
-    digest = sha256(text.encode("utf-8")).digest()
-    return tuple(digest[index % len(digest)] / 255 for index in range(1024))

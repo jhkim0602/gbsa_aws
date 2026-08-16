@@ -5,6 +5,7 @@ from uuid import UUID
 
 from interview_evidence.runtime.worker import (
     EVENT_QUEUE_ROUTING,
+    InterviewCompletedEventHandler,
     ParityProbeEventHandler,
     create_environment_worker_runtime,
 )
@@ -247,3 +248,29 @@ def test_parity_probe_uses_real_worker_delivery_contract() -> None:
         event_version=1,
     )
     assert EVENT_QUEUE_ROUTING["system.parity_probe"] == "analysis"
+
+
+def test_interview_completion_requests_media_postprocessing() -> None:
+    outbox = InMemoryOutbox()
+    completed = _event().model_copy(
+        update={
+            "aggregate_type": "interview_session",
+            "event_type": "interview.completed",
+            "payload": {
+                "interview_session_id": str(AGGREGATE_ID),
+                "invitation_id": str(UUID("00000000-0000-7000-8000-000000000105")),
+                "last_turn_id": str(UUID("00000000-0000-7000-8000-000000000106")),
+                "completed_at": NOW.isoformat(),
+                "media_status": "pending",
+            },
+        }
+    )
+
+    requested = InterviewCompletedEventHandler(
+        outbox,
+        FrozenClock(NOW),
+    )(_context(), completed)
+
+    assert requested.event_type == "media.postprocess_requested"
+    assert requested.payload["interview_session_id"] == str(AGGREGATE_ID)
+    assert outbox.pending() == (requested,)

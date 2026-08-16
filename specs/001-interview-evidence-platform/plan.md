@@ -1,7 +1,9 @@
 # Implementation Plan: Interview Evidence Platform
 
-**Branch**: `001-interview-evidence-platform` | **Date**: 2026-08-14 |
+**Branch**: `001-interview-evidence-platform` | **Date**: 2026-08-15 |
 **Spec**: [spec.md](./spec.md)
+
+**Status**: Core platform and local production parity complete; Phase 11 reference UI alignment active
 
 **Input**: Feature specification from
 `/specs/001-interview-evidence-platform/spec.md` and source planning document v1.4.
@@ -41,11 +43,13 @@ infrastructure code
 
 **Performance Goals**: Evidence-linked video starts within 2 seconds; interview pipeline starts
 immediately after answer completion and records stage p50/p95; stable operation for five companies
-and five concurrent interviews
+and five concurrent interviews; reference-aligned company routes load without browser errors at
+desktop and mobile viewports
 
 **Constraints**: Korean-only pilot; public repositories only; answer completion is explicit;
 no voluntary re-recording; AI cannot decide hiring; consent and tenant isolation are mandatory;
-source material is not assessment Evidence; local flows preserve production contracts
+source material is not assessment Evidence; local flows preserve production contracts; reference
+UI work cannot introduce unsupported fields or mock business data
 
 **Scale/Scope**: 1-5 pilot companies, 1-5 simultaneous interviews, hundreds of retained
 interviews; scale beyond 100 concurrent interviews is deferred
@@ -104,8 +108,8 @@ Durable cross-module transitions use an outbox. No module reads another module's
 
 | Lane | Domain responsibility | Exclusive implementation paths | May consume |
 |---|---|---|---|
-| A — Platform & Hiring | repository bootstrap, company auth, tenant context, positions, criteria, campaigns, invitations, consent shell, shared AWS and Terraform foundation | `apps/company-console/src/features/company/`, `apps/company-console/src/features/hiring/`, `apps/applicant-interview/src/features/access/`, `backend/src/interview_evidence/company_management/`, `backend/alembic/versions/company/`, `infra/` | Published submission, interview and report status contracts |
-| B — Submission & RAG | upload workflow, document/Git analysis, chunking, hybrid retrieval, strategy generation, analysis workers | `apps/applicant-interview/src/features/submissions/`, `backend/src/interview_evidence/submission_analysis/`, `backend/src/interview_evidence/workers/analysis/`, `backend/alembic/versions/submission/` | Campaign/criterion and consent contracts |
+| A — Platform & Hiring | repository bootstrap, company auth, tenant context, positions, criteria, position-owned invitations, consent shell, shared AWS and Terraform foundation | `apps/company-console/src/features/company/`, `apps/company-console/src/features/hiring/`, `apps/applicant-interview/src/features/access/`, `backend/src/interview_evidence/company_management/`, `backend/alembic/versions/company/`, `infra/` | Published submission, interview and report status contracts |
+| B — Submission & RAG | upload workflow, document/Git analysis, chunking, hybrid retrieval, strategy generation, analysis workers | `apps/applicant-interview/src/features/submissions/`, `backend/src/interview_evidence/submission_analysis/`, `backend/src/interview_evidence/workers/analysis/`, `backend/alembic/versions/submission/` | Position/criterion and consent contracts |
 | C — Live Interview | applicant room shell, device/media, session state, STT-search-LLM-TTS orchestration, checkpoints and recovery | `apps/applicant-interview/src/features/interview/`, `backend/src/interview_evidence/interview_engine/`, `backend/src/interview_evidence/workers/interview/`, `backend/alembic/versions/interview/` | Strategy and criterion contracts |
 | D — Evidence & Review | transcript/timeline, media post-processing, reports, Evidence, human review, retention/deletion orchestration | `apps/company-console/src/features/review/`, `backend/src/interview_evidence/reporting/`, `backend/src/interview_evidence/workers/reporting/`, `backend/alembic/versions/reporting/` | Completed-session, source and criterion contracts |
 
@@ -123,6 +127,8 @@ The integration owner is the only writer to the following paths after the founda
 - migration configuration and merge heads: `backend/alembic.ini`,
   `backend/alembic/env.py`, `backend/alembic/versions/merge/`
 - CI definitions and root documentation
+- reproducible UI reference captures, manifests, browser E2E configuration and design guidance under
+  `references/`, `scripts/` and `tests/browser/`
 
 Lane contributors propose a contract change as a small patch or issue; the integration owner applies
 it after affected-lane review. Domain-owned contract fragments remain editable only by their lane.
@@ -148,6 +154,13 @@ specs/001-interview-evidence-platform/
 │  ├── requirements.md
 │  └── parallel-readiness.md
 └── tasks.md
+
+references/
+└── company-console/
+   ├── README.md                     # reference rules and API ownership
+   ├── screen-intent.md              # screen-by-screen UX intent
+   ├── figma-site/{desktop,mobile}/  # reproducible published reference captures
+   └── implementation/               # accepted implementation comparison captures
 ```
 
 ### Source Code (repository root)
@@ -254,7 +267,7 @@ harness, migration layout and CI. All four contributors review and branch from t
 
 ### Wave 1 — Four Parallel Thin Slices
 
-- Lane A: company → criterion version → campaign → invitation → consent authorization.
+- Lane A: company → position → criterion version → invitation → consent authorization.
 - Lane B: submitted fixture → analysis status → searchable source → interview strategy.
 - Lane C: seeded strategy → start → one answer → next question → reconnect → complete.
 - Lane D: completed-session fixture → transcript → Evidence report → human review → deletion manifest.
@@ -278,6 +291,19 @@ The four lanes continue in parallel on failure modes, privacy deletion, retrieva
 observability, accessibility and load. The integration branch then runs the complete quickstart,
 QG-01 through QG-16, and a `$speckit-converge` reconciliation before release.
 
+### Wave 4 — Reference UI/UX Alignment
+
+1. Capture every published company and applicant reference screen at desktop and mobile sizes.
+2. Document screen intent, API ownership and intentional deviations before changing product UI.
+3. Align the shared shells first, then each lane-owned feature without crossing module boundaries.
+4. Keep only server-backed data and controls supported by the current contracts.
+5. Validate company and applicant journeys in real Chrome at 1440px and 390px, then run the full
+   workspace regression and `$speckit-converge`.
+
+The published mobile reference retains a desktop sidebar and clips task content. The product
+implementation intentionally uses an overlay mobile navigation, single-column forms, wrapped
+progress indicators and full-width primary actions instead of copying that defect.
+
 ## Testing Strategy
 
 - **Unit**: domain state machines, policy checks, ranking, Evidence rules and retention calculations.
@@ -287,7 +313,10 @@ QG-01 through QG-16, and a `$speckit-converge` reconciliation before release.
   retrieval scope and deletion across stores.
 - **AI regression**: fixed Korean and Korean/English-code datasets; structured-output validation;
   low relevance, prompt injection and unsupported claim cases.
-- **Browser**: company campaign, applicant upload/device flow, reconnect, Evidence seek and human edit.
+- **Browser**: position setup and direct invitation, applicant upload/device flow, reconnect,
+  Evidence seek and human edit.
+- **Visual reference**: reproducible Figma Make captures, implementation comparison screenshots,
+  1440px/390px layout assertions and no-mock-data checks.
 - **Infrastructure**: static validation, policy/security scan, plan review and environment smoke tests.
 - **End-to-end**: the thin journey in `quickstart.md` is mandatory after every lane merge.
 

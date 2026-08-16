@@ -16,7 +16,7 @@ modules/
   compute/
   data/
   async-workflow/
-  ai-search/
+  ai-search/        # Bedrock Guardrail only; retrieval runs in Aurora pgvector
   identity/
   observability/
 environments/

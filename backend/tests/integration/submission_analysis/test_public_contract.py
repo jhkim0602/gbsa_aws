@@ -46,6 +46,7 @@ APPLICANT_ID = UUID("00000000-0000-7000-8000-000000000003")
 SUBMISSION_ID = UUID("00000000-0000-7000-8000-000000000004")
 CHUNK_ID = UUID("00000000-0000-7000-8000-000000000005")
 STRATEGY_ID = UUID("00000000-0000-7000-8000-000000000006")
+VERSION_ID = UUID("00000000-0000-7000-8000-000000000009")
 COMMIT_ANALYSIS_ID = UUID("00000000-0000-7000-8000-000000000011")
 CODE_UNIT_ID = UUID("00000000-0000-7000-8000-000000000012")
 NOW = datetime(2026, 8, 15, 9, 0, tzinfo=UTC)
@@ -114,7 +115,7 @@ def public_contract() -> tuple[
             company_id=COMPANY_ID,
             invitation_id=INVITATION_ID,
             applicant_id=APPLICANT_ID,
-            competency_model_version_id=UUID("00000000-0000-7000-8000-000000000009"),
+            competency_model_version_id=VERSION_ID,
             strategy_version=1,
             common_topics=("문제 해결",),
             verification_points=(),
@@ -175,6 +176,8 @@ def public_contract() -> tuple[
             symbols=(),
             locator={"page_number": 2, "section": "성과"},
             ownership_confidence=1,
+            invitation_id=INVITATION_ID,
+            competency_model_version_id=VERSION_ID,
         )
     )
     deleter = InMemorySubmissionTargetDeleter()
@@ -197,6 +200,8 @@ def test_public_contract_returns_snapshots_without_raw_source_text() -> None:
     results = public.retrieve_context(
         context(),
         applicant_id=APPLICANT_ID,
+        invitation_id=INVITATION_ID,
+        competency_model_version_id=VERSION_ID,
         query="결제 장애",
         query_vector=(1.0, 0.0),
         criterion_id=UUID("00000000-0000-7000-8000-000000000010"),
@@ -235,7 +240,7 @@ def test_public_contract_delegates_owned_deletion_and_verifies_absence() -> None
             invitation_id=INVITATION_ID,
             applicant_id=APPLICANT_ID,
         )
-        if target.store == "opensearch"
+        if target.store == "retrieval"
     )
 
     receipt = public.delete_submission_target(

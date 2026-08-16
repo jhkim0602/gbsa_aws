@@ -40,11 +40,6 @@ variable "worker_image" {
   type = string
 }
 
-variable "embedding_model_arn" {
-  type    = string
-  default = "arn:aws:bedrock:ap-northeast-2::foundation-model/amazon.titan-embed-text-v2:0"
-}
-
 variable "interview_model_id" {
   type = string
 }
@@ -111,15 +106,8 @@ module "async_workflow" {
 module "ai_search" {
   source = "../../modules/ai-search"
 
-  name                 = local.name
-  vpc_id               = module.network.vpc_id
-  private_subnet_ids   = module.network.private_subnet_ids
-  security_group_ids   = [module.network.endpoint_security_group_id]
-  source_bucket_arn    = module.data.bucket_arns["source"]
-  application_role_arn = module.identity.application_runtime_role_arn
-  kms_key_arn          = module.data.kms_key_arn
-  embedding_model_arn  = var.embedding_model_arn
-  tags                 = local.tags
+  name = local.name
+  tags = local.tags
 }
 
 module "observability" {
@@ -154,26 +142,26 @@ module "compute" {
     values(module.async_workflow.queue_arns),
   )
   task_environment = {
-    APPLICANT_ACCESS_BASE_URL = "https://${var.applicant_domain}/access"
-    APP_ENVIRONMENT           = "stage"
-    AWS_REGION                = var.aws_region
-    AURORA_DATABASE           = module.data.aurora_database_name
-    AURORA_ENDPOINT           = module.data.aurora_endpoint
-    AURORA_MASTER_SECRET_ARN  = module.data.aurora_master_secret_arn
-    BEDROCK_GUARDRAIL_ID      = module.ai_search.guardrail_id
-    BEDROCK_MODEL_ID          = var.interview_model_id
-    COGNITO_USER_POOL_ID      = module.identity.user_pool_id
-    DYNAMODB_TABLE_NAME       = module.data.dynamodb_table_name
-    KMS_KEY_ARN               = module.data.kms_key_arn
-    MEDIA_BUCKET              = module.data.bucket_ids["media"]
-    OPENSEARCH_ENDPOINT       = module.ai_search.collection_endpoint
-    OPENSEARCH_INDEX_NAME     = module.ai_search.vector_index_name
-    SES_FROM_ADDRESS          = "noreply@${var.company_domain}"
-    SOURCE_BUCKET             = module.data.bucket_ids["source"]
-    SQS_ANALYSIS_QUEUE_URL    = module.async_workflow.queue_urls["analysis"]
-    SQS_DELETION_QUEUE_URL    = module.async_workflow.queue_urls["deletion"]
-    SQS_MEDIA_QUEUE_URL       = module.async_workflow.queue_urls["media"]
-    SQS_REPORTING_QUEUE_URL   = module.async_workflow.queue_urls["reporting"]
+    APPLICANT_ACCESS_BASE_URL  = "https://${var.applicant_domain}/access"
+    APP_ENVIRONMENT            = "stage"
+    AWS_REGION                 = var.aws_region
+    AURORA_DATABASE            = module.data.aurora_database_name
+    AURORA_ENDPOINT            = module.data.aurora_endpoint
+    AURORA_MASTER_SECRET_ARN   = module.data.aurora_master_secret_arn
+    BEDROCK_EMBEDDING_MODEL_ID = "amazon.titan-embed-text-v2:0"
+    BEDROCK_GUARDRAIL_ID       = module.ai_search.guardrail_id
+    BEDROCK_MODEL_ID           = var.interview_model_id
+    COGNITO_USER_POOL_ID       = module.identity.user_pool_id
+    DYNAMODB_TABLE_NAME        = module.data.dynamodb_table_name
+    KMS_KEY_ARN                = module.data.kms_key_arn
+    MEDIA_BUCKET               = module.data.bucket_ids["media"]
+    RETRIEVAL_BACKEND          = "aurora"
+    SES_FROM_ADDRESS           = "noreply@${var.company_domain}"
+    SOURCE_BUCKET              = module.data.bucket_ids["source"]
+    SQS_ANALYSIS_QUEUE_URL     = module.async_workflow.queue_urls["analysis"]
+    SQS_DELETION_QUEUE_URL     = module.async_workflow.queue_urls["deletion"]
+    SQS_MEDIA_QUEUE_URL        = module.async_workflow.queue_urls["media"]
+    SQS_REPORTING_QUEUE_URL    = module.async_workflow.queue_urls["reporting"]
   }
   tags = local.tags
 }

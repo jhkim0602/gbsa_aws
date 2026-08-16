@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from hashlib import sha256
+from time import perf_counter
 from uuid import UUID
 
 import pytest
@@ -15,6 +16,9 @@ from interview_evidence.shared.security.principals import (
     FakePrincipalProvider,
 )
 from interview_evidence.shared.tenant import ActorType, TenantContext
+from interview_evidence.submission_analysis.adapters.postgres_hybrid import (
+    PostgresHybridSearchIndex,
+)
 from interview_evidence.submission_analysis.adapters.search import (
     InMemorySearchIndex,
     SearchDocument,
@@ -52,6 +56,7 @@ from interview_evidence.submission_analysis.domain.submission import (
     SubmissionStatus,
 )
 from interview_evidence.submission_analysis.repositories.postgres import (
+    Base,
     InMemorySubmissionRepository,
 )
 from interview_evidence.workers.analysis.code_units import expand_python_code_units
@@ -75,6 +80,8 @@ from interview_evidence.workers.analysis.git_fetch import (
     RepositorySnapshot,
     StaticGitTransport,
 )
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
 COMPANY_ID = UUID("00000000-0000-7000-8000-000000000001")
 INVITATION_ID = UUID("00000000-0000-7000-8000-000000000002")
@@ -93,6 +100,103 @@ def system_context() -> TenantContext:
         request_id=UUID("00000000-0000-7000-8000-000000000007"),
         trace_id="lane-b-quickstart",
     )
+
+
+def _pilot_vector(first: float, second: float) -> tuple[float, ...]:
+    return (first, second, *(0.0 for _ in range(1022)))
+
+
+def test_pilot_scale_hybrid_retrieval_p95_is_below_one_second() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    query_vector = _pilot_vector(1.0, 0.0)
+
+    with Session(engine) as session:
+        index = PostgresHybridSearchIndex(session)
+        for offset in range(200):
+            source_id = UUID(int=1_000 + offset)
+            index.add(
+                SearchDocument(
+                    document_id=str(source_id),
+                    company_id=COMPANY_ID,
+                    applicant_id=APPLICANT_ID,
+                    source_id=source_id,
+                    text=f"ECS 운영 장애 원인 분석과 복구 경험 {offset}",
+                    vector=query_vector,
+                    symbols=("ECS", "CloudWatch"),
+                    locator={"page": offset + 1},
+                    ownership_confidence=1.0,
+                    invitation_id=INVITATION_ID,
+                    competency_model_version_id=CRITERION_VERSION_ID,
+                    criterion_id=CRITERION_ID,
+                    embedding_model="amazon.titan-embed-text-v2:0",
+                    embedding_version="titan-v2",
+                )
+            )
+        session.commit()
+
+        latencies: list[float] = []
+        for _ in range(20):
+            started_at = perf_counter()
+            candidates = index.candidates(
+                system_context(),
+                applicant_id=APPLICANT_ID,
+                invitation_id=INVITATION_ID,
+                competency_model_version_id=CRITERION_VERSION_ID,
+                criterion_id=CRITERION_ID,
+                query="ECS 장애 복구",
+                query_vector=query_vector,
+                exact_symbol="ECS",
+            )
+            latencies.append(perf_counter() - started_at)
+
+    p95_latency = sorted(latencies)[18]
+    assert len(candidates) == 200
+    assert p95_latency < 1.0
+
+
+@pytest.mark.asyncio
+async def test_applicant_can_register_at_most_three_public_git_projects() -> None:
+    principal = ApplicantPrincipal(
+        company_id=COMPANY_ID,
+        invitation_id=INVITATION_ID,
+        applicant_id=APPLICANT_ID,
+        session_id=SESSION_ID,
+    )
+    repository = InMemorySubmissionRepository()
+    runtime = create_lane_b_runtime(
+        principal_provider=FakePrincipalProvider(
+            applicant_principals={"applicant-session": principal}
+        ),
+        authorization=FakeSubmissionAuthorization.allowed(principal),
+        repository=repository,
+        object_storage=InMemoryObjectStorage(),
+        audit=InMemoryAuditAppender(),
+        clock=FrozenClock(NOW),
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=runtime.app),
+        base_url="https://testserver",
+        cookies={"iep_applicant_session": "applicant-session"},
+    ) as client:
+        responses = [
+            await client.post(
+                "/v1/applicant/submissions",
+                headers={"Idempotency-Key": f"project-submission-{index}"},
+                json={
+                    "source_type": "public_git",
+                    "public_url": f"https://github.com/example/project-{index}",
+                    "candidate_identity_inputs": {},
+                },
+            )
+            for index in range(1, 5)
+        ]
+
+    assert [response.status_code for response in responses[:3]] == [202, 202, 202]
+    assert responses[3].status_code == 422
+    assert responses[3].json()["detail"] == ("up to 3 public Git project URLs are allowed")
+    assert len(repository.list_submissions(system_context(), APPLICANT_ID)) == 3
 
 
 @pytest.mark.asyncio
@@ -468,7 +572,7 @@ async def test_lane_b_submission_to_traceable_strategy_journey() -> None:
         invitation_id=INVITATION_ID,
         applicant_id=APPLICANT_ID,
     )
-    assert {"aurora", "s3", "opensearch"} <= {target.store for target in targets}
+    assert {"aurora", "s3", "retrieval"} <= {target.store for target in targets}
     target_ids = {target.resource_id for target in targets}
     assert commit_analyses[0].change_summary_object_key in target_ids
     assert code_units[0].current_snapshot_key in target_ids

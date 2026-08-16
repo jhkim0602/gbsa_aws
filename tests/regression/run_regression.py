@@ -153,6 +153,8 @@ def _degraded_result(case: dict[str, Any]) -> tuple[str, bool]:
         outcome = RetrievalClient(_FailingRetrieval()).retrieve(
             context,
             applicant_id=context.actor_id,
+            invitation_id=UUID("00000000-0000-7000-8000-000000000204"),
+            competency_model_version_id=UUID("00000000-0000-7000-8000-000000000205"),
             session_id=UUID("00000000-0000-7000-8000-000000000203"),
             query="장애 대응",
             query_vector=(1.0, 0.0),

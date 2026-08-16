@@ -59,7 +59,115 @@
               $ref: ../../root.yaml#/components/schemas/Position
       default:
         $ref: ../../root.yaml#/components/responses/Error
+/positions/{position_id}:
+  get:
+    operationId: getPosition
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/PositionId
+    responses:
+      '200':
+        description: Tenant-scoped position details
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/Position
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+  patch:
+    operationId: updatePosition
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/PositionId
+    - $ref: ../../root.yaml#/components/parameters/IfMatchVersion
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/PositionUpdate
+    responses:
+      '200':
+        description: Position settings and lifecycle updated
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/Position
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/interviewer-profiles:
+  get:
+    operationId: listInterviewerProfiles
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/Cursor
+    - $ref: ../../root.yaml#/components/parameters/Limit
+    responses:
+      '200':
+        description: Tenant-scoped reusable AI interviewer profiles
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/InterviewerProfilePage
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+  post:
+    operationId: createInterviewerProfile
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/InterviewerProfileCreate
+    responses:
+      '201':
+        description: Reusable AI interviewer profile created
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/InterviewerProfile
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
 /positions/{position_id}/competency-model-versions:
+  get:
+    operationId: listCompetencyModelVersions
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/PositionId
+    - $ref: ../../root.yaml#/components/parameters/Cursor
+    - $ref: ../../root.yaml#/components/parameters/Limit
+    responses:
+      '200':
+        description: Position criterion versions, newest first
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/CompetencyModelVersionPage
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
   post:
     operationId: createCompetencyModelVersion
     x-owner-lane: A
@@ -106,53 +214,7 @@
               $ref: ../../root.yaml#/components/schemas/CompetencyModelVersion
       default:
         $ref: ../../root.yaml#/components/responses/Error
-/campaigns:
-  post:
-    operationId: createCampaign
-    x-owner-lane: A
-    tags:
-    - Hiring
-    security:
-    - CompanyBearer: []
-    parameters:
-    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
-    requestBody:
-      required: true
-      content:
-        application/json:
-          schema:
-            $ref: ../../root.yaml#/components/schemas/CampaignCreate
-    responses:
-      '201':
-        description: Campaign created
-        content:
-          application/json:
-            schema:
-              $ref: ../../root.yaml#/components/schemas/Campaign
-      default:
-        $ref: ../../root.yaml#/components/responses/Error
-/campaigns/{campaign_id}/publish:
-  post:
-    operationId: publishCampaign
-    x-owner-lane: A
-    tags:
-    - Hiring
-    security:
-    - CompanyBearer: []
-    parameters:
-    - $ref: ../../root.yaml#/components/parameters/CampaignId
-    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
-    - $ref: ../../root.yaml#/components/parameters/IfMatchVersion
-    responses:
-      '200':
-        description: Published campaign
-        content:
-          application/json:
-            schema:
-              $ref: ../../root.yaml#/components/schemas/Campaign
-      default:
-        $ref: ../../root.yaml#/components/responses/Error
-/campaigns/{campaign_id}/invitations:
+/positions/{position_id}/invitations:
   get:
     operationId: listInvitations
     x-owner-lane: A
@@ -161,7 +223,7 @@
     security:
     - CompanyBearer: []
     parameters:
-    - $ref: ../../root.yaml#/components/parameters/CampaignId
+    - $ref: ../../root.yaml#/components/parameters/PositionId
     - $ref: ../../root.yaml#/components/parameters/Cursor
     - $ref: ../../root.yaml#/components/parameters/Limit
     responses:
@@ -181,7 +243,7 @@
     security:
     - CompanyBearer: []
     parameters:
-    - $ref: ../../root.yaml#/components/parameters/CampaignId
+    - $ref: ../../root.yaml#/components/parameters/PositionId
     - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
     requestBody:
       required: true

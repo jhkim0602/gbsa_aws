@@ -36,7 +36,10 @@ class CompanySubmissionAuthorization:
             ):
                 raise SubmissionAuthorizationDenied("invitation is not authorized for submission")
 
-            self._company.get_campaign_snapshot(context, invitation.campaign_id)
+            self._company.get_invitation_hiring_snapshot(
+                context,
+                invitation.invitation_id,
+            )
             consent = self._company.get_consent_authorization(
                 context,
                 principal.invitation_id,

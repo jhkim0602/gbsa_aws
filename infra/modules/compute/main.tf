@@ -285,7 +285,6 @@ resource "aws_iam_role_policy" "task" {
           "bedrock:ApplyGuardrail",
           "bedrock:InvokeModel",
           "bedrock:InvokeModelWithResponseStream",
-          "bedrock:Retrieve",
           "cognito-idp:GetUser",
           "mediaconvert:CreateJob",
           "polly:SynthesizeSpeech",

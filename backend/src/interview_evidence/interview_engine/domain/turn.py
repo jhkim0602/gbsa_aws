@@ -106,8 +106,56 @@ class QuestionSourceReference(BaseModel):
     source_id: UUID
     source_type: str = Field(min_length=1, max_length=100)
     locator: dict[str, object]
+    excerpt: str = Field(default="", max_length=2000)
     relevance_score: float = Field(ge=0)
     ownership_confidence: float = Field(ge=0, le=1)
     retrieval_config_version: str = Field(min_length=1, max_length=100)
     model_config_version: str = Field(min_length=1, max_length=100)
+    created_at: datetime
+
+
+class VerificationProgressState(StrEnum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    EXHAUSTED = "exhausted"
+
+
+class VerificationProgress(BaseModel):
+    """Answer-driven state for one immutable candidate verification target."""
+
+    model_config = ConfigDict(frozen=True)
+
+    verification_progress_id: UUID
+    company_id: UUID
+    interview_session_id: UUID
+    applicant_id: UUID
+    verification_target_id: UUID
+    criterion_id: UUID
+    state: VerificationProgressState
+    follow_up_count: int = Field(ge=0, le=3)
+    final_answer_turn_ids: tuple[UUID, ...] = ()
+    updated_at: datetime
+
+
+class QuestionRationale(BaseModel):
+    """Why a question was asked. This record is never competency Evidence."""
+
+    model_config = ConfigDict(frozen=True)
+
+    question_rationale_id: UUID
+    company_id: UUID
+    interview_session_id: UUID
+    question_turn_id: UUID
+    applicant_id: UUID
+    competency_model_version_id: UUID
+    criterion_id: UUID
+    verification_target_id: UUID
+    verification_target_type: str = Field(min_length=1, max_length=40)
+    objective: str = Field(min_length=1, max_length=4000)
+    question_type: str = Field(min_length=1, max_length=40)
+    retrieval_version: str = Field(min_length=1, max_length=100)
+    generation_version: str = Field(min_length=1, max_length=100)
+    policy_result: str = Field(min_length=1, max_length=100)
+    source_reference_ids: tuple[UUID, ...] = ()
     created_at: datetime

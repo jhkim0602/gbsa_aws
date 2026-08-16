@@ -7,8 +7,8 @@ DOCKER_CONTEXT ?= default
 	infra-plan-dev infra-security-check infra-validate lint migrate migration-check \
 	seed-contract-fixtures test test-ai-regression test-deletion-residue test-e2e-thin \
 	test-foundation test-integration test-lane-a test-lane-b test-lane-c test-lane-d \
-	test-load-pilot test-local-production-parity test-prior-lanes test-recovery \
-	test-tenant-isolation test-workspace typecheck verify-foundation
+	test-load-pilot test-local-production-parity test-prior-lanes test-recovery test-company-browser \
+	test-applicant-browser test-tenant-isolation test-workspace typecheck verify-foundation
 
 bootstrap:
 	npm ci
@@ -107,6 +107,12 @@ test-load-pilot:
 
 test-local-production-parity:
 	DOCKER_CONTEXT=$(DOCKER_CONTEXT) ./scripts/verify_local_production_parity.sh
+
+test-company-browser:
+	npm run test:e2e:company
+
+test-applicant-browser:
+	npm run test:e2e:applicant
 
 test-prior-lanes: test-lane-a test-lane-b test-lane-c test-lane-d
 

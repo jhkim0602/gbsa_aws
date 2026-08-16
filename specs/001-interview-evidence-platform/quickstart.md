@@ -23,11 +23,14 @@ make bootstrap
 make compose-up
 make migrate
 make seed-contract-fixtures
+make test-company-browser
 ```
 
 Expected:
 
 - both SPAs and the API health endpoints become ready;
+- the host Chrome renders the company Overview, loads company/position API data and navigates
+  through the position and hiring workspaces without browser or HTTP errors;
 - local PostgreSQL, object/queue emulation, DynamoDB emulation and search are healthy;
 - four Alembic lane heads plus the current integration merge head are visible;
 - the seeded companies and applicants use opaque IDs and no secret appears in console output.
@@ -78,8 +81,8 @@ Expected journey:
 
 1. authenticate a company fixture;
 2. create a position and criterion version;
-3. publish the criterion version and campaign;
-4. create an invitation and exchange its one-time token;
+3. publish the criterion version for the position;
+4. create a position-owned invitation and exchange its one-time token;
 5. verify identity and record consent;
 6. demonstrate that a second company cannot read any created object.
 
@@ -144,7 +147,7 @@ Expected:
 
 ```text
 company criterion
--> campaign and invitation
+-> position-owned invitation
 -> applicant token exchange, identity and consent
 -> PDF/public Git submission and strategy
 -> device check and interview start
@@ -159,7 +162,7 @@ At the end:
 
 - SourceReference points to the exact submitted source used for the question;
 - Evidence points only to a final applicant Turn and valid transcript/video interval;
-- the criterion version is identical across campaign, strategy, session and report;
+- the criterion version is identical across invitation, strategy, session and report;
 - AI has no route, role or worker path to the final decision;
 - another tenant cannot retrieve any object, search result, hot-view item or signed media locator.
 
@@ -232,6 +235,31 @@ $speckit-converge
 
 Any difference among spec, plan, tasks and implementation becomes a new task. Do not close a gap by
 silently changing behavior or weakening the constitution.
+
+## 10. Validate the UI Reference Baseline
+
+The recruiter operations baseline is verified from the running application rather than retained
+reference captures.
+
+```bash
+npm run test --workspace apps/company-console -- --run
+npm run typecheck --workspace apps/company-console
+npm run build --workspace apps/company-console
+make test-company-browser
+```
+
+Expected:
+
+- the company dashboard, position inspection, recruiting calendar and guided hiring route use real
+  API data only;
+- accepted desktop and mobile screenshots are written under `tests/browser/artifacts/`;
+- the browser moves through `/company`, `/positions` and `/hiring` without console errors or
+  unexpected 4xx/5xx responses;
+- a stale hashed asset returns 404 instead of the SPA document;
+- the 390px company layout uses overlay navigation and keeps the current input and primary action
+  visible;
+- future applicant and candidate-pipeline alignment remains tracked by T212 and T214-T218 rather
+  than being represented by mock screens.
 
 ## Requirement and Quality-Gate Evidence
 

@@ -50,6 +50,33 @@ class ResolvedSourceReference:
     ownership_confidence: float
 
 
+@dataclass(frozen=True, slots=True)
+class VerificationTargetSnapshot:
+    verification_target_id: UUID
+    criterion_id: UUID
+    target_type: str
+    objective: str
+    missing_dimensions: tuple[str, ...]
+    priority: int
+    max_follow_ups: int
+    source_reference_candidates: tuple[UUID, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateVerificationMapSnapshot:
+    candidate_verification_map_id: UUID
+    company_id: UUID
+    applicant_id: UUID
+    invitation_id: UUID
+    competency_model_version_id: UUID
+    criterion_version: int
+    retrieval_version: str
+    generation_version: str
+    time_budget_seconds: int
+    readiness_state: str
+    targets: tuple[VerificationTargetSnapshot, ...]
+
+
 class SubmissionAnalysisPublic:
     """Frozen Lane B boundary. No raw applicant source text crosses this facade."""
 
@@ -105,6 +132,8 @@ class SubmissionAnalysisPublic:
         context: TenantContext,
         *,
         applicant_id: UUID,
+        invitation_id: UUID,
+        competency_model_version_id: UUID,
         query: str,
         query_vector: tuple[float, ...],
         criterion_id: UUID,
@@ -114,14 +143,62 @@ class SubmissionAnalysisPublic:
     ) -> tuple[RetrievalResult, ...]:
         if not config_version:
             raise ValueError("retrieval config version is required")
-        del criterion_id
         return self._retriever.retrieve(
             context,
             applicant_id=applicant_id,
+            invitation_id=invitation_id,
+            competency_model_version_id=competency_model_version_id,
+            criterion_id=criterion_id,
             query=query,
             query_vector=query_vector,
             exact_symbol=exact_symbol,
             limit=limit,
+        )
+
+    def get_verification_map(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+        competency_model_version_id: UUID,
+    ) -> CandidateVerificationMapSnapshot | None:
+        verification_map = self._repository.latest_verification_map(
+            context,
+            applicant_id=applicant_id,
+            invitation_id=invitation_id,
+            competency_model_version_id=competency_model_version_id,
+        )
+        if verification_map is None:
+            return None
+        targets = self._repository.list_verification_targets(
+            context,
+            verification_map,
+        )
+        return CandidateVerificationMapSnapshot(
+            candidate_verification_map_id=(verification_map.candidate_verification_map_id),
+            company_id=verification_map.company_id,
+            applicant_id=verification_map.applicant_id,
+            invitation_id=verification_map.invitation_id,
+            competency_model_version_id=(verification_map.competency_model_version_id),
+            criterion_version=verification_map.criterion_version,
+            retrieval_version=verification_map.retrieval_version,
+            generation_version=verification_map.generation_version,
+            time_budget_seconds=verification_map.time_budget_seconds,
+            readiness_state=verification_map.readiness_state,
+            targets=tuple(
+                VerificationTargetSnapshot(
+                    verification_target_id=target.verification_target_id,
+                    criterion_id=target.criterion_id,
+                    target_type=target.target_type.value,
+                    objective=target.objective,
+                    missing_dimensions=target.missing_dimensions,
+                    priority=target.priority,
+                    max_follow_ups=target.max_follow_ups,
+                    source_reference_candidates=(target.source_reference_candidates),
+                )
+                for target in targets
+            ),
         )
 
     def resolve_source_reference(

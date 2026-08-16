@@ -5,7 +5,8 @@ from datetime import datetime
 from typing import Protocol, TypeVar
 from uuid import UUID
 
-from sqlalchemy import JSON, DateTime, Float, Integer, String, Uuid, delete, select
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import JSON, DateTime, Float, Integer, String, Text, Uuid, delete, select
 from sqlalchemy.orm import (
     DeclarativeBase,
     InstrumentedAttribute,
@@ -21,6 +22,13 @@ from interview_evidence.submission_analysis.domain.git_analysis import (
     GitCommitAnalysis,
     GitRepositoryAnalysis,
     OwnershipClass,
+)
+from interview_evidence.submission_analysis.domain.retrieval import (
+    CandidateClaim,
+    CandidateVerificationMap,
+    ClaimConflict,
+    VerificationTarget,
+    VerificationTargetType,
 )
 from interview_evidence.submission_analysis.domain.source import (
     SourceLocation,
@@ -181,6 +189,102 @@ class InterviewStrategyRow(Base):
     status: Mapped[str] = mapped_column(String(30))
 
 
+class RetrievalDocumentRow(Base):
+    __tablename__ = "retrieval_documents"
+
+    retrieval_document_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    applicant_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
+    invitation_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
+    competency_model_version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    criterion_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
+    document_type: Mapped[str] = mapped_column(String(40))
+    source_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    source_version: Mapped[str] = mapped_column(String(100))
+    content_hash: Mapped[str] = mapped_column(String(64))
+    locator: Mapped[dict[str, object]] = mapped_column(JSON)
+    protected_text: Mapped[str] = mapped_column(Text)
+    search_text: Mapped[str] = mapped_column(Text)
+    embedding: Mapped[list[float]] = mapped_column(Vector(1024))
+    embedding_model: Mapped[str] = mapped_column(String(200))
+    embedding_version: Mapped[str] = mapped_column(String(100))
+    source_type: Mapped[str] = mapped_column(String(40))
+    path: Mapped[str | None] = mapped_column(String(1000))
+    symbol: Mapped[str | None] = mapped_column(String(500))
+    ownership_confidence: Mapped[float | None] = mapped_column(Float)
+    metadata_json: Mapped[dict[str, object]] = mapped_column("metadata", JSON)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CandidateClaimRow(Base):
+    __tablename__ = "candidate_claims"
+
+    candidate_claim_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    invitation_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    competency_model_version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    criterion_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    claim_type: Mapped[str] = mapped_column(String(40))
+    neutral_text: Mapped[str] = mapped_column(String(4000))
+    source_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    locator: Mapped[dict[str, object]] = mapped_column(JSON)
+    content_hash: Mapped[str] = mapped_column(String(64))
+    extraction_version: Mapped[str] = mapped_column(String(100))
+    confidence: Mapped[float] = mapped_column(Float)
+
+
+class ClaimConflictRow(Base):
+    __tablename__ = "claim_conflicts"
+
+    claim_conflict_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    invitation_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    criterion_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    left_claim_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    right_claim_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    conflict_type: Mapped[str] = mapped_column(String(50))
+    verification_objective: Mapped[str] = mapped_column(String(4000))
+
+
+class VerificationTargetRow(Base):
+    __tablename__ = "verification_targets"
+
+    verification_target_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    invitation_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    competency_model_version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    criterion_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    target_type: Mapped[str] = mapped_column(String(40))
+    objective: Mapped[str] = mapped_column(String(4000))
+    missing_dimensions: Mapped[list[str]] = mapped_column(JSON)
+    priority: Mapped[int] = mapped_column(Integer)
+    max_follow_ups: Mapped[int] = mapped_column(Integer)
+    source_reference_candidates: Mapped[list[str]] = mapped_column(JSON)
+
+
+class CandidateVerificationMapRow(Base):
+    __tablename__ = "candidate_verification_maps"
+
+    candidate_verification_map_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    invitation_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    competency_model_version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    criterion_version: Mapped[int] = mapped_column(Integer)
+    material_version: Mapped[str] = mapped_column(String(100))
+    retrieval_version: Mapped[str] = mapped_column(String(100))
+    embedding_model: Mapped[str] = mapped_column(String(200))
+    embedding_version: Mapped[str] = mapped_column(String(100))
+    generation_version: Mapped[str] = mapped_column(String(100))
+    ordered_target_ids: Mapped[list[str]] = mapped_column(JSON)
+    time_budget_seconds: Mapped[int] = mapped_column(Integer)
+    readiness_state: Mapped[str] = mapped_column(String(30))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class SubmissionRepository(Protocol):
     def save_submission(self, context: TenantContext, submission: Submission) -> Submission: ...
     def get_submission(self, context: TenantContext, submission_id: UUID) -> Submission: ...
@@ -232,6 +336,72 @@ class SubmissionRepository(Protocol):
         self, context: TenantContext, invitation_id: UUID
     ) -> InterviewStrategy | None: ...
     def get_strategy(self, context: TenantContext, strategy_id: UUID) -> InterviewStrategy: ...
+    def save_candidate_claims(
+        self,
+        context: TenantContext,
+        claims: tuple[CandidateClaim, ...],
+    ) -> tuple[CandidateClaim, ...]: ...
+    def list_candidate_claims(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+    ) -> tuple[CandidateClaim, ...]: ...
+    def save_claim_conflicts(
+        self,
+        context: TenantContext,
+        conflicts: tuple[ClaimConflict, ...],
+    ) -> tuple[ClaimConflict, ...]: ...
+    def list_claim_conflicts(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+    ) -> tuple[ClaimConflict, ...]: ...
+    def save_verification_targets(
+        self,
+        context: TenantContext,
+        targets: tuple[VerificationTarget, ...],
+    ) -> tuple[VerificationTarget, ...]: ...
+    def save_verification_map(
+        self,
+        context: TenantContext,
+        verification_map: CandidateVerificationMap,
+    ) -> CandidateVerificationMap: ...
+    def get_verification_map(
+        self,
+        context: TenantContext,
+        verification_map_id: UUID,
+    ) -> CandidateVerificationMap: ...
+    def latest_verification_map(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+        competency_model_version_id: UUID,
+    ) -> CandidateVerificationMap | None: ...
+    def list_verification_maps(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+    ) -> tuple[CandidateVerificationMap, ...]: ...
+    def list_verification_targets(
+        self,
+        context: TenantContext,
+        verification_map: CandidateVerificationMap,
+    ) -> tuple[VerificationTarget, ...]: ...
+    def list_retrieval_document_ids(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+    ) -> tuple[UUID, ...]: ...
     def delete_and_verify_target(
         self,
         context: TenantContext,
@@ -250,6 +420,10 @@ class InMemorySubmissionRepository:
         self.git_commits: dict[UUID, GitCommitAnalysis] = {}
         self.code_units: dict[UUID, CandidateCodeUnit] = {}
         self.strategies: dict[UUID, InterviewStrategy] = {}
+        self.candidate_claims: dict[UUID, CandidateClaim] = {}
+        self.claim_conflicts: dict[UUID, ClaimConflict] = {}
+        self.verification_targets: dict[UUID, VerificationTarget] = {}
+        self.verification_maps: dict[UUID, CandidateVerificationMap] = {}
 
     @staticmethod
     def _scoped(
@@ -424,6 +598,143 @@ class InMemorySubmissionRepository:
     def get_strategy(self, context: TenantContext, strategy_id: UUID) -> InterviewStrategy:
         return self._scoped(context, self.strategies, strategy_id)
 
+    def save_candidate_claims(
+        self,
+        context: TenantContext,
+        claims: tuple[CandidateClaim, ...],
+    ) -> tuple[CandidateClaim, ...]:
+        tenant = require_tenant_context(context)
+        for claim in claims:
+            tenant.assert_company(claim.company_id)
+            self.candidate_claims[claim.candidate_claim_id] = claim
+        return claims
+
+    def list_candidate_claims(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+    ) -> tuple[CandidateClaim, ...]:
+        tenant = require_tenant_context(context)
+        return tuple(
+            claim
+            for claim in self.candidate_claims.values()
+            if claim.company_id == tenant.company_id
+            and claim.applicant_id == applicant_id
+            and claim.invitation_id == invitation_id
+        )
+
+    def save_claim_conflicts(
+        self,
+        context: TenantContext,
+        conflicts: tuple[ClaimConflict, ...],
+    ) -> tuple[ClaimConflict, ...]:
+        tenant = require_tenant_context(context)
+        for conflict in conflicts:
+            tenant.assert_company(conflict.company_id)
+            self.claim_conflicts[conflict.claim_conflict_id] = conflict
+        return conflicts
+
+    def list_claim_conflicts(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+    ) -> tuple[ClaimConflict, ...]:
+        tenant = require_tenant_context(context)
+        return tuple(
+            conflict
+            for conflict in self.claim_conflicts.values()
+            if conflict.company_id == tenant.company_id
+            and conflict.applicant_id == applicant_id
+            and conflict.invitation_id == invitation_id
+        )
+
+    def save_verification_targets(
+        self,
+        context: TenantContext,
+        targets: tuple[VerificationTarget, ...],
+    ) -> tuple[VerificationTarget, ...]:
+        tenant = require_tenant_context(context)
+        for target in targets:
+            tenant.assert_company(target.company_id)
+            self.verification_targets[target.verification_target_id] = target
+        return targets
+
+    def save_verification_map(
+        self,
+        context: TenantContext,
+        verification_map: CandidateVerificationMap,
+    ) -> CandidateVerificationMap:
+        require_tenant_context(context).assert_company(verification_map.company_id)
+        self.verification_maps[verification_map.candidate_verification_map_id] = verification_map
+        return verification_map
+
+    def get_verification_map(
+        self,
+        context: TenantContext,
+        verification_map_id: UUID,
+    ) -> CandidateVerificationMap:
+        return self._scoped(context, self.verification_maps, verification_map_id)
+
+    def latest_verification_map(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+        competency_model_version_id: UUID,
+    ) -> CandidateVerificationMap | None:
+        tenant = require_tenant_context(context)
+        matches = (
+            verification_map
+            for verification_map in self.verification_maps.values()
+            if verification_map.company_id == tenant.company_id
+            and verification_map.applicant_id == applicant_id
+            and verification_map.invitation_id == invitation_id
+            and verification_map.competency_model_version_id == competency_model_version_id
+        )
+        return max(matches, key=lambda item: item.created_at, default=None)
+
+    def list_verification_maps(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+    ) -> tuple[CandidateVerificationMap, ...]:
+        tenant = require_tenant_context(context)
+        return tuple(
+            verification_map
+            for verification_map in self.verification_maps.values()
+            if verification_map.company_id == tenant.company_id
+            and verification_map.applicant_id == applicant_id
+            and verification_map.invitation_id == invitation_id
+        )
+
+    def list_verification_targets(
+        self,
+        context: TenantContext,
+        verification_map: CandidateVerificationMap,
+    ) -> tuple[VerificationTarget, ...]:
+        require_tenant_context(context).assert_company(verification_map.company_id)
+        return tuple(
+            self._scoped(context, self.verification_targets, target_id)
+            for target_id in verification_map.ordered_target_ids
+        )
+
+    def list_retrieval_document_ids(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+    ) -> tuple[UUID, ...]:
+        require_tenant_context(context)
+        return ()
+
     def delete_and_verify_target(
         self,
         context: TenantContext,
@@ -474,6 +785,30 @@ class InMemorySubmissionRepository:
                 tenant.assert_company(strategy.company_id)
                 self.strategies.pop(resource_id, None)
             return resource_id not in self.strategies
+        if resource_type == "candidate_claim":
+            claim = self.candidate_claims.get(resource_id)
+            if claim is not None:
+                tenant.assert_company(claim.company_id)
+                self.candidate_claims.pop(resource_id, None)
+            return resource_id not in self.candidate_claims
+        if resource_type == "claim_conflict":
+            conflict = self.claim_conflicts.get(resource_id)
+            if conflict is not None:
+                tenant.assert_company(conflict.company_id)
+                self.claim_conflicts.pop(resource_id, None)
+            return resource_id not in self.claim_conflicts
+        if resource_type == "verification_target":
+            target = self.verification_targets.get(resource_id)
+            if target is not None:
+                tenant.assert_company(target.company_id)
+                self.verification_targets.pop(resource_id, None)
+            return resource_id not in self.verification_targets
+        if resource_type == "candidate_verification_map":
+            verification_map = self.verification_maps.get(resource_id)
+            if verification_map is not None:
+                tenant.assert_company(verification_map.company_id)
+                self.verification_maps.pop(resource_id, None)
+            return resource_id not in self.verification_maps
         raise ValueError("unsupported submission deletion target")
 
 
@@ -913,6 +1248,342 @@ class SqlAlchemySubmissionRepository:
             raise TenantScopedSubmissionNotFound("submission resource not found")
         return self._strategy_from_row(row)
 
+    def save_candidate_claims(
+        self,
+        context: TenantContext,
+        claims: tuple[CandidateClaim, ...],
+    ) -> tuple[CandidateClaim, ...]:
+        tenant = require_tenant_context(context)
+        for claim in claims:
+            tenant.assert_company(claim.company_id)
+            self._session.merge(
+                CandidateClaimRow(
+                    candidate_claim_id=claim.candidate_claim_id,
+                    company_id=claim.company_id,
+                    applicant_id=claim.applicant_id,
+                    invitation_id=claim.invitation_id,
+                    competency_model_version_id=claim.competency_model_version_id,
+                    criterion_id=claim.criterion_id,
+                    claim_type=claim.claim_type,
+                    neutral_text=claim.neutral_text,
+                    source_id=claim.source_id,
+                    locator=claim.locator,
+                    content_hash=claim.content_hash,
+                    extraction_version=claim.extraction_version,
+                    confidence=claim.confidence,
+                )
+            )
+        self._session.flush()
+        return claims
+
+    def list_candidate_claims(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+    ) -> tuple[CandidateClaim, ...]:
+        tenant = require_tenant_context(context)
+        rows = self._session.scalars(
+            select(CandidateClaimRow).where(
+                CandidateClaimRow.company_id == tenant.company_id,
+                CandidateClaimRow.applicant_id == applicant_id,
+                CandidateClaimRow.invitation_id == invitation_id,
+            )
+        ).all()
+        return tuple(
+            CandidateClaim(
+                candidate_claim_id=row.candidate_claim_id,
+                company_id=row.company_id,
+                applicant_id=row.applicant_id,
+                invitation_id=row.invitation_id,
+                competency_model_version_id=row.competency_model_version_id,
+                criterion_id=row.criterion_id,
+                claim_type=row.claim_type,
+                neutral_text=row.neutral_text,
+                source_id=row.source_id,
+                locator=row.locator,
+                content_hash=row.content_hash,
+                extraction_version=row.extraction_version,
+                confidence=row.confidence,
+            )
+            for row in rows
+        )
+
+    def save_claim_conflicts(
+        self,
+        context: TenantContext,
+        conflicts: tuple[ClaimConflict, ...],
+    ) -> tuple[ClaimConflict, ...]:
+        tenant = require_tenant_context(context)
+        for conflict in conflicts:
+            tenant.assert_company(conflict.company_id)
+            self._session.merge(
+                ClaimConflictRow(
+                    claim_conflict_id=conflict.claim_conflict_id,
+                    company_id=conflict.company_id,
+                    applicant_id=conflict.applicant_id,
+                    invitation_id=conflict.invitation_id,
+                    criterion_id=conflict.criterion_id,
+                    left_claim_id=conflict.left_claim_id,
+                    right_claim_id=conflict.right_claim_id,
+                    conflict_type=conflict.conflict_type,
+                    verification_objective=conflict.verification_objective,
+                )
+            )
+        self._session.flush()
+        return conflicts
+
+    def list_claim_conflicts(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+    ) -> tuple[ClaimConflict, ...]:
+        tenant = require_tenant_context(context)
+        rows = self._session.scalars(
+            select(ClaimConflictRow).where(
+                ClaimConflictRow.company_id == tenant.company_id,
+                ClaimConflictRow.applicant_id == applicant_id,
+                ClaimConflictRow.invitation_id == invitation_id,
+            )
+        ).all()
+        return tuple(
+            ClaimConflict(
+                claim_conflict_id=row.claim_conflict_id,
+                company_id=row.company_id,
+                applicant_id=row.applicant_id,
+                invitation_id=row.invitation_id,
+                criterion_id=row.criterion_id,
+                left_claim_id=row.left_claim_id,
+                right_claim_id=row.right_claim_id,
+                conflict_type=row.conflict_type,
+                verification_objective=row.verification_objective,
+            )
+            for row in rows
+        )
+
+    def save_verification_targets(
+        self,
+        context: TenantContext,
+        targets: tuple[VerificationTarget, ...],
+    ) -> tuple[VerificationTarget, ...]:
+        tenant = require_tenant_context(context)
+        for target in targets:
+            tenant.assert_company(target.company_id)
+            self._session.merge(
+                VerificationTargetRow(
+                    verification_target_id=target.verification_target_id,
+                    company_id=target.company_id,
+                    applicant_id=target.applicant_id,
+                    invitation_id=target.invitation_id,
+                    competency_model_version_id=target.competency_model_version_id,
+                    criterion_id=target.criterion_id,
+                    target_type=target.target_type.value,
+                    objective=target.objective,
+                    missing_dimensions=list(target.missing_dimensions),
+                    priority=target.priority,
+                    max_follow_ups=target.max_follow_ups,
+                    source_reference_candidates=[
+                        str(value) for value in target.source_reference_candidates
+                    ],
+                )
+            )
+        self._session.flush()
+        return targets
+
+    def save_verification_map(
+        self,
+        context: TenantContext,
+        verification_map: CandidateVerificationMap,
+    ) -> CandidateVerificationMap:
+        require_tenant_context(context).assert_company(verification_map.company_id)
+        self._session.merge(
+            CandidateVerificationMapRow(
+                candidate_verification_map_id=(verification_map.candidate_verification_map_id),
+                company_id=verification_map.company_id,
+                applicant_id=verification_map.applicant_id,
+                invitation_id=verification_map.invitation_id,
+                competency_model_version_id=(verification_map.competency_model_version_id),
+                criterion_version=verification_map.criterion_version,
+                material_version=verification_map.material_version,
+                retrieval_version=verification_map.retrieval_version,
+                embedding_model=verification_map.embedding_model,
+                embedding_version=verification_map.embedding_version,
+                generation_version=verification_map.generation_version,
+                ordered_target_ids=[str(value) for value in verification_map.ordered_target_ids],
+                time_budget_seconds=verification_map.time_budget_seconds,
+                readiness_state=verification_map.readiness_state,
+                created_at=verification_map.created_at,
+            )
+        )
+        self._session.flush()
+        return verification_map
+
+    def get_verification_map(
+        self,
+        context: TenantContext,
+        verification_map_id: UUID,
+    ) -> CandidateVerificationMap:
+        tenant = require_tenant_context(context)
+        row = self._session.scalar(
+            select(CandidateVerificationMapRow).where(
+                CandidateVerificationMapRow.company_id == tenant.company_id,
+                CandidateVerificationMapRow.candidate_verification_map_id == verification_map_id,
+            )
+        )
+        if row is None:
+            raise TenantScopedSubmissionNotFound("submission resource not found")
+        return CandidateVerificationMap(
+            candidate_verification_map_id=row.candidate_verification_map_id,
+            company_id=row.company_id,
+            applicant_id=row.applicant_id,
+            invitation_id=row.invitation_id,
+            competency_model_version_id=row.competency_model_version_id,
+            criterion_version=row.criterion_version,
+            material_version=row.material_version,
+            retrieval_version=row.retrieval_version,
+            embedding_model=row.embedding_model,
+            embedding_version=row.embedding_version,
+            generation_version=row.generation_version,
+            ordered_target_ids=tuple(UUID(value) for value in row.ordered_target_ids),
+            time_budget_seconds=row.time_budget_seconds,
+            readiness_state=row.readiness_state,
+            created_at=row.created_at,
+        )
+
+    def latest_verification_map(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+        competency_model_version_id: UUID,
+    ) -> CandidateVerificationMap | None:
+        tenant = require_tenant_context(context)
+        row = self._session.scalar(
+            select(CandidateVerificationMapRow)
+            .where(
+                CandidateVerificationMapRow.company_id == tenant.company_id,
+                CandidateVerificationMapRow.applicant_id == applicant_id,
+                CandidateVerificationMapRow.invitation_id == invitation_id,
+                CandidateVerificationMapRow.competency_model_version_id
+                == competency_model_version_id,
+            )
+            .order_by(CandidateVerificationMapRow.created_at.desc())
+            .limit(1)
+        )
+        if row is None:
+            return None
+        return CandidateVerificationMap(
+            candidate_verification_map_id=row.candidate_verification_map_id,
+            company_id=row.company_id,
+            applicant_id=row.applicant_id,
+            invitation_id=row.invitation_id,
+            competency_model_version_id=row.competency_model_version_id,
+            criterion_version=row.criterion_version,
+            material_version=row.material_version,
+            retrieval_version=row.retrieval_version,
+            embedding_model=row.embedding_model,
+            embedding_version=row.embedding_version,
+            generation_version=row.generation_version,
+            ordered_target_ids=tuple(UUID(value) for value in row.ordered_target_ids),
+            time_budget_seconds=row.time_budget_seconds,
+            readiness_state=row.readiness_state,
+            created_at=row.created_at,
+        )
+
+    def list_verification_maps(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+    ) -> tuple[CandidateVerificationMap, ...]:
+        tenant = require_tenant_context(context)
+        rows = self._session.scalars(
+            select(CandidateVerificationMapRow).where(
+                CandidateVerificationMapRow.company_id == tenant.company_id,
+                CandidateVerificationMapRow.applicant_id == applicant_id,
+                CandidateVerificationMapRow.invitation_id == invitation_id,
+            )
+        ).all()
+        return tuple(
+            CandidateVerificationMap(
+                candidate_verification_map_id=row.candidate_verification_map_id,
+                company_id=row.company_id,
+                applicant_id=row.applicant_id,
+                invitation_id=row.invitation_id,
+                competency_model_version_id=row.competency_model_version_id,
+                criterion_version=row.criterion_version,
+                material_version=row.material_version,
+                retrieval_version=row.retrieval_version,
+                embedding_model=row.embedding_model,
+                embedding_version=row.embedding_version,
+                generation_version=row.generation_version,
+                ordered_target_ids=tuple(UUID(value) for value in row.ordered_target_ids),
+                time_budget_seconds=row.time_budget_seconds,
+                readiness_state=row.readiness_state,
+                created_at=row.created_at,
+            )
+            for row in rows
+        )
+
+    def list_verification_targets(
+        self,
+        context: TenantContext,
+        verification_map: CandidateVerificationMap,
+    ) -> tuple[VerificationTarget, ...]:
+        tenant = require_tenant_context(context)
+        rows = self._session.scalars(
+            select(VerificationTargetRow).where(
+                VerificationTargetRow.company_id == tenant.company_id,
+                VerificationTargetRow.verification_target_id.in_(
+                    verification_map.ordered_target_ids
+                ),
+            )
+        ).all()
+        by_id = {row.verification_target_id: row for row in rows}
+        return tuple(
+            VerificationTarget(
+                verification_target_id=by_id[target_id].verification_target_id,
+                company_id=by_id[target_id].company_id,
+                applicant_id=by_id[target_id].applicant_id,
+                invitation_id=by_id[target_id].invitation_id,
+                competency_model_version_id=(by_id[target_id].competency_model_version_id),
+                criterion_id=by_id[target_id].criterion_id,
+                target_type=VerificationTargetType(by_id[target_id].target_type),
+                objective=by_id[target_id].objective,
+                missing_dimensions=tuple(by_id[target_id].missing_dimensions),
+                priority=by_id[target_id].priority,
+                max_follow_ups=by_id[target_id].max_follow_ups,
+                source_reference_candidates=tuple(
+                    UUID(value) for value in by_id[target_id].source_reference_candidates
+                ),
+            )
+            for target_id in verification_map.ordered_target_ids
+            if target_id in by_id
+        )
+
+    def list_retrieval_document_ids(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+    ) -> tuple[UUID, ...]:
+        tenant = require_tenant_context(context)
+        return tuple(
+            self._session.scalars(
+                select(RetrievalDocumentRow.retrieval_document_id).where(
+                    RetrievalDocumentRow.company_id == tenant.company_id,
+                    RetrievalDocumentRow.applicant_id == applicant_id,
+                    RetrievalDocumentRow.invitation_id == invitation_id,
+                )
+            ).all()
+        )
+
     def delete_and_verify_target(
         self,
         context: TenantContext,
@@ -962,6 +1633,30 @@ class SqlAlchemySubmissionRepository:
                 InterviewStrategyRow,
                 InterviewStrategyRow.company_id,
                 InterviewStrategyRow.interview_strategy_id,
+            )
+        elif resource_type == "candidate_claim":
+            row = (
+                CandidateClaimRow,
+                CandidateClaimRow.company_id,
+                CandidateClaimRow.candidate_claim_id,
+            )
+        elif resource_type == "claim_conflict":
+            row = (
+                ClaimConflictRow,
+                ClaimConflictRow.company_id,
+                ClaimConflictRow.claim_conflict_id,
+            )
+        elif resource_type == "verification_target":
+            row = (
+                VerificationTargetRow,
+                VerificationTargetRow.company_id,
+                VerificationTargetRow.verification_target_id,
+            )
+        elif resource_type == "candidate_verification_map":
+            row = (
+                CandidateVerificationMapRow,
+                CandidateVerificationMapRow.company_id,
+                CandidateVerificationMapRow.candidate_verification_map_id,
             )
         else:
             raise ValueError("unsupported submission deletion target")

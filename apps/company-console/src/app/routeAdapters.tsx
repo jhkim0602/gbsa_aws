@@ -10,49 +10,28 @@ import {
   beginCompanyLogin,
   completeCompanyLogin,
   getCompanyAccessToken,
-  type CompanyAuthConfig,
 } from "../features/company/cognitoAuth";
 import {
+  ApplicantDetail,
+  ApplicantManagement,
+  CompanyOverview,
+  CompanyPositions,
+  PositionOperations,
+  type CompanyOperationsApi,
+} from "../features/company";
+import {
+  type InvitationStatus,
   HiringWorkspace,
-  type CriteriaConfiguration,
+  type PositionInvitationApi,
   type HiringWorkspaceApi,
 } from "../features/hiring";
+import { ReviewWorkspace, type ReviewApi } from "../features/review";
 import {
-  HumanReview,
-  ReportView,
-  TimelineView,
-  type ReviewApi,
-} from "../features/review";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
-const AUTH_CONFIG = companyAuthConfig();
-
-function idempotencyKey(prefix: string) {
-  return `${prefix}-${crypto.randomUUID()}`;
-}
-
-async function companyRequest<T>(
-  path: string,
-  init: RequestInit = {},
-): Promise<T> {
-  const token = AUTH_CONFIG
-    ? getCompanyAccessToken(localStorage)
-    : (localStorage.getItem("iep_company_token") ??
-      import.meta.env.VITE_LOCAL_DEMO_ACCESS ??
-      "");
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init.headers,
-    },
-  });
-  if (!response.ok) {
-    throw new Error(`company request failed: ${response.status}`);
-  }
-  return (await response.json()) as T;
-}
+  companyAuthConfig as AUTH_CONFIG,
+  companyRequest,
+  companyWorkspaceApi,
+  idempotencyKey,
+} from "./api/companyClient";
 
 const hiringApi: HiringWorkspaceApi = {
   async createPosition(input) {
@@ -61,7 +40,14 @@ const hiringApi: HiringWorkspaceApi = {
       {
         method: "POST",
         headers: { "Idempotency-Key": idempotencyKey("position") },
-        body: JSON.stringify(input),
+        body: JSON.stringify({
+          title: input.title,
+          description: input.description,
+          role_type: input.roleType,
+          headcount: input.headcount,
+          recruitment_start_at: input.recruitmentStartAt,
+          recruitment_end_at: input.recruitmentEndAt,
+        }),
       },
     );
     return { positionId: result.position_id };
@@ -74,24 +60,34 @@ const hiringApi: HiringWorkspaceApi = {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey("criteria") },
       body: JSON.stringify({
+        job_requirements: input.jobRequirements.map((requirement) => ({
+          requirement_type: requirement.requirementType,
+          statement: requirement.statement,
+          priority: requirement.priority,
+          criterion_code: requirement.criterionCode,
+        })),
         criteria: input.criteria.map((criterion) => ({
           code: criterion.code,
           name: criterion.name,
           description: criterion.description,
           weight: criterion.weight,
-          good_evidence: { description: criterion.goodEvidence },
-          weak_evidence: { description: criterion.weakEvidence },
+          verification_guide: {
+            observable_dimensions:
+              criterion.verificationGuide.observableDimensions,
+            strong_answer_signals:
+              criterion.verificationGuide.strongAnswerSignals,
+            weak_answer_signals: criterion.verificationGuide.weakAnswerSignals,
+            follow_up_directions:
+              criterion.verificationGuide.followUpDirections,
+            max_follow_ups: criterion.verificationGuide.maxFollowUps,
+            time_budget_seconds: criterion.verificationGuide.timeBudgetSeconds,
+          },
           abstain_guidance: criterion.abstainGuidance,
           common_questions: criterion.commonQuestions,
           required: criterion.required,
         })),
         prohibited_topics: input.prohibitedTopics,
         interview_duration_minutes: input.interviewDurationMinutes,
-        persona_definition: {
-          name: input.persona.name,
-          tone: input.persona.tone,
-          voice_id: input.persona.voiceId,
-        },
       }),
     });
     const published = await companyRequest<{
@@ -108,60 +104,200 @@ const hiringApi: HiringWorkspaceApi = {
     );
     return { versionId: published.competency_model_version_id };
   },
-  previewVoice(persona) {
-    previewPersonaVoice(persona);
+};
+
+const positionInvitationApi: PositionInvitationApi = {
+  async listInvitations(positionId) {
+    const result = await companyRequest<{
+      items: Array<{
+        invitation_id: string;
+        position_id: string;
+        competency_model_version_id: string;
+        applicant_email: string;
+        applicant_display_name?: string | null;
+        status: string;
+        expires_at: string;
+        row_version: number;
+        analysis_status?: string | null;
+        interview_status?: string | null;
+        report_status?: string | null;
+        interview_session_id?: string | null;
+      }>;
+    }>(`/v1/positions/${positionId}/invitations?limit=100`);
+    return result.items.map((invitation) => ({
+      invitationId: invitation.invitation_id,
+      positionId: invitation.position_id,
+      competencyModelVersionId: invitation.competency_model_version_id,
+      applicantEmail: invitation.applicant_email,
+      applicantDisplayName: invitation.applicant_display_name,
+      status: invitation.status as InvitationStatus,
+      expiresAt: invitation.expires_at,
+      rowVersion: invitation.row_version,
+      analysisStatus: invitation.analysis_status,
+      interviewStatus: invitation.interview_status,
+      reportStatus: invitation.report_status,
+      interviewSessionId: invitation.interview_session_id,
+    }));
   },
-  async createCampaign(positionId, versionId, name) {
-    const draft = await companyRequest<{
-      campaign_id: string;
-      row_version: number;
-    }>("/v1/campaigns", {
+  async createInvitations(positionId, applicants, expiresInDays) {
+    const result = await companyRequest<{
+      accepted_count: number;
+      rejected_count: number;
+      invitations: Array<{
+        invitation_id: string;
+        position_id: string;
+        competency_model_version_id: string;
+        applicant_email: string;
+        applicant_display_name?: string | null;
+        status: string;
+        expires_at: string;
+        row_version: number;
+      }>;
+    }>(`/v1/positions/${positionId}/invitations`, {
       method: "POST",
-      headers: { "Idempotency-Key": idempotencyKey("campaign") },
+      headers: { "Idempotency-Key": idempotencyKey("invitation-batch") },
       body: JSON.stringify({
-        position_id: positionId,
-        competency_model_version_id: versionId,
-        name,
-        candidate_instructions:
-          "조용한 환경에서 카메라와 마이크를 준비해 주세요.",
+        applicants: applicants.map((applicant) => ({
+          email: applicant.email,
+          display_name: applicant.displayName,
+        })),
+        expires_at: new Date(
+          Date.now() + expiresInDays * 86_400_000,
+        ).toISOString(),
       }),
     });
-    await companyRequest(`/v1/campaigns/${draft.campaign_id}/publish`, {
-      method: "POST",
-      headers: {
-        "Idempotency-Key": idempotencyKey("campaign-publish"),
-        "If-Match-Version": String(draft.row_version),
-      },
-    });
-    return { campaignId: draft.campaign_id };
-  },
-  async issueInvitation(campaignId, email) {
-    await companyRequest(`/v1/campaigns/${campaignId}/invitations`, {
-      method: "POST",
-      headers: { "Idempotency-Key": idempotencyKey("invitation") },
-      body: JSON.stringify({
-        applicants: [{ email, display_name: email.split("@")[0] }],
-        expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(),
-      }),
-    });
+    return {
+      acceptedCount: result.accepted_count,
+      rejectedCount: result.rejected_count,
+      invitations: result.invitations.map((invitation) => ({
+        invitationId: invitation.invitation_id,
+        positionId: invitation.position_id,
+        competencyModelVersionId: invitation.competency_model_version_id,
+        applicantEmail: invitation.applicant_email,
+        applicantDisplayName: invitation.applicant_display_name,
+        status: invitation.status as InvitationStatus,
+        expiresAt: invitation.expires_at,
+        rowVersion: invitation.row_version,
+      })),
+    };
   },
 };
 
-function previewPersonaVoice(persona: CriteriaConfiguration["persona"]) {
-  if (!("speechSynthesis" in window)) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(
-    `${persona.name}입니다. ${persona.tone} 방식으로 면접을 진행하겠습니다.`,
-  );
-  utterance.lang = "ko-KR";
-  const selected = window.speechSynthesis
-    .getVoices()
-    .find((voice) =>
-      voice.name.toLowerCase().includes(persona.voiceId.toLowerCase()),
-    );
-  if (selected) utterance.voice = selected;
-  window.speechSynthesis.speak(utterance);
-}
+const companyOperationsApi: CompanyOperationsApi = {
+  ...companyWorkspaceApi,
+  listInvitations: positionInvitationApi.listInvitations,
+  async updatePosition(input) {
+    const result = await companyRequest<{
+      position_id: string;
+      title: string;
+      description: string;
+      role_type?: string | null;
+      headcount?: number | null;
+      recruitment_start_at?: string | null;
+      recruitment_end_at?: string | null;
+      status: string;
+      row_version: number;
+      created_at: string;
+    }>(`/v1/positions/${input.positionId}`, {
+      method: "PATCH",
+      headers: { "If-Match-Version": String(input.rowVersion) },
+      body: JSON.stringify({
+        title: input.title,
+        description: input.description,
+        role_type: input.roleType ?? null,
+        headcount: input.headcount ?? null,
+        recruitment_start_at: input.recruitmentStartAt ?? null,
+        recruitment_end_at: input.recruitmentEndAt ?? null,
+        status: input.status,
+      }),
+    });
+    return {
+      positionId: result.position_id,
+      title: result.title,
+      description: result.description,
+      roleType: result.role_type,
+      headcount: result.headcount,
+      recruitmentStartAt: result.recruitment_start_at,
+      recruitmentEndAt: result.recruitment_end_at,
+      status: result.status,
+      rowVersion: result.row_version,
+      createdAt: result.created_at,
+    };
+  },
+  async listCriterionVersions(positionId) {
+    const result = await companyRequest<{
+      items: Array<{
+        competency_model_version_id: string;
+        position_id: string;
+        version_number: number;
+        status: "draft" | "published" | "retired";
+        row_version: number;
+        published_at?: string | null;
+        job_requirements: Array<{
+          requirement_type: "required" | "preferred";
+          statement: string;
+          priority: number;
+          criterion_code: string;
+        }>;
+        criteria: Array<{
+          code: string;
+          name: string;
+          description: string;
+          weight: number;
+          required: boolean;
+          verification_guide: {
+            observable_dimensions: string[];
+            strong_answer_signals: string[];
+            weak_answer_signals: string[];
+            follow_up_directions: string[];
+            max_follow_ups: number;
+            time_budget_seconds: number;
+          };
+          abstain_guidance: string;
+          common_questions: string[];
+        }>;
+        prohibited_topics: string[];
+        interview_duration_minutes: number;
+      }>;
+    }>(`/v1/positions/${positionId}/competency-model-versions?limit=100`);
+    return result.items.map((version) => ({
+      versionId: version.competency_model_version_id,
+      positionId: version.position_id,
+      versionNumber: version.version_number,
+      status: version.status,
+      rowVersion: version.row_version,
+      publishedAt: version.published_at,
+      jobRequirements: version.job_requirements.map((requirement) => ({
+        requirementType: requirement.requirement_type,
+        statement: requirement.statement,
+        priority: requirement.priority,
+        criterionCode: requirement.criterion_code,
+      })),
+      criteria: version.criteria.map((criterion) => ({
+        code: criterion.code,
+        name: criterion.name,
+        description: criterion.description,
+        weight: criterion.weight,
+        required: criterion.required,
+        verificationGuide: {
+          observableDimensions:
+            criterion.verification_guide.observable_dimensions,
+          strongAnswerSignals:
+            criterion.verification_guide.strong_answer_signals,
+          weakAnswerSignals: criterion.verification_guide.weak_answer_signals,
+          followUpDirections: criterion.verification_guide.follow_up_directions,
+          maxFollowUps: criterion.verification_guide.max_follow_ups,
+          timeBudgetSeconds: criterion.verification_guide.time_budget_seconds,
+        },
+        abstainGuidance: criterion.abstain_guidance,
+        commonQuestions: criterion.common_questions,
+      })),
+      prohibitedTopics: version.prohibited_topics,
+      interviewDurationMinutes: version.interview_duration_minutes,
+    }));
+  },
+  publishCriteria: hiringApi.publishCriteria,
+};
 
 type ReportResponse = {
   report_id: string;
@@ -191,6 +327,26 @@ type TimelineResponse = {
     start_ms: number;
     end_ms: number;
     text: string | null;
+    question_rationale: {
+      criterion_id: string;
+      verification_target_type:
+        | "not_mentioned"
+        | "claim_found"
+        | "detail_missing"
+        | "source_conflict"
+        | "ownership_uncertain";
+      objective: string;
+      question_type: string;
+      retrieval_version: string;
+      generation_version: string;
+      policy_result: string;
+      source_references: Array<{
+        source_id: string;
+        source_type: string;
+        locator: Record<string, unknown>;
+        excerpt: string;
+      }>;
+    } | null;
   }>;
   playback: {
     status: "ready" | "partial" | "processing" | "unavailable";
@@ -199,14 +355,71 @@ type TimelineResponse = {
 };
 
 export function CompanyHomeRoute() {
-  return <Navigate replace to="/hiring" />;
-}
-
-export function HiringRoute() {
   if (AUTH_CONFIG && !getCompanyAccessToken(localStorage)) {
     return <Navigate replace to="/auth/login" />;
   }
-  return <HiringWorkspace api={hiringApi} />;
+  return <CompanyOverview api={companyOperationsApi} />;
+}
+
+export function CompanyPositionsRoute() {
+  if (AUTH_CONFIG && !getCompanyAccessToken(localStorage)) {
+    return <Navigate replace to="/auth/login" />;
+  }
+  return <CompanyPositions api={companyOperationsApi} />;
+}
+
+export function PositionOperationsRoute() {
+  const { positionId = "" } = useParams();
+  if (AUTH_CONFIG && !getCompanyAccessToken(localStorage)) {
+    return <Navigate replace to="/auth/login" />;
+  }
+  if (!positionId) {
+    return <Navigate replace to="/positions" />;
+  }
+  return (
+    <PositionOperations
+      positionId={positionId}
+      api={companyOperationsApi}
+      invitationApi={positionInvitationApi}
+    />
+  );
+}
+
+export function ApplicantManagementRoute() {
+  if (AUTH_CONFIG && !getCompanyAccessToken(localStorage)) {
+    return <Navigate replace to="/auth/login" />;
+  }
+  return <ApplicantManagement api={companyOperationsApi} />;
+}
+
+export function ApplicantDetailRoute() {
+  const { positionId = "", invitationId = "" } = useParams();
+  if (AUTH_CONFIG && !getCompanyAccessToken(localStorage)) {
+    return <Navigate replace to="/auth/login" />;
+  }
+  if (!positionId || !invitationId) {
+    return <Navigate replace to="/applicants" />;
+  }
+  return (
+    <ApplicantDetail
+      positionId={positionId}
+      invitationId={invitationId}
+      api={companyOperationsApi}
+    />
+  );
+}
+
+export function HiringRoute() {
+  const navigate = useNavigate();
+  if (AUTH_CONFIG && !getCompanyAccessToken(localStorage)) {
+    return <Navigate replace to="/auth/login" />;
+  }
+  return (
+    <HiringWorkspace
+      api={hiringApi}
+      onOpenPosition={(positionId) => navigate(`/positions/${positionId}`)}
+    />
+  );
 }
 
 export function ReviewRoute() {
@@ -301,65 +514,84 @@ export function ReviewRoute() {
   };
 
   return (
-    <main>
-      <h1>지원자 검토</h1>
+    <>
       {!report || !timeline ? (
-        <p role="status">
-          {error
-            ? "리포트를 불러올 수 없습니다."
-            : "리포트를 불러오는 중입니다."}
-        </p>
+        <section className="review-workspace">
+          <header className="page-header">
+            <div>
+              <p className="page-eyebrow">Interview evidence</p>
+              <h1>지원자 검토</h1>
+              <p>AI 분석과 실제 답변 구간을 불러오고 있습니다.</p>
+            </div>
+          </header>
+          <div className="async-state" role={error ? "alert" : "status"}>
+            <p>
+              {error
+                ? "리포트를 불러올 수 없습니다. 잠시 후 다시 시도해 주세요."
+                : "리포트와 영상 타임라인을 불러오는 중입니다."}
+            </p>
+          </div>
+        </section>
       ) : (
-        <>
-          <ReportView
-            report={{
-              summary: report.summary,
-              status: report.status,
-              items: report.items.map((item) => ({
-                reportItemId: item.report_item_id,
-                criterionName: item.criterion_id,
-                assessmentState: item.assessment_state,
-                observation: item.observation,
-                evidence: item.evidence.map((evidence) => ({
-                  evidenceId: evidence.evidence_id,
-                  startMs: evidence.video_start_ms,
-                  endMs: evidence.video_end_ms,
-                })),
+        <ReviewWorkspace
+          sessionId={sessionId}
+          invitationId={invitationId}
+          api={reviewApi}
+          report={{
+            summary: report.summary,
+            status: report.status,
+            items: report.items.map((item) => ({
+              reportItemId: item.report_item_id,
+              criterionName: item.criterion_id,
+              assessmentState: item.assessment_state,
+              observation: item.observation,
+              evidence: item.evidence.map((evidence) => ({
+                evidenceId: evidence.evidence_id,
+                startMs: evidence.video_start_ms,
+                endMs: evidence.video_end_ms,
               })),
-            }}
-            onOverride={(reportItemId, assessmentState) =>
-              reviewApi.overrideAssessment(
-                reportItemId,
-                assessmentState,
-                "기업 검토자가 평가 상태를 수정함",
-              )
-            }
-            onSelectEvidence={() => undefined}
-          />
-          <TimelineView
-            entries={timeline.entries.map((entry) => ({
+            })),
+          }}
+          timeline={{
+            entries: timeline.entries.map((entry) => ({
               entryId: entry.entry_id,
               type: entry.entry_type,
               startMs: entry.start_ms,
               endMs: entry.end_ms,
               text: entry.text,
-            }))}
-            playbackStatus={timeline.playback.status}
-            playbackUrl={timeline.playback.url ?? undefined}
-            onSeek={() => undefined}
-          />
-          <HumanReview
-            api={reviewApi}
-            invitationId={invitationId}
-            deletion={{
-              status: "not_requested",
-              verifiedTargets: 0,
-              expectedTargets: 0,
-            }}
-          />
-        </>
+              questionRationale: entry.question_rationale
+                ? {
+                    criterionId: entry.question_rationale.criterion_id,
+                    verificationTargetType:
+                      entry.question_rationale.verification_target_type,
+                    objective: entry.question_rationale.objective,
+                    questionType: entry.question_rationale.question_type,
+                    policyResult: entry.question_rationale.policy_result,
+                    sourceReferences:
+                      entry.question_rationale.source_references.map(
+                        (source) => ({
+                          sourceId: source.source_id,
+                          sourceType: source.source_type,
+                          locator: source.locator,
+                          excerpt: source.excerpt,
+                        }),
+                      ),
+                  }
+                : null,
+            })),
+            playback: {
+              status: timeline.playback.status,
+              url: timeline.playback.url ?? undefined,
+            },
+          }}
+          deletion={{
+            status: "not_requested",
+            verifiedTargets: 0,
+            expectedTargets: 0,
+          }}
+        />
       )}
-    </main>
+    </>
   );
 }
 
@@ -379,17 +611,22 @@ export function CompanyLoginRoute() {
   }
 
   return (
-    <main>
-      <h1>기업 로그인</h1>
-      <p>기업 계정으로 로그인해 채용 캠페인과 지원자 검토를 시작합니다.</p>
-      {AUTH_CONFIG ? (
-        <button type="button" onClick={() => void login()}>
-          Cognito로 로그인
-        </button>
-      ) : (
-        <p role="status">로컬 개발 인증을 사용하고 있습니다.</p>
-      )}
-      {error && <p role="alert">로그인을 시작할 수 없습니다.</p>}
+    <main className="auth-page">
+      <section className="auth-panel">
+        <span className="company-brand__mark" aria-hidden="true">
+          G
+        </span>
+        <h1>기업 로그인</h1>
+        <p>기업 계정으로 로그인해 채용 포지션과 지원자 검토를 시작합니다.</p>
+        {AUTH_CONFIG ? (
+          <button type="button" onClick={() => void login()}>
+            Cognito로 로그인
+          </button>
+        ) : (
+          <p role="status">로컬 개발 인증을 사용하고 있습니다.</p>
+        )}
+        {error && <p role="alert">로그인을 시작할 수 없습니다.</p>}
+      </section>
     </main>
   );
 }
@@ -414,21 +651,18 @@ export function CompanyAuthCallbackRoute() {
   }, [navigate, search]);
 
   return (
-    <main>
-      <h1>기업 로그인 확인</h1>
-      <p role={error ? "alert" : "status"}>
-        {error
-          ? "로그인 응답을 확인할 수 없습니다."
-          : "기업 계정 로그인을 확인하고 있습니다."}
-      </p>
+    <main className="auth-page">
+      <section className="auth-panel">
+        <span className="company-brand__mark" aria-hidden="true">
+          G
+        </span>
+        <h1>기업 로그인 확인</h1>
+        <p role={error ? "alert" : "status"}>
+          {error
+            ? "로그인 응답을 확인할 수 없습니다."
+            : "기업 계정 로그인을 확인하고 있습니다."}
+        </p>
+      </section>
     </main>
   );
-}
-
-function companyAuthConfig(): CompanyAuthConfig | null {
-  const domain = import.meta.env.VITE_COGNITO_DOMAIN;
-  const clientId = import.meta.env.VITE_COGNITO_CLIENT_ID;
-  const redirectUri = import.meta.env.VITE_COGNITO_REDIRECT_URI;
-  if (!domain || !clientId || !redirectUri) return null;
-  return { domain, clientId, redirectUri };
 }

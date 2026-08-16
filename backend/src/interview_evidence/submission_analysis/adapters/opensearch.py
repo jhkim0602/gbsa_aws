@@ -70,6 +70,17 @@ class AwsOpenSearchIndex:
                 "symbols": list(document.symbols),
                 "locator": document.locator,
                 "ownership_confidence": document.ownership_confidence,
+                "invitation_id": (
+                    str(document.invitation_id) if document.invitation_id is not None else None
+                ),
+                "competency_model_version_id": (
+                    str(document.competency_model_version_id)
+                    if document.competency_model_version_id is not None
+                    else None
+                ),
+                "criterion_id": (
+                    str(document.criterion_id) if document.criterion_id is not None else None
+                ),
             },
         )
 
@@ -133,6 +144,9 @@ class AwsOpenSearchIndex:
         query: str,
         query_vector: tuple[float, ...],
         exact_symbol: str | None,
+        invitation_id: UUID | None = None,
+        competency_model_version_id: UUID | None = None,
+        criterion_id: UUID | None = None,
     ) -> tuple[SearchCandidate, ...]:
         tenant = require_tenant_context(context)
         if tenant.actor_type.value == "applicant" and tenant.actor_id != applicant_id:
@@ -150,6 +164,28 @@ class AwsOpenSearchIndex:
         ]
         if exact_symbol is not None:
             should.append({"term": {"symbols.keyword": exact_symbol}})
+        filters: list[dict[str, object]] = [
+            {"term": {"company_id": str(tenant.company_id)}},
+            {"term": {"applicant_id": str(applicant_id)}},
+        ]
+        if invitation_id is not None:
+            filters.append({"term": {"invitation_id": str(invitation_id)}})
+        if competency_model_version_id is not None:
+            filters.append(
+                {"term": {"competency_model_version_id": str(competency_model_version_id)}}
+            )
+        if criterion_id is not None:
+            filters.append(
+                {
+                    "bool": {
+                        "should": [
+                            {"term": {"criterion_id": str(criterion_id)}},
+                            {"bool": {"must_not": {"exists": {"field": "criterion_id"}}}},
+                        ],
+                        "minimum_should_match": 1,
+                    }
+                }
+            )
         response = self._request(
             "POST",
             f"/{self._index_name}/_search",
@@ -164,13 +200,13 @@ class AwsOpenSearchIndex:
                     "symbols",
                     "locator",
                     "ownership_confidence",
+                    "invitation_id",
+                    "competency_model_version_id",
+                    "criterion_id",
                 ],
                 "query": {
                     "bool": {
-                        "filter": [
-                            {"term": {"company_id": str(tenant.company_id)}},
-                            {"term": {"applicant_id": str(applicant_id)}},
-                        ],
+                        "filter": filters,
                         "should": should,
                         "minimum_should_match": 1,
                     }
@@ -266,6 +302,17 @@ def _candidate(
             symbols=tuple(str(value) for value in cast(list[object], source["symbols"])),
             locator=cast(dict[str, object], source["locator"]),
             ownership_confidence=_as_float(source["ownership_confidence"]),
+            invitation_id=(
+                UUID(str(source["invitation_id"])) if source.get("invitation_id") else None
+            ),
+            competency_model_version_id=(
+                UUID(str(source["competency_model_version_id"]))
+                if source.get("competency_model_version_id")
+                else None
+            ),
+            criterion_id=(
+                UUID(str(source["criterion_id"])) if source.get("criterion_id") else None
+            ),
         )
     except (KeyError, TypeError, ValueError):
         return None

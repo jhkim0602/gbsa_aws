@@ -58,6 +58,7 @@ from interview_evidence.shared.aws_clients.ports import (
     InMemoryObjectStorage,
     ObjectStorage,
     SpeechToText,
+    TextEmbedder,
     TextToSpeech,
 )
 from interview_evidence.shared.ids import Clock, SystemClock
@@ -91,6 +92,7 @@ def create_lane_c_runtime(
     plan_provider: InterviewPlanProvider | None = None,
     retrieval_provider: SubmissionRetrieval | None = None,
     model: AIModel | None = None,
+    text_embedder: TextEmbedder | None = None,
     speech_to_text: SpeechToText | None = None,
     text_to_speech: TextToSpeech | None = None,
 ) -> LaneCRuntime:
@@ -135,10 +137,14 @@ def create_lane_c_runtime(
             recovery=recovery,
             checkpoints=checkpoints,
             context_builder=ContextBuilder(token_budget=2400),
-            retrieval=RetrievalClient(cast(SubmissionRetrieval, retrieval_provider)),
+            retrieval=RetrievalClient(
+                cast(SubmissionRetrieval, retrieval_provider),
+                embedder=text_embedder,
+            ),
             generator=QuestionGenerator(cast(AIModel, model)),
             policy=QuestionPolicy(),
             speech=SpeechSynthesisAdapter(cast(TextToSpeech, text_to_speech)),
+            outbox=active_outbox,
         )
         live_handler = LiveInterviewHandler(
             repository=active_repository,
@@ -192,6 +198,7 @@ def create_lane_c_app(
     plan_provider: InterviewPlanProvider | None = None,
     retrieval_provider: SubmissionRetrieval | None = None,
     model: AIModel | None = None,
+    text_embedder: TextEmbedder | None = None,
     speech_to_text: SpeechToText | None = None,
     text_to_speech: TextToSpeech | None = None,
 ) -> FastAPI:
@@ -208,6 +215,7 @@ def create_lane_c_app(
         plan_provider=plan_provider,
         retrieval_provider=retrieval_provider,
         model=model,
+        text_embedder=text_embedder,
         speech_to_text=speech_to_text,
         text_to_speech=text_to_speech,
     ).app

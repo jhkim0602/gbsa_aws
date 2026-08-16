@@ -313,9 +313,11 @@ def create_local_runtime(
                 auth=CompanyAuthAdapter(company_principals),
                 company_service=lane_a.company_service,
                 criteria_service=lane_a.criteria_service,
+                interviewer_service=lane_a.interviewer_service,
                 hiring_service=lane_a.hiring_service,
                 audit=audit,
                 invitation_email=InvitationEmailHandler(lane_a.email_sender),
+                interview_sessions=interview_public,
             ),
             create_company_applicant_router(
                 sessions=lane_a.sessions,

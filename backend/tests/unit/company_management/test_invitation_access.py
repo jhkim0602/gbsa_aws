@@ -16,9 +16,10 @@ from interview_evidence.shared.ids import FrozenClock
 from interview_evidence.shared.security.principals import PrincipalNotFoundError
 
 COMPANY_ID = UUID("00000000-0000-7000-8000-000000000001")
-CAMPAIGN_ID = UUID("00000000-0000-7000-8000-000000000002")
+POSITION_ID = UUID("00000000-0000-7000-8000-000000000002")
 INVITATION_ID = UUID("00000000-0000-7000-8000-000000000003")
 APPLICANT_ID = UUID("00000000-0000-7000-8000-000000000004")
+VERSION_ID = UUID("00000000-0000-7000-8000-000000000006")
 NOW = datetime(2026, 8, 15, 9, 0, tzinfo=UTC)
 
 
@@ -26,7 +27,8 @@ def invitation(token_hash: str, *, expires_at: datetime | None = None) -> Invita
     return Invitation.create(
         invitation_id=INVITATION_ID,
         company_id=COMPANY_ID,
-        campaign_id=CAMPAIGN_ID,
+        position_id=POSITION_ID,
+        competency_model_version_id=VERSION_ID,
         applicant_id=APPLICANT_ID,
         applicant_email="applicant@example.com",
         applicant_display_name="홍길동",

@@ -56,6 +56,8 @@ async def test_cross_route_worker_search_object_and_hot_view_isolation() -> None
         submission_public.retrieve_context(
             wrong_context,
             applicant_id=result.applicant_id,
+            invitation_id=result.invitation_id,
+            competency_model_version_id=result.hiring_criterion_version_id,
             query="결제 장애",
             query_vector=(1.0, 0.0),
             criterion_id=SECOND_COMPANY_ID,

@@ -1,5 +1,10 @@
 import { useState } from "react";
-import { Navigate, useParams, useSearchParams } from "react-router-dom";
+import {
+  Navigate,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 
 import {
   ApplicantAccess,
@@ -224,15 +229,29 @@ export function ApplicantHomeRoute() {
 
 export function AccessRoute() {
   const { token = "" } = useParams();
-  return <ApplicantAccess api={accessApi} initialToken={token} />;
+  const navigate = useNavigate();
+  return (
+    <ApplicantAccess
+      api={accessApi}
+      initialToken={token}
+      onContinue={() => navigate("/submissions")}
+    />
+  );
 }
 
 export function SubmissionsRoute() {
-  return <SubmissionWorkspace api={submissionApi} />;
+  const navigate = useNavigate();
+  return (
+    <SubmissionWorkspace
+      api={submissionApi}
+      onContinue={() => navigate("/interview")}
+    />
+  );
 }
 
 export function InterviewRoute() {
   const [search] = useSearchParams();
+  const navigate = useNavigate();
   const strategyId = search.get("strategyId") ?? "";
   const [session, setSession] = useState<{
     sessionId: string;
@@ -272,6 +291,15 @@ export function InterviewRoute() {
         equipmentCheckId: check.equipment_check_id,
         websocketPath: session.websocket_path,
       });
+      navigate(
+        {
+          pathname: "/interview/session",
+          search: strategyId
+            ? `?strategyId=${encodeURIComponent(strategyId)}`
+            : "",
+        },
+        { replace: true },
+      );
     } catch {
       setError(true);
     }
@@ -294,6 +322,7 @@ export function InterviewRoute() {
       equipmentCheckId={session.equipmentCheckId}
       websocketUrl={resolveWebSocketUrl(session.websocketPath)}
       recordingApi={createRecordingUploadApi(session.sessionId)}
+      onComplete={() => navigate("/interview/complete", { replace: true })}
     />
   );
 }

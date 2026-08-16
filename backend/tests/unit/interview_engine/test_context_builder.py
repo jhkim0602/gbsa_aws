@@ -3,6 +3,7 @@ from uuid import UUID
 from interview_evidence.interview_engine.application.context_builder import (
     ContextBuilder,
     ContextTurn,
+    RetrievedSourceContext,
 )
 
 
@@ -24,6 +25,19 @@ def test_context_builder_prioritizes_recent_turns_within_budget() -> None:
         ),
         remaining_time_seconds=300,
         retrieved_source_ids=(UUID("00000000-0000-7000-8000-000000000201"),),
+        retrieved_sources=(
+            RetrievedSourceContext(
+                source_id=UUID("00000000-0000-7000-8000-000000000201"),
+                source_type="submission_chunk",
+                locator={"page": 2},
+                excerpt="ECS 배포 경험은 있으나 장애 복구 설명은 없습니다.",
+                score=0.91,
+            ),
+        ),
+        criterion_text="ECS 운영 장애 대응 경험을 확인한다.",
+        verification_objective="원인 분석과 직접 복구 역할을 확인한다.",
+        missing_dimensions=("원인 분석", "직접 수행한 복구"),
+        follow_up_directions=("본인이 직접 수행한 복구 작업",),
     )
 
     assert result.estimated_tokens <= 140
@@ -31,3 +45,7 @@ def test_context_builder_prioritizes_recent_turns_within_budget() -> None:
     assert result.remaining_time_seconds == 300
     assert result.remaining_criterion_ids
     assert result.retrieved_source_ids
+    payload = result.model_payload()
+    assert payload["retrieved_sources"][0]["excerpt"].startswith("ECS 배포")
+    assert payload["verification_objective"] == ("원인 분석과 직접 복구 역할을 확인한다.")
+    assert payload["follow_up_directions"] == ["본인이 직접 수행한 복구 작업"]

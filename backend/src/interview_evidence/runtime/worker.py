@@ -21,7 +21,7 @@ from interview_evidence.reporting.application.deletion_service import DeletionSe
 from interview_evidence.reporting.application.evidence_service import EvidenceService
 from interview_evidence.shared.aws_clients.ports import ConsumableQueue, InMemoryQueue
 from interview_evidence.shared.database import RequestScopedDatabase
-from interview_evidence.shared.ids import Clock, SystemClock
+from interview_evidence.shared.ids import Clock, SystemClock, new_uuid7
 from interview_evidence.shared.messaging.outbox import Outbox, OutboxEvent
 from interview_evidence.shared.messaging.worker import (
     EventHandler,
@@ -33,6 +33,7 @@ from interview_evidence.shared.messaging.worker import (
 from interview_evidence.shared.operations import MetricRecorder, NullMetricRecorder
 from interview_evidence.shared.persistence import SQLProcessedMessageStore
 from interview_evidence.shared.tenant import TenantContext
+from interview_evidence.submission_analysis.adapters.search import SearchIndex
 from interview_evidence.submission_analysis.api import LaneBRuntime
 from interview_evidence.workers.analysis.document_extract import DocumentExtractionAdapter
 from interview_evidence.workers.analysis.event_handler import (
@@ -107,10 +108,12 @@ class MediaRequestedEventHandler:
         self,
         interview: InterviewEnginePublic,
         reporting: InterviewReportingBoundary,
+        outbox: Outbox,
         clock: Clock,
     ) -> None:
         self._interview = interview
         self._reporting = reporting
+        self._outbox = outbox
         self._clock = clock
 
     def __call__(self, context: TenantContext, event: OutboxEvent) -> object:
@@ -128,7 +131,7 @@ class MediaRequestedEventHandler:
             )
             for index, turn in enumerate(turns)
         )
-        return self._reporting.project_completed_session(
+        projection = self._reporting.project_completed_session(
             context,
             session_id=session_id,
             turn_ranges=ranges,
@@ -138,6 +141,56 @@ class MediaRequestedEventHandler:
             ),
             occurred_at=self._clock.now(),
         )
+        occurred_at = self._clock.now()
+        self._outbox.append(
+            OutboxEvent(
+                outbox_event_id=new_uuid7(occurred_at),
+                company_id=context.company_id,
+                aggregate_type="interview_session",
+                aggregate_id=session_id,
+                aggregate_version=event.aggregate_version,
+                event_type="report.generation_requested",
+                event_version=1,
+                payload={
+                    "interview_session_id": str(session_id),
+                    "report_version": "report-v1",
+                    "competency_model_version_id": str(projection.competency_model_version_id),
+                },
+                idempotency_key=f"report-generation-{session_id}",
+                trace_id=context.trace_id,
+                occurred_at=occurred_at,
+            )
+        )
+        return projection
+
+
+class InterviewCompletedEventHandler:
+    def __init__(self, outbox: Outbox, clock: Clock) -> None:
+        self._outbox = outbox
+        self._clock = clock
+
+    def __call__(self, context: TenantContext, event: OutboxEvent) -> object:
+        session_id = UUID(str(event.payload["interview_session_id"]))
+        occurred_at = self._clock.now()
+        requested = OutboxEvent(
+            outbox_event_id=new_uuid7(occurred_at),
+            company_id=context.company_id,
+            aggregate_type="interview_session",
+            aggregate_id=session_id,
+            aggregate_version=event.aggregate_version,
+            event_type="media.postprocess_requested",
+            event_version=1,
+            payload={
+                "interview_session_id": str(session_id),
+                "ordered_chunk_set_id": f"session-{session_id}-verified",
+                "output_profile_version": "hls-v1",
+            },
+            idempotency_key=f"media-postprocess-{session_id}",
+            trace_id=context.trace_id,
+            occurred_at=occurred_at,
+        )
+        self._outbox.append(requested)
+        return requested
 
 
 class ReportRequestedEventHandler:
@@ -333,6 +386,7 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
         speech_to_text=aws.speech_to_text,
         text_to_speech=aws.text_to_speech,
     )
+    search_index = cast(SearchIndex, runtime.resources["search_index"])
     outbox = cast(Outbox, runtime.resources["outbox"])
     clock = cast(Clock, runtime.resources["clock"])
     metrics = cast(MetricRecorder, runtime.resources["metrics"])
@@ -359,7 +413,8 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
                 aws.textract,
                 extractor_version="textract-v1",
             ),
-            search_index=aws.search_index,
+            search_index=search_index,
+            text_embedder=aws.embedder,
             strategy_model=aws.model,
             axis_provider=CompanyAnalysisAxisProvider(company),
             outbox=outbox,
@@ -383,9 +438,14 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
                 lane_b,
                 analysis_handler,
             ),
+            "interview.completed": InterviewCompletedEventHandler(
+                outbox,
+                clock,
+            ),
             "media.postprocess_requested": MediaRequestedEventHandler(
                 interview,
                 reporting_boundary,
+                outbox,
                 clock,
             ),
             "report.generation_requested": ReportRequestedEventHandler(

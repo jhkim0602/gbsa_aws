@@ -23,12 +23,15 @@ from interview_evidence.interview_engine.domain.session import (
 from interview_evidence.interview_engine.domain.turn import (
     HotViewSyncStatus,
     InterviewTurn,
+    QuestionRationale,
     QuestionSourceReference,
     RecordingChunk,
     RecordingUploadStatus,
     SessionCheckpoint,
     TurnSpeaker,
     TurnStatus,
+    VerificationProgress,
+    VerificationProgressState,
 )
 from interview_evidence.shared.tenant import TenantContext, require_tenant_context
 
@@ -141,10 +144,47 @@ class QuestionSourceReferenceRow(Base):
     source_id: Mapped[UUID] = mapped_column(Uuid)
     source_type: Mapped[str] = mapped_column(String(100))
     locator: Mapped[dict[str, object]] = mapped_column(JSON)
+    excerpt: Mapped[str] = mapped_column(String(2000), default="")
     relevance_score: Mapped[float]
     ownership_confidence: Mapped[float]
     retrieval_config_version: Mapped[str] = mapped_column(String(100))
     model_config_version: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class VerificationProgressRow(Base):
+    __tablename__ = "verification_progress"
+
+    verification_progress_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    interview_session_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    verification_target_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    criterion_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    state: Mapped[str] = mapped_column(String(40))
+    follow_up_count: Mapped[int] = mapped_column(Integer)
+    final_answer_turn_ids: Mapped[list[str]] = mapped_column(JSON)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class QuestionRationaleRow(Base):
+    __tablename__ = "question_rationales"
+
+    question_rationale_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    interview_session_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    question_turn_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    competency_model_version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    criterion_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    verification_target_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    verification_target_type: Mapped[str] = mapped_column(String(40))
+    objective: Mapped[str] = mapped_column(String(4000))
+    question_type: Mapped[str] = mapped_column(String(40))
+    retrieval_version: Mapped[str] = mapped_column(String(100))
+    generation_version: Mapped[str] = mapped_column(String(100))
+    policy_result: Mapped[str] = mapped_column(String(100))
+    source_reference_ids: Mapped[list[str]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
@@ -159,6 +199,9 @@ class InterviewRepository(Protocol):
         self, context: TenantContext, session: InterviewSession
     ) -> InterviewSession: ...
     def get_session(self, context: TenantContext, session_id: UUID) -> InterviewSession: ...
+    def find_session_for_invitation(
+        self, context: TenantContext, invitation_id: UUID
+    ) -> InterviewSession | None: ...
     def save_turn(self, context: TenantContext, turn: InterviewTurn) -> InterviewTurn: ...
     def get_turn(self, context: TenantContext, turn_id: UUID) -> InterviewTurn: ...
     def list_turns(self, context: TenantContext, session_id: UUID) -> tuple[InterviewTurn, ...]: ...
@@ -196,6 +239,32 @@ class InterviewRepository(Protocol):
         context: TenantContext,
         session_id: UUID,
     ) -> tuple[QuestionSourceReference, ...]: ...
+    def save_verification_progress(
+        self,
+        context: TenantContext,
+        progress: VerificationProgress,
+    ) -> VerificationProgress: ...
+    def list_verification_progress(
+        self,
+        context: TenantContext,
+        session_id: UUID,
+    ) -> tuple[VerificationProgress, ...]: ...
+    def save_question_rationale(
+        self,
+        context: TenantContext,
+        rationale: QuestionRationale,
+    ) -> QuestionRationale: ...
+    def get_question_rationale(
+        self,
+        context: TenantContext,
+        *,
+        question_turn_id: UUID,
+    ) -> QuestionRationale | None: ...
+    def list_question_rationales(
+        self,
+        context: TenantContext,
+        session_id: UUID,
+    ) -> tuple[QuestionRationale, ...]: ...
     def delete_and_verify_target(
         self,
         context: TenantContext,
@@ -213,6 +282,8 @@ class InMemoryInterviewRepository:
         self.checkpoints: dict[UUID, SessionCheckpoint] = {}
         self.recording_chunks: dict[UUID, RecordingChunk] = {}
         self.question_source_references: dict[UUID, QuestionSourceReference] = {}
+        self.verification_progress: dict[UUID, VerificationProgress] = {}
+        self.question_rationales: dict[UUID, QuestionRationale] = {}
 
     @staticmethod
     def _scoped(
@@ -243,6 +314,20 @@ class InMemoryInterviewRepository:
 
     def get_session(self, context: TenantContext, session_id: UUID) -> InterviewSession:
         return self._scoped(context, self.sessions, session_id)
+
+    def find_session_for_invitation(
+        self, context: TenantContext, invitation_id: UUID
+    ) -> InterviewSession | None:
+        tenant = require_tenant_context(context)
+        return next(
+            (
+                session
+                for session in self.sessions.values()
+                if session.company_id == tenant.company_id
+                and session.invitation_id == invitation_id
+            ),
+            None,
+        )
 
     def save_turn(self, context: TenantContext, turn: InterviewTurn) -> InterviewTurn:
         require_tenant_context(context).assert_company(turn.company_id)
@@ -416,6 +501,99 @@ class InMemoryInterviewRepository:
             and reference.interview_session_id == session_id
         )
 
+    def save_verification_progress(
+        self,
+        context: TenantContext,
+        progress: VerificationProgress,
+    ) -> VerificationProgress:
+        require_tenant_context(context).assert_company(progress.company_id)
+        self.get_session(context, progress.interview_session_id)
+        existing = next(
+            (
+                value
+                for value in self.verification_progress.values()
+                if value.company_id == progress.company_id
+                and value.interview_session_id == progress.interview_session_id
+                and value.verification_target_id == progress.verification_target_id
+            ),
+            None,
+        )
+        if existing is not None:
+            self.verification_progress.pop(
+                existing.verification_progress_id,
+                None,
+            )
+        self.verification_progress[progress.verification_progress_id] = progress
+        return progress
+
+    def list_verification_progress(
+        self,
+        context: TenantContext,
+        session_id: UUID,
+    ) -> tuple[VerificationProgress, ...]:
+        tenant = require_tenant_context(context)
+        self.get_session(context, session_id)
+        return tuple(
+            sorted(
+                (
+                    progress
+                    for progress in self.verification_progress.values()
+                    if progress.company_id == tenant.company_id
+                    and progress.interview_session_id == session_id
+                ),
+                key=lambda progress: (
+                    progress.updated_at,
+                    str(progress.verification_target_id),
+                ),
+            )
+        )
+
+    def save_question_rationale(
+        self,
+        context: TenantContext,
+        rationale: QuestionRationale,
+    ) -> QuestionRationale:
+        require_tenant_context(context).assert_company(rationale.company_id)
+        self.get_session(context, rationale.interview_session_id)
+        self.question_rationales[rationale.question_rationale_id] = rationale
+        return rationale
+
+    def get_question_rationale(
+        self,
+        context: TenantContext,
+        *,
+        question_turn_id: UUID,
+    ) -> QuestionRationale | None:
+        tenant = require_tenant_context(context)
+        return next(
+            (
+                rationale
+                for rationale in self.question_rationales.values()
+                if rationale.company_id == tenant.company_id
+                and rationale.question_turn_id == question_turn_id
+            ),
+            None,
+        )
+
+    def list_question_rationales(
+        self,
+        context: TenantContext,
+        session_id: UUID,
+    ) -> tuple[QuestionRationale, ...]:
+        tenant = require_tenant_context(context)
+        self.get_session(context, session_id)
+        return tuple(
+            sorted(
+                (
+                    rationale
+                    for rationale in self.question_rationales.values()
+                    if rationale.company_id == tenant.company_id
+                    and rationale.interview_session_id == session_id
+                ),
+                key=lambda rationale: rationale.created_at,
+            )
+        )
+
     def delete_and_verify_target(
         self,
         context: TenantContext,
@@ -454,6 +632,18 @@ class InMemoryInterviewRepository:
                 tenant.assert_company(recording_chunk.company_id)
                 self.recording_chunks.pop(resource_id, None)
             return resource_id not in self.recording_chunks
+        if resource_type == "verification_progress":
+            progress = self.verification_progress.get(resource_id)
+            if progress is not None:
+                tenant.assert_company(progress.company_id)
+                self.verification_progress.pop(resource_id, None)
+            return resource_id not in self.verification_progress
+        if resource_type == "question_rationale":
+            rationale = self.question_rationales.get(resource_id)
+            if rationale is not None:
+                tenant.assert_company(rationale.company_id)
+                self.question_rationales.pop(resource_id, None)
+            return resource_id not in self.question_rationales
         raise ValueError("unsupported interview deletion target")
 
 
@@ -566,6 +756,20 @@ class SqlAlchemyInterviewRepository:
         if row is None:
             raise TenantScopedInterviewNotFound("interview resource not found")
         return self._session_domain(row)
+
+    def find_session_for_invitation(
+        self, context: TenantContext, invitation_id: UUID
+    ) -> InterviewSession | None:
+        tenant = require_tenant_context(context)
+        row = self._session.scalar(
+            select(InterviewSessionRow)
+            .where(
+                InterviewSessionRow.company_id == tenant.company_id,
+                InterviewSessionRow.invitation_id == invitation_id,
+            )
+            .order_by(InterviewSessionRow.created_at.desc())
+        )
+        return None if row is None else self._session_domain(row)
 
     def save_turn(self, context: TenantContext, turn: InterviewTurn) -> InterviewTurn:
         require_tenant_context(context).assert_company(turn.company_id)
@@ -733,6 +937,7 @@ class SqlAlchemyInterviewRepository:
                     source_id=reference.source_id,
                     source_type=reference.source_type,
                     locator=dict(reference.locator),
+                    excerpt=reference.excerpt,
                     relevance_score=reference.relevance_score,
                     ownership_confidence=reference.ownership_confidence,
                     retrieval_config_version=reference.retrieval_config_version,
@@ -758,6 +963,121 @@ class SqlAlchemyInterviewRepository:
             )
         )
         return tuple(self._source_reference_domain(row) for row in rows)
+
+    def save_verification_progress(
+        self,
+        context: TenantContext,
+        progress: VerificationProgress,
+    ) -> VerificationProgress:
+        require_tenant_context(context).assert_company(progress.company_id)
+        self.get_session(context, progress.interview_session_id)
+        existing = self._session.scalar(
+            select(VerificationProgressRow).where(
+                VerificationProgressRow.company_id == progress.company_id,
+                VerificationProgressRow.interview_session_id == progress.interview_session_id,
+                VerificationProgressRow.verification_target_id == progress.verification_target_id,
+            )
+        )
+        row_id = (
+            existing.verification_progress_id
+            if existing is not None
+            else progress.verification_progress_id
+        )
+        self._session.merge(
+            VerificationProgressRow(
+                verification_progress_id=row_id,
+                company_id=progress.company_id,
+                interview_session_id=progress.interview_session_id,
+                applicant_id=progress.applicant_id,
+                verification_target_id=progress.verification_target_id,
+                criterion_id=progress.criterion_id,
+                state=progress.state.value,
+                follow_up_count=progress.follow_up_count,
+                final_answer_turn_ids=[str(value) for value in progress.final_answer_turn_ids],
+                updated_at=progress.updated_at,
+            )
+        )
+        self._session.flush()
+        return progress.model_copy(update={"verification_progress_id": row_id})
+
+    def list_verification_progress(
+        self,
+        context: TenantContext,
+        session_id: UUID,
+    ) -> tuple[VerificationProgress, ...]:
+        tenant = require_tenant_context(context)
+        self.get_session(context, session_id)
+        rows = self._session.scalars(
+            select(VerificationProgressRow)
+            .where(
+                VerificationProgressRow.company_id == tenant.company_id,
+                VerificationProgressRow.interview_session_id == session_id,
+            )
+            .order_by(VerificationProgressRow.updated_at)
+        )
+        return tuple(self._verification_progress_domain(row) for row in rows)
+
+    def save_question_rationale(
+        self,
+        context: TenantContext,
+        rationale: QuestionRationale,
+    ) -> QuestionRationale:
+        require_tenant_context(context).assert_company(rationale.company_id)
+        self.get_session(context, rationale.interview_session_id)
+        self._session.merge(
+            QuestionRationaleRow(
+                question_rationale_id=rationale.question_rationale_id,
+                company_id=rationale.company_id,
+                interview_session_id=rationale.interview_session_id,
+                question_turn_id=rationale.question_turn_id,
+                applicant_id=rationale.applicant_id,
+                competency_model_version_id=(rationale.competency_model_version_id),
+                criterion_id=rationale.criterion_id,
+                verification_target_id=rationale.verification_target_id,
+                verification_target_type=rationale.verification_target_type,
+                objective=rationale.objective,
+                question_type=rationale.question_type,
+                retrieval_version=rationale.retrieval_version,
+                generation_version=rationale.generation_version,
+                policy_result=rationale.policy_result,
+                source_reference_ids=[str(value) for value in rationale.source_reference_ids],
+                created_at=rationale.created_at,
+            )
+        )
+        self._session.flush()
+        return rationale
+
+    def get_question_rationale(
+        self,
+        context: TenantContext,
+        *,
+        question_turn_id: UUID,
+    ) -> QuestionRationale | None:
+        tenant = require_tenant_context(context)
+        row = self._session.scalar(
+            select(QuestionRationaleRow).where(
+                QuestionRationaleRow.company_id == tenant.company_id,
+                QuestionRationaleRow.question_turn_id == question_turn_id,
+            )
+        )
+        return None if row is None else self._question_rationale_domain(row)
+
+    def list_question_rationales(
+        self,
+        context: TenantContext,
+        session_id: UUID,
+    ) -> tuple[QuestionRationale, ...]:
+        tenant = require_tenant_context(context)
+        self.get_session(context, session_id)
+        rows = self._session.scalars(
+            select(QuestionRationaleRow)
+            .where(
+                QuestionRationaleRow.company_id == tenant.company_id,
+                QuestionRationaleRow.interview_session_id == session_id,
+            )
+            .order_by(QuestionRationaleRow.created_at)
+        )
+        return tuple(self._question_rationale_domain(row) for row in rows)
 
     def delete_and_verify_target(
         self,
@@ -800,6 +1120,18 @@ class SqlAlchemyInterviewRepository:
                 RecordingChunkRow,
                 RecordingChunkRow.company_id,
                 RecordingChunkRow.recording_chunk_id,
+            )
+        elif resource_type == "verification_progress":
+            row = (
+                VerificationProgressRow,
+                VerificationProgressRow.company_id,
+                VerificationProgressRow.verification_progress_id,
+            )
+        elif resource_type == "question_rationale":
+            row = (
+                QuestionRationaleRow,
+                QuestionRationaleRow.company_id,
+                QuestionRationaleRow.question_rationale_id,
             )
         else:
             raise ValueError("unsupported interview deletion target")
@@ -903,9 +1235,50 @@ class SqlAlchemyInterviewRepository:
             source_id=row.source_id,
             source_type=row.source_type,
             locator=dict(row.locator),
+            excerpt=row.excerpt,
             relevance_score=row.relevance_score,
             ownership_confidence=row.ownership_confidence,
             retrieval_config_version=row.retrieval_config_version,
             model_config_version=row.model_config_version,
+            created_at=row.created_at,
+        )
+
+    @staticmethod
+    def _verification_progress_domain(
+        row: VerificationProgressRow,
+    ) -> VerificationProgress:
+        return VerificationProgress(
+            verification_progress_id=row.verification_progress_id,
+            company_id=row.company_id,
+            interview_session_id=row.interview_session_id,
+            applicant_id=row.applicant_id,
+            verification_target_id=row.verification_target_id,
+            criterion_id=row.criterion_id,
+            state=VerificationProgressState(row.state),
+            follow_up_count=row.follow_up_count,
+            final_answer_turn_ids=tuple(UUID(value) for value in row.final_answer_turn_ids),
+            updated_at=row.updated_at,
+        )
+
+    @staticmethod
+    def _question_rationale_domain(
+        row: QuestionRationaleRow,
+    ) -> QuestionRationale:
+        return QuestionRationale(
+            question_rationale_id=row.question_rationale_id,
+            company_id=row.company_id,
+            interview_session_id=row.interview_session_id,
+            question_turn_id=row.question_turn_id,
+            applicant_id=row.applicant_id,
+            competency_model_version_id=row.competency_model_version_id,
+            criterion_id=row.criterion_id,
+            verification_target_id=row.verification_target_id,
+            verification_target_type=row.verification_target_type,
+            objective=row.objective,
+            question_type=row.question_type,
+            retrieval_version=row.retrieval_version,
+            generation_version=row.generation_version,
+            policy_result=row.policy_result,
+            source_reference_ids=tuple(UUID(value) for value in row.source_reference_ids),
             created_at=row.created_at,
         )

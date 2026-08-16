@@ -10,8 +10,8 @@ def test_company_to_human_decision_thin_journey() -> None:
     assert result.evidence_answer_turn_id == result.answer_turn_id
     assert result.human_decision == "hold"
     assert {
-        result.campaign_criterion_version_id,
+        result.hiring_criterion_version_id,
         result.strategy_criterion_version_id,
         result.session_criterion_version_id,
         result.report_criterion_version_id,
-    } == {result.campaign_criterion_version_id}
+    } == {result.hiring_criterion_version_id}

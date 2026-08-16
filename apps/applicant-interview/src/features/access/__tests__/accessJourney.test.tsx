@@ -11,8 +11,19 @@ describe("ApplicantAccess", () => {
       getConsentPolicy: vi.fn().mockResolvedValue(consentPolicy),
       recordConsent: vi.fn().mockResolvedValue(undefined),
     };
-    render(<ApplicantAccess api={api} initialToken={"t".repeat(48)} />);
+    const onContinue = vi.fn();
+    render(
+      <ApplicantAccess
+        api={api}
+        initialToken={"t".repeat(48)}
+        onContinue={onContinue}
+      />,
+    );
 
+    expect(screen.getByRole("heading", { name: "진행 과정" })).toBeTruthy();
+    expect(screen.getByText("자료 제출")).toBeTruthy();
+    expect(screen.getByText("환경 점검")).toBeTruthy();
+    expect(screen.getByText("AI 면접")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "초대 확인" }));
     expect(await screen.findByText("본인 확인")).toBeTruthy();
 
@@ -27,7 +38,8 @@ describe("ApplicantAccess", () => {
     expect(await screen.findByText("개인정보 및 면접 처리 동의")).toBeTruthy();
     expect(screen.getByText(consentPolicy.aiRole)).toBeTruthy();
     expect(screen.getByText(consentPolicy.recordingNotice)).toBeTruthy();
-    expect(screen.getByText("보관기간: 180일")).toBeTruthy();
+    expect(screen.getByText("보관기간")).toBeTruthy();
+    expect(screen.getByText("180일")).toBeTruthy();
     expect(screen.getByText(consentPolicy.deletionMethod)).toBeTruthy();
     for (const label of ["문서 분석", "면접 녹화", "AI 평가 보조"]) {
       fireEvent.click(screen.getByLabelText(label));
@@ -37,6 +49,8 @@ describe("ApplicantAccess", () => {
     expect(
       await screen.findByText("면접 준비를 시작할 수 있습니다."),
     ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "자료 제출로 이동" }));
+    expect(onContinue).toHaveBeenCalledOnce();
     expect(api.exchangeToken).toHaveBeenCalledWith("t".repeat(48));
     expect(api.verifyIdentity).toHaveBeenCalledWith("홍길동", "1234");
     expect(api.recordConsent).toHaveBeenCalledWith(consentPolicy, [

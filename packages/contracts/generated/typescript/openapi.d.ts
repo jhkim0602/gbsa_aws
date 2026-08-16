@@ -180,54 +180,6 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/campaigns": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        readonly post: operations["createCampaign"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/campaigns/{campaign_id}/invitations": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get: operations["listInvitations"];
-        readonly put?: never;
-        readonly post: operations["createInvitations"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
-    readonly "/campaigns/{campaign_id}/publish": {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header?: never;
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly get?: never;
-        readonly put?: never;
-        readonly post: operations["publishCampaign"];
-        readonly delete?: never;
-        readonly options?: never;
-        readonly head?: never;
-        readonly patch?: never;
-        readonly trace?: never;
-    };
     readonly "/competency-model-versions/{version_id}/publish": {
         readonly parameters: {
             readonly query?: never;
@@ -292,6 +244,22 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/interviewer-profiles": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listInterviewerProfiles"];
+        readonly put?: never;
+        readonly post: operations["createInterviewerProfile"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/invitations/{invitation_id}/final-decisions": {
         readonly parameters: {
             readonly query?: never;
@@ -340,6 +308,22 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/positions/{position_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["getPosition"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch: operations["updatePosition"];
+        readonly trace?: never;
+    };
     readonly "/positions/{position_id}/competency-model-versions": {
         readonly parameters: {
             readonly query?: never;
@@ -347,9 +331,25 @@ export interface paths {
             readonly path?: never;
             readonly cookie?: never;
         };
-        readonly get?: never;
+        readonly get: operations["listCompetencyModelVersions"];
         readonly put?: never;
         readonly post: operations["createCompetencyModelVersion"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/positions/{position_id}/invitations": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listInvitations"];
+        readonly put?: never;
+        readonly post: operations["createInvitations"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -435,23 +435,6 @@ export interface components {
         };
         /** @enum {string} */
         readonly AssessmentState: "confirmed" | "partially_confirmed" | "insufficient_evidence" | "needs_follow_up";
-        readonly Campaign: components["schemas"]["CampaignCreate"] & {
-            /** Format: uuid */
-            readonly campaign_id: string;
-            /** Format: date-time */
-            readonly published_at?: string | null;
-            readonly row_version: number;
-            /** @enum {string} */
-            readonly status: "draft" | "published" | "closed";
-        };
-        readonly CampaignCreate: {
-            readonly candidate_instructions: string;
-            /** Format: uuid */
-            readonly competency_model_version_id: string;
-            readonly name: string;
-            /** Format: uuid */
-            readonly position_id: string;
-        };
         readonly CompanyUserView: {
             /** Format: uuid */
             readonly company_id: string;
@@ -462,11 +445,18 @@ export interface components {
             /** @enum {string} */
             readonly status: "invited" | "active" | "disabled";
         };
-        readonly CompetencyModelVersion: components["schemas"]["CompetencyModelVersionCreate"] & {
+        readonly CompetencyModelVersion: {
             /** Format: uuid */
             readonly competency_model_version_id: string;
+            readonly criteria: readonly components["schemas"]["EvaluationCriterionInput"][];
+            readonly interview_duration_minutes: number;
+            /** @description Legacy versions can be empty; new version requests require at least one item. */
+            readonly job_requirements: readonly components["schemas"]["JobRequirementInput"][];
+            /** @description System-managed compatibility field. */
+            readonly persona_definition?: Record<string, never>;
             /** Format: uuid */
             readonly position_id: string;
+            readonly prohibited_topics: readonly string[];
             /** Format: date-time */
             readonly published_at?: string | null;
             readonly row_version: number;
@@ -477,8 +467,14 @@ export interface components {
         readonly CompetencyModelVersionCreate: {
             readonly criteria: readonly components["schemas"]["EvaluationCriterionInput"][];
             readonly interview_duration_minutes: number;
-            readonly persona_definition: Record<string, never>;
+            readonly job_requirements: readonly components["schemas"]["JobRequirementInput"][];
+            /** @description System-managed compatibility field; recruiter clients must not set it. */
+            readonly persona_definition?: Record<string, never>;
             readonly prohibited_topics: readonly string[];
+        };
+        readonly CompetencyModelVersionPage: {
+            readonly items: readonly components["schemas"]["CompetencyModelVersion"][];
+            readonly next_cursor?: string | null;
         };
         readonly ConsentCreate: {
             readonly accepted_purposes: readonly ("document_analysis" | "recording" | "ai_assessment")[];
@@ -508,6 +504,14 @@ export interface components {
             readonly consent_record_id: string;
             readonly policy_version: string;
             readonly retention_days: number;
+        };
+        readonly CriterionVerificationGuide: {
+            readonly follow_up_directions: readonly string[];
+            readonly max_follow_ups: number;
+            readonly observable_dimensions: readonly string[];
+            readonly strong_answer_signals: readonly string[];
+            readonly time_budget_seconds: number;
+            readonly weak_answer_signals: readonly string[];
         };
         readonly DeletionRequestCreate: {
             readonly reason: string;
@@ -581,10 +585,11 @@ export interface components {
             readonly code: string;
             readonly common_questions?: readonly string[];
             readonly description: string;
-            readonly good_evidence: Record<string, never>;
+            readonly good_evidence?: Record<string, never>;
             readonly name: string;
             readonly required: boolean;
-            readonly weak_evidence: Record<string, never>;
+            readonly verification_guide: components["schemas"]["CriterionVerificationGuide"];
+            readonly weak_evidence?: Record<string, never>;
             readonly weight: number;
         };
         readonly EvidenceView: {
@@ -619,6 +624,23 @@ export interface components {
             readonly human_review_id: string;
             /** @enum {string} */
             readonly review_type: "assessment_override" | "note" | "bookmark" | "final_decision";
+        };
+        readonly InterviewerProfile: components["schemas"]["InterviewerProfileCreate"] & {
+            /** Format: date-time */
+            readonly created_at: string;
+            /** Format: uuid */
+            readonly interviewer_profile_id: string;
+            readonly row_version: number;
+        };
+        readonly InterviewerProfileCreate: {
+            readonly name: string;
+            /** @enum {string} */
+            readonly tone: "calm" | "friendly" | "analytical" | "concise";
+            readonly voice_id: string;
+        };
+        readonly InterviewerProfilePage: {
+            readonly items: readonly components["schemas"]["InterviewerProfile"][];
+            readonly next_cursor?: string | null;
         };
         readonly InterviewResumeSnapshot: {
             readonly degraded_modes?: readonly string[];
@@ -668,19 +690,31 @@ export interface components {
         };
         readonly InvitationView: {
             readonly analysis_status?: string | null;
+            readonly applicant_display_name?: string | null;
             /** Format: email */
             readonly applicant_email: string;
             /** Format: uuid */
-            readonly campaign_id: string;
+            readonly competency_model_version_id: string;
             /** Format: date-time */
             readonly expires_at: string;
+            /** Format: uuid */
+            readonly interview_session_id?: string | null;
             readonly interview_status?: string | null;
             /** Format: uuid */
             readonly invitation_id: string;
+            /** Format: uuid */
+            readonly position_id: string;
             readonly report_status?: string | null;
             readonly row_version: number;
             /** @enum {string} */
             readonly status: "invited" | "identity_verified" | "consented" | "materials_submitted" | "analyzing" | "ready" | "interviewing" | "interrupted" | "completed" | "reviewed" | "expired" | "revoked" | "deleted";
+        };
+        readonly JobRequirementInput: {
+            readonly criterion_code: string;
+            readonly priority: number;
+            /** @enum {string} */
+            readonly requirement_type: "required" | "preferred";
+            readonly statement: string;
         };
         readonly Position: components["schemas"]["PositionCreate"] & {
             /** Format: date-time */
@@ -693,11 +727,29 @@ export interface components {
         };
         readonly PositionCreate: {
             readonly description: string;
+            readonly headcount?: number | null;
+            /** Format: date */
+            readonly recruitment_end_at?: string | null;
+            /** Format: date */
+            readonly recruitment_start_at?: string | null;
+            readonly role_type?: string | null;
             readonly title: string;
         };
         readonly PositionPage: {
             readonly items: readonly components["schemas"]["Position"][];
             readonly next_cursor?: string | null;
+        };
+        readonly PositionUpdate: {
+            readonly description: string;
+            readonly headcount?: number | null;
+            /** Format: date */
+            readonly recruitment_end_at?: string | null;
+            /** Format: date */
+            readonly recruitment_start_at?: string | null;
+            readonly role_type?: string | null;
+            /** @enum {string} */
+            readonly status: "draft" | "active" | "closed";
+            readonly title: string;
         };
         readonly ProcessingStatus: {
             readonly message?: string | null;
@@ -705,6 +757,25 @@ export interface components {
             readonly retryable: boolean;
             /** @enum {string} */
             readonly status: "queued" | "running" | "partial" | "failed";
+        };
+        readonly QuestionRationaleView: {
+            /** Format: uuid */
+            readonly criterion_id: string;
+            readonly generation_version: string;
+            readonly objective: string;
+            readonly policy_result: string;
+            /** @enum {string} */
+            readonly question_type: "common" | "personalized" | "follow_up" | "degraded";
+            readonly retrieval_version: string;
+            readonly source_references: readonly {
+                readonly excerpt: string;
+                readonly locator: Record<string, never>;
+                /** Format: uuid */
+                readonly source_id: string;
+                readonly source_type: string;
+            }[];
+            /** @enum {string} */
+            readonly verification_target_type: "not_mentioned" | "claim_found" | "detail_missing" | "source_conflict" | "ownership_uncertain";
         };
         readonly RecordingUploadIntentCreate: {
             readonly byte_size: number;
@@ -774,6 +845,7 @@ export interface components {
                 readonly entry_id: string;
                 /** @enum {string} */
                 readonly entry_type: "question" | "answer" | "event" | "evidence";
+                readonly question_rationale?: components["schemas"]["QuestionRationaleView"] | null;
                 readonly start_ms: number;
                 /** @default false */
                 readonly technical_failure: boolean;
@@ -820,7 +892,6 @@ export interface components {
         };
     };
     parameters: {
-        readonly CampaignId: string;
         readonly Cursor: string;
         readonly IdempotencyKey: string;
         readonly IfMatchVersion: number;
@@ -1161,114 +1232,6 @@ export interface operations {
             readonly default: components["responses"]["Error"];
         };
     };
-    readonly createCampaign: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header: {
-                readonly "Idempotency-Key": components["parameters"]["IdempotencyKey"];
-            };
-            readonly path?: never;
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["CampaignCreate"];
-            };
-        };
-        readonly responses: {
-            /** @description Campaign created */
-            readonly 201: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["Campaign"];
-                };
-            };
-            readonly default: components["responses"]["Error"];
-        };
-    };
-    readonly listInvitations: {
-        readonly parameters: {
-            readonly query?: {
-                readonly cursor?: components["parameters"]["Cursor"];
-                readonly limit?: components["parameters"]["Limit"];
-            };
-            readonly header?: never;
-            readonly path: {
-                readonly campaign_id: components["parameters"]["CampaignId"];
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Invitations and progress projections */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["InvitationPage"];
-                };
-            };
-            readonly default: components["responses"]["Error"];
-        };
-    };
-    readonly createInvitations: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header: {
-                readonly "Idempotency-Key": components["parameters"]["IdempotencyKey"];
-            };
-            readonly path: {
-                readonly campaign_id: components["parameters"]["CampaignId"];
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody: {
-            readonly content: {
-                readonly "application/json": components["schemas"]["InvitationBatchCreate"];
-            };
-        };
-        readonly responses: {
-            /** @description Invitations accepted for issuance */
-            readonly 202: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["InvitationBatchResult"];
-                };
-            };
-            readonly default: components["responses"]["Error"];
-        };
-    };
-    readonly publishCampaign: {
-        readonly parameters: {
-            readonly query?: never;
-            readonly header: {
-                readonly "Idempotency-Key": components["parameters"]["IdempotencyKey"];
-                readonly "If-Match-Version": components["parameters"]["IfMatchVersion"];
-            };
-            readonly path: {
-                readonly campaign_id: components["parameters"]["CampaignId"];
-            };
-            readonly cookie?: never;
-        };
-        readonly requestBody?: never;
-        readonly responses: {
-            /** @description Published campaign */
-            readonly 200: {
-                headers: {
-                    readonly [name: string]: unknown;
-                };
-                content: {
-                    readonly "application/json": components["schemas"]["Campaign"];
-                };
-            };
-            readonly default: components["responses"]["Error"];
-        };
-    };
     readonly publishCompetencyModelVersion: {
         readonly parameters: {
             readonly query?: never;
@@ -1381,6 +1344,57 @@ export interface operations {
             readonly default: components["responses"]["Error"];
         };
     };
+    readonly listInterviewerProfiles: {
+        readonly parameters: {
+            readonly query?: {
+                readonly cursor?: components["parameters"]["Cursor"];
+                readonly limit?: components["parameters"]["Limit"];
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Tenant-scoped reusable AI interviewer profiles */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["InterviewerProfilePage"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly createInterviewerProfile: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                readonly "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["InterviewerProfileCreate"];
+            };
+        };
+        readonly responses: {
+            /** @description Reusable AI interviewer profile created */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["InterviewerProfile"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
     readonly recordHumanFinalDecision: {
         readonly parameters: {
             readonly query?: never;
@@ -1482,6 +1496,84 @@ export interface operations {
             readonly default: components["responses"]["Error"];
         };
     };
+    readonly getPosition: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly position_id: components["parameters"]["PositionId"];
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Tenant-scoped position details */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["Position"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly updatePosition: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                readonly "If-Match-Version": components["parameters"]["IfMatchVersion"];
+            };
+            readonly path: {
+                readonly position_id: components["parameters"]["PositionId"];
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["PositionUpdate"];
+            };
+        };
+        readonly responses: {
+            /** @description Position settings and lifecycle updated */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["Position"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly listCompetencyModelVersions: {
+        readonly parameters: {
+            readonly query?: {
+                readonly cursor?: components["parameters"]["Cursor"];
+                readonly limit?: components["parameters"]["Limit"];
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly position_id: components["parameters"]["PositionId"];
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Position criterion versions, newest first */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CompetencyModelVersionPage"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
     readonly createCompetencyModelVersion: {
         readonly parameters: {
             readonly query?: never;
@@ -1506,6 +1598,61 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["CompetencyModelVersion"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly listInvitations: {
+        readonly parameters: {
+            readonly query?: {
+                readonly cursor?: components["parameters"]["Cursor"];
+                readonly limit?: components["parameters"]["Limit"];
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly position_id: components["parameters"]["PositionId"];
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Invitations and progress projections */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["InvitationPage"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly createInvitations: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                readonly "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            readonly path: {
+                readonly position_id: components["parameters"]["PositionId"];
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["InvitationBatchCreate"];
+            };
+        };
+        readonly responses: {
+            /** @description Invitations accepted for issuance */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["InvitationBatchResult"];
                 };
             };
             readonly default: components["responses"]["Error"];

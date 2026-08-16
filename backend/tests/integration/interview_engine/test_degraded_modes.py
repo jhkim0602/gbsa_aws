@@ -71,6 +71,8 @@ def test_search_failure_returns_common_criterion_fallback_context() -> None:
     outcome = RetrievalClient(FailingRetrieval()).retrieve(
         context(),
         applicant_id=context().actor_id,
+        invitation_id=UUID("00000000-0000-7000-8000-000000000006"),
+        competency_model_version_id=UUID("00000000-0000-7000-8000-000000000007"),
         session_id=SESSION_ID,
         query="장애 대응",
         query_vector=(0.1, 0.2),

@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from interview_evidence.shared.aws_clients.ports import StaticTextEmbedder
 from interview_evidence.shared.ids import FrozenClock
 from interview_evidence.shared.messaging.outbox import InMemoryOutbox
 from interview_evidence.shared.tenant import ActorType, TenantContext
@@ -117,6 +118,7 @@ def test_document_event_creates_durable_chunks_search_records_and_strategy() -> 
     )
     search = InMemorySearchIndex()
     outbox = InMemoryOutbox()
+    embedder = StaticTextEmbedder(tuple(1.0 if index == 0 else 0.0 for index in range(1024)))
     pipeline = SubmissionAnalysisPipeline(
         repository=repository,
         extractor=DocumentExtractionAdapter(
@@ -131,6 +133,7 @@ def test_document_event_creates_durable_chunks_search_records_and_strategy() -> 
             extractor_version="textract-v1",
         ),
         search_index=search,
+        text_embedder=embedder,
         strategy_model=SourceAwareModel(),
         axis_provider=StaticAxisProvider(),
         outbox=outbox,
@@ -159,7 +162,7 @@ def test_document_event_creates_durable_chunks_search_records_and_strategy() -> 
         _context(),
         applicant_id=APPLICANT_ID,
         query="결제 장애율",
-        query_vector=pipeline.embed("결제 장애율"),
+        query_vector=embedder.embed(_context(), "결제 장애율"),
         exact_symbol=None,
     )
     strategy = repository.latest_strategy(_context(), INVITATION_ID)
@@ -184,6 +187,7 @@ def test_public_git_event_persists_code_units_and_exact_symbol_index() -> None:
         ),
     )
     search = InMemorySearchIndex()
+    embedder = StaticTextEmbedder(tuple(1.0 if index == 0 else 0.0 for index in range(1024)))
     pipeline = SubmissionAnalysisPipeline(
         repository=repository,
         extractor=DocumentExtractionAdapter(
@@ -191,6 +195,7 @@ def test_public_git_event_persists_code_units_and_exact_symbol_index() -> None:
             extractor_version="textract-v1",
         ),
         search_index=search,
+        text_embedder=embedder,
         strategy_model=SourceAwareModel(),
         axis_provider=StaticAxisProvider(),
         outbox=InMemoryOutbox(),
@@ -258,7 +263,7 @@ def test_public_git_event_persists_code_units_and_exact_symbol_index() -> None:
         _context(),
         applicant_id=APPLICANT_ID,
         query="retry payment",
-        query_vector=pipeline.embed("retry payment"),
+        query_vector=embedder.embed(_context(), "retry payment"),
         exact_symbol="retry_payment",
     )
     assert matches[0].exact_symbol_score == 1.0

@@ -20,6 +20,7 @@ from interview_evidence.shared.aws_clients.ports import (
     EmailSender,
     ObjectStorage,
     SpeechToText,
+    TextEmbedder,
     TextToSpeech,
 )
 from interview_evidence.shared.aws_clients.production import (
@@ -31,6 +32,7 @@ from interview_evidence.shared.aws_clients.production import (
     AwsSesEmailSender,
     AwsSqsQueue,
     AwsTextract,
+    AwsTitanTextEmbedder,
     AwsTranscribeSpeechToText,
     BedrockClient,
     CognitoClient,
@@ -81,9 +83,10 @@ class AwsRuntimeDependencies:
     media_storage: ObjectStorage
     email_sender: EmailSender
     recent_context: RecentContextPort
-    search_index: SearchIndex
+    search_index: SearchIndex | None
     queues: Mapping[str, ConsumableQueue]
     model: AIModel
+    embedder: TextEmbedder
     speech_to_text: SpeechToText
     text_to_speech: TextToSpeech
     textract: TextractPort
@@ -149,21 +152,46 @@ def create_aws_runtime_dependencies(
         cast(DynamoClient, factory("dynamodb")),
         table_name=_required(environment, "DYNAMODB_TABLE_NAME"),
     )
-    search_index = AwsOpenSearchIndex(
-        endpoint=_required(environment, "OPENSEARCH_ENDPOINT"),
-        index_name=_required(environment, "OPENSEARCH_INDEX_NAME"),
-        region=region,
-        signer=(
-            (lambda _method, _url, _body: {})
-            if environment.get("OPENSEARCH_SIGN_REQUESTS", "true").casefold() == "false"
-            else None
-        ),
+    retrieval_backend = (
+        environment.get(
+            "RETRIEVAL_BACKEND",
+            "aurora",
+        )
+        .strip()
+        .casefold()
+    )
+    if retrieval_backend not in {"aurora", "opensearch"}:
+        raise RuntimeError("RETRIEVAL_BACKEND must be aurora or opensearch")
+    search_index = (
+        AwsOpenSearchIndex(
+            endpoint=_required(environment, "OPENSEARCH_ENDPOINT"),
+            index_name=_required(environment, "OPENSEARCH_INDEX_NAME"),
+            region=region,
+            signer=(
+                (lambda _method, _url, _body: {})
+                if environment.get(
+                    "OPENSEARCH_SIGN_REQUESTS",
+                    "true",
+                ).casefold()
+                == "false"
+                else None
+            ),
+        )
+        if retrieval_backend == "opensearch"
+        else None
     )
     model = AwsBedrockModel(
         cast(BedrockClient, factory("bedrock-runtime")),
         model_id=_required(environment, "BEDROCK_MODEL_ID"),
         guardrail_id=environment.get("BEDROCK_GUARDRAIL_ID"),
         guardrail_version=environment.get("BEDROCK_GUARDRAIL_VERSION", "DRAFT"),
+    )
+    embedder = AwsTitanTextEmbedder(
+        cast(BedrockClient, factory("bedrock-runtime")),
+        model_id=environment.get(
+            "BEDROCK_EMBEDDING_MODEL_ID",
+            "amazon.titan-embed-text-v2:0",
+        ),
     )
     speech_to_text = AwsTranscribeSpeechToText(
         cast(TranscribeClient, factory("transcribe")),
@@ -205,6 +233,7 @@ def create_aws_runtime_dependencies(
         search_index=search_index,
         queues=queues,
         model=model,
+        embedder=embedder,
         speech_to_text=speech_to_text,
         text_to_speech=text_to_speech,
         textract=textract,

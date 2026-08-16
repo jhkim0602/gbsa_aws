@@ -18,6 +18,7 @@ from interview_evidence.shared.aws_clients.ports import (
     DeterministicTextToSpeech,
     InMemoryEmailSender,
     InMemoryObjectStorage,
+    StaticTextEmbedder,
 )
 from interview_evidence.shared.security.principals import (
     CompanyPrincipal,
@@ -56,6 +57,7 @@ def _runtime(database_url: str):
         recent_context=InMemoryRecentContext(),
         search_index=InMemorySearchIndex(),
         model=DeterministicAIModel({}),
+        embedder=StaticTextEmbedder(tuple(1.0 if index == 0 else 0.0 for index in range(1024))),
         speech_to_text=DeterministicSpeechToText({"text": "테스트 답변", "confidence": 0.99}),
         text_to_speech=DeterministicTextToSpeech({}),
     )

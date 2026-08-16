@@ -1,0 +1,383 @@
+.applicant-content > .submission-screen {
+  width: min(calc(100% - 48px), 640px);
+}
+
+.submission-heading {
+  margin-bottom: 28px;
+}
+
+.submission-heading > p:first-child,
+.submission-readiness-heading > div > p {
+  margin: 0 0 8px;
+  color: var(--applicant-muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+}
+
+.submission-heading h1 {
+  margin: 0;
+  font-size: 26px;
+  letter-spacing: 0;
+}
+
+.submission-heading > p:last-child {
+  max-width: 590px;
+  margin: 9px 0 0;
+  color: var(--applicant-muted);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.submission-list {
+  overflow: hidden;
+  border: 1px solid var(--applicant-border);
+  border-radius: var(--applicant-radius);
+  background: var(--applicant-surface);
+  box-shadow: var(--applicant-shadow);
+}
+
+.submission-item {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+}
+
+.submission-item + .submission-item {
+  border-top: 1px solid var(--applicant-border);
+}
+
+.submission-item-heading,
+.submission-readiness-heading,
+.submission-readiness-result > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.submission-item-heading h2,
+.submission-readiness-heading h2 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+.submission-item-heading p {
+  margin: 3px 0 0;
+  color: var(--applicant-muted);
+  font-size: 12px;
+}
+
+.submission-state {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid var(--applicant-border);
+  border-radius: 999px;
+  background: var(--applicant-surface);
+  color: var(--applicant-muted);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.submission-state[data-tone="success"] {
+  border-color: #82d39a;
+  background: var(--applicant-green-soft);
+  color: var(--applicant-green);
+}
+
+.submission-state[data-tone="info"] {
+  border-color: #dfe2ff;
+  background: var(--applicant-blue-soft);
+  color: var(--applicant-blue);
+}
+
+.submission-state[data-tone="warning"] {
+  border-color: #d4a72c;
+  background: #fff8c5;
+  color: var(--applicant-orange);
+}
+
+.submission-state[data-tone="danger"] {
+  border-color: #ff8182;
+  background: #ffebe9;
+  color: var(--applicant-danger);
+}
+
+.submission-file-control {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  min-height: 68px;
+  padding: 12px;
+  border: 1px dashed var(--applicant-border-strong);
+  border-radius: var(--applicant-radius);
+  background: var(--applicant-surface);
+  cursor: pointer;
+}
+
+.submission-file-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid var(--applicant-border);
+  border-radius: var(--applicant-radius);
+  background: var(--applicant-bg);
+  color: var(--applicant-danger);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.submission-file-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.submission-file-copy strong,
+.submission-file-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.submission-file-copy strong {
+  font-size: 13px;
+}
+
+.submission-file-copy small {
+  color: var(--applicant-muted);
+  font-size: 12px;
+}
+
+.submission-file-button,
+.submission-secondary-action {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: 1px solid var(--applicant-border);
+  border-radius: var(--applicant-radius);
+  background: var(--applicant-surface);
+  color: var(--applicant-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.submission-file-control input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.submission-action,
+.submission-continue {
+  display: inline-flex;
+  min-height: var(--applicant-control-height);
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  border: 1px solid var(--applicant-blue);
+  border-radius: var(--applicant-radius);
+  background: var(--applicant-blue);
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.submission-item > .submission-action {
+  justify-self: end;
+}
+
+.submission-action:disabled,
+.submission-secondary-action:disabled {
+  border-color: var(--applicant-border);
+  background: var(--applicant-surface-strong);
+  color: var(--applicant-subtle);
+  cursor: not-allowed;
+}
+
+.submission-url-control {
+  display: grid;
+  gap: 7px;
+  color: var(--applicant-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.submission-url-list {
+  display: grid;
+  gap: 12px;
+}
+
+.submission-url-control > div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.submission-url-control input {
+  min-width: 0;
+  min-height: var(--applicant-control-height);
+  padding: 7px 11px;
+  border: 1px solid var(--applicant-border);
+  border-radius: var(--applicant-radius);
+  background: var(--applicant-surface);
+  color: var(--applicant-text);
+}
+
+.submission-remove-url {
+  display: grid;
+  width: var(--applicant-control-height);
+  height: var(--applicant-control-height);
+  place-items: center;
+  border: 1px solid var(--applicant-border);
+  border-radius: var(--applicant-radius);
+  background: var(--applicant-surface);
+  color: var(--applicant-muted);
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.submission-remove-url:hover {
+  border-color: #ff8182;
+  color: var(--applicant-danger);
+}
+
+.submission-project-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.submission-feedback {
+  margin: 0;
+  color: var(--applicant-green);
+  font-size: 12px;
+}
+
+.submission-feedback[data-tone="danger"] {
+  color: var(--applicant-danger);
+}
+
+.submission-readiness {
+  margin-top: 16px;
+  padding: 20px;
+  border: 1px solid var(--applicant-border);
+  border-radius: var(--applicant-radius);
+  background: var(--applicant-surface);
+  box-shadow: var(--applicant-shadow);
+}
+
+.submission-readiness-heading > div > p {
+  margin-bottom: 5px;
+}
+
+.submission-secondary-action {
+  cursor: pointer;
+}
+
+.submission-readiness-empty {
+  margin: 18px 0 0;
+  padding: 14px;
+  border-radius: var(--applicant-radius);
+  background: var(--applicant-surface);
+  color: var(--applicant-muted);
+  font-size: 13px;
+}
+
+.submission-readiness-result {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid var(--applicant-border);
+  border-radius: var(--applicant-radius);
+  background: var(--applicant-surface);
+}
+
+.submission-readiness-result > div {
+  justify-content: flex-start;
+}
+
+.submission-readiness-result strong {
+  font-size: 14px;
+}
+
+.submission-readiness-result > p {
+  margin: 10px 0 0;
+  color: var(--applicant-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.submission-continue {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 16px;
+}
+
+.submission-footnote {
+  margin: 16px 0 0;
+  color: var(--applicant-muted);
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+@media (max-width: 600px) {
+  .applicant-content > .submission-screen {
+    width: min(calc(100% - 32px), 640px);
+  }
+
+  .submission-heading h1 {
+    font-size: 23px;
+  }
+
+  .submission-item,
+  .submission-readiness {
+    padding: 16px;
+  }
+
+  .submission-file-control {
+    grid-template-columns: 36px 1fr;
+  }
+
+  .submission-file-button {
+    grid-column: 1 / -1;
+  }
+
+  .submission-item-heading,
+  .submission-readiness-heading {
+    align-items: flex-start;
+  }
+
+  .submission-url-control > div {
+    grid-template-columns: 1fr;
+  }
+
+  .submission-url-control .submission-action,
+  .submission-item > .submission-action {
+    width: 100%;
+    justify-self: stretch;
+  }
+
+  .submission-project-actions {
+    flex-direction: column;
+  }
+
+  .submission-project-actions .submission-action,
+  .submission-project-actions .submission-secondary-action {
+    width: 100%;
+  }
+}

@@ -5,6 +5,7 @@ from uuid import UUID
 from interview_evidence.company_management.domain.criteria import (
     CompetencyModelVersion,
     EvaluationCriterion,
+    JobRequirement,
 )
 from interview_evidence.company_management.repositories.postgres import CompanyRepository
 from interview_evidence.shared.idempotency import (
@@ -31,11 +32,12 @@ class CriteriaService:
         context: TenantContext,
         *,
         position_id: UUID,
+        job_requirements: tuple[dict[str, object], ...] = (),
         criteria: tuple[dict[str, object], ...],
         prohibited_topics: tuple[str, ...],
         interview_duration_minutes: int,
-        persona_definition: dict[str, object],
         idempotency_key: str,
+        persona_definition: dict[str, object] | None = None,
     ) -> CompetencyModelVersion:
         existing_id = self._idempotency.get(
             context,
@@ -53,11 +55,19 @@ class CriteriaService:
             )
             for item in criteria
         )
+        domain_requirements = tuple(
+            JobRequirement(
+                job_requirement_id=new_uuid7(self._clock.now()),
+                **item,
+            )
+            for item in job_requirements
+        )
         version = CompetencyModelVersion.create(
             competency_model_version_id=new_uuid7(self._clock.now()),
             company_id=context.company_id,
             position_id=position_id,
             version_number=len(existing_versions) + 1,
+            job_requirements=domain_requirements,
             criteria=domain_criteria,
             prohibited_topics=prohibited_topics,
             interview_duration_minutes=interview_duration_minutes,
@@ -92,3 +102,17 @@ class CriteriaService:
         version_id: UUID,
     ) -> CompetencyModelVersion:
         return self._repository.get_criterion_version(context, version_id)
+
+    def list_versions(
+        self,
+        context: TenantContext,
+        position_id: UUID,
+    ) -> tuple[CompetencyModelVersion, ...]:
+        self._repository.get_position(context, position_id)
+        return tuple(
+            sorted(
+                self._repository.list_criterion_versions(context, position_id),
+                key=lambda version: version.version_number,
+                reverse=True,
+            )
+        )

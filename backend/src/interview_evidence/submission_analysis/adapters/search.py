@@ -19,6 +19,17 @@ class SearchDocument:
     symbols: tuple[str, ...]
     locator: dict[str, object]
     ownership_confidence: float
+    invitation_id: UUID | None = None
+    competency_model_version_id: UUID | None = None
+    criterion_id: UUID | None = None
+    document_type: str = "submission_chunk"
+    source_type: str = "submission_chunk"
+    source_version: str = "1"
+    content_hash: str = ""
+    embedding_model: str = "unknown"
+    embedding_version: str = "unknown"
+    path: str | None = None
+    symbol: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +53,9 @@ class SearchIndex(Protocol):
         query: str,
         query_vector: tuple[float, ...],
         exact_symbol: str | None,
+        invitation_id: UUID | None = None,
+        competency_model_version_id: UUID | None = None,
+        criterion_id: UUID | None = None,
     ) -> tuple[SearchCandidate, ...]: ...
 
 
@@ -74,6 +88,9 @@ class InMemorySearchIndex:
         query: str,
         query_vector: tuple[float, ...],
         exact_symbol: str | None,
+        invitation_id: UUID | None = None,
+        competency_model_version_id: UUID | None = None,
+        criterion_id: UUID | None = None,
     ) -> tuple[SearchCandidate, ...]:
         tenant = require_tenant_context(context)
         if applicant_id != tenant.actor_id and tenant.actor_type.value == "applicant":
@@ -82,6 +99,18 @@ class InMemorySearchIndex:
         matches: list[SearchCandidate] = []
         for document in self._documents.values():
             if document.company_id != tenant.company_id or document.applicant_id != applicant_id:
+                continue
+            if invitation_id is not None and document.invitation_id != invitation_id:
+                continue
+            if (
+                competency_model_version_id is not None
+                and document.competency_model_version_id != competency_model_version_id
+            ):
+                continue
+            if criterion_id is not None and document.criterion_id not in {
+                None,
+                criterion_id,
+            }:
                 continue
             document_terms = {
                 term.casefold() for term in document.text.replace("_", " ").split() if term

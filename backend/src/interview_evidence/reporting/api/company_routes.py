@@ -19,7 +19,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from interview_evidence.reporting.adapters.playback import ScopedPlaybackLocator
 from interview_evidence.reporting.application.deletion_service import DeletionService
 from interview_evidence.reporting.application.review_service import ReviewService
-from interview_evidence.reporting.application.timeline_service import TimelineService
+from interview_evidence.reporting.application.timeline_service import (
+    QuestionRationaleProvider,
+    TimelineService,
+)
 from interview_evidence.reporting.domain.deletion import DeletionManifest
 from interview_evidence.reporting.domain.report import Report
 from interview_evidence.reporting.domain.review import Decision, HumanReview, ReviewType
@@ -153,10 +156,14 @@ def create_company_router(
     clock: Clock,
     deletion_service: DeletionService,
     playback: ScopedPlaybackLocator,
+    rationale_provider: QuestionRationaleProvider | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1")
     reviews = ReviewService(repository)
-    timeline = TimelineService(repository)
+    timeline = TimelineService(
+        repository,
+        rationale_provider=rationale_provider,
+    )
 
     def company_scope(
         request: Request,
@@ -242,6 +249,30 @@ def create_company_router(
                     "end_ms": item.end_ms,
                     "text": item.text,
                     "technical_failure": item.technical_failure,
+                    "question_rationale": (
+                        {
+                            "criterion_id": (item.question_rationale.criterion_id),
+                            "verification_target_type": (
+                                item.question_rationale.verification_target_type
+                            ),
+                            "objective": item.question_rationale.objective,
+                            "question_type": (item.question_rationale.question_type),
+                            "retrieval_version": (item.question_rationale.retrieval_version),
+                            "generation_version": (item.question_rationale.generation_version),
+                            "policy_result": (item.question_rationale.policy_result),
+                            "source_references": [
+                                {
+                                    "source_id": source.source_id,
+                                    "source_type": source.source_type,
+                                    "locator": source.locator,
+                                    "excerpt": source.excerpt,
+                                }
+                                for source in item.question_rationale.source_references
+                            ],
+                        }
+                        if item.question_rationale is not None
+                        else None
+                    ),
                 }
                 for item in entries
             ],
@@ -414,6 +445,7 @@ def create_lane_d_runtime(
     audit: AuditAppender,
     clock: Clock,
     deletion_service: DeletionService | None = None,
+    rationale_provider: QuestionRationaleProvider | None = None,
 ) -> LaneDRuntime:
     active_repository = repository or InMemoryReportingRepository()
     app = FastAPI(title="Interview Evidence Reporting")
@@ -434,6 +466,7 @@ def create_lane_d_runtime(
             clock=clock,
             deletion_service=service,
             playback=ScopedPlaybackLocator(),
+            rationale_provider=rationale_provider,
         )
     )
     return LaneDRuntime(
@@ -449,10 +482,12 @@ def create_lane_d_app(
     repository: ReportingRepository | None = None,
     audit: AuditAppender,
     clock: Clock,
+    rationale_provider: QuestionRationaleProvider | None = None,
 ) -> FastAPI:
     return create_lane_d_runtime(
         principal_provider=principal_provider,
         repository=repository,
         audit=audit,
         clock=clock,
+        rationale_provider=rationale_provider,
     ).app

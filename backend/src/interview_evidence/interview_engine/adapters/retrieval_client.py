@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
+from interview_evidence.shared.aws_clients.ports import TextEmbedder
 from interview_evidence.shared.tenant import TenantContext
 
 
@@ -12,6 +13,8 @@ class RetrievalRecord(Protocol):
     score: float
     locator: dict[str, object]
     ownership_confidence: float
+    excerpt: str
+    source_type: str
 
 
 class SubmissionRetrieval(Protocol):
@@ -20,6 +23,8 @@ class SubmissionRetrieval(Protocol):
         context: TenantContext,
         *,
         applicant_id: UUID,
+        invitation_id: UUID,
+        competency_model_version_id: UUID,
         query: str,
         query_vector: tuple[float, ...],
         criterion_id: UUID,
@@ -35,6 +40,8 @@ class RetrievedContext:
     score: float
     locator: dict[str, object]
     ownership_confidence: float
+    excerpt: str
+    source_type: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,8 +52,15 @@ class RetrievalOutcome:
 
 
 class RetrievalClient:
-    def __init__(self, provider: SubmissionRetrieval, *, limit: int = 5) -> None:
+    def __init__(
+        self,
+        provider: SubmissionRetrieval,
+        *,
+        embedder: TextEmbedder | None = None,
+        limit: int = 5,
+    ) -> None:
         self._provider = provider
+        self._embedder = embedder
         self._limit = limit
 
     def retrieve(
@@ -54,20 +68,33 @@ class RetrievalClient:
         context: TenantContext,
         *,
         applicant_id: UUID,
+        invitation_id: UUID,
+        competency_model_version_id: UUID,
         session_id: UUID,
         query: str,
-        query_vector: tuple[float, ...],
+        query_vector: tuple[float, ...] | None,
         criterion_id: UUID,
         config_version: str,
         exact_symbol: str | None = None,
     ) -> RetrievalOutcome:
         del session_id
         try:
+            active_query_vector = query_vector
+            if active_query_vector is None:
+                if self._embedder is None:
+                    raise RuntimeError("semantic query embedder is unavailable")
+                active_query_vector = self._embedder.embed(
+                    context,
+                    query,
+                    dimensions=1024,
+                )
             results = self._provider.retrieve_context(
                 context,
                 applicant_id=applicant_id,
+                invitation_id=invitation_id,
+                competency_model_version_id=competency_model_version_id,
                 query=query,
-                query_vector=query_vector,
+                query_vector=active_query_vector,
                 criterion_id=criterion_id,
                 config_version=config_version,
                 limit=self._limit,
@@ -88,6 +115,18 @@ class RetrievalClient:
                     score=result.score,
                     locator=dict(result.locator),
                     ownership_confidence=result.ownership_confidence,
+                    excerpt=str(getattr(result, "excerpt", "")),
+                    source_type=str(
+                        getattr(
+                            result,
+                            "source_type",
+                            (
+                                "candidate_code_unit"
+                                if "path" in result.locator
+                                else "submission_chunk"
+                            ),
+                        )
+                    ),
                 )
                 for result in results
             )

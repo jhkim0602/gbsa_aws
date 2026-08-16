@@ -1,5 +1,6 @@
 import { BrowserRouter, useRoutes } from "react-router-dom";
 
+import { AppErrorBoundary } from "./AppErrorBoundary";
 import { companyRouteObjects } from "./featureRoutes";
 
 export function CompanyRoutes() {
@@ -8,8 +9,10 @@ export function CompanyRoutes() {
 
 export function App() {
   return (
-    <BrowserRouter>
-      <CompanyRoutes />
-    </BrowserRouter>
+    <AppErrorBoundary>
+      <BrowserRouter>
+        <CompanyRoutes />
+      </BrowserRouter>
+    </AppErrorBoundary>
   );
 }

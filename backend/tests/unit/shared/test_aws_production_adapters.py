@@ -15,6 +15,7 @@ from interview_evidence.shared.aws_clients.production import (
     AwsSesEmailSender,
     AwsSqsQueue,
     AwsTextract,
+    AwsTitanTextEmbedder,
     AwsTranscribeSpeechToText,
 )
 from interview_evidence.shared.tenant import ActorType, TenantContext
@@ -247,6 +248,28 @@ def test_cognito_bedrock_and_polly_adapters_translate_aws_responses() -> None:
     ).synthesize(_context(), "Next question", voice_id="Seoyeon")
     assert speech["audio_url"] == "https://s3.invalid/audio"
     assert any(call[0] == "put_object" for call in s3.calls)
+
+
+def test_titan_embedder_returns_normalized_vector_without_exposing_text() -> None:
+    bedrock = RecordingClient(
+        {
+            "invoke_model": {
+                "body": io.BytesIO(json.dumps({"embedding": [0.5] * 256}).encode("utf-8"))
+            }
+        }
+    )
+    embedder = AwsTitanTextEmbedder(bedrock, model_id="amazon.titan-embed-text-v2:0")
+
+    vector = embedder.embed(_context(), "ECS 장애 복구 경험", dimensions=256)
+
+    assert vector == (0.5,) * 256
+    request = bedrock.calls[0][1]
+    assert request["modelId"] == "amazon.titan-embed-text-v2:0"
+    assert json.loads(request["body"]) == {
+        "inputText": "ECS 장애 복구 경험",
+        "dimensions": 256,
+        "normalize": True,
+    }
 
 
 def test_textract_transcribe_and_media_convert_adapters_return_sanitized_results() -> None:

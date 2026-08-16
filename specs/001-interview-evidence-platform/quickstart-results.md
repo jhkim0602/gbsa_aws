@@ -1,7 +1,7 @@
 # Local Quickstart Results
 
 **Executed**: 2026-08-15 (Asia/Seoul)  
-**Base commit**: `cd787bd`  
+**Base commit**: `b803918` plus the Phase 10/11 UI reference acceptance tree
 **Environment**: macOS, Node 22.14.0, npm 10.9.2, Python 3.13.7
 (project venv Python 3.12.2), uv 0.9.28, Terraform 1.13.3,
 Docker Engine 28.1.1, Docker Compose 2.35.1
@@ -12,7 +12,7 @@ Docker Engine 28.1.1, Docker Compose 2.35.1
 |---|---|---|
 | `make bootstrap` | PASS | npm installed 314 packages with 0 vulnerabilities; uv rebuilt and installed the locked non-editable wheel |
 | `make compose-up` | PASS | API, worker, company SPA, applicant SPA, PostgreSQL, DynamoDB Local, LocalStack, and OpenSearch all reached `healthy` |
-| `make migrate` | PASS | Lane A/B/C/D roots upgraded and converged on `merge_001_lane_heads` |
+| `make migrate` | PASS | Lane A/B/C/D roots upgraded through `merge_001_lane_heads` to `m_002_runtime_persistence` |
 | `make seed-contract-fixtures` | PASS | Opaque company, applicant, criterion, strategy, session, and report fixtures emitted without credentials or source text |
 | `make contracts-generate` | PASS | REST fragments and Python/TypeScript types regenerated |
 | `make contracts-check` | PASS | Canonical and generated contracts are current; generation left no generated diff |
@@ -35,6 +35,9 @@ Docker Engine 28.1.1, Docker Compose 2.35.1
 | `make infra-security-check` | PASS | 8 infrastructure safety contracts |
 | `make infra-plan-dev` | PASS | Stage-equivalent mock provider plan completed with 1/1 passing run |
 | `make test-prior-lanes` | PASS | Lane A 15, Lane B 18, Lane C 31, Lane D 12 |
+| company console unit/type/build | PASS | 18 Vitest tests; TypeScript and Vite production build passed |
+| applicant portal unit/type/build | PASS | 22 Vitest tests; TypeScript and Vite production build passed |
+| `make test-company-browser` | PASS | Real-Chrome E2E covers the API-backed dashboard, positions, direct applicant invitation, AI interviewer management, mobile layout and stale asset handling |
 
 The full workspace gate also passed with 18 SPA tests and 138 Python tests.
 The only skipped test is the live stage smoke request because stage endpoints are not yet
@@ -59,4 +62,5 @@ The managed shell sandbox blocked macOS SystemConfiguration access for uv and DN
 Terraform Registry. The exact commands were rerun outside that sandbox and passed. These were
 environment restrictions, not application failures.
 
-No Terraform apply, AWS mutation, or live stage call was performed.
+No Terraform apply, AWS mutation, or live stage call was performed. Applicant and candidate-pipeline
+visual alignment remains assigned to T212 and T214-T218.

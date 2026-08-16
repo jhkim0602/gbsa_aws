@@ -14,6 +14,16 @@ class ContextTurn(BaseModel):
     text: str
 
 
+class RetrievedSourceContext(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    source_id: UUID
+    source_type: str
+    locator: dict[str, object]
+    excerpt: str
+    score: float
+
+
 class BuiltInterviewContext(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -22,6 +32,11 @@ class BuiltInterviewContext(BaseModel):
     remaining_criterion_ids: tuple[UUID, ...]
     remaining_time_seconds: int = Field(ge=0)
     retrieved_source_ids: tuple[UUID, ...]
+    retrieved_sources: tuple[RetrievedSourceContext, ...] = ()
+    criterion_text: str = ""
+    verification_objective: str = ""
+    missing_dimensions: tuple[str, ...] = ()
+    follow_up_directions: tuple[str, ...] = ()
     estimated_tokens: int = Field(ge=0)
 
     def model_payload(self) -> dict[str, object]:
@@ -40,6 +55,20 @@ class BuiltInterviewContext(BaseModel):
             ],
             "remaining_time_seconds": self.remaining_time_seconds,
             "retrieved_source_ids": [str(source_id) for source_id in self.retrieved_source_ids],
+            "criterion_text": self.criterion_text,
+            "verification_objective": self.verification_objective,
+            "missing_dimensions": list(self.missing_dimensions),
+            "follow_up_directions": list(self.follow_up_directions),
+            "retrieved_sources": [
+                {
+                    "source_id": str(source.source_id),
+                    "source_type": source.source_type,
+                    "locator": source.locator,
+                    "excerpt": source.excerpt,
+                    "score": source.score,
+                }
+                for source in self.retrieved_sources
+            ],
         }
 
 
@@ -61,6 +90,11 @@ class ContextBuilder:
         remaining_criterion_ids: tuple[UUID, ...],
         remaining_time_seconds: int,
         retrieved_source_ids: tuple[UUID, ...],
+        retrieved_sources: tuple[RetrievedSourceContext, ...] = (),
+        criterion_text: str = "",
+        verification_objective: str = "",
+        missing_dimensions: tuple[str, ...] = (),
+        follow_up_directions: tuple[str, ...] = (),
     ) -> BuiltInterviewContext:
         base_text = " ".join(
             (
@@ -68,6 +102,11 @@ class ContextBuilder:
                 str(remaining_time_seconds),
                 *(str(value) for value in remaining_criterion_ids),
                 *(str(value) for value in retrieved_source_ids),
+                criterion_text,
+                verification_objective,
+                *missing_dimensions,
+                *follow_up_directions,
+                *(source.excerpt for source in retrieved_sources),
             )
         )
         estimated = _estimate_tokens(base_text)
@@ -91,5 +130,10 @@ class ContextBuilder:
             remaining_criterion_ids=remaining_criterion_ids,
             remaining_time_seconds=remaining_time_seconds,
             retrieved_source_ids=retrieved_source_ids,
+            retrieved_sources=retrieved_sources,
+            criterion_text=criterion_text,
+            verification_objective=verification_objective,
+            missing_dimensions=missing_dimensions,
+            follow_up_directions=follow_up_directions,
             estimated_tokens=min(estimated, self._token_budget),
         )

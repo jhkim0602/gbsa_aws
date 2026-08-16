@@ -21,6 +21,8 @@ class RetrievalResult:
     source_id: UUID
     score: float
     locator: dict[str, object]
+    excerpt: str
+    source_type: str
     ownership_confidence: float
     score_components: dict[str, float]
 
@@ -43,6 +45,9 @@ class HybridRetriever:
         query_vector: tuple[float, ...],
         limit: int,
         exact_symbol: str | None = None,
+        invitation_id: UUID | None = None,
+        competency_model_version_id: UUID | None = None,
+        criterion_id: UUID | None = None,
     ) -> tuple[RetrievalResult, ...]:
         candidates = self._index.candidates(
             context,
@@ -50,6 +55,9 @@ class HybridRetriever:
             query=query,
             query_vector=query_vector,
             exact_symbol=exact_symbol,
+            invitation_id=invitation_id,
+            competency_model_version_id=competency_model_version_id,
+            criterion_id=criterion_id,
         )
         results = [
             RetrievalResult(
@@ -62,6 +70,8 @@ class HybridRetriever:
                     + candidate.document.ownership_confidence * self._config.ownership_weight
                 ),
                 locator=candidate.document.locator,
+                excerpt=candidate.document.text[:2000],
+                source_type=candidate.document.source_type,
                 ownership_confidence=candidate.document.ownership_confidence,
                 score_components={
                     "vector": candidate.vector_score,

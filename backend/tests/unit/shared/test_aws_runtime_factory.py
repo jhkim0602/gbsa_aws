@@ -33,8 +33,7 @@ def _environment() -> dict[str, str]:
         "MEDIA_BUCKET": "media-bucket",
         "KMS_KEY_ARN": "kms-key",
         "DYNAMODB_TABLE_NAME": "interview-context",
-        "OPENSEARCH_ENDPOINT": "https://search.invalid",
-        "OPENSEARCH_INDEX_NAME": "candidate-source-v1",
+        "RETRIEVAL_BACKEND": "aurora",
         "BEDROCK_MODEL_ID": "model-id",
         "BEDROCK_GUARDRAIL_ID": "guardrail-id",
         "SES_FROM_ADDRESS": "noreply@example.com",
@@ -61,6 +60,25 @@ def test_aws_runtime_factory_builds_all_production_dependencies() -> None:
     assert dependencies.object_storage is not None
     assert dependencies.media_storage is not None
     assert dependencies.recent_context is not None
+    assert dependencies.search_index is None
+    assert dependencies.embedder.model_id == "amazon.titan-embed-text-v2:0"
+
+
+def test_aws_runtime_factory_keeps_explicit_opensearch_rollback_path() -> None:
+    environment = _environment()
+    environment.update(
+        {
+            "RETRIEVAL_BACKEND": "opensearch",
+            "OPENSEARCH_ENDPOINT": "https://search.invalid",
+            "OPENSEARCH_INDEX_NAME": "candidate-source-v1",
+        }
+    )
+
+    dependencies = create_aws_runtime_dependencies(
+        environment,
+        client_factory=lambda service: FakeClient(service),
+    )
+
     assert dependencies.search_index is not None
 
 

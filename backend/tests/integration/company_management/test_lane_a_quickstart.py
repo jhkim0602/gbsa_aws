@@ -68,14 +68,32 @@ async def test_lane_a_company_to_consented_applicant_journey() -> None:
                 "Idempotency-Key": "quickstart-criteria",
             },
             json={
+                "job_requirements": [
+                    {
+                        "requirement_type": "preferred",
+                        "statement": "ECS 운영 장애 대응 경험",
+                        "priority": 2,
+                        "criterion_code": "PROBLEM_SOLVING",
+                    }
+                ],
                 "criteria": [
                     {
                         "code": "PROBLEM_SOLVING",
                         "name": "문제 해결",
                         "description": "대안을 비교하고 근거를 설명한다.",
                         "weight": 1,
-                        "good_evidence": {"signal": "tradeoff"},
-                        "weak_evidence": {"signal": "unsupported"},
+                        "verification_guide": {
+                            "observable_dimensions": [
+                                "실제 상황",
+                                "본인 행동",
+                                "결과",
+                            ],
+                            "strong_answer_signals": ["판단 근거가 구체적임"],
+                            "weak_answer_signals": ["팀 결과만 언급함"],
+                            "follow_up_directions": ["본인이 직접 수행한 행동"],
+                            "max_follow_ups": 2,
+                            "time_budget_seconds": 300,
+                        },
                         "abstain_guidance": "근거가 없으면 판단을 보류한다.",
                         "common_questions": ["어떤 대안을 검토했나요?"],
                         "required": True,
@@ -83,13 +101,11 @@ async def test_lane_a_company_to_consented_applicant_journey() -> None:
                 ],
                 "prohibited_topics": ["가족관계"],
                 "interview_duration_minutes": 30,
-                "persona_definition": {
-                    "name": "GBSA 면접관",
-                    "tone": "차분함",
-                },
             },
         )
         assert criteria.status_code == 201
+        assert criteria.json()["job_requirements"][0]["statement"] == ("ECS 운영 장애 대응 경험")
+        assert criteria.json()["persona_definition"]["mode"] == "system_managed"
         version_id = criteria.json()["competency_model_version_id"]
 
         published_criteria = await client.post(
@@ -103,34 +119,36 @@ async def test_lane_a_company_to_consented_applicant_journey() -> None:
         assert published_criteria.status_code == 200
         assert published_criteria.json()["status"] == "published"
 
-        campaign = await client.post(
-            "/v1/campaigns",
-            headers={
-                **company_headers,
-                "Idempotency-Key": "quickstart-campaign",
-            },
-            json={
-                "position_id": position_id,
-                "competency_model_version_id": version_id,
-                "name": "2026 백엔드 채용",
-                "candidate_instructions": "조용한 환경에서 진행해 주세요.",
-            },
+        versions = await client.get(
+            f"/v1/positions/{position_id}/competency-model-versions",
+            headers=company_headers,
         )
-        assert campaign.status_code == 201
-        campaign_id = campaign.json()["campaign_id"]
+        assert versions.status_code == 200
+        assert versions.json()["items"][0]["status"] == "published"
 
-        published_campaign = await client.post(
-            f"/v1/campaigns/{campaign_id}/publish",
+        activated = await client.patch(
+            f"/v1/positions/{position_id}",
             headers={
                 **company_headers,
-                "Idempotency-Key": "quickstart-publish-campaign",
                 "If-Match-Version": "1",
             },
+            json={
+                "title": "백엔드 플랫폼 개발자",
+                "description": "Python과 AWS 기반 서비스를 개발하고 운영합니다.",
+                "role_type": "개발",
+                "headcount": 2,
+                "recruitment_start_at": "2026-09-01",
+                "recruitment_end_at": "2026-10-15",
+                "status": "active",
+            },
         )
-        assert published_campaign.status_code == 200
+        assert activated.status_code == 200
+        assert activated.json()["title"] == "백엔드 플랫폼 개발자"
+        assert activated.json()["status"] == "active"
+        assert activated.json()["row_version"] == 2
 
         invitation = await client.post(
-            f"/v1/campaigns/{campaign_id}/invitations",
+            f"/v1/positions/{position_id}/invitations",
             headers={
                 **company_headers,
                 "Idempotency-Key": "quickstart-invitation",
@@ -146,8 +164,17 @@ async def test_lane_a_company_to_consented_applicant_journey() -> None:
             },
         )
         assert invitation.status_code == 202
-        invitation_id = invitation.json()["invitations"][0]["invitation_id"]
+        invitation_view = invitation.json()["invitations"][0]
+        invitation_id = invitation_view["invitation_id"]
+        assert invitation_view["applicant_display_name"] == "홍길동"
         assert "invitation_token" not in invitation.text
+
+        invitation_page = await client.get(
+            f"/v1/positions/{position_id}/invitations",
+            headers=company_headers,
+        )
+        assert invitation_page.status_code == 200
+        assert invitation_page.json()["items"][0]["applicant_display_name"] == "홍길동"
 
         invitation_url = str(email_sender.messages[0].template_data["invitation_url"])
         raw_token = parse_qs(urlparse(invitation_url).query)["token"][0]

@@ -38,10 +38,7 @@ MODULE_RESOURCES = {
         "aws_cloudwatch_event_bus",
     },
     "ai-search": {
-        "aws_opensearchserverless_collection",
-        "aws_bedrockagent_knowledge_base",
         "aws_bedrock_guardrail",
-        "aws_ssm_parameter",
     },
     "identity": {
         "aws_cognito_user_pool",
@@ -175,8 +172,8 @@ def test_application_roots_pass_complete_production_adapter_configuration() -> N
         "MEDIA_BUCKET",
         "KMS_KEY_ARN",
         "DYNAMODB_TABLE_NAME",
-        "OPENSEARCH_ENDPOINT",
-        "OPENSEARCH_INDEX_NAME",
+        "RETRIEVAL_BACKEND",
+        "BEDROCK_EMBEDDING_MODEL_ID",
         "BEDROCK_MODEL_ID",
         "BEDROCK_GUARDRAIL_ID",
         "SES_FROM_ADDRESS",
@@ -211,12 +208,9 @@ def test_async_ai_identity_and_audit_resources_enforce_safety_controls() -> None
     assert "redrive_policy" in async_workflow
     assert "deadLetterTargetArn" in async_workflow
     assert "message_retention_seconds         = 1209600" in async_workflow
-    assert "AllowFromPublic = false" in ai_search
-    assert 'company_id   = { type = "keyword" }' in ai_search
-    assert 'applicant_id = { type = "keyword" }' in ai_search
-    assert "aws_ssm_parameter" in ai_search
     assert "aws_bedrock_guardrail" in ai_search
-    assert 'substr("${local.collection_name}-enc", 0, 32)' in ai_search
+    assert "aws_opensearchserverless" not in ai_search
+    assert "aws_bedrockagent_knowledge_base" not in ai_search
     assert "minimum_length                   = 14" in identity
     assert "prevent_user_existence_errors" in identity
     assert '"ses:FromAddress"' in identity

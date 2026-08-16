@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -11,7 +11,8 @@ from interview_evidence.company_management.application.deletion_targets import (
     CompanyDeletionTargets,
     InMemoryCompanyTargetDeleter,
 )
-from interview_evidence.company_management.domain.company import Position
+from interview_evidence.company_management.domain.company import Position, PositionStatus
+from interview_evidence.company_management.domain.criteria import CompetencyModelStatus
 from interview_evidence.company_management.domain.hiring import (
     InvitationStateChange,
 )
@@ -42,11 +43,22 @@ class CriterionSnapshot(BaseModel):
     name: str
     description: str
     weight: float
+    verification_guide: dict[str, object]
     good_evidence: dict[str, object]
     weak_evidence: dict[str, object]
     abstain_guidance: str
     common_questions: tuple[str, ...]
     required: bool
+
+
+class JobRequirementSnapshot(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    job_requirement_id: UUID
+    requirement_type: str
+    statement: str
+    priority: int
+    criterion_code: str
 
 
 class CriterionVersionSnapshot(BaseModel):
@@ -56,6 +68,7 @@ class CriterionVersionSnapshot(BaseModel):
     competency_model_version_id: UUID
     position_id: UUID
     version_number: int
+    job_requirements: tuple[JobRequirementSnapshot, ...]
     criteria: tuple[CriterionSnapshot, ...]
     prohibited_topics: tuple[str, ...]
     interview_duration_minutes: int
@@ -63,11 +76,10 @@ class CriterionVersionSnapshot(BaseModel):
     published_at: datetime
 
 
-class CampaignSnapshot(BaseModel):
+class HiringSnapshot(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     company_id: UUID
-    campaign_id: UUID
     position_id: UUID
     competency_model_version_id: UUID
     prohibited_topics: tuple[str, ...]
@@ -81,7 +93,8 @@ class InvitationAuthorization(BaseModel):
     company_id: UUID
     invitation_id: UUID
     applicant_id: UUID
-    campaign_id: UUID
+    position_id: UUID
+    competency_model_version_id: UUID
     state: str
     expires_at: datetime
     authorized: bool
@@ -141,6 +154,10 @@ class CompanyService:
         title: str,
         description: str,
         idempotency_key: str,
+        role_type: str | None = None,
+        headcount: int | None = None,
+        recruitment_start_at: date | None = None,
+        recruitment_end_at: date | None = None,
     ) -> Position:
         context.assert_company(principal.company_id)
         existing_id = self._idempotency.get(
@@ -155,6 +172,10 @@ class CompanyService:
             company_id=context.company_id,
             title=title,
             description=description,
+            role_type=role_type,
+            headcount=headcount,
+            recruitment_start_at=recruitment_start_at,
+            recruitment_end_at=recruitment_end_at,
             created_by=principal.company_user_id,
             created_at=self._clock.now(),
         )
@@ -169,6 +190,40 @@ class CompanyService:
 
     def list_positions(self, context: TenantContext) -> tuple[Position, ...]:
         return self._repository.list_positions(context)
+
+    def get_position(self, context: TenantContext, position_id: UUID) -> Position:
+        return self._repository.get_position(context, position_id)
+
+    def update_position(
+        self,
+        context: TenantContext,
+        *,
+        position_id: UUID,
+        expected_version: int,
+        title: str,
+        description: str,
+        role_type: str | None,
+        headcount: int | None,
+        recruitment_start_at: date | None,
+        recruitment_end_at: date | None,
+        status: PositionStatus,
+    ) -> Position:
+        current = self._repository.get_position(context, position_id)
+        if current.status is PositionStatus.DRAFT and status is PositionStatus.ACTIVE:
+            versions = self._repository.list_criterion_versions(context, position_id)
+            if not any(version.status is CompetencyModelStatus.PUBLISHED for version in versions):
+                raise ValueError("position activation requires published criteria")
+        updated = current.revise(
+            expected_version=expected_version,
+            title=title,
+            description=description,
+            role_type=role_type,
+            headcount=headcount,
+            recruitment_start_at=recruitment_start_at,
+            recruitment_end_at=recruitment_end_at,
+            status=status,
+        )
+        return self._repository.save_position(context, updated)
 
 
 class CompanyManagementPublic:
@@ -187,17 +242,19 @@ class CompanyManagementPublic:
         self._deletion_targets = deletion_targets
         self._target_deleter = target_deleter
 
-    def get_campaign_snapshot(
+    def get_invitation_hiring_snapshot(
         self,
         context: TenantContext,
-        campaign_id: UUID,
-    ) -> CampaignSnapshot:
-        campaign = self._repository.get_campaign(context, campaign_id)
-        criterion = self.get_criterion_version(context, campaign.competency_model_version_id)
-        return CampaignSnapshot(
+        invitation_id: UUID,
+    ) -> HiringSnapshot:
+        invitation = self._repository.get_invitation(context, invitation_id)
+        criterion = self.get_criterion_version(
+            context,
+            invitation.competency_model_version_id,
+        )
+        return HiringSnapshot(
             company_id=context.company_id,
-            campaign_id=campaign.campaign_id,
-            position_id=campaign.position_id,
+            position_id=invitation.position_id,
             competency_model_version_id=criterion.competency_model_version_id,
             prohibited_topics=criterion.prohibited_topics,
             interview_duration_minutes=criterion.interview_duration_minutes,
@@ -217,6 +274,10 @@ class CompanyManagementPublic:
             competency_model_version_id=version.competency_model_version_id,
             position_id=version.position_id,
             version_number=version.version_number,
+            job_requirements=tuple(
+                JobRequirementSnapshot.model_validate(requirement.model_dump())
+                for requirement in version.job_requirements
+            ),
             criteria=tuple(
                 CriterionSnapshot.model_validate(criterion.model_dump())
                 for criterion in version.criteria
@@ -239,7 +300,8 @@ class CompanyManagementPublic:
             company_id=context.company_id,
             invitation_id=invitation.invitation_id,
             applicant_id=invitation.applicant_id,
-            campaign_id=invitation.campaign_id,
+            position_id=invitation.position_id,
+            competency_model_version_id=invitation.competency_model_version_id,
             state=invitation.status.value,
             expires_at=invitation.expires_at,
             authorized=(

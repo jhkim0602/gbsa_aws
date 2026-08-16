@@ -1,5 +1,6 @@
 import type { RouteObject } from "react-router-dom";
 
+import { ApplicantShell } from "./ApplicantShell";
 import {
   AccessRoute,
   ApplicantHomeRoute,
@@ -20,9 +21,15 @@ export const applicantFeatureRoutes = [
 ] as const satisfies readonly FeatureRoute[];
 
 export const applicantRouteObjects: RouteObject[] = [
-  { path: "/", Component: ApplicantHomeRoute },
-  { path: "/access", Component: AccessRoute },
-  { path: "/access/:token", Component: AccessRoute },
-  { path: "/submissions/*", Component: SubmissionsRoute },
-  { path: "/interview/*", Component: InterviewRoute },
+  {
+    path: "/",
+    Component: ApplicantShell,
+    children: [
+      { index: true, Component: ApplicantHomeRoute },
+      { path: "access", Component: AccessRoute },
+      { path: "access/:token", Component: AccessRoute },
+      { path: "submissions/*", Component: SubmissionsRoute },
+      { path: "interview/*", Component: InterviewRoute },
+    ],
+  },
 ];

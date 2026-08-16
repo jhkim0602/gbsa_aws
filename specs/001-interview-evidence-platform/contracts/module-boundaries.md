@@ -1,6 +1,6 @@
 # Module Boundary Contract
 
-**Version**: 1.0.0
+**Version**: 1.0.1
 
 This contract defines the only allowed cross-domain calls. Names describe application interfaces,
 not concrete class locations.
@@ -37,9 +37,9 @@ entity belongs to the context before returning data or performing side effects.
 
 | Interface | Input | Output | Consumers |
 |---|---|---|---|
-| `get_campaign_snapshot` | campaign ID | position, published criterion version, prohibited topics, duration, persona | B, C, D |
+| `get_invitation_hiring_snapshot` | invitation ID | position, invitation-fixed criterion version, prohibited topics, duration, persona | B, C, D |
 | `get_criterion_version` | version ID | immutable criteria and observation rules | B, C, D |
-| `authorize_invitation` | invitation ID, required state | applicant, campaign, expiry and authorization result | B, C, D |
+| `authorize_invitation` | invitation ID, required state | applicant, position, fixed criterion version, expiry and authorization result | B, C, D |
 | `get_consent_authorization` | invitation ID, required purposes | policy version, purposes, accepted/withdrawn state, retention snapshot | B, C, D |
 | `advance_invitation_state` | invitation ID, from/to state, CommandMeta | new state and row version | B, C, D |
 | `append_audit_event` | opaque resource/action/result metadata | audit event ID | A, B, C, D |
@@ -82,7 +82,7 @@ Lane C does not create ReportItem, Evidence, HumanReview or final hiring decisio
 | `request_deletion` | applicant/invitation scope, reason, requester | deletion request and manifest status | A |
 | `get_deletion_status` | deletion request ID | per-store target and verification state | A |
 
-Lane D does not modify campaigns, criteria, invitations, Strategies, Sessions or Turns.
+Lane D does not modify positions, criteria, invitations, Strategies, Sessions or Turns.
 
 ## Dependency Direction
 
@@ -102,6 +102,24 @@ Forbidden:
 - calling AWS SDK clients from domain models.
 
 CI MUST maintain an import-boundary rule set and a repository query audit for these restrictions.
+
+## Frontend Ownership
+
+The two SPA shells and feature route registries are Integration-owned. Domain screens remain
+lane-owned even when they share visual tokens:
+
+| Path | Owner |
+|---|---|
+| `apps/company-console/src/app/`, `apps/applicant-interview/src/app/` | Integration |
+| company overview, positions, hiring and applicant access features | Lane A |
+| applicant submission and readiness features | Lane B |
+| applicant equipment, interview, reconnect and completion features | Lane C |
+| candidate pipeline, report, Evidence and human-review features | Lane D |
+| `references/`, browser E2E and reference-capture scripts | Integration |
+
+Shared UI styles may define tokens, shell geometry and generic controls. They MUST NOT contain
+domain states, mock business records or direct domain API calls. A lane feature consumes the shared
+visual primitives but retains its own API mapping, tests and business language.
 
 ## Compatibility
 

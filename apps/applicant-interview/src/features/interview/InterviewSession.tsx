@@ -63,12 +63,14 @@ export function InterviewSession({
   websocketUrl,
   recordingApi,
   dependencies,
+  onComplete,
 }: {
   sessionId: string;
   equipmentCheckId: string;
   websocketUrl: string;
   recordingApi: RecordingUploadApi;
   dependencies?: Partial<InterviewSessionDependencies>;
+  onComplete?: () => void;
 }) {
   const store = useMemo(() => createInterviewSessionStore(), []);
   const snapshot = useSyncExternalStore(
@@ -89,6 +91,7 @@ export function InterviewSession({
   const answerTurnIdRef = useRef<string | null>(null);
   const audioSequenceRef = useRef(0);
   const lastRecordingSequenceRef = useRef(0);
+  const completionNotifiedRef = useRef(false);
 
   const resolved = useMemo<InterviewSessionDependencies>(
     () => ({
@@ -137,6 +140,16 @@ export function InterviewSession({
       snapshot.lastVerifiedRecordingChunkSequence,
     );
   }, [mediaBuffer, sessionId, snapshot.lastVerifiedRecordingChunkSequence]);
+
+  useEffect(() => {
+    const terminal =
+      snapshot.state === "completed" ||
+      snapshot.state === "report_generating" ||
+      snapshot.state === "reviewable";
+    if (!terminal || completionNotifiedRef.current) return;
+    completionNotifiedRef.current = true;
+    onComplete?.();
+  }, [onComplete, snapshot.state]);
 
   async function uploadChunk(chunk: StoredMediaChunk): Promise<void> {
     store.getState().bufferChunk({

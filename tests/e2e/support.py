@@ -98,7 +98,7 @@ class ThinJourneyResult:
     question_source_reference_count: int
     evidence_answer_turn_id: UUID
     human_decision: str
-    campaign_criterion_version_id: UUID
+    hiring_criterion_version_id: UUID
     strategy_criterion_version_id: UUID
     session_criterion_version_id: UUID
     report_criterion_version_id: UUID
@@ -175,12 +175,28 @@ async def _run_thin_journey() -> ThinJourneyResult:
             f"/v1/positions/{position_id}/competency-model-versions",
             headers={**company_headers, "Idempotency-Key": "e2e-criteria-0001"},
             json={
+                "job_requirements": [
+                    {
+                        "requirement_type": "required",
+                        "statement": "AWS 기반 백엔드 운영 경험",
+                        "priority": 1,
+                        "criterion_code": "PROBLEM_SOLVING",
+                    }
+                ],
                 "criteria": [
                     {
                         "code": "PROBLEM_SOLVING",
                         "name": "문제 해결",
                         "description": "대안과 근거를 설명한다.",
                         "weight": 1,
+                        "verification_guide": {
+                            "observable_dimensions": ["실제 상황", "본인 행동", "결과"],
+                            "strong_answer_signals": ["판단 근거가 구체적임"],
+                            "weak_answer_signals": ["팀 결과만 언급함"],
+                            "follow_up_directions": ["본인이 직접 수행한 행동"],
+                            "max_follow_ups": 2,
+                            "time_budget_seconds": 300,
+                        },
                         "good_evidence": {"signal": "tradeoff"},
                         "weak_evidence": {"signal": "unsupported"},
                         "abstain_guidance": "최종 답변 근거가 없으면 판단을 유보한다.",
@@ -205,30 +221,8 @@ async def _run_thin_journey() -> ThinJourneyResult:
         )
         assert published.status_code == 200
 
-        campaign = await client.post(
-            "/v1/campaigns",
-            headers={**company_headers, "Idempotency-Key": "e2e-campaign-0001"},
-            json={
-                "position_id": str(position_id),
-                "competency_model_version_id": str(criterion_version_id),
-                "name": "2026 백엔드 채용",
-                "candidate_instructions": "조용한 환경에서 진행해 주세요.",
-            },
-        )
-        assert campaign.status_code == 201
-        campaign_id = UUID(campaign.json()["campaign_id"])
-        campaign_publish = await client.post(
-            f"/v1/campaigns/{campaign_id}/publish",
-            headers={
-                **company_headers,
-                "Idempotency-Key": "e2e-campaign-publish-0001",
-                "If-Match-Version": "1",
-            },
-        )
-        assert campaign_publish.status_code == 200
-
         invitation = await client.post(
-            f"/v1/campaigns/{campaign_id}/invitations",
+            f"/v1/positions/{position_id}/invitations",
             headers={**company_headers, "Idempotency-Key": "e2e-invitation-0001"},
             json={
                 "applicants": [
@@ -364,21 +358,23 @@ async def _run_thin_journey() -> ThinJourneyResult:
                 symbols=(),
                 locator=chunk.source_location.model_dump(mode="json", exclude_none=True),
                 ownership_confidence=1,
+                invitation_id=invitation_id,
+                competency_model_version_id=criterion_version_id,
             )
         )
 
-        invitation_snapshot = company_public.authorize_invitation(
+        company_public.authorize_invitation(
             company_context,
             invitation_id,
             required_state="consented",
         )
-        campaign_snapshot = company_public.get_campaign_snapshot(
+        hiring_snapshot = company_public.get_invitation_hiring_snapshot(
             company_context,
-            invitation_snapshot.campaign_id,
+            invitation_id,
         )
         criterion_snapshot = company_public.get_criterion_version(
             company_context,
-            campaign_snapshot.competency_model_version_id,
+            hiring_snapshot.competency_model_version_id,
         )
         criterion_id = criterion_snapshot.criteria[0].criterion_id
         source_candidate = SourceReferenceCandidate(
@@ -413,7 +409,7 @@ async def _run_thin_journey() -> ThinJourneyResult:
             applicant_context,
             invitation_id=invitation_id,
             applicant_id=applicant.applicant_id,
-            competency_model_version_id=campaign_snapshot.competency_model_version_id,
+            competency_model_version_id=hiring_snapshot.competency_model_version_id,
             criterion_ids=(criterion_id,),
             source_candidates=(source_candidate,),
             strategy_version=1,
@@ -518,7 +514,7 @@ async def _run_thin_journey() -> ThinJourneyResult:
             idempotency_key="e2e-answer-complete-0001",
             target_criterion_id=criterion_id,
             allowed_criterion_ids=frozenset({criterion_id}),
-            prohibited_topics=campaign_snapshot.prohibited_topics,
+            prohibited_topics=hiring_snapshot.prohibited_topics,
             previous_questions=(),
             fallback_question=criterion_snapshot.criteria[0].common_questions[0],
             remaining_criterion_ids=(criterion_id,),
@@ -624,7 +620,7 @@ async def _run_thin_journey() -> ThinJourneyResult:
         question_source_reference_count=len(pipeline_result.source_references),
         evidence_answer_turn_id=evidence.answer_turn_id,
         human_decision=review_projection.human_decision_status or "",
-        campaign_criterion_version_id=campaign_snapshot.competency_model_version_id,
+        hiring_criterion_version_id=hiring_snapshot.competency_model_version_id,
         strategy_criterion_version_id=strategy.competency_model_version_id,
         session_criterion_version_id=completed.competency_model_version_id,
         report_criterion_version_id=report.items[0].competency_model_version_id,

@@ -4,6 +4,7 @@ import base64
 import html
 import io
 import json
+import math
 import time
 import urllib.request
 from collections.abc import Callable, Mapping
@@ -18,6 +19,7 @@ from interview_evidence.shared.aws_clients.ports import (
     ObjectStorage,
     QueueDelivery,
     SpeechToText,
+    TextEmbedder,
     TextToSpeech,
     UploadIntent,
 )
@@ -456,6 +458,55 @@ class AwsBedrockModel(AIModel):
         if not isinstance(decoded, dict):
             raise AwsAdapterError("model response shape is invalid")
         return cast(dict[str, Any], decoded)
+
+
+class AwsTitanTextEmbedder(TextEmbedder):
+    def __init__(
+        self,
+        client: BedrockClient,
+        *,
+        model_id: str = "amazon.titan-embed-text-v2:0",
+    ) -> None:
+        self._client = client
+        self.model_id = model_id
+
+    def embed(
+        self,
+        context: TenantContext,
+        text: str,
+        *,
+        dimensions: int = 1024,
+    ) -> tuple[float, ...]:
+        require_tenant_context(context)
+        normalized_text = text.strip()
+        if not normalized_text:
+            raise ValueError("embedding text must not be blank")
+        if dimensions not in {256, 512, 1024}:
+            raise ValueError("Titan embedding dimensions must be 256, 512, or 1024")
+        request = {
+            "modelId": self.model_id,
+            "contentType": "application/json",
+            "accept": "application/json",
+            "body": json.dumps(
+                {
+                    "inputText": normalized_text,
+                    "dimensions": dimensions,
+                    "normalize": True,
+                },
+                ensure_ascii=False,
+            ).encode("utf-8"),
+        }
+        try:
+            response = self._client.invoke_model(**request)
+            body = cast(ResponseBody, response["body"]).read()
+            decoded = json.loads(body)
+            raw_embedding = decoded["embedding"]
+            vector = tuple(float(value) for value in raw_embedding)
+        except Exception as error:
+            raise AwsAdapterError("text embedding unavailable") from error
+        if len(vector) != dimensions or not all(math.isfinite(value) for value in vector):
+            raise AwsAdapterError("text embedding response is invalid")
+        return vector
 
 
 class AwsPollyTextToSpeech(TextToSpeech):

@@ -1,23 +1,32 @@
 <!--
 Sync Impact Report
-- Version change: template (unversioned) -> 1.0.0
-- Added principles:
-  - I. Evidence Before Scores and Human Final Control
-  - II. Tenant Isolation and Privacy by Construction
-  - III. Contract-First Modular Ownership
-  - IV. Test-First Traceability and Quality Gates
-  - V. Recoverable, Idempotent Interview State
-- Added sections:
-  - Fixed Product and Technology Constraints
-  - Four-Lane Development and Integration Workflow
-- Removed sections: none
+- Version change: 1.0.0 -> 2.0.0
+- Modified principles:
+  - I. Evidence Before Scores and Human Final Control -> I. Criterion-Grounded Evidence and Human Final Control
+  - II. Tenant Isolation and Privacy by Construction (derived retrieval representations clarified)
+- Modified sections:
+  - Fixed Product and Technology Constraints (OpenSearch Serverless and Bedrock Knowledge Bases
+    replaced by Aurora PostgreSQL pgvector and native full-text retrieval)
+- Removed mandatory services:
+  - OpenSearch Serverless
+  - Bedrock Knowledge Bases
+- Added retrieval invariants:
+  - Published company criteria remain the immutable evaluation axis
+  - Vector similarity is retrieval metadata, never assessment Evidence or a competency score
+  - Question generation receives bounded criterion text and authorized source excerpts, not opaque IDs only
 - Deferred TODOs: none
 -->
 # Interview Evidence Platform Constitution
 
 ## Core Principles
 
-### I. Evidence Before Scores and Human Final Control
+### I. Criterion-Grounded Evidence and Human Final Control
+Every interview question and assessment MUST resolve to one published company criterion version.
+Candidate-specific retrieval MAY change which claim, omission, conflict, or ownership uncertainty is
+probed, but MUST NOT add, remove, or reinterpret the fixed evaluation axis. Vector similarity,
+keyword rank, document completeness, repository activity, and source count are retrieval signals
+only; they MUST NOT become competency scores or assessment Evidence.
+
 Every AI assessment MUST trace to an actual applicant answer, transcript interval, video
 interval, criterion version, and generation version. Submitted documents and code MAY explain
 why a question was asked, but MUST NOT by themselves become assessment Evidence. A report item
@@ -31,7 +40,8 @@ Every database repository operation, search query, object key, asynchronous mess
 job MUST carry and enforce `company_id`; applicant-scoped operations MUST additionally enforce the
 applicant or invitation scope. Valid consent MUST exist before document analysis, recording, or AI
 assessment begins. Retention expiry and deletion requests MUST remove both originals and every
-derived representation from Aurora, DynamoDB, S3, OpenSearch, summaries, and embeddings, with a
+derived representation from Aurora relational rows, pgvector embeddings, PostgreSQL full-text
+vectors, DynamoDB, S3, summaries, claims, verification maps, and question references, with a
 verifiable deletion manifest. Logs MUST NOT contain applicant source text, answer text, tokens,
 credentials, or signed URLs. These controls are release blockers, not later hardening tasks.
 
@@ -72,9 +82,20 @@ MUST expose stage latency, retries, reconciliation lag, and degraded-mode use.
   SPAs. The backend MUST use Python 3.12+, FastAPI, Pydantic, SQLAlchemy 2, and Alembic as a modular
   monolith on ECS Fargate.
 - AWS production services MUST follow the approved boundaries: Aurora PostgreSQL Serverless v2 for
-  durable relational truth, DynamoDB for hot conversation context, S3 for source/media objects,
-  OpenSearch Serverless and Bedrock Knowledge Bases for retrieval, and Bedrock, Transcribe, Polly,
-  Textract, SQS, Step Functions, and MediaConvert for their specified roles.
+  durable relational truth and tenant-scoped hybrid retrieval using pgvector plus native full-text
+  search, DynamoDB for hot conversation context, S3 for source/media objects, and Bedrock,
+  Transcribe, Polly, Textract, SQS, Step Functions, and MediaConvert for their specified roles.
+- Published company requirements, criterion guides, and candidate source chunks MUST retain their
+  protected source text and versioned derived search representations in Aurora. Embeddings MUST be
+  produced by an approved semantic embedding model; deterministic hashes or random vectors MUST NOT
+  be presented as semantic embeddings.
+- Hybrid retrieval MUST combine semantic similarity, lexical relevance, exact technology or symbol
+  matches, tenant/applicant scope, criterion version, and bounded ownership confidence. Question
+  generation MUST receive bounded authorized criterion text and source excerpts sufficient to
+  explain the question; passing only source identifiers is non-conformant.
+- Retrieval implementation MAY be replaced only behind the Lane B public search contract and after
+  relevance, tenant-isolation, deletion, latency, and rollback parity tests pass. No external vector
+  store is a mandatory production dependency.
 - Infrastructure MUST be Terraform HCL. Environment roots and remote state MUST be separated for
   `dev`, `stage`, and `prod`; Terraform MUST NOT execute application deployments, Alembic
   migrations, applicant indexing, or business workflows.
@@ -122,4 +143,4 @@ Reviewers MUST reject unexplained constitution violations. Emergency exceptions 
 recorded with an owner and removal task, and MUST NOT bypass human final control, tenant isolation,
 consent, deletion, or Evidence integrity.
 
-**Version**: 1.0.0 | **Ratified**: 2026-08-14 | **Last Amended**: 2026-08-14
+**Version**: 2.0.0 | **Ratified**: 2026-08-14 | **Last Amended**: 2026-08-15

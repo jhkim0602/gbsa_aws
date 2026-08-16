@@ -49,7 +49,7 @@ def test_full_store_deletion_retries_until_every_target_is_verified_absent() -> 
         target: DeletionTarget,
     ) -> bool:
         nonlocal failed_once
-        if target.store == "opensearch" and not failed_once:
+        if target.store == "retrieval" and not failed_once:
             failed_once = True
             raise TimeoutError
         return privacy.execute_submission(context, target)
@@ -74,7 +74,7 @@ def test_full_store_deletion_retries_until_every_target_is_verified_absent() -> 
     )
 
     stores = {target.store for target in manifest.targets}
-    assert {"aurora", "dynamodb", "s3", "opensearch"} <= stores
+    assert {"aurora", "dynamodb", "s3", "retrieval"} <= stores
     retrying = deletion.execute(
         result.company_context,
         request_id=request.deletion_request_id,
@@ -108,6 +108,8 @@ def test_full_store_deletion_retries_until_every_target_is_verified_absent() -> 
         submission.retrieve_context(
             result.company_context,
             applicant_id=result.applicant_id,
+            invitation_id=result.invitation_id,
+            competency_model_version_id=result.hiring_criterion_version_id,
             query="결제 장애",
             query_vector=(1.0, 0.0),
             criterion_id=result.report_id,

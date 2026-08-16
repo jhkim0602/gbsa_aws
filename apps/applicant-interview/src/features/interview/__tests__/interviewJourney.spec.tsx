@@ -18,6 +18,9 @@ describe("applicant interview journey", () => {
     const onReady = vi.fn();
     render(<EquipmentCheck api={api} onReady={onReady} />);
 
+    expect(
+      screen.getByText("기술 문제는 면접 평가에 영향을 주지 않습니다."),
+    ).toBeTruthy();
     expect(screen.getByRole("button", { name: "면접 시작" })).toHaveProperty(
       "disabled",
       true,
@@ -86,6 +89,22 @@ describe("applicant interview journey", () => {
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "다시 연결" }));
     expect(onReconnect).toHaveBeenCalledOnce();
+
+    rerender(
+      <InterviewRoom
+        question="최근 장애의 원인을 좁힌 순서를 설명해 주세요?"
+        state="completed"
+        connectionState="connected"
+        textOnly={false}
+        onStartAnswer={onStartAnswer}
+        onCompleteAnswer={onCompleteAnswer}
+        onReconnect={onReconnect}
+      />,
+    );
+    expect(
+      screen.getByRole("heading", { name: "면접을 완료하셨습니다" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "답변 시작" })).toBeNull();
   });
 
   it("keeps avatar timing optional in text-only mode", () => {
