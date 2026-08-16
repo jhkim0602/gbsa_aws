@@ -7,6 +7,10 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 
+class StalePositionVersionError(ValueError):
+    """Raised when optimistic concurrency detects a late write."""
+
+
 class CompanyStatus(StrEnum):
     ACTIVE = "active"
     SUSPENDED = "suspended"
@@ -92,7 +96,7 @@ class Position(BaseModel):
 
     def activate(self, *, expected_version: int) -> Position:
         if expected_version != self.row_version:
-            raise ValueError("stale position version")
+            raise StalePositionVersionError("stale position version")
         return self.model_copy(
             update={"status": PositionStatus.ACTIVE, "row_version": self.row_version + 1}
         )
@@ -110,7 +114,7 @@ class Position(BaseModel):
         status: PositionStatus,
     ) -> Position:
         if expected_version != self.row_version:
-            raise ValueError("stale position version")
+            raise StalePositionVersionError("stale position version")
         if self.status is PositionStatus.CLOSED:
             raise ValueError("closed positions are immutable")
         allowed_statuses = {

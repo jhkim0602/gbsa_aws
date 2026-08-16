@@ -10,6 +10,16 @@ export function idempotencyKey(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
+export class CompanyRequestError extends Error {
+  constructor(
+    readonly status: number,
+    readonly detail: string,
+  ) {
+    super(`company request failed: ${status}`);
+    this.name = "CompanyRequestError";
+  }
+}
+
 export async function companyRequest<T>(
   path: string,
   init: RequestInit = {},
@@ -31,7 +41,14 @@ export async function companyRequest<T>(
     },
   );
   if (!response.ok) {
-    throw new Error(`company request failed: ${response.status}`);
+    const body = await response.text();
+    let detail = body;
+    try {
+      detail = (JSON.parse(body) as { detail?: string }).detail ?? body;
+    } catch {
+      // Non-JSON error bodies are surfaced verbatim.
+    }
+    throw new CompanyRequestError(response.status, detail);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;

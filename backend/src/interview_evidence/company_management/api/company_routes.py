@@ -20,6 +20,7 @@ from interview_evidence.company_management.domain.company import (
     InterviewerTone,
     Position,
     PositionStatus,
+    StalePositionVersionError,
 )
 from interview_evidence.company_management.domain.criteria import CompetencyModelVersion
 from interview_evidence.company_management.domain.hiring import Invitation
@@ -359,13 +360,12 @@ def create_company_router(
             )
         except TenantScopedResourceNotFound as error:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        except StalePositionVersionError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
         except ValueError as error:
-            code = (
-                status.HTTP_409_CONFLICT
-                if "stale" in str(error)
-                else status.HTTP_422_UNPROCESSABLE_ENTITY
-            )
-            raise HTTPException(status_code=code, detail=str(error)) from error
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
+            ) from error
         audit.append(
             scope.context,
             action="position.updated",

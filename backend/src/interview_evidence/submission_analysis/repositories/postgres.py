@@ -876,31 +876,7 @@ class SqlAlchemySubmissionRepository:
         )
         if row is None:
             raise TenantScopedSubmissionNotFound("submission resource not found")
-        return Submission(
-            submission_id=row.submission_id,
-            company_id=row.company_id,
-            invitation_id=row.invitation_id,
-            applicant_id=row.applicant_id,
-            source_type=SourceType(row.source_type),
-            source_uri=row.source_uri,
-            original_filename=row.original_filename,
-            content_hash=row.content_hash,
-            byte_size=row.byte_size,
-            media_type=row.media_type,
-            candidate_identity_inputs=(
-                {
-                    key: tuple(str(item) for item in values)
-                    for key, values in row.candidate_identity_inputs.items()
-                }
-                if row.candidate_identity_inputs is not None
-                else None
-            ),
-            status=SubmissionStatus(row.status),
-            failure_code=row.failure_code,
-            impact_summary=row.impact_summary,
-            created_at=row.created_at,
-            row_version=row.row_version,
-        )
+        return self._submission_from_row(row)
 
     def list_submissions(
         self, context: TenantContext, applicant_id: UUID
@@ -912,7 +888,7 @@ class SqlAlchemySubmissionRepository:
                 SubmissionRow.applicant_id == applicant_id,
             )
         ).all()
-        return tuple(self.get_submission(context, row.submission_id) for row in rows)
+        return tuple(self._submission_from_row(row) for row in rows)
 
     def list_submissions_for_invitation(
         self, context: TenantContext, invitation_id: UUID
@@ -924,7 +900,7 @@ class SqlAlchemySubmissionRepository:
                 SubmissionRow.invitation_id == invitation_id,
             )
         ).all()
-        return tuple(self.get_submission(context, row.submission_id) for row in rows)
+        return tuple(self._submission_from_row(row) for row in rows)
 
     def save_analysis(
         self, context: TenantContext, analysis: SubmissionAnalysis
@@ -1690,6 +1666,34 @@ class SqlAlchemySubmissionRepository:
             ),
             model_config_version=row.model_config_version,
             status=StrategyStatus(row.status),
+        )
+
+    @staticmethod
+    def _submission_from_row(row: SubmissionRow) -> Submission:
+        return Submission(
+            submission_id=row.submission_id,
+            company_id=row.company_id,
+            invitation_id=row.invitation_id,
+            applicant_id=row.applicant_id,
+            source_type=SourceType(row.source_type),
+            source_uri=row.source_uri,
+            original_filename=row.original_filename,
+            content_hash=row.content_hash,
+            byte_size=row.byte_size,
+            media_type=row.media_type,
+            candidate_identity_inputs=(
+                {
+                    key: tuple(str(item) for item in values)
+                    for key, values in row.candidate_identity_inputs.items()
+                }
+                if row.candidate_identity_inputs is not None
+                else None
+            ),
+            status=SubmissionStatus(row.status),
+            failure_code=row.failure_code,
+            impact_summary=row.impact_summary,
+            created_at=row.created_at,
+            row_version=row.row_version,
         )
 
     @staticmethod

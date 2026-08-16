@@ -495,4 +495,48 @@ describe("company workspace", () => {
         .getAttribute("href"),
     ).toBe("/review/session-1?invitationId=invitation-2");
   });
+
+  it("bounds invitation fan-out and keeps invitations in position order", async () => {
+    const positions = Array.from({ length: 20 }, (_, index) => ({
+      positionId: `bulk-${index}`,
+      title: `대량 포지션 ${index}`,
+      description: "동시 요청 상한을 확인합니다.",
+      status: "active",
+      rowVersion: 1,
+      createdAt: "2026-08-14T01:00:00Z",
+    }));
+    let inFlight = 0;
+    let peakInFlight = 0;
+    const bulkApi: CompanyOperationsApi = {
+      ...operationsApi,
+      listPositions: vi.fn().mockResolvedValue(positions),
+      listInvitations: vi
+        .fn()
+        .mockImplementation(async (positionId: string) => {
+          inFlight += 1;
+          peakInFlight = Math.max(peakInFlight, inFlight);
+          // Later positions resolve first, so ordering cannot rely on completion order.
+          const index = Number(positionId.replace("bulk-", ""));
+          await new Promise((resolve) =>
+            setTimeout(resolve, (positions.length - index) * 2),
+          );
+          inFlight -= 1;
+          return [{ ...positionTwoInvitations[0], invitationId: positionId }];
+        }),
+    };
+
+    render(
+      <MemoryRouter>
+        <ApplicantManagement api={bulkApi} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByLabelText("전체 지원자 20명")).toBeTruthy();
+    expect(peakInFlight).toBeLessThanOrEqual(6);
+    const order = screen
+      .getAllByRole("link", { name: /상세 보기$/ })
+      .map((link) => link.getAttribute("href"));
+    expect(order[0]).toContain("/applicants/bulk-0");
+    expect(order[1]).toContain("/applicants/bulk-1");
+  });
 });

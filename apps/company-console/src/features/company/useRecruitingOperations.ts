@@ -20,6 +20,9 @@ type RecruitingOperationsState = Readonly<{
   error: boolean;
 }>;
 
+/** Browsers cap per-origin connections anyway; an unbounded fan-out only queues. */
+const MAX_CONCURRENT_REQUESTS = 6;
+
 const initialState: RecruitingOperationsState = {
   user: null,
   positions: [],
@@ -41,20 +44,29 @@ export function useRecruitingOperations(
       : api.listPositions();
     Promise.all([api.getCurrentUser(), positionsRequest])
       .then(async ([user, positions]) => {
-        const invitationBatches = await Promise.all(
-          positions.map(async (position) => {
+        const batches: PositionedInvitation[][] = positions.map(() => []);
+        let next = 0;
+        const drain = async () => {
+          for (let index = next++; index < positions.length; index = next++) {
+            const position = positions[index];
             const invitations = await api.listInvitations(position.positionId);
-            return invitations.map((invitation) => ({
+            batches[index] = invitations.map((invitation) => ({
               ...invitation,
               positionTitle: position.title,
             }));
-          }),
+          }
+        };
+        await Promise.all(
+          Array.from(
+            { length: Math.min(MAX_CONCURRENT_REQUESTS, positions.length) },
+            drain,
+          ),
         );
         if (active) {
           setState({
             user,
             positions,
-            invitations: invitationBatches.flat(),
+            invitations: batches.flat(),
             loading: false,
             error: false,
           });

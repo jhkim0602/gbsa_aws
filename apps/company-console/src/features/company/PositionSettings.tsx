@@ -83,12 +83,8 @@ export function PositionQuickEditModal({
             : "포지션 정보를 저장했습니다.",
       );
       onClose();
-    } catch {
-      setError(
-        action === "activate" && !hasCriteria
-          ? "채용을 확정하려면 면접 기준을 먼저 저장해야 합니다."
-          : "포지션 정보를 저장하지 못했습니다. 최신 값을 다시 확인해 주세요.",
-      );
+    } catch (error) {
+      setError(savePositionErrorMessage(error, action, hasCriteria));
     } finally {
       setSaving(false);
     }
@@ -415,6 +411,24 @@ function ModalShell({
       </section>
     </div>
   );
+}
+
+function savePositionErrorMessage(
+  error: unknown,
+  action: "save" | "activate" | "close",
+  hasCriteria: boolean,
+) {
+  const status =
+    typeof error === "object" && error !== null && "status" in error
+      ? (error as { status: unknown }).status
+      : null;
+  if (status === 409) {
+    return "다른 곳에서 먼저 수정된 포지션입니다. 새로고침 후 다시 저장해 주세요.";
+  }
+  if (action === "activate" && !hasCriteria) {
+    return "채용을 확정하려면 면접 기준을 먼저 저장해야 합니다.";
+  }
+  return "포지션 정보를 저장하지 못했습니다. 최신 값을 다시 확인해 주세요.";
 }
 
 function positionForm(position: CompanyPosition) {
