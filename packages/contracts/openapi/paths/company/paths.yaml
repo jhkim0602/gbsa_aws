@@ -260,6 +260,236 @@
               $ref: ../../root.yaml#/components/schemas/InvitationBatchResult
       default:
         $ref: ../../root.yaml#/components/responses/Error
+/invitation-email-template:
+  get:
+    operationId: getInvitationEmailTemplate
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    responses:
+      '200':
+        description: Company-wide invitation email template, or the platform default
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/InvitationEmailTemplateView
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+  put:
+    operationId: replaceInvitationEmailTemplate
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/InvitationEmailTemplateInput
+    responses:
+      '200':
+        description: Stored company-wide invitation email template
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/InvitationEmailTemplateView
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+  delete:
+    operationId: deleteInvitationEmailTemplate
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    responses:
+      '200':
+        description: Edits cleared; the platform default template is returned
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/InvitationEmailTemplateView
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/invitation-email-template/preview:
+  post:
+    operationId: previewInvitationEmailTemplate
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/InvitationEmailTemplateInput
+    responses:
+      '200':
+        description: 'Unsaved edits rendered against sample data. Nothing is sent
+          and no applicant
+
+          data is used.
+
+          '
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/InvitationEmailPreview
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/invitation-email-template/logo:
+  put:
+    operationId: replaceCompanyLogo
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    requestBody:
+      required: true
+      content:
+        image/png:
+          schema:
+            type: string
+            format: binary
+        image/jpeg:
+          schema:
+            type: string
+            format: binary
+        image/webp:
+          schema:
+            type: string
+            format: binary
+        image/svg+xml:
+          schema:
+            type: string
+            format: binary
+    responses:
+      '200':
+        description: Stored brand logo
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/CompanyLogoView
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+  delete:
+    operationId: deleteCompanyLogo
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    responses:
+      '204':
+        description: Brand logo removed; invitations fall back to the company name
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/positions/{position_id}/invitation-email-template:
+  get:
+    operationId: getPositionInvitationEmailTemplate
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/PositionId
+    responses:
+      '200':
+        description: Position override, or the inherited company-wide template
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/InvitationEmailTemplateView
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+  put:
+    operationId: replacePositionInvitationEmailTemplate
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/PositionId
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/InvitationEmailTemplateInput
+    responses:
+      '200':
+        description: Stored position override
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/InvitationEmailTemplateView
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+  delete:
+    operationId: deletePositionInvitationEmailTemplate
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/PositionId
+    responses:
+      '200':
+        description: Override cleared; the inherited company-wide template is returned
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/InvitationEmailTemplateView
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/public/companies/{company_id}/logo:
+  get:
+    operationId: getPublicCompanyLogo
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/CompanyId
+    responses:
+      '200':
+        description: 'Brand logo served without credentials, because a recipient''s
+          mail client
+
+          fetches remote images unauthenticated. Exposes only the logo a company chose
+
+          to embed in outbound email.
+
+          '
+        content:
+          image/png:
+            schema:
+              type: string
+              format: binary
+          image/jpeg:
+            schema:
+              type: string
+              format: binary
+          image/webp:
+            schema:
+              type: string
+              format: binary
+          image/svg+xml:
+            schema:
+              type: string
+              format: binary
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
 /applicant/access/exchange:
   post:
     operationId: exchangeApplicantInvitationToken

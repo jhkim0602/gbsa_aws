@@ -93,3 +93,29 @@
               $ref: ../../root.yaml#/components/schemas/UploadIntent
       default:
         $ref: ../../root.yaml#/components/responses/Error
+/applicant/interview-sessions/{session_id}/media-uploads:
+  post:
+    operationId: confirmRecordingUpload
+    x-owner-lane: C
+    tags:
+    - Interview
+    security:
+    - ApplicantSession: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/SessionId
+    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/RecordingUploadIntentCreate
+    responses:
+      '201':
+        description: Verified recording chunk
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/RecordingChunk
+      default:
+        $ref: ../../root.yaml#/components/responses/Error

@@ -54,8 +54,6 @@ def test_owned_targets_and_retention_event_are_tenant_scoped() -> None:
         name="문제 해결",
         description="대안을 비교한다.",
         weight=1,
-        good_evidence={},
-        weak_evidence={},
         abstain_guidance="근거가 없으면 보류한다.",
         required=True,
     )

@@ -10,6 +10,7 @@ from interview_evidence.shared.aws_clients.ports import (
     SearchHit,
     StaticSearch,
 )
+from interview_evidence.shared.email_templates import RenderedEmail
 from interview_evidence.shared.tenant import ActorType, TenantContext
 
 
@@ -72,6 +73,7 @@ def test_speech_and_email_fakes_are_deterministic_and_tenant_scoped() -> None:
         UUID("00000000-0000-7000-8000-000000000011"),
         "applicant@example.com",
         {"invitation_id": "00000000-0000-7000-8000-000000000012"},
+        RenderedEmail(subject="면접 안내", html_body="<p>본문</p>", text_body="본문"),
     )
 
     assert transcript == {"text": "최종 답변", "confidence": 0.98}

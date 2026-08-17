@@ -4,7 +4,7 @@ DOCKER_CONTEXT ?= default
 
 # Only commands that npm scripts and a bare pytest invocation cannot express live here.
 .PHONY: bootstrap boundaries-check compose-down compose-up contracts-check contracts-generate \
-	infra-format-check infra-plan-dev infra-security-check infra-validate migrate migration-check \
+	infra-format-check infra-plan-check infra-security-check infra-validate migrate migration-check \
 	seed-contract-fixtures test-ai-regression test-load-pilot test-local-production-parity \
 	verify-foundation
 
@@ -54,7 +54,7 @@ infra-format-check:
 	terraform fmt -check -recursive infra
 
 infra-validate:
-	@for root in infra/environments/dev/foundation infra/environments/dev/data-ai infra/environments/dev/application infra/environments/stage infra/environments/prod; do \
+	@for root in infra/environments/dev/foundation infra/environments/dev/data-ai infra/environments/dev/application infra/environments/prod; do \
 		terraform -chdir=$$root init -backend=false -input=false >/dev/null && \
 		terraform -chdir=$$root validate || exit 1; \
 	done
@@ -62,5 +62,7 @@ infra-validate:
 infra-security-check:
 	UV_CACHE_DIR=$(UV_CACHE_DIR) uv run --no-sync pytest -q infra/tests/test_terraform_contracts.py
 
-infra-plan-dev:
-	terraform -chdir=infra/environments/stage test -filter=local-plan.tftest.hcl
+infra-plan-check:
+	terraform -chdir=infra/environments/prod test -filter=local-plan.tftest.hcl
+	terraform -chdir=infra/modules/compute init -backend=false -input=false >/dev/null
+	terraform -chdir=infra/modules/compute test -filter=task-definition.tftest.hcl

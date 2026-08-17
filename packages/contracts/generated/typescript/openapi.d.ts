@@ -132,6 +132,22 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/applicant/interview-sessions/{session_id}/media-uploads": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["confirmRecordingUpload"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/applicant/interview-sessions/{session_id}/resume": {
         readonly parameters: {
             readonly query?: never;
@@ -260,6 +276,54 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/invitation-email-template": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["getInvitationEmailTemplate"];
+        readonly put: operations["replaceInvitationEmailTemplate"];
+        readonly post?: never;
+        readonly delete: operations["deleteInvitationEmailTemplate"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/invitation-email-template/logo": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put: operations["replaceCompanyLogo"];
+        readonly post?: never;
+        readonly delete: operations["deleteCompanyLogo"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/invitation-email-template/preview": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["previewInvitationEmailTemplate"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/invitations/{invitation_id}/final-decisions": {
         readonly parameters: {
             readonly query?: never;
@@ -340,6 +404,22 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/positions/{position_id}/invitation-email-template": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["getPositionInvitationEmailTemplate"];
+        readonly put: operations["replacePositionInvitationEmailTemplate"];
+        readonly post?: never;
+        readonly delete: operations["deletePositionInvitationEmailTemplate"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/positions/{position_id}/invitations": {
         readonly parameters: {
             readonly query?: never;
@@ -380,6 +460,22 @@ export interface paths {
             readonly cookie?: never;
         };
         readonly get: operations["getDeletionRequest"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/public/companies/{company_id}/logo": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["getPublicCompanyLogo"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -435,6 +531,22 @@ export interface components {
         };
         /** @enum {string} */
         readonly AssessmentState: "confirmed" | "partially_confirmed" | "insufficient_evidence" | "needs_follow_up";
+        /** @description One evaluation axis as the model judged it. The score is an AI judgement offered to a reviewer as material, never a hiring decision, and it is only present when the citations in quoted_evidence_ids resolved to real Evidence at generation time. */
+        readonly AxisAssessmentView: {
+            readonly axis: string;
+            /** @description Korean label captured when the report was generated, so an older report keeps its wording after the axis list changes. */
+            readonly label: string;
+            /** @description The Evidence this score rests on. Empty exactly when score is null. */
+            readonly quoted_evidence_ids: readonly string[];
+            readonly rationale: string;
+            /** @description null means the answers gave no basis to judge this axis, or that the score was withheld because its citations did not resolve. It is never a zero, because zero says the answer was wrong. */
+            readonly score: number | null;
+        };
+        readonly CompanyLogoView: {
+            readonly byte_size: number;
+            readonly content_type: string;
+            readonly logo_url: string;
+        };
         readonly CompanyUserView: {
             /** Format: uuid */
             readonly company_id: string;
@@ -450,6 +562,7 @@ export interface components {
             readonly competency_model_version_id: string;
             readonly criteria: readonly components["schemas"]["EvaluationCriterionInput"][];
             readonly interview_duration_minutes: number;
+            readonly interview_level?: components["schemas"]["InterviewLevel"];
             /** @description Legacy versions can be empty; new version requests require at least one item. */
             readonly job_requirements: readonly components["schemas"]["JobRequirementInput"][];
             /** @description System-managed compatibility field. */
@@ -467,6 +580,7 @@ export interface components {
         readonly CompetencyModelVersionCreate: {
             readonly criteria: readonly components["schemas"]["EvaluationCriterionInput"][];
             readonly interview_duration_minutes: number;
+            readonly interview_level?: components["schemas"]["InterviewLevel"];
             readonly job_requirements: readonly components["schemas"]["JobRequirementInput"][];
             /** @description System-managed compatibility field; recruiter clients must not set it. */
             readonly persona_definition?: Record<string, never>;
@@ -585,11 +699,9 @@ export interface components {
             readonly code: string;
             readonly common_questions?: readonly string[];
             readonly description: string;
-            readonly good_evidence?: Record<string, never>;
             readonly name: string;
             readonly required: boolean;
             readonly verification_guide: components["schemas"]["CriterionVerificationGuide"];
-            readonly weak_evidence?: Record<string, never>;
             readonly weight: number;
         };
         readonly EvidenceView: {
@@ -642,6 +754,15 @@ export interface components {
             readonly items: readonly components["schemas"]["InterviewerProfile"][];
             readonly next_cursor?: string | null;
         };
+        /**
+         * @description How deep the AI interviewer digs. The level shifts the follow-up budget the
+         *     criteria configure and selects the question-depth instructions the model is
+         *     given; it never changes which criteria are verified. Versions published before
+         *     the toggle existed read back as `junior`.
+         * @default junior
+         * @enum {string}
+         */
+        readonly InterviewLevel: "entry" | "junior" | "senior";
         readonly InterviewResumeSnapshot: {
             readonly degraded_modes?: readonly string[];
             /** Format: uuid */
@@ -683,6 +804,44 @@ export interface components {
             readonly accepted_count: number;
             readonly invitations: readonly components["schemas"]["InvitationView"][];
             readonly rejected_count: number;
+        };
+        readonly InvitationEmailPreview: {
+            readonly html_body: string;
+            readonly subject: string;
+        };
+        /**
+         * @description Company-editable invitation email copy. logo_url is absent on purpose: the server
+         *     derives it from the uploaded logo so a client cannot point outbound mail at a host
+         *     it controls.
+         */
+        readonly InvitationEmailTemplateInput: {
+            readonly brand_color?: string;
+            readonly cta_label: string;
+            readonly emphasize_deadline?: boolean;
+            readonly footer?: string;
+            readonly guides?: readonly string[];
+            readonly headline: string;
+            readonly intro: string;
+            readonly outro?: string;
+            readonly show_security_notice?: boolean;
+            readonly subject: string;
+            readonly use_applicant_name?: boolean;
+        };
+        readonly InvitationEmailTemplateView: {
+            readonly brand_color: string;
+            readonly cta_label: string;
+            readonly emphasize_deadline: boolean;
+            readonly footer: string;
+            readonly guides: readonly string[];
+            readonly headline: string;
+            readonly intro: string;
+            /** @description False when the position inherits the company-wide template. */
+            readonly is_position_override: boolean;
+            readonly logo_url?: string | null;
+            readonly outro: string;
+            readonly show_security_notice: boolean;
+            readonly subject: string;
+            readonly use_applicant_name: boolean;
         };
         readonly InvitationPage: {
             readonly items: readonly components["schemas"]["InvitationView"][];
@@ -777,6 +936,15 @@ export interface components {
             /** @enum {string} */
             readonly verification_target_type: "not_mentioned" | "claim_found" | "detail_missing" | "source_conflict" | "ownership_uncertain";
         };
+        readonly RecordingChunk: {
+            readonly chunk_sequence: number;
+            /** Format: uuid */
+            readonly recording_chunk_id: string;
+            readonly session_end_ms: number;
+            readonly session_start_ms: number;
+            /** @enum {string} */
+            readonly upload_status: "issued" | "uploaded" | "verified" | "failed";
+        };
         readonly RecordingUploadIntentCreate: {
             readonly byte_size: number;
             readonly chunk_sequence: number;
@@ -786,8 +954,14 @@ export interface components {
         };
         readonly ReportItemView: {
             readonly assessment_state: components["schemas"]["AssessmentState"];
+            /** @description Mean of this item's scored axes. Unscored axes are left out rather than counted as zero. */
+            readonly average_score?: number | null;
+            /** @description Empty for reports generated before scoring existed, which the console reads as "this report has no scores". */
+            readonly axis_assessments: readonly components["schemas"]["AxisAssessmentView"][];
             /** Format: uuid */
             readonly criterion_id: string;
+            /** @description Criterion name captured when the report was generated, so a reviewer never reads a bare UUID and the report survives deletion of the criterion version. Empty only for reports generated before this field existed. */
+            readonly criterion_name: string;
             readonly evidence: readonly components["schemas"]["EvidenceView"][];
             readonly follow_up_question?: string | null;
             readonly observation: string;
@@ -801,12 +975,16 @@ export interface components {
             readonly ai_original_immutable: true;
             readonly human_reviews?: readonly components["schemas"]["HumanReviewView"][];
             readonly items: readonly components["schemas"]["ReportItemView"][];
+            /** @description Mean across the criteria that could be scored. Explicitly not a hiring score - it says nothing about the criteria the interview never reached, which is why the console shows it beside unscored_criteria_count and the final decision stays with a person. */
+            readonly overall_score?: number | null;
             /** Format: uuid */
             readonly report_id: string;
             readonly report_version: number;
             /** @enum {string} */
             readonly status: "generating" | "ready" | "partial" | "failed";
             readonly summary: string;
+            /** @description How many criteria produced no score, so the reviewer can see what overall_score does not cover. */
+            readonly unscored_criteria_count?: number;
         };
         readonly ReviewArtifactCreate: {
             /** @enum {string} */
@@ -892,6 +1070,7 @@ export interface components {
         };
     };
     parameters: {
+        readonly CompanyId: string;
         readonly Cursor: string;
         readonly IdempotencyKey: string;
         readonly IfMatchVersion: number;
@@ -1129,6 +1308,35 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["UploadIntent"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly confirmRecordingUpload: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                readonly "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            readonly path: {
+                readonly session_id: components["parameters"]["SessionId"];
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RecordingUploadIntentCreate"];
+            };
+        };
+        readonly responses: {
+            /** @description Verified recording chunk */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RecordingChunk"];
                 };
             };
             readonly default: components["responses"]["Error"];
@@ -1395,6 +1603,148 @@ export interface operations {
             readonly default: components["responses"]["Error"];
         };
     };
+    readonly getInvitationEmailTemplate: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Company-wide invitation email template, or the platform default */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["InvitationEmailTemplateView"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly replaceInvitationEmailTemplate: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["InvitationEmailTemplateInput"];
+            };
+        };
+        readonly responses: {
+            /** @description Stored company-wide invitation email template */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["InvitationEmailTemplateView"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly deleteInvitationEmailTemplate: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Edits cleared; the platform default template is returned */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["InvitationEmailTemplateView"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly replaceCompanyLogo: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "image/jpeg": string;
+                readonly "image/png": string;
+                readonly "image/svg+xml": string;
+                readonly "image/webp": string;
+            };
+        };
+        readonly responses: {
+            /** @description Stored brand logo */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CompanyLogoView"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly deleteCompanyLogo: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Brand logo removed; invitations fall back to the company name */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly previewInvitationEmailTemplate: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["InvitationEmailTemplateInput"];
+            };
+        };
+        readonly responses: {
+            /**
+             * @description Unsaved edits rendered against sample data. Nothing is sent and no applicant
+             *     data is used.
+             */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["InvitationEmailPreview"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
     readonly recordHumanFinalDecision: {
         readonly parameters: {
             readonly query?: never;
@@ -1603,6 +1953,79 @@ export interface operations {
             readonly default: components["responses"]["Error"];
         };
     };
+    readonly getPositionInvitationEmailTemplate: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly position_id: components["parameters"]["PositionId"];
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Position override, or the inherited company-wide template */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["InvitationEmailTemplateView"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly replacePositionInvitationEmailTemplate: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly position_id: components["parameters"]["PositionId"];
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["InvitationEmailTemplateInput"];
+            };
+        };
+        readonly responses: {
+            /** @description Stored position override */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["InvitationEmailTemplateView"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly deletePositionInvitationEmailTemplate: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly position_id: components["parameters"]["PositionId"];
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Override cleared; the inherited company-wide template is returned */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["InvitationEmailTemplateView"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
     readonly listInvitations: {
         readonly parameters: {
             readonly query?: {
@@ -1703,6 +2126,36 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["DeletionStatus"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly getPublicCompanyLogo: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly company_id: components["parameters"]["CompanyId"];
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /**
+             * @description Brand logo served without credentials, because a recipient's mail client
+             *     fetches remote images unauthenticated. Exposes only the logo a company chose
+             *     to embed in outbound email.
+             */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "image/jpeg": string;
+                    readonly "image/png": string;
+                    readonly "image/svg+xml": string;
+                    readonly "image/webp": string;
                 };
             };
             readonly default: components["responses"]["Error"];

@@ -96,7 +96,19 @@ describe("applicant feature routes", () => {
           { status: 201, headers: { "Content-Type": "application/json" } },
         ),
       )
-      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+      .mockResolvedValueOnce(new Response(null, { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            recording_chunk_id: "00000000-0000-7000-8000-000000000602",
+            chunk_sequence: 3,
+            upload_status: "verified",
+            session_start_ms: 2000,
+            session_end_ms: 4000,
+          }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        ),
+      );
     vi.stubGlobal("fetch", fetchMock);
 
     expect(
@@ -128,6 +140,21 @@ describe("applicant feature routes", () => {
       expect.objectContaining({
         method: "PUT",
         headers: { "x-amz-checksum-sha256": "checksum" },
+      }),
+    );
+    // The chunk is only recorded once the upload is confirmed, and the intent's own
+    // idempotency key has to be reused so the confirmation names that same upload.
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining(
+        "/v1/applicant/interview-sessions/session-id/media-uploads",
+      ),
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        headers: expect.objectContaining({
+          "Idempotency-Key": "recording-session-id-3",
+        }),
       }),
     );
   });

@@ -40,7 +40,10 @@ No AWS apply or production mutation was performed.
 | Lane C migration | `c_001_interview_session` |
 | Lane D migration | `d_001_reporting` |
 | Integration merge | `merge_001_lane_heads` |
-| Current integration head | `m_002_runtime_persistence` |
+| Integration head at this baseline | `m_002_runtime_persistence` |
+
+The head advanced after this report was written; see the Phase 25 addendum at the end of this
+document for the current value.
 
 `make contracts-generate`, `make contracts-check`, and `make migration-check` pass without drift.
 Empty databases and databases already at the four lane heads both converge through the merge
@@ -154,3 +157,94 @@ composed FastAPI runtime and the real cross-lane public adapters.
 
 These items do not require local code reconstruction. They are intentionally outside a no-apply
 predeployment validation.
+
+## Addendum: Phase 25 Relational Integrity
+
+**Executed**: 2026-08-16, Asia/Seoul
+
+The baseline above is kept as the record of what was verified on 2026-08-15. Phase 25 (T261-T269)
+changed the migration head and two HTTP status mappings after that date.
+
+| Artifact | Value after Phase 25 |
+|---|---|
+| Current integration head | `m_006_drop_duplicate_evidence` |
+| Added revisions | `m_004_hot_path_indexes`, `m_005_requirement_criterion_fk`, `m_006_drop_duplicate_evidence` |
+
+- `fk_job_requirements_criterion` now enforces that a JobRequirement resolves to an
+  EvaluationCriterion in the same company and criterion version.
+- `createCompetencyModelVersion` returns 422 instead of 500 when a `criterion_code` has no matching
+  criterion or a criterion code is duplicated. `publishCompetencyModelVersion` returns 409 instead
+  of 500 on a stale `If-Match-Version` or an already-published version. Both were server faults
+  reported for client mistakes.
+- The regression suite grew to 203 passing tests. Tenant-isolation integration tests now enable
+  `PRAGMA foreign_keys=ON`, without which SQLite silently ignores every foreign key and the
+  delete-ordering defect fixed in T266 could not be observed.
+- REST, WebSocket and event schemas are unchanged. Error responses continue to resolve through the
+  single `default` response, so no operation enumerates 4xx codes.
+
+## Addendum: Phase 27 Two-Environment Topology
+
+**Executed**: 2026-08-17, Asia/Seoul
+
+The report above was written when three environments existed. On the product owner's decision the
+stage environment was removed, so the following entries above are superseded rather than corrected.
+
+| Item above | Value after Phase 27 |
+|---|---|
+| Terraform roots | 4: `dev/foundation`, `dev/data-ai`, `dev/application`, `prod` |
+| "Stage-equivalent plan" artifact | `infra/environments/prod/local-plan.tftest.hcl` |
+| "Stage smoke" artifact | `tests/e2e/test_prod_smoke.py` |
+| Live smoke activation variables | `PROD_COMPANY_URL`, `PROD_APPLICANT_URL`, `PROD_API_URL` |
+| Deployment workflow environments | `dev`, `prod` |
+| Plan verification command | `make infra-plan-check` |
+
+- `infra/environments/stage/` held no `terraform.tfstate`, consistent with the "No AWS apply or
+  production mutation was performed" statement above, so deletion released no live infrastructure.
+- Every release gate below that names stage now applies to prod. Gate 2 reads as applying the
+  reviewed saved plan to prod, and gate 3 as setting the three `PROD_*_URL` values. The QG-13 and
+  QG-14 rows keep their local PASS; the live request they defer to is now a prod request.
+- QG-16 read "five root validates" and now covers four. The relocated plan test asserts the same
+  three conditions and additionally exercises the prod-only `nat_gateway_per_az = true` and Aurora
+  2-64 configuration that the stage root did not plan, so plan-time coverage widened.
+- The stage-versus-prod protection contract became dev-versus-prod: the unprotected control group is
+  now `dev/foundation` and `dev/data-ai`, which are roots that still exist.
+- No application code, REST, WebSocket, event schema or migration changed.
+
+## Addendum: Phase 30-31 Deployable Container Definitions
+
+**Executed**: 2026-08-18, Asia/Seoul
+
+The report above validated infrastructure by static analysis, root `validate` and a mock-provider
+plan test. That was not sufficient, and two defects passed all of it. Both lived in the *contents* of
+a rendered container definition, which the configuration's shape does not constrain.
+
+| Item above | Value after Phase 30-31 |
+|---|---|
+| QG-16 "four root validates" | Unchanged, plus a real `terraform plan`: `prod` 161 to add / 0 change / 0 destroy, `dev/foundation` 46 to add |
+| Plan verification command | `make infra-plan-check` now also runs `infra/modules/compute/task-definition.tftest.hcl` |
+| Infrastructure gates in CI | Previously none. A second `infrastructure` job runs all four `make infra-*` targets |
+| Contract test count | `infra/tests/test_terraform_contracts.py` 9 → 11 |
+| Provider lock files | 4 → 5, all pinning aws `5.100.0`; `infra/modules/compute/` acquired one because the plan gate now inits it |
+
+- The ECS worker would not have started. Its `command` was `["python", "-m",
+  "interview_evidence.worker"]` while the image installs the package into a uv virtualenv, so the
+  task exits on `ModuleNotFoundError` before any application code runs — confirmed against the built
+  image, not inferred. The report's "no AWS apply was performed" is why this was still catchable.
+- `GITHUB_TOKEN` reached no deployed container, so public-repository analysis would have run against
+  the 60-request anonymous quota. It is now a `secrets` reference resolved by the execution role,
+  never a plaintext environment entry.
+- `validate` resolves no data sources and runs no provider-side argument validation; a saved plan
+  does both. The plan additionally proves the credential cannot leak into a plan file:
+  `container_definitions` is unknown at plan time because it derives from the secret ARN, and the
+  developer's real token appears nowhere in the saved plan JSON.
+- Question rationale was null over HTTP for every session while its unit tests passed, because the
+  reporting router is composed in two runtime files and neither passed the optional
+  `rationale_provider`. Coverage now goes through `create_production_runtime` rather than
+  constructing the service directly, which is what let the defect through.
+- The two dev roots that read `terraform_remote_state` still cannot be planned before
+  `dev/foundation` is applied. They compose the same modules the prod plan covers.
+- Release gate 2 acquires a prerequisite: `${name}/application/config` is created empty, and its
+  `github_token` key must be written before the application root is first applied, or the task fails
+  to start with a `ResourceNotFoundException`.
+- No REST, WebSocket, event schema or migration changed. `COGNITO_USER_POOL_ID` and `EVENT_BUS_ARN`
+  remain supplied to tasks and read by no code, recorded as T301 rather than removed.

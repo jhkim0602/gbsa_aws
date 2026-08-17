@@ -96,15 +96,31 @@ def _report_view(report: Report, reviews: tuple[HumanReview, ...]) -> dict[str, 
         "status": report.status.value,
         "summary": report.summary,
         "ai_original_immutable": True,
+        "overall_score": report.overall_score,
+        # Sent beside the score so a reviewer reading 82 also sees that three criteria
+        # were never scored, instead of reading it as a verdict on the whole interview.
+        "unscored_criteria_count": len(report.items) - len(report.scored_items),
         "items": [
             {
                 "report_item_id": item.report_item_id,
                 "criterion_id": item.criterion_id,
+                "criterion_name": item.criterion_name,
                 "assessment_state": item.assessment_state.value,
                 "observation": item.observation,
                 "rationale": item.rationale,
                 "uncertainty": item.uncertainty,
                 "follow_up_question": item.follow_up_question,
+                "average_score": item.average_score,
+                "axis_assessments": [
+                    {
+                        "axis": axis.axis,
+                        "label": axis.label,
+                        "score": axis.score,
+                        "rationale": axis.rationale,
+                        "quoted_evidence_ids": list(axis.quoted_evidence_ids),
+                    }
+                    for axis in item.axis_assessments
+                ],
                 "evidence": [
                     {
                         "evidence_id": evidence.evidence_id,

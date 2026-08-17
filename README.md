@@ -16,6 +16,15 @@ The default local configuration contains only emulator credentials. Never place 
 text, answer text, production credentials, raw invitation tokens or signed URLs in configuration or
 logs.
 
+### Public repository analysis
+
+Set `GITHUB_TOKEN` in `.env` to analyse public Git submissions at full speed. An anonymous caller
+gets 60 GitHub API requests an hour and one repository analysis can spend all of them, so without a
+token the analysis is rate limited after a handful of submissions. A read-only token needs no scopes
+for public repositories and raises the ceiling to 5000 requests an hour. The token is sent only as a
+request header and never reaches a snapshot, an error code or a log line. Leave it empty to stay
+anonymous.
+
 ## Workspace
 
 ```text
@@ -50,10 +59,22 @@ npm run test:e2e:company
 ```
 
 `npm run test:workspace` runs formatting, lint, typecheck and every unit, contract, integration
-and end-to-end test in one pass. It is exactly what CI runs.
+and end-to-end test in one pass. Together with the three `make` targets above it is what the CI
+`workspace` job runs.
 
 The browser journeys require the local Compose services and Chrome. They verify the rendered
 company console, real API responses and primary route navigation.
+
+Infrastructure is gated separately, because none of it needs AWS credentials and none of it is
+reachable from the application suites:
+
+```bash
+make infra-format-check infra-validate infra-security-check infra-plan-check
+```
+
+CI runs these as a second `infrastructure` job. See `infra/README.md` for the deploy prerequisite
+that Terraform cannot own: the `${name}/application/config` secret is created empty and its
+`github_token` key must be populated before the application root is first applied.
 
 The complete thin journey is defined in
 `specs/001-interview-evidence-platform/quickstart.md`.

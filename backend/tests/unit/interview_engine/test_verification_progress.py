@@ -14,6 +14,7 @@ from interview_evidence.interview_engine.domain.turn import (
 from interview_evidence.interview_engine.repositories.postgres import (
     InMemoryInterviewRepository,
 )
+from interview_evidence.shared.interview_level import InterviewLevel
 from interview_evidence.shared.tenant import ActorType, TenantContext
 
 NOW = datetime(2026, 8, 15, 15, 0, tzinfo=UTC)
@@ -41,6 +42,7 @@ def _target(
     criterion_id: UUID,
     *,
     max_follow_ups: int,
+    time_budget_seconds: int = 300,
 ) -> VerificationTargetPlan:
     return VerificationTargetPlan(
         verification_target_id=target_id,
@@ -52,6 +54,7 @@ def _target(
         follow_up_directions=("본인이 직접 수행한 복구 작업",),
         max_follow_ups=max_follow_ups,
         common_question="운영 장애를 해결한 경험을 설명해 주세요?",
+        time_budget_seconds=time_budget_seconds,
     )
 
 
@@ -158,4 +161,111 @@ def test_repository_persists_final_answer_progress_and_question_rationale() -> N
             question_turn_id=question_turn_id,
         )
         == rationale
+    )
+
+
+def _leveled_plan(
+    level: InterviewLevel,
+    *,
+    remaining_time_seconds: int = 900,
+    second_budget_seconds: int = 300,
+) -> InterviewPlan:
+    return InterviewPlan(
+        criterion_ids=(FIRST_CRITERION_ID, SECOND_CRITERION_ID),
+        initial_question="운영 장애를 해결한 경험을 설명해 주세요?",
+        prohibited_topics=(),
+        fallback_question="본인이 직접 수행한 작업을 설명해 주세요?",
+        remaining_time_seconds=remaining_time_seconds,
+        model_config_version="question-v2",
+        retrieval_config_version="aurora-hybrid-v1",
+        voice_id="Seoyeon",
+        verification_targets=(
+            _target(FIRST_TARGET_ID, FIRST_CRITERION_ID, max_follow_ups=2),
+            _target(
+                SECOND_TARGET_ID,
+                SECOND_CRITERION_ID,
+                max_follow_ups=2,
+                time_budget_seconds=second_budget_seconds,
+            ),
+        ),
+        interview_level=level,
+    )
+
+
+def test_the_level_decides_how_many_follow_ups_one_target_earns() -> None:
+    """The same criteria have to serve a 신입 and a 시니어 posting differently.
+
+    ``max_follow_ups`` is 2 on both targets here, so any difference in where the
+    interview moves next comes from the level rather than from the configuration.
+    """
+    entry = _leveled_plan(InterviewLevel.ENTRY)
+    senior = _leveled_plan(InterviewLevel.SENIOR)
+
+    # One follow-up already asked: 신입 moves on, 시니어 keeps digging.
+    assert (
+        entry.next_target_after_answer(
+            answered_target_id=FIRST_TARGET_ID,
+            follow_up_count=1,
+            completed_target_ids=frozenset(),
+        ).verification_target_id
+        == SECOND_TARGET_ID
+    )
+    assert (
+        senior.next_target_after_answer(
+            answered_target_id=FIRST_TARGET_ID,
+            follow_up_count=1,
+            completed_target_ids=frozenset(),
+        ).verification_target_id
+        == FIRST_TARGET_ID
+    )
+    assert entry.follow_up_budget(entry.verification_targets[0]) == 1
+    assert senior.follow_up_budget(senior.verification_targets[0]) == 3
+
+
+def test_the_plan_refuses_to_open_a_criterion_the_clock_cannot_finish() -> None:
+    """A half-verified criterion is worse evidence than ending the interview.
+
+    ``time_budget_seconds`` was stored on the verification guide but never read, so
+    the loop would open a fifth topic with a minute left and collect one shallow
+    answer for it.
+    """
+    plan = _leveled_plan(
+        InterviewLevel.JUNIOR,
+        remaining_time_seconds=600,
+        second_budget_seconds=300,
+    )
+
+    # 350 seconds left is not enough for a 300 second criterion plus any answer.
+    assert (
+        plan.next_target_after_answer(
+            answered_target_id=FIRST_TARGET_ID,
+            follow_up_count=2,
+            completed_target_ids=frozenset(),
+            elapsed_seconds=400,
+        )
+        is None
+    )
+    # With the slot barely started the same call opens the next criterion.
+    assert (
+        plan.next_target_after_answer(
+            answered_target_id=FIRST_TARGET_ID,
+            follow_up_count=2,
+            completed_target_ids=frozenset(),
+            elapsed_seconds=60,
+        ).verification_target_id
+        == SECOND_TARGET_ID
+    )
+
+
+def test_a_spent_clock_ends_the_interview_even_mid_criterion() -> None:
+    plan = _leveled_plan(InterviewLevel.SENIOR, remaining_time_seconds=600)
+
+    assert (
+        plan.next_target_after_answer(
+            answered_target_id=FIRST_TARGET_ID,
+            follow_up_count=0,
+            completed_target_ids=frozenset(),
+            elapsed_seconds=600,
+        )
+        is None
     )

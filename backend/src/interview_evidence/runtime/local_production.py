@@ -4,11 +4,18 @@ import smtplib
 from collections.abc import Mapping
 from dataclasses import replace
 from email.message import EmailMessage
-from html import escape
 from typing import Protocol, cast
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
+from interview_evidence.interview_engine.application.question_prompt import (
+    TASK_NEXT_QUESTION,
+    task_payload_of,
+)
 from interview_evidence.main import LocalRuntime
+from interview_evidence.reporting.application.assessment_prompt import (
+    ASSESSMENT_AXES,
+    TASK_ASSESS_CRITERION,
+)
 from interview_evidence.runtime.aws import AwsRuntimeDependencies, create_aws_runtime_dependencies
 from interview_evidence.runtime.production import create_production_runtime
 from interview_evidence.shared.aws_clients.ports import (
@@ -17,6 +24,7 @@ from interview_evidence.shared.aws_clients.ports import (
     StaticTextEmbedder,
 )
 from interview_evidence.shared.database import RequestScopedDatabase
+from interview_evidence.shared.email_templates import RenderedEmail
 from interview_evidence.shared.operations import DependencyReadiness, NullMetricRecorder
 from interview_evidence.shared.security.principals import (
     ApplicantPrincipal,
@@ -74,28 +82,87 @@ class LocalSmtpEmailSender:
         recipient_ref: UUID,
         recipient_address: str,
         template_data: Mapping[str, object],
+        rendered: RenderedEmail,
     ) -> UUID:
         require_tenant_context(context)
+        del template_data
         message_id = f"<{uuid4()}@local.interview-evidence.test>"
-        invitation_url = escape(str(template_data.get("invitation_url", "")))
         message = EmailMessage()
         message["Message-ID"] = message_id
         message["From"] = self._from_address
         message["To"] = recipient_address
-        message["Subject"] = "Interview invitation"
+        message["Subject"] = rendered.subject
         message["X-IEP-Template"] = template_id
         message["X-IEP-Recipient-Ref"] = str(recipient_ref)
-        message.set_content("Open the HTML version of this invitation.")
-        message.add_alternative(
-            (
-                "<p>Your interview invitation is ready.</p>"
-                f'<p><a href="{invitation_url}">Open invitation</a></p>'
-            ),
-            subtype="html",
-        )
+        message.set_content(rendered.text_body)
+        message.add_alternative(rendered.html_body, subtype="html")
         with smtplib.SMTP(self._host, self._port, timeout=5) as smtp:
             smtp.send_message(message)
         return uuid5(NAMESPACE_URL, message_id)
+
+
+def _local_assessment(task: Mapping[str, object]) -> Mapping[str, object]:
+    """Score a criterion without a model, for local runs and tests.
+
+    The substitute has to earn its keep twice over: the verdict must survive citation
+    verification, or every local report would show withheld scores and hide real bugs in
+    the wiring; and the axes must differ from one another, or a broken UI that renders one
+    score five times would look correct. So the scores are derived from the answer text
+    rather than being a fixed constant -- a longer, more specific answer scores higher,
+    the way a real judgement would move.
+    """
+    criterion = task.get("criterion")
+    criterion_id = (
+        str(criterion["criterion_id"]) if isinstance(criterion, Mapping) else str(task.get("task"))
+    )
+    raw_answers = task.get("provided_answers")
+    answers = (
+        [item for item in raw_answers if isinstance(item, Mapping)]
+        if isinstance(raw_answers, list)
+        else []
+    )
+    if not answers:
+        return {
+            "criterion_id": criterion_id,
+            "assessment_state": "insufficient_evidence",
+            "axis_scores": [
+                {
+                    "axis": axis.key,
+                    "score": None,
+                    "rationale": "인용할 답변이 없어 이 축은 판단하지 않았습니다.",
+                    "quoted_evidence_ids": [],
+                }
+                for axis in ASSESSMENT_AXES
+            ],
+            "summary": "면접에서 이 기준을 확인할 답변이 기록되지 않았습니다.",
+            "follow_up_question": "사람 면접에서 이 기준을 직접 확인해 주세요.",
+        }
+    evidence_ids = [str(answer["evidence_id"]) for answer in answers if "evidence_id" in answer]
+    spoken = " ".join(str(answer.get("answer_text", "")) for answer in answers)
+    # Length stands in for substance: enough to make the local report vary between a
+    # terse answer and a detailed one without pretending to be judgement.
+    depth = min(100, 45 + len(spoken) // 12)
+    return {
+        "criterion_id": criterion_id,
+        "assessment_state": "confirmed" if depth >= 60 else "partially_confirmed",
+        "axis_scores": [
+            {
+                "axis": axis.key,
+                "score": max(20, min(100, depth + offset)),
+                "rationale": (
+                    f"답변에서 {axis.label}에 해당하는 내용을 {len(evidence_ids)}건 확인했습니다. "
+                    "로컬 결정론 판정이므로 실제 모델 판단이 아닙니다."
+                ),
+                "quoted_evidence_ids": evidence_ids,
+            }
+            for axis, offset in zip(ASSESSMENT_AXES, (0, -8, -15, 5, 10), strict=False)
+        ],
+        "summary": (
+            f"답변 {len(evidence_ids)}건을 근거로 이 기준을 검토했습니다. "
+            "로컬 환경의 결정론 판정 결과입니다."
+        ),
+        "follow_up_question": None if depth >= 60 else "구체적인 사례를 한 가지 더 확인해 주세요.",
+    }
 
 
 class LocalDeterministicModel:
@@ -105,9 +172,14 @@ class LocalDeterministicModel:
         model_input: Mapping[str, object],
     ) -> Mapping[str, object]:
         require_tenant_context(context)
-        if model_input.get("task") == "next_interview_question":
-            criterion_id = str(model_input["target_criterion_id"])
-            raw_context = model_input.get("context")
+        # Question generation now arrives as a rendered Anthropic Messages body, so the
+        # task fields have to be read back out of the user message.
+        question_task = task_payload_of(model_input)
+        if question_task is not None and question_task.get("task") == TASK_ASSESS_CRITERION:
+            return _local_assessment(question_task)
+        if question_task is not None and question_task.get("task") == TASK_NEXT_QUESTION:
+            criterion_id = str(question_task["target_criterion_id"])
+            raw_context = question_task.get("context")
             source_ids: tuple[str, ...] = ()
             if isinstance(raw_context, Mapping):
                 raw_sources = raw_context.get("retrieved_sources")
@@ -118,7 +190,8 @@ class LocalDeterministicModel:
                         if isinstance(item, Mapping) and "source_id" in item
                     )[:1]
             return {
-                "text": "방금 설명한 선택에서 가장 중요한 트레이드오프를 말씀해 주세요.",
+                # QuestionPolicy rejects anything that is not exactly one question.
+                "text": "방금 설명한 선택에서 가장 중요한 트레이드오프는 무엇이었나요?",
                 "target_criterion_id": criterion_id,
                 "source_reference_ids": source_ids,
             }
@@ -152,7 +225,7 @@ class LocalDeterministicModel:
                 criterion_id: ["구체적인 상황과 결과를 확인합니다."]
                 for criterion_id in criterion_ids
             },
-            "time_budget": {criterion_id: 180 for criterion_id in criterion_ids},
+            "time_budget": {"total_seconds": 180 * max(len(criterion_ids), 1)},
             "required_evidence_plan": {criterion_id: 1 for criterion_id in criterion_ids},
         }
 

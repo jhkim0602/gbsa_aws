@@ -13,6 +13,10 @@ from interview_evidence.shared.idempotency import (
     ResourceIdempotencyStore,
 )
 from interview_evidence.shared.ids import Clock, new_uuid7
+from interview_evidence.shared.interview_level import (
+    DEFAULT_INTERVIEW_LEVEL,
+    InterviewLevel,
+)
 from interview_evidence.shared.tenant import TenantContext
 
 
@@ -37,6 +41,7 @@ class CriteriaService:
         prohibited_topics: tuple[str, ...],
         interview_duration_minutes: int,
         idempotency_key: str,
+        interview_level: InterviewLevel = DEFAULT_INTERVIEW_LEVEL,
         persona_definition: dict[str, object] | None = None,
     ) -> CompetencyModelVersion:
         existing_id = self._idempotency.get(
@@ -71,6 +76,7 @@ class CriteriaService:
             criteria=domain_criteria,
             prohibited_topics=prohibited_topics,
             interview_duration_minutes=interview_duration_minutes,
+            interview_level=interview_level,
             persona_definition=persona_definition,
         )
         self._repository.save_criterion_version(context, version)

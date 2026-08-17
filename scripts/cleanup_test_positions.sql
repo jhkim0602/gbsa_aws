@@ -40,6 +40,14 @@ DELETE FROM recording_chunks
 WHERE interview_session_id IN (SELECT interview_session_id FROM doomed_sessions);
 DELETE FROM recording_assets
 WHERE interview_session_id IN (SELECT interview_session_id FROM doomed_sessions);
+DELETE FROM session_checkpoints
+WHERE interview_session_id IN (SELECT interview_session_id FROM doomed_sessions);
+DELETE FROM session_events
+WHERE interview_session_id IN (SELECT interview_session_id FROM doomed_sessions);
+DELETE FROM transcript_segments
+WHERE interview_session_id IN (SELECT interview_session_id FROM doomed_sessions);
+DELETE FROM verification_progress
+WHERE interview_session_id IN (SELECT interview_session_id FROM doomed_sessions);
 DELETE FROM equipment_checks
 WHERE invitation_id IN (SELECT invitation_id FROM doomed_invitations);
 DELETE FROM interview_strategies
@@ -95,6 +103,11 @@ WHERE repository_analysis_id IN (
 );
 DELETE FROM git_repository_analyses
 WHERE submission_id IN (SELECT submission_id FROM doomed_submissions);
+-- Chunks reference their analysis as well as their submission, so they go first.
+DELETE FROM submission_chunks
+WHERE submission_id IN (SELECT submission_id FROM doomed_submissions);
+DELETE FROM submission_analyses
+WHERE submission_id IN (SELECT submission_id FROM doomed_submissions);
 DELETE FROM submissions
 WHERE invitation_id IN (SELECT invitation_id FROM doomed_invitations);
 DELETE FROM submission_upload_intents
@@ -115,9 +128,11 @@ WHERE invitation_id IN (SELECT invitation_id FROM doomed_invitations);
 -- Company management parents.
 DELETE FROM invitations
 WHERE position_id IN (SELECT position_id FROM doomed_positions);
-DELETE FROM evaluation_criteria
-WHERE competency_model_version_id IN (SELECT competency_model_version_id FROM doomed_versions);
+-- Requirements reference their criterion through fk_job_requirements_criterion,
+-- so they have to go first.
 DELETE FROM job_requirements
+WHERE competency_model_version_id IN (SELECT competency_model_version_id FROM doomed_versions);
+DELETE FROM evaluation_criteria
 WHERE competency_model_version_id IN (SELECT competency_model_version_id FROM doomed_versions);
 DELETE FROM competency_model_versions
 WHERE position_id IN (SELECT position_id FROM doomed_positions);

@@ -514,7 +514,7 @@ hr{border:none;border-top:.5pt solid var(--rule);margin:5mm 0;}
       <tr><td>환경 구성</td><td class="mono">bootstrap · compose-up · compose-down · migrate · seed-contract-fixtures</td><td><code>npm ci</code>와 <code>uv sync</code>를 순서대로 묶거나, <code>DOCKER_CONTEXT</code>·<code>UV_CACHE_DIR</code> 환경변수를 주입해야 함</td></tr>
       <tr><td>계약·경계 게이트</td><td class="mono">contracts-generate · contracts-check · boundaries-check · migration-check</td><td>전용 파이썬 스크립트/셸 스크립트를 정해진 인터프리터 환경에서 실행</td></tr>
       <tr><td>회귀·부하</td><td class="mono">test-ai-regression · test-load-pilot</td><td>러너가 백엔드 패키지를 직접 임포트하므로 <code>PYTHONPATH=backend/src:.</code> 필요 — Makefile에 그 이유를 주석으로 남겨 뒀습니다</td></tr>
-      <tr><td>인프라 검증</td><td class="mono">infra-format-check · infra-validate · infra-security-check · infra-plan-dev</td><td>5개 Terraform 루트를 순회하며 <code>init -backend=false</code> 후 <code>validate</code> — 셸 루프 필요</td></tr>
+      <tr><td>인프라 검증</td><td class="mono">infra-format-check · infra-validate · infra-security-check · infra-plan-check</td><td>4개 Terraform 루트를 순회하며 <code>init -backend=false</code> 후 <code>validate</code> — 셸 루프 필요</td></tr>
       <tr><td>통합 검증</td><td class="mono">verify-foundation · test-local-production-parity</td><td>여러 게이트를 정해진 순서로 실행하는 셸 스크립트 위임</td></tr>
     </tbody>
   </table>

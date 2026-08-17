@@ -8,7 +8,7 @@ from alembic.config import Config
 
 ROOT = Path(__file__).resolve().parents[4]
 MERGE_REVISION = "merge_001_lane_heads"
-CURRENT_REVISION = "merge_002_criterion_grounded_rag"
+CURRENT_REVISION = "m_010_report_item_axis_scores"
 LANE_HEADS = (
     "a_001_company_hiring",
     "b_001_submission_analysis",

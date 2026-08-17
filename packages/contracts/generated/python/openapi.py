@@ -203,11 +203,15 @@ class EvaluationCriterionInput(BaseModel):
     description: constr(min_length=1, max_length=4000)
     weight: confloat(ge=0.0)
     verification_guide: CriterionVerificationGuide
-    good_evidence: dict[str, Any] | None = None
-    weak_evidence: dict[str, Any] | None = None
     abstain_guidance: constr(min_length=1)
     common_questions: list[str] | None = None
     required: bool
+
+
+class InterviewLevel(StrEnum):
+    entry = "entry"
+    junior = "junior"
+    senior = "senior"
 
 
 class CompetencyModelVersionCreate(BaseModel):
@@ -220,6 +224,7 @@ class CompetencyModelVersionCreate(BaseModel):
     criteria: list[EvaluationCriterionInput] = Field(..., max_length=12, min_length=1)
     prohibited_topics: list[str]
     interview_duration_minutes: conint(ge=10, le=120)
+    interview_level: InterviewLevel | None = "junior"
     persona_definition: dict[str, Any] | None = Field(
         None,
         description="System-managed compatibility field; recruiter clients must not set it.",
@@ -247,6 +252,7 @@ class CompetencyModelVersion(BaseModel):
     criteria: list[EvaluationCriterionInput] = Field(..., max_length=12, min_length=1)
     prohibited_topics: list[str]
     interview_duration_minutes: conint(ge=10, le=120)
+    interview_level: InterviewLevel | None = "junior"
     persona_definition: dict[str, Any] | None = Field(
         None, description="System-managed compatibility field."
     )
@@ -328,6 +334,61 @@ class InvitationBatchResult(BaseModel):
     accepted_count: conint(ge=0)
     rejected_count: conint(ge=0)
     invitations: list[InvitationView]
+
+
+class InvitationEmailTemplateInput(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    subject: constr(min_length=1, max_length=200)
+    headline: constr(min_length=1, max_length=200)
+    intro: constr(min_length=1, max_length=2000)
+    guides: list[str] | None = Field(None, max_length=12)
+    cta_label: constr(min_length=1, max_length=40)
+    outro: constr(max_length=1000) | None = None
+    footer: constr(max_length=300) | None = None
+    brand_color: constr(pattern=r"^#[0-9a-fA-F]{6}$") | None = None
+    use_applicant_name: bool | None = None
+    emphasize_deadline: bool | None = None
+    show_security_notice: bool | None = None
+
+
+class InvitationEmailTemplateView(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    subject: constr(min_length=1, max_length=200)
+    headline: constr(min_length=1, max_length=200)
+    intro: constr(min_length=1, max_length=2000)
+    guides: list[str] = Field(..., max_length=12)
+    cta_label: constr(min_length=1, max_length=40)
+    outro: constr(max_length=1000)
+    footer: constr(max_length=300)
+    brand_color: constr(pattern=r"^#[0-9a-fA-F]{6}$")
+    use_applicant_name: bool
+    emphasize_deadline: bool
+    show_security_notice: bool
+    logo_url: constr(max_length=2000) | None = None
+    is_position_override: bool = Field(
+        ..., description="False when the position inherits the company-wide template."
+    )
+
+
+class InvitationEmailPreview(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    subject: str
+    html_body: str
+
+
+class CompanyLogoView(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    logo_url: str
+    content_type: str
+    byte_size: conint(ge=1)
 
 
 class ApplicantTokenExchange(BaseModel):
@@ -591,6 +652,24 @@ class RecordingUploadIntentCreate(BaseModel):
     session_end_ms: conint(ge=1)
 
 
+class UploadStatus(StrEnum):
+    issued = "issued"
+    uploaded = "uploaded"
+    verified = "verified"
+    failed = "failed"
+
+
+class RecordingChunk(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    recording_chunk_id: UUID
+    chunk_sequence: conint(ge=0)
+    upload_status: UploadStatus
+    session_start_ms: conint(ge=0)
+    session_end_ms: conint(ge=1)
+
+
 class AssessmentState(StrEnum):
     confirmed = "confirmed"
     partially_confirmed = "partially_confirmed"
@@ -618,18 +697,50 @@ class EvidenceView(BaseModel):
     sufficiency: Sufficiency
 
 
+class AxisAssessmentView(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    axis: constr(max_length=40)
+    label: constr(max_length=40) = Field(
+        ...,
+        description="Korean label captured when the report was generated, so an older report keeps its wording after the axis list changes.",
+    )
+    score: conint(ge=0, le=100) | None = Field(
+        ...,
+        description="null means the answers gave no basis to judge this axis, or that the score was withheld because its citations did not resolve. It is never a zero, because zero says the answer was wrong.",
+    )
+    rationale: str
+    quoted_evidence_ids: list[UUID] = Field(
+        ...,
+        description="The Evidence this score rests on. Empty exactly when score is null.",
+    )
+
+
 class ReportItemView(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
     report_item_id: UUID
     criterion_id: UUID
+    criterion_name: constr(max_length=200) = Field(
+        ...,
+        description="Criterion name captured when the report was generated, so a reviewer never reads a bare UUID and the report survives deletion of the criterion version. Empty only for reports generated before this field existed.",
+    )
     assessment_state: AssessmentState
     observation: str
     rationale: str
     uncertainty: str
     follow_up_question: str | None = None
     evidence: list[EvidenceView]
+    axis_assessments: list[AxisAssessmentView] = Field(
+        ...,
+        description='Empty for reports generated before scoring existed, which the console reads as "this report has no scores".',
+    )
+    average_score: conint(ge=0, le=100) | None = Field(
+        None,
+        description="Mean of this item's scored axes. Unscored axes are left out rather than counted as zero.",
+    )
 
 
 class Status7(StrEnum):
@@ -891,5 +1002,13 @@ class ReportView(BaseModel):
     status: Status7
     summary: str
     items: list[ReportItemView]
+    overall_score: conint(ge=0, le=100) | None = Field(
+        None,
+        description="Mean across the criteria that could be scored. Explicitly not a hiring score - it says nothing about the criteria the interview never reached, which is why the console shows it beside unscored_criteria_count and the final decision stays with a person.",
+    )
+    unscored_criteria_count: conint(ge=0) | None = Field(
+        None,
+        description="How many criteria produced no score, so the reviewer can see what overall_score does not cover.",
+    )
     ai_original_immutable: Literal[True]
     human_reviews: list[HumanReviewView] | None = None

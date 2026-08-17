@@ -19,6 +19,20 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Paper is white. The canvas tint is a screen affordance and prints as a grey wash over
+   the whole sheet, including the empty area below a document that ends mid-page.
+
+   Set to white rather than `none`: the root element's background is what paints the page
+   canvas, and leaving it transparent has the browser propagate a background up from the
+   body instead of clearing it. */
+@media print {
+  html,
+  body,
+  #root {
+    background: var(--color-surface);
+  }
+}
+
 button,
 input,
 textarea,

@@ -614,3 +614,34 @@
     inset: 0;
   }
 }
+
+/* On paper only the page content is the document. The chrome is navigation, so printing a
+   review report used to repeat the whole sidebar and topbar on every sheet.
+
+   These rules live here rather than in a feature stylesheet because this file owns the
+   selectors: it sets `display` on all of them later in the bundle than any feature CSS,
+   so an override from there loses on source order. */
+@media print {
+  .skip-link,
+  .company-sidebar,
+  .company-sidebar__scrim,
+  .company-topbar {
+    display: none;
+  }
+
+  /* The shell reserves a fixed sidebar column and a viewport-tall main area; with the
+     chrome gone the content takes the full width and the height follows the content. The
+     canvas tint is dropped too, or it prints as a grey wash behind the page. */
+  .company-shell {
+    display: block;
+    background: none;
+  }
+
+  .company-shell__workspace {
+    background: none;
+  }
+
+  .company-main {
+    min-height: 0;
+  }
+}

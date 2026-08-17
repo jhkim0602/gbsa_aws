@@ -4,6 +4,7 @@ import {
   BriefcaseBusiness,
   ClipboardCheck,
   FileText,
+  GaugeCircle,
   Info,
   LayoutDashboard,
   ListChecks,
@@ -17,7 +18,12 @@ import {
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
 
-import { PositionInvitations, type PositionInvitationApi } from "../hiring";
+import {
+  interviewLevelLabels,
+  PositionInvitations,
+  type InvitationEmailTemplateApi,
+  type PositionInvitationApi,
+} from "../hiring";
 import { summarizeApplicantPipeline } from "./applicantSummary";
 import { statusLabel, statusTone } from "./companyFormatters";
 import { PositionDashboard } from "./PositionDashboard";
@@ -51,10 +57,12 @@ export function PositionOperations({
   positionId,
   api,
   invitationApi,
+  templateApi,
 }: {
   positionId: string;
   api: CompanyOperationsApi;
   invitationApi: PositionInvitationApi;
+  templateApi: InvitationEmailTemplateApi;
 }) {
   const { positions, invitations, loading, error } = useRecruitingOperations(
     api,
@@ -275,6 +283,7 @@ export function PositionOperations({
               positionId={positionId}
               positionName={position.title}
               api={invitationApi}
+              templateApi={templateApi}
             />
           </section>
         ) : null}
@@ -709,6 +718,13 @@ function PositionInformation({
               <Timer size={17} aria-hidden="true" />
               <small>면접 시간</small>
               <strong>{criteria.interviewDurationMinutes}분</strong>
+            </span>
+            <span>
+              <GaugeCircle size={17} aria-hidden="true" />
+              <small>면접 난이도</small>
+              <strong>
+                {interviewLevelLabels[criteria.interviewLevel].name}
+              </strong>
             </span>
             <span>
               <ClipboardCheck size={17} aria-hidden="true" />

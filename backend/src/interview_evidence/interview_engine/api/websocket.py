@@ -294,7 +294,10 @@ def create_interview_websocket_router(
             await websocket.close(code=4001)
             return
         try:
-            principal = principal_provider.get_applicant_principal(session_cookie)
+            principal = _execute_transaction(
+                database,
+                partial(principal_provider.get_applicant_principal, session_cookie),
+            )
         except PrincipalNotFoundError:
             await websocket.close(code=4001)
             return

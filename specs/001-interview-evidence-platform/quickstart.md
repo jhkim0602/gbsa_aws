@@ -187,7 +187,7 @@ Expected:
 make infra-format-check
 make infra-validate
 make infra-security-check
-make infra-plan-dev
+make infra-plan-check
 ```
 
 Expected:
@@ -198,7 +198,7 @@ Expected:
 - Terraform does not run builds, database migrations, indexing or business workflows;
 - image revisions and auto-scaled desired count do not cause Terraform ownership drift.
 
-An apply is never part of local quickstart. Stage/prod apply requires the reviewed saved plan and
+An apply is never part of local quickstart. A dev or prod apply requires the reviewed saved plan and
 human approval defined by the deployment process.
 
 ## 8. Four-Branch Integration Drill

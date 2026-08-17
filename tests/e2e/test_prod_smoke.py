@@ -9,7 +9,7 @@ import pytest
 
 
 @dataclass(frozen=True, slots=True)
-class StageSmokeSettings:
+class DeployedSmokeSettings:
     company_url: str
     applicant_url: str
     api_url: str
@@ -18,22 +18,22 @@ class StageSmokeSettings:
         for value in (self.company_url, self.applicant_url, self.api_url):
             parsed = urlparse(value)
             if parsed.scheme != "https" or not parsed.netloc:
-                raise ValueError("stage smoke endpoints must be absolute HTTPS URLs")
+                raise ValueError("deployed smoke endpoints must be absolute HTTPS URLs")
 
     @classmethod
-    def from_environment(cls) -> StageSmokeSettings | None:
+    def from_environment(cls) -> DeployedSmokeSettings | None:
         values = (
-            os.getenv("STAGE_COMPANY_URL"),
-            os.getenv("STAGE_APPLICANT_URL"),
-            os.getenv("STAGE_API_URL"),
+            os.getenv("PROD_COMPANY_URL"),
+            os.getenv("PROD_APPLICANT_URL"),
+            os.getenv("PROD_API_URL"),
         )
         if not all(values):
             return None
         return cls(*(str(value).rstrip("/") for value in values))
 
 
-async def run_stage_smoke(
-    settings: StageSmokeSettings,
+async def run_deployed_smoke(
+    settings: DeployedSmokeSettings,
     *,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> dict[str, object]:
@@ -47,11 +47,11 @@ async def run_stage_smoke(
         health = await client.get(f"{settings.api_url}/health/ready")
         protected_api = await client.get(f"{settings.api_url}/v1/positions")
     if company.status_code != 200 or applicant.status_code != 200:
-        raise AssertionError("stage SPA deep-link fallback is unavailable")
+        raise AssertionError("deployed SPA deep-link fallback is unavailable")
     if health.status_code != 200 or health.json() != {"status": "ok"}:
-        raise AssertionError("stage API readiness failed")
+        raise AssertionError("deployed API readiness failed")
     if protected_api.status_code != 401:
-        raise AssertionError("stage protected API did not enforce authentication")
+        raise AssertionError("deployed protected API did not enforce authentication")
     return {
         "company_cache": company.headers.get("x-cache"),
         "applicant_cache": applicant.headers.get("x-cache"),
@@ -61,11 +61,11 @@ async def run_stage_smoke(
 
 
 @pytest.mark.asyncio
-async def test_stage_smoke_client_covers_cloudfront_spas_and_protected_api() -> None:
-    settings = StageSmokeSettings(
-        company_url="https://company.stage.example.com",
-        applicant_url="https://applicant.stage.example.com",
-        api_url="https://api.stage.example.com",
+async def test_smoke_client_covers_cloudfront_spas_and_protected_api() -> None:
+    settings = DeployedSmokeSettings(
+        company_url="https://company.prod.example.com",
+        applicant_url="https://applicant.prod.example.com",
+        api_url="https://api.prod.example.com",
     )
 
     async def handler(request: httpx.Request) -> httpx.Response:
@@ -85,7 +85,7 @@ async def test_stage_smoke_client_covers_cloudfront_spas_and_protected_api() -> 
             )
         return httpx.Response(404)
 
-    result = await run_stage_smoke(
+    result = await run_deployed_smoke(
         settings,
         transport=httpx.MockTransport(handler),
     )
@@ -97,11 +97,13 @@ async def test_stage_smoke_client_covers_cloudfront_spas_and_protected_api() -> 
 
 
 @pytest.mark.asyncio
-async def test_live_stage_cloudfront_to_api_smoke() -> None:
-    settings = StageSmokeSettings.from_environment()
+async def test_live_cloudfront_to_api_smoke() -> None:
+    settings = DeployedSmokeSettings.from_environment()
     if settings is None:
-        pytest.skip("stage endpoints are not provisioned; local smoke client is covered separately")
+        pytest.skip(
+            "deployed endpoints are not provisioned; local smoke client is covered separately"
+        )
 
-    result = await run_stage_smoke(settings)
+    result = await run_deployed_smoke(settings)
 
     assert result["passed"] is True

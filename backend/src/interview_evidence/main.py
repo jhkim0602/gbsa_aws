@@ -315,9 +315,11 @@ def create_local_runtime(
                 criteria_service=lane_a.criteria_service,
                 interviewer_service=lane_a.interviewer_service,
                 hiring_service=lane_a.hiring_service,
+                template_service=lane_a.template_service,
                 audit=audit,
                 invitation_email=InvitationEmailHandler(lane_a.email_sender),
                 interview_sessions=interview_public,
+                invitation_reviews=reporting_company,
             ),
             create_company_applicant_router(
                 sessions=lane_a.sessions,
@@ -345,6 +347,7 @@ def create_local_runtime(
                 clock=clock,
                 deletion_service=lane_d.deletion_service,
                 playback=ScopedPlaybackLocator(),
+                rationale_provider=interview_public,
             ),
         ]
     )

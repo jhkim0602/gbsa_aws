@@ -5,6 +5,7 @@ import {
   ExternalLink,
   FilePlus2,
   LayoutDashboard,
+  Mail,
   Menu,
   PanelLeftClose,
   Settings2,
@@ -22,6 +23,10 @@ const navigation = [
   { label: "채용 관리", to: "/hiring", icon: FilePlus2 },
 ] as const;
 
+const settingsNavigation = [
+  { label: "초대 메일 템플릿", to: "/settings/invitation-email", icon: Mail },
+] as const;
+
 const pageTitles = [
   { path: "/company", title: "대시보드" },
   { path: "/positions/", title: "포지션 운영" },
@@ -29,6 +34,7 @@ const pageTitles = [
   { path: "/applicants", title: "지원자 관리" },
   { path: "/hiring", title: "채용 관리" },
   { path: "/review", title: "지원자 검토" },
+  { path: "/settings/invitation-email", title: "초대 메일 템플릿" },
 ] as const;
 
 export function CompanyShell() {
@@ -101,6 +107,26 @@ export function CompanyShell() {
             <ExternalLink size={18} strokeWidth={1.8} aria-hidden="true" />
             <span>지원자 화면</span>
           </a>
+
+          <div className="company-navigation__divider" />
+          <p className="company-navigation__label">설정</p>
+          {settingsNavigation.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.to}
+                aria-label={item.label}
+                className={({ isActive }) =>
+                  `company-navigation__item ${isActive ? "is-active" : ""}`
+                }
+                to={item.to}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <Icon size={18} strokeWidth={1.8} aria-hidden="true" />
+                <span>{item.label}</span>
+              </NavLink>
+            );
+          })}
 
           {location.pathname.startsWith("/review") ? (
             <span

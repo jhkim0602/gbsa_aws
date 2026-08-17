@@ -25,13 +25,38 @@ describe("Lane D review journey", () => {
           report={{
             summary: "지원자는 장애 대응 대안을 비교했습니다.",
             status: "ready",
+            overallScore: 74,
+            unscoredCriteriaCount: 0,
             items: [
               {
                 reportItemId: "item-1",
+                criterionId: "criterion-1",
                 criterionName: "문제 해결",
                 assessmentState: "confirmed",
                 observation: "대안을 비교함",
-                evidence: [{ evidenceId: "ev-1", startMs: 1200, endMs: 3200 }],
+                followUpQuestion: null,
+                averageScore: 74,
+                axisAssessments: [
+                  {
+                    axis: "correctness",
+                    label: "정확성",
+                    score: 74,
+                    rationale: "재시도 폭주를 원인으로 정확히 짚었습니다.",
+                    quotedEvidenceIds: ["ev-1"],
+                  },
+                ],
+                evidence: [
+                  {
+                    evidenceId: "ev-1",
+                    answerTurnId: "turn-1",
+                    transcriptSegmentId: "segment-1",
+                    startMs: 1200,
+                    endMs: 3200,
+                    observation: "두 선택지의 트레이드오프를 짚었습니다.",
+                    rationale: "선택지를 버린 이유까지 설명했습니다.",
+                    sufficiency: "direct",
+                  },
+                ],
               },
             ],
           }}
@@ -78,7 +103,10 @@ describe("Lane D review journey", () => {
 
     expect(screen.getByText("AI 원본 · 변경 불가")).toBeTruthy();
     expect(screen.getByLabelText("AI 리포트")).toBeTruthy();
-    expect(screen.getByText("확인됨")).toBeTruthy();
+    // 종합평가 opens first: it counts the states and lists them per criterion, so the
+    // badge appears once in each. Evidence playback lives one tab over.
+    expect(screen.getAllByText("확인됨").length).toBe(2);
+    fireEvent.click(screen.getByRole("tab", { name: "기준별 평가" }));
     fireEvent.click(screen.getByRole("button", { name: "Evidence 재생" }));
     expect(seek).toHaveBeenCalledWith(1200);
     expect(screen.getByText("캐시와 큐를 비교했습니다.")).toBeTruthy();
@@ -132,14 +160,37 @@ describe("Lane D review journey", () => {
         report={{
           summary: "지원자는 장애 대응 선택지를 비교했습니다.",
           status: "ready",
+          overallScore: 71,
+          unscoredCriteriaCount: 0,
           items: [
             {
               reportItemId: "item-1",
+              criterionId: "criterion-1",
               criterionName: "문제 해결",
               assessmentState: "confirmed",
-              observation: "캐시와 큐의 장단점을 비교했습니다.",
+              observation: "선택지를 비교한 근거가 확인됩니다.",
+              followUpQuestion: null,
+              averageScore: 71,
+              axisAssessments: [
+                {
+                  axis: "depth",
+                  label: "깊이",
+                  score: 71,
+                  rationale: "대안을 버린 이유까지 설명했습니다.",
+                  quotedEvidenceIds: ["ev-1"],
+                },
+              ],
               evidence: [
-                { evidenceId: "ev-1", startMs: 62_000, endMs: 68_000 },
+                {
+                  evidenceId: "ev-1",
+                  answerTurnId: "turn-1",
+                  transcriptSegmentId: "segment-1",
+                  startMs: 62_000,
+                  endMs: 68_000,
+                  observation: "두 선택지의 트레이드오프를 짚었습니다.",
+                  rationale: "선택 기준을 스스로 설명했습니다.",
+                  sufficiency: "direct",
+                },
               ],
             },
           ],
@@ -167,6 +218,7 @@ describe("Lane D review journey", () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole("tab", { name: "기준별 평가" }));
     fireEvent.click(screen.getByRole("button", { name: "Evidence 재생" }));
 
     const video = document.querySelector("video");

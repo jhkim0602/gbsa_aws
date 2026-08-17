@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from typing import cast
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from sqlalchemy import case, func, literal, select
+from sqlalchemy import case, func, literal, or_, select
 from sqlalchemy.orm import Session
 
 from interview_evidence.shared.tenant import TenantContext, require_tenant_context
@@ -111,7 +111,14 @@ class PostgresHybridSearchIndex:
                 RetrievalDocumentRow.competency_model_version_id == competency_model_version_id
             )
         if criterion_id is not None:
-            statement = statement.where(RetrievalDocumentRow.criterion_id.in_((None, criterion_id)))
+            # SQL IN never matches NULL, so criterion-agnostic documents such as
+            # submission chunks need an explicit IS NULL branch.
+            statement = statement.where(
+                or_(
+                    RetrievalDocumentRow.criterion_id.is_(None),
+                    RetrievalDocumentRow.criterion_id == criterion_id,
+                )
+            )
 
         if self._session.bind is not None and self._session.bind.dialect.name == "postgresql":
             query_vector_value = list(query_vector)

@@ -1,5 +1,26 @@
 export type RequirementType = "required" | "preferred";
 
+/** How deep the AI interviewer digs. Mirrors the InterviewLevel contract enum. */
+export type InterviewLevel = "entry" | "junior" | "senior";
+
+export const interviewLevelLabels: Record<
+  InterviewLevel,
+  { name: string; hint: string }
+> = {
+  entry: {
+    name: "신입",
+    hint: "학습 과정과 직접 해 본 시도를 확인하고, 한 기준당 꼬리질문은 최대 1회입니다.",
+  },
+  junior: {
+    name: "주니어",
+    hint: "본인이 수행한 작업과 판단 근거를 확인하고, 설정한 꼬리질문 횟수를 그대로 씁니다.",
+  },
+  senior: {
+    name: "시니어",
+    hint: "트레이드오프와 실패 대비를 확인하고, 꼬리질문을 1회 더 허용합니다.",
+  },
+};
+
 export type JobRequirementDraft = {
   id: string;
   requirementType: RequirementType;
@@ -51,6 +72,7 @@ export type CriteriaConfiguration = Readonly<{
   }>;
   prohibitedTopics: string[];
   interviewDurationMinutes: number;
+  interviewLevel: InterviewLevel;
 }>;
 
 export type HiringWorkspaceApi = Readonly<{
@@ -81,6 +103,7 @@ export type HiringDraft = {
   criteria: CriterionDraft[];
   prohibitedTopics: string;
   interviewDurationMinutes: number;
+  interviewLevel: InterviewLevel;
 };
 
 export type HiringResourceIds = {
@@ -128,4 +151,5 @@ export const initialHiringDraft: HiringDraft = {
   criteria: [createCriterionDraft(1)],
   prohibitedTopics: "가족관계, 출신지역, 혼인·임신 여부, 외모",
   interviewDurationMinutes: 30,
+  interviewLevel: "junior",
 };

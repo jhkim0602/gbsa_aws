@@ -43,6 +43,10 @@ from interview_evidence.interview_engine.domain.turn import (
 )
 from interview_evidence.interview_engine.repositories.postgres import InterviewRepository
 from interview_evidence.shared.ids import new_uuid7
+from interview_evidence.shared.interview_level import (
+    DEFAULT_INTERVIEW_LEVEL,
+    InterviewLevel,
+)
 from interview_evidence.shared.messaging.outbox import Outbox, OutboxEvent
 from interview_evidence.shared.tenant import TenantContext
 
@@ -105,6 +109,7 @@ class InterviewService:
         retrieval_config_version: str,
         voice_id: str,
         occurred_at: datetime,
+        interview_level: InterviewLevel = DEFAULT_INTERVIEW_LEVEL,
         answered_target: VerificationTargetPlan | None = None,
         question_target: VerificationTargetPlan | None = None,
         existing_progress: VerificationProgress | None = None,
@@ -143,6 +148,7 @@ class InterviewService:
                 retrieval_config_version=retrieval_config_version,
                 voice_id=voice_id,
                 occurred_at=occurred_at,
+                interview_level=interview_level,
                 answered_target=answered_target,
                 question_target=question_target,
                 existing_progress=existing_progress,
@@ -172,6 +178,7 @@ class InterviewService:
         retrieval_config_version: str,
         voice_id: str,
         occurred_at: datetime,
+        interview_level: InterviewLevel,
         answered_target: VerificationTargetPlan | None,
         question_target: VerificationTargetPlan | None,
         existing_progress: VerificationProgress | None,
@@ -247,6 +254,7 @@ class InterviewService:
                 context_payload=built_context.model_payload(),
                 model_config_version=model_config_version,
                 retrieval_config_version=retrieval_config_version,
+                interview_level=interview_level,
             )
         except QuestionGenerationUnavailable:
             current = self._repository.get_session(context, session_id)

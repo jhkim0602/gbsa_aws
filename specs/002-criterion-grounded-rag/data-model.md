@@ -5,7 +5,9 @@
 ### JobRequirement
 
 `job_requirement_id`, company/position/version IDs, `requirement_type` (`required|preferred`),
-protected statement, priority and criterion ID. Published rows are immutable.
+protected statement, priority and `criterion_code`. The code resolves to an EvaluationCriterion in
+the same company and criterion version, enforced by `fk_job_requirements_criterion`. Published rows
+are immutable.
 
 ### CriterionVerificationGuide
 

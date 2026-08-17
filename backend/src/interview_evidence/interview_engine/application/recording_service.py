@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from typing import Protocol
 from uuid import UUID
 
@@ -30,10 +30,43 @@ class RecordingObjectVerifier(Protocol):
         self,
         context: TenantContext,
         *,
-        object_id: UUID,
+        object_key: str,
         expected_byte_size: int,
         expected_sha256: str,
     ) -> bool: ...
+
+
+class VerifiableObjectStorage(Protocol):
+    def verify_uploaded_object(
+        self,
+        context: TenantContext,
+        *,
+        object_key: str,
+        expected_byte_size: int,
+        expected_sha256: str,
+    ) -> bool: ...
+
+
+class StorageRecordingVerifier:
+    """Confirm a recording chunk against the bucket it was uploaded to."""
+
+    def __init__(self, storage: VerifiableObjectStorage) -> None:
+        self._storage = storage
+
+    def verify(
+        self,
+        context: TenantContext,
+        *,
+        object_key: str,
+        expected_byte_size: int,
+        expected_sha256: str,
+    ) -> bool:
+        return self._storage.verify_uploaded_object(
+            context,
+            object_key=object_key,
+            expected_byte_size=expected_byte_size,
+            expected_sha256=expected_sha256,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +80,14 @@ class RecordingUploadIntent:
     session_end_ms: int
     idempotency_key: str
     occurred_at: datetime
+    #: Where the browser actually PUTs the chunk. Carried from the storage adapter rather
+    #: than rebuilt by the route, which is how recordings previously went to a host that
+    #: does not exist. The object key is kept so verification can find what was uploaded.
+    object_key: str = ""
+    method: str = "PUT"
+    url: str = ""
+    required_headers: dict[str, str] = field(default_factory=dict)
+    expires_at: datetime | None = None
 
 
 class RecordingService:
@@ -57,11 +98,13 @@ class RecordingService:
         repository: InterviewRepository | None = None,
         idempotency: IdempotencyStore | None = None,
         verifier: RecordingObjectVerifier | None = None,
+        upload_ttl: timedelta = timedelta(minutes=15),
     ) -> None:
         self._storage = storage
         self._repository = repository
         self._idempotency = idempotency
         self._verifier = verifier
+        self._upload_ttl = upload_ttl
 
     def issue_upload_intent(
         self,
@@ -101,6 +144,10 @@ class RecordingService:
             session_end_ms=session_end_ms,
             idempotency_key=idempotency_key,
             occurred_at=occurred_at,
+            object_key=intent.object_key,
+            url=intent.url,
+            required_headers=dict(intent.required_headers),
+            expires_at=occurred_at + self._upload_ttl,
         )
 
     def verify_uploaded_chunk(
@@ -137,7 +184,7 @@ class RecordingService:
         assert self._verifier is not None
         if not self._verifier.verify(
             context,
-            object_id=intent.object_id,
+            object_key=intent.object_key,
             expected_byte_size=intent.byte_size,
             expected_sha256=intent.content_hash,
         ):
@@ -154,10 +201,10 @@ class RecordingService:
             company_id=context.company_id,
             interview_session_id=intent.session_id,
             sequence=intent.sequence,
-            object_key=(
-                f"companies/{context.company_id}/sessions/{intent.session_id}/"
-                f"recording/chunks/{intent.sequence:06d}"
-            ),
+            # The key the object was actually uploaded to. A key composed here instead
+            # pointed the manifest and the review player at something that was never
+            # written.
+            object_key=intent.object_key,
             content_hash=intent.content_hash,
             byte_size=intent.byte_size,
             session_start_ms=intent.session_start_ms,

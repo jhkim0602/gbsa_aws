@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { buildCaptionTrack } from "./captions";
+import { formatLocator, sourceTypeLabel } from "./questionSources";
 import type { ReviewTimelineEntry } from "./types";
 
 const typeLabels: Record<ReviewTimelineEntry["type"], string> = {
@@ -62,6 +64,23 @@ export function TimelineView({
     void seekToEvidence(mediaRef.current, selectedStartMs);
   }, [selectedStartMs]);
 
+  // The cue text comes from the transcript already in memory; a blob URL keeps it
+  // out of a second request that could not carry the tenant token.
+  const [captionUrl, setCaptionUrl] = useState<string>();
+  const captionTrack = useMemo(() => buildCaptionTrack(entries), [entries]);
+
+  useEffect(() => {
+    if (!hasCues(captionTrack)) {
+      setCaptionUrl(undefined);
+      return;
+    }
+    const url = URL.createObjectURL(
+      new Blob([captionTrack], { type: "text/vtt" }),
+    );
+    setCaptionUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [captionTrack]);
+
   function selectTime(startMs: number) {
     onSeek(startMs);
     if (mediaRef.current) {
@@ -93,7 +112,15 @@ export function TimelineView({
       <div className="timeline-media">
         {playbackUrl ? (
           <video ref={mediaRef} controls preload="metadata" src={playbackUrl}>
-            <track kind="captions" />
+            {captionUrl ? (
+              <track
+                kind="captions"
+                label="한국어 자막"
+                srcLang="ko"
+                src={captionUrl}
+                default
+              />
+            ) : null}
           </video>
         ) : (
           <div className="timeline-media__placeholder">
@@ -193,6 +220,11 @@ export function TimelineView({
   );
 }
 
+/** A header-only track would show an empty caption menu, so treat it as absent. */
+function hasCues(track: string) {
+  return track.includes("-->");
+}
+
 function targetTypeLabel(
   type: NonNullable<
     ReviewTimelineEntry["questionRationale"]
@@ -205,25 +237,6 @@ function targetTypeLabel(
     source_conflict: "자료 간 차이 확인",
     ownership_uncertain: "본인 기여 확인",
   }[type];
-}
-
-function sourceTypeLabel(sourceType: string) {
-  return sourceType === "candidate_code_unit" ? "Git 코드" : "첨부 자료";
-}
-
-function formatLocator(locator: Record<string, unknown>) {
-  const page = locator.page_number ?? locator.page;
-  const path = locator.path;
-  const symbol = locator.symbol;
-  if (typeof path === "string") {
-    return [path, typeof symbol === "string" ? symbol : null]
-      .filter(Boolean)
-      .join(" · ");
-  }
-  if (typeof page === "number" || typeof page === "string") {
-    return `${page}페이지`;
-  }
-  return "원문 위치";
 }
 
 function playbackLabel(

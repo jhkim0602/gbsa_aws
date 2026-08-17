@@ -18,6 +18,7 @@ from interview_evidence.shared.aws_clients.production import (
     AwsTitanTextEmbedder,
     AwsTranscribeSpeechToText,
 )
+from interview_evidence.shared.email_templates import RenderedEmail
 from interview_evidence.shared.tenant import ActorType, TenantContext
 
 COMPANY_ID = UUID("00000000-0000-7000-8000-000000000001")
@@ -102,9 +103,22 @@ def test_s3_sqs_and_ses_adapters_preserve_tenant_scope_without_logging_content()
         ACTOR_ID,
         "applicant@example.com",
         {"invitation_url": "https://applicant.invalid/access"},
+        RenderedEmail(
+            subject="[회사] 온라인 면접 안내",
+            html_body="<p>초대 본문</p>",
+            text_body="초대 본문",
+        ),
     )
     assert isinstance(message_id, UUID)
     assert ses.calls[0][1]["Destination"] == {"ToAddresses": ["applicant@example.com"]}
+    # The rendered template is what SES delivers, not an adapter-local body.
+    content = ses.calls[0][1]["Content"]
+    assert isinstance(content, Mapping)
+    simple = content["Simple"]
+    assert isinstance(simple, Mapping)
+    assert simple["Subject"]["Data"] == "[회사] 온라인 면접 안내"
+    assert simple["Body"]["Html"]["Data"] == "<p>초대 본문</p>"
+    assert simple["Body"]["Text"]["Data"] == "초대 본문"
 
 
 def test_s3_deletion_is_verified_with_a_follow_up_head_request() -> None:
@@ -248,6 +262,44 @@ def test_cognito_bedrock_and_polly_adapters_translate_aws_responses() -> None:
     ).synthesize(_context(), "Next question", voice_id="Seoyeon")
     assert speech["audio_url"] == "https://s3.invalid/audio"
     assert any(call[0] == "put_object" for call in s3.calls)
+
+
+def test_bedrock_tenant_scope_does_not_break_the_anthropic_schema() -> None:
+    """A Messages body rejects unknown top-level fields, so the tenant goes in metadata."""
+    bedrock = RecordingClient({"invoke_model": {"body": io.BytesIO(b'{"content":[]}')}})
+
+    AwsBedrockModel(bedrock, model_id="model-1").generate(
+        _context(),
+        {
+            "anthropic_version": "bedrock-2023-05-31",
+            "system": "면접관입니다.",
+            "max_tokens": 512,
+            "messages": [{"role": "user", "content": "{}"}],
+        },
+    )
+
+    body = json.loads(str(bedrock.calls[0][1]["body"], "utf-8"))
+    assert "tenant_scope" not in body
+    assert body["metadata"] == {"user_id": str(COMPANY_ID)}
+    assert set(body) == {
+        "anthropic_version",
+        "system",
+        "max_tokens",
+        "messages",
+        "metadata",
+    }
+
+
+def test_bedrock_keeps_tenant_scope_for_non_message_model_families() -> None:
+    bedrock = RecordingClient({"invoke_model": {"body": io.BytesIO(b'{"ok":true}')}})
+
+    AwsBedrockModel(bedrock, model_id="model-1").generate(
+        _context(),
+        {"task": "strategy", "criterion_ids": []},
+    )
+
+    body = json.loads(str(bedrock.calls[0][1]["body"], "utf-8"))
+    assert body["tenant_scope"] == {"company_id": str(COMPANY_ID)}
 
 
 def test_titan_embedder_returns_normalized_vector_without_exposing_text() -> None:

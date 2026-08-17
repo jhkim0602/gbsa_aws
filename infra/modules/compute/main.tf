@@ -68,6 +68,11 @@ variable "secret_arns" {
   default = []
 }
 
+variable "task_secrets" {
+  type    = map(string)
+  default = {}
+}
+
 variable "kms_key_arns" {
   type    = list(string)
   default = []
@@ -113,6 +118,14 @@ locals {
       name  = "MEDIACONVERT_ROLE_ARN"
       value = aws_iam_role.media_convert.arn
   }])
+  # Credentials arrive as Secrets Manager references the execution role resolves at task
+  # start, so the value never appears in the task definition, a plan, or a log line.
+  secrets = [
+    for key, value_from in var.task_secrets : {
+      name      = key
+      valueFrom = value_from
+    }
+  ]
   effective_task_role_arn = (
     var.create_task_role ? aws_iam_role.task[0].arn : var.task_role_arn
   )
@@ -189,11 +202,20 @@ resource "aws_iam_role_policy" "execution_secrets" {
   role  = aws_iam_role.execution.id
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
+    Statement = concat([{
       Effect   = "Allow"
       Action   = ["secretsmanager:GetSecretValue"]
       Resource = var.secret_arns
-    }]
+      }],
+      # The execution role, not the task role, resolves the container `secrets` block,
+      # and the application secret is encrypted with the customer key -- without this the
+      # task fails to start with an AccessDeniedException before any code runs.
+      length(var.task_secrets) > 0 ? [{
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = var.kms_key_arns
+      }] : [],
+    )
   })
 }
 
@@ -407,6 +429,7 @@ resource "aws_ecs_task_definition" "api" {
       protocol      = "tcp"
     }]
     environment = local.environment
+    secrets     = local.secrets
     logConfiguration = {
       logDriver = "awslogs"
       options = {
@@ -430,11 +453,22 @@ resource "aws_ecs_task_definition" "worker" {
   task_role_arn            = local.effective_task_role_arn
 
   container_definitions = jsonencode([{
-    name        = "worker"
-    image       = var.worker_image
-    essential   = true
-    command     = ["python", "-m", "interview_evidence.worker"]
+    name      = "worker"
+    image     = var.worker_image
+    essential = true
+    # The image installs the package into a uv virtualenv, so a bare `python` cannot
+    # import it -- the task would crash-loop on ModuleNotFoundError. Matches the api
+    # command above and the worker CMD in backend/Containerfile.
+    command = [
+      "uv",
+      "run",
+      "--no-sync",
+      "python",
+      "-m",
+      "interview_evidence.worker",
+    ]
     environment = local.environment
+    secrets     = local.secrets
     logConfiguration = {
       logDriver = "awslogs"
       options = {

@@ -82,3 +82,45 @@ def test_postgres_hybrid_adapter_filters_scope_and_returns_source_excerpt() -> N
     assert candidates[0].document.company_id == COMPANY_ID
     assert candidates[0].document.text == "ECS 배포 자동화 경험"
     assert candidates[0].exact_symbol_score == 1.0
+
+
+def test_criterion_filter_keeps_criterion_agnostic_submission_chunks() -> None:
+    """Applicant chunks carry no criterion, so a criterion query must still reach them."""
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    chunk_id = UUID("00000000-0000-7000-8000-000000000020")
+    with Session(engine) as session:
+        index = PostgresHybridSearchIndex(session)
+        index.add(
+            SearchDocument(
+                document_id=str(chunk_id),
+                company_id=COMPANY_ID,
+                applicant_id=APPLICANT_ID,
+                source_id=chunk_id,
+                text="장애 원인을 규명하고 재발을 방지한 경험",
+                vector=_vector(1.0, 0.0),
+                symbols=(),
+                locator={"page_number": 1},
+                ownership_confidence=1.0,
+                invitation_id=INVITATION_ID,
+                competency_model_version_id=VERSION_ID,
+                criterion_id=None,
+                document_type="submission_chunk",
+                source_type="submission_chunk",
+                embedding_model="amazon.titan-embed-text-v2:0",
+                embedding_version="titan-v2",
+            )
+        )
+
+        candidates = index.candidates(
+            _context(),
+            applicant_id=APPLICANT_ID,
+            invitation_id=INVITATION_ID,
+            competency_model_version_id=VERSION_ID,
+            criterion_id=CRITERION_ID,
+            query="장애 원인 규명",
+            query_vector=_vector(1.0, 0.0),
+            exact_symbol=None,
+        )
+
+    assert tuple(candidate.document.source_id for candidate in candidates) == (chunk_id,)

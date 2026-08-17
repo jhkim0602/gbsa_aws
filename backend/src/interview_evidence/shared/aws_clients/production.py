@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import html
 import io
 import json
 import math
@@ -23,6 +22,7 @@ from interview_evidence.shared.aws_clients.ports import (
     TextToSpeech,
     UploadIntent,
 )
+from interview_evidence.shared.email_templates import RenderedEmail
 from interview_evidence.shared.messaging.outbox import _assert_safe_payload
 from interview_evidence.shared.security.principals import (
     ApplicantPrincipal,
@@ -163,6 +163,41 @@ class AwsS3ObjectStorage(ObjectStorage):
                 "x-amz-meta-company-id": str(tenant.company_id),
             },
         )
+
+    def verify_uploaded_object(
+        self,
+        context: TenantContext,
+        *,
+        object_key: str,
+        expected_byte_size: int,
+        expected_sha256: str,
+    ) -> bool:
+        """Whether the object the applicant PUT matches the intent that authorized it.
+
+        The presigned URL already pins the checksum, so S3 rejects a body that does not
+        match. This confirms the object arrived and is the size that was declared, which
+        is what stops an empty or truncated chunk from being recorded as verified.
+        """
+        tenant = require_tenant_context(context)
+        if not object_key.startswith(f"tenants/{tenant.company_id}/"):
+            raise PermissionError("object key is outside the tenant scope")
+        try:
+            head = self._client.head_object(Bucket=self._bucket, Key=object_key)
+        except Exception as error:
+            if _aws_error_code(error) in {"404", "NoSuchKey", "NotFound"}:
+                return False
+            raise AwsAdapterError("object verification unavailable") from error
+        if int(cast(int, head.get("ContentLength", -1))) != expected_byte_size:
+            return False
+        checksum = head.get("ChecksumSHA256")
+        if checksum is None:
+            # Buckets that do not return the checksum still gave us existence and size,
+            # which the presigned checksum condition has already had to satisfy.
+            return True
+        try:
+            return base64.b64decode(str(checksum)).hex() == expected_sha256
+        except ValueError:
+            return False
 
     def delete_and_verify_object(
         self,
@@ -345,26 +380,21 @@ class AwsSesEmailSender(EmailSender):
         recipient_ref: UUID,
         recipient_address: str,
         template_data: Mapping[str, Any],
+        rendered: RenderedEmail,
     ) -> UUID:
         require_tenant_context(context)
-        invitation_url = html.escape(str(template_data.get("invitation_url", "")))
         request: dict[str, object] = {
             "FromEmailAddress": self._from_address,
             "Destination": {"ToAddresses": [recipient_address]},
             "Content": {
                 "Simple": {
                     "Subject": {
-                        "Data": "Interview invitation",
+                        "Data": rendered.subject,
                         "Charset": "UTF-8",
                     },
                     "Body": {
-                        "Html": {
-                            "Data": (
-                                "<p>Your interview invitation is ready.</p>"
-                                f'<p><a href="{invitation_url}">Open invitation</a></p>'
-                            ),
-                            "Charset": "UTF-8",
-                        }
+                        "Html": {"Data": rendered.html_body, "Charset": "UTF-8"},
+                        "Text": {"Data": rendered.text_body, "Charset": "UTF-8"},
                     },
                 }
             },
@@ -410,6 +440,26 @@ class AwsCognitoPrincipalProvider:
         raise PrincipalNotFoundError("applicant principal not found")
 
 
+def _tenant_scoped_body(
+    body: dict[str, Any],
+    *,
+    company_id: UUID,
+) -> dict[str, Any]:
+    """Attach the calling tenant to a model request without breaking its schema.
+
+    An Anthropic Messages body rejects unknown top-level fields, so the tenant goes
+    in ``metadata.user_id``, which is the field the schema reserves for an opaque
+    caller identifier. Bodies for other model families keep the previous
+    ``tenant_scope`` key.
+    """
+    if "messages" in body:
+        metadata = body.get("metadata")
+        merged = dict(metadata) if isinstance(metadata, Mapping) else {}
+        merged["user_id"] = str(company_id)
+        return {**body, "metadata": merged}
+    return {**body, "tenant_scope": {"company_id": str(company_id)}}
+
+
 class AwsBedrockModel(AIModel):
     def __init__(
         self,
@@ -435,10 +485,7 @@ class AwsBedrockModel(AIModel):
             "contentType": "application/json",
             "accept": "application/json",
             "body": json.dumps(
-                {
-                    **dict(model_input),
-                    "tenant_scope": {"company_id": str(tenant.company_id)},
-                },
+                _tenant_scoped_body(dict(model_input), company_id=tenant.company_id),
                 ensure_ascii=False,
             ).encode("utf-8"),
         }

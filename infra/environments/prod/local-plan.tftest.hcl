@@ -4,7 +4,7 @@ mock_provider "aws" {
   alias = "us_east_1"
 }
 
-run "stage_equivalent_local_plan" {
+run "production_equivalent_local_plan" {
   command = plan
 
   override_data {
@@ -30,8 +30,8 @@ run "stage_equivalent_local_plan" {
 
   variables {
     hosted_zone_id     = "Z0000000000000000000"
-    company_domain     = "company.stage.example.com"
-    applicant_domain   = "applicant.stage.example.com"
+    company_domain     = "company.prod.example.com"
+    applicant_domain   = "applicant.prod.example.com"
     api_image          = "000000000000.dkr.ecr.ap-northeast-2.amazonaws.com/iep-api:local"
     worker_image       = "000000000000.dkr.ecr.ap-northeast-2.amazonaws.com/iep-worker:local"
     interview_model_id = "local-model-id"

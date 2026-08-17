@@ -1,3 +1,5 @@
+import type { InterviewLevel } from "../hiring/types";
+
 export type CompanyUser = Readonly<{
   companyUserId: string;
   companyId: string;
@@ -62,6 +64,7 @@ export type CompanyCriterionVersion = Readonly<{
   }>;
   prohibitedTopics: readonly string[];
   interviewDurationMinutes: number;
+  interviewLevel: InterviewLevel;
 }>;
 
 export type CompanyWorkspaceApi = Readonly<{

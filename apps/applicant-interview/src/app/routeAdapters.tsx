@@ -69,20 +69,20 @@ export function createRecordingUploadApi(
 ): RecordingUploadApi {
   return {
     async upload(chunk: StoredMediaChunk) {
+      const idempotency = `recording-${sessionId}-${chunk.sequence}`;
+      const body = JSON.stringify({
+        chunk_sequence: chunk.sequence,
+        byte_size: chunk.byteSize,
+        sha256: chunk.sha256,
+        session_start_ms: chunk.sessionStartMs,
+        session_end_ms: chunk.sessionEndMs,
+      });
       const intent = await applicantRequest<
         components["schemas"]["UploadIntent"]
       >(`/v1/applicant/interview-sessions/${sessionId}/media-upload-intents`, {
         method: "POST",
-        headers: {
-          "Idempotency-Key": `recording-${sessionId}-${chunk.sequence}`,
-        },
-        body: JSON.stringify({
-          chunk_sequence: chunk.sequence,
-          byte_size: chunk.byteSize,
-          sha256: chunk.sha256,
-          session_start_ms: chunk.sessionStartMs,
-          session_end_ms: chunk.sessionEndMs,
-        }),
+        headers: { "Idempotency-Key": idempotency },
+        body,
       });
       const response = await fetch(intent.url, {
         method: intent.method,
@@ -92,6 +92,18 @@ export function createRecordingUploadApi(
       if (!response.ok) {
         throw new Error(`recording upload failed: ${response.status}`);
       }
+      // The upload only lands in the bucket; the server records the chunk here. Without
+      // this confirmation the session has no verified recording, so the review timeline
+      // stays empty and the report never leaves the queue. The same idempotency key
+      // confirms exactly the upload that was just authorized.
+      await applicantRequest(
+        `/v1/applicant/interview-sessions/${sessionId}/media-uploads`,
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": idempotency },
+          body,
+        },
+      );
     },
   };
 }

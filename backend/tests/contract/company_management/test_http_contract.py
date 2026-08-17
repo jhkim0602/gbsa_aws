@@ -248,8 +248,6 @@ async def test_legacy_criterion_versions_without_job_requirements_remain_readabl
                 name="문제 해결",
                 description="문제를 구조화하는 역량",
                 weight=1,
-                good_evidence={},
-                weak_evidence={},
                 abstain_guidance="근거가 없으면 판단을 유보한다.",
                 required=True,
             ),
@@ -285,3 +283,156 @@ async def test_legacy_criterion_versions_without_job_requirements_remain_readabl
 
     assert response.status_code == 200
     assert response.json()["items"][0]["job_requirements"] == []
+
+
+def _criterion_payload(code: str) -> dict[str, object]:
+    return {
+        "code": code,
+        "name": "문제 해결",
+        "description": "문제를 구조화하는 역량",
+        "weight": 1,
+        "abstain_guidance": "근거가 없으면 판단을 유보한다.",
+        "required": True,
+        "verification_guide": {
+            "observable_dimensions": ["상황"],
+            "strong_answer_signals": ["판단 근거가 구체적이다."],
+            "weak_answer_signals": ["결과만 언급한다."],
+            "follow_up_directions": ["직접 수행한 작업"],
+            "max_follow_ups": 1,
+            "time_budget_seconds": 300,
+        },
+    }
+
+
+def _criteria_app() -> object:
+    return create_lane_a_app(
+        principal_provider=FakePrincipalProvider(
+            company_principals={
+                "company-token": CompanyPrincipal(
+                    company_id=COMPANY_ID,
+                    company_user_id=COMPANY_USER_ID,
+                    identity_subject="oidc|company-user",
+                )
+            }
+        ),
+        repository=InMemoryCompanyRepository(),
+        audit=InMemoryAuditAppender(),
+        clock=FrozenClock(NOW),
+    )
+
+
+@pytest.mark.asyncio
+async def test_criterion_version_rejects_a_requirement_without_its_criterion() -> None:
+    # The domain refuses a requirement whose criterion_code is absent from the same
+    # version. That is a client mistake, so it must read as 422 rather than a server fault.
+    app = _criteria_app()
+    auth = {"Authorization": "Bearer company-token"}
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="https://testserver",
+    ) as client:
+        created = await client.post(
+            "/v1/positions",
+            headers={**auth, "Idempotency-Key": "criterion-status-position"},
+            json={"title": "백엔드 개발자", "description": "서비스 개발"},
+        )
+        position_id = created.json()["position_id"]
+
+        dangling = await client.post(
+            f"/v1/positions/{position_id}/competency-model-versions",
+            headers={**auth, "Idempotency-Key": "criterion-status-dangling"},
+            json={
+                "criteria": [_criterion_payload("PROBLEM_SOLVING")],
+                "job_requirements": [
+                    {
+                        "requirement_type": "required",
+                        "statement": "장애 대응 경험",
+                        "priority": 1,
+                        "criterion_code": "MISSING",
+                    }
+                ],
+                "prohibited_topics": [],
+                "interview_duration_minutes": 30,
+            },
+        )
+        duplicated = await client.post(
+            f"/v1/positions/{position_id}/competency-model-versions",
+            headers={**auth, "Idempotency-Key": "criterion-status-duplicate"},
+            json={
+                "criteria": [
+                    _criterion_payload("PROBLEM_SOLVING"),
+                    _criterion_payload("PROBLEM_SOLVING"),
+                ],
+                "job_requirements": [
+                    {
+                        "requirement_type": "required",
+                        "statement": "장애 대응 경험",
+                        "priority": 1,
+                        "criterion_code": "PROBLEM_SOLVING",
+                    }
+                ],
+                "prohibited_topics": [],
+                "interview_duration_minutes": 30,
+            },
+        )
+
+    assert dangling.status_code == 422
+    assert duplicated.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_publishing_a_criterion_version_twice_reports_a_conflict() -> None:
+    # A stale If-Match-Version and a second publish are both optimistic-concurrency
+    # conflicts, matching how updatePosition already reports 409.
+    app = _criteria_app()
+    auth = {"Authorization": "Bearer company-token"}
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="https://testserver",
+    ) as client:
+        created = await client.post(
+            "/v1/positions",
+            headers={**auth, "Idempotency-Key": "publish-conflict-position"},
+            json={"title": "백엔드 개발자", "description": "서비스 개발"},
+        )
+        position_id = created.json()["position_id"]
+
+        version = await client.post(
+            f"/v1/positions/{position_id}/competency-model-versions",
+            headers={**auth, "Idempotency-Key": "publish-conflict-version"},
+            json={
+                "criteria": [_criterion_payload("PROBLEM_SOLVING")],
+                "job_requirements": [
+                    {
+                        "requirement_type": "required",
+                        "statement": "장애 대응 경험",
+                        "priority": 1,
+                        "criterion_code": "PROBLEM_SOLVING",
+                    }
+                ],
+                "prohibited_topics": [],
+                "interview_duration_minutes": 30,
+            },
+        )
+        version_id = version.json()["competency_model_version_id"]
+        publish_headers = {**auth, "Idempotency-Key": "publish-conflict-publish"}
+
+        stale = await client.post(
+            f"/v1/competency-model-versions/{version_id}/publish",
+            headers={**publish_headers, "If-Match-Version": "99"},
+        )
+        first = await client.post(
+            f"/v1/competency-model-versions/{version_id}/publish",
+            headers={**publish_headers, "If-Match-Version": "1"},
+        )
+        second = await client.post(
+            f"/v1/competency-model-versions/{version_id}/publish",
+            headers={**publish_headers, "If-Match-Version": "2"},
+        )
+
+    assert version.status_code == 201
+    assert stale.status_code == 409
+    assert first.status_code == 200
+    assert second.status_code == 409

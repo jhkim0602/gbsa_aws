@@ -6,6 +6,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from interview_evidence.shared.interview_level import (
+    DEFAULT_INTERVIEW_LEVEL,
+    InterviewLevel,
+)
+
 
 class PublishedVersionImmutableError(ValueError):
     """Raised when a published competency model is edited."""
@@ -86,8 +91,6 @@ class EvaluationCriterion(BaseModel):
             time_budget_seconds=300,
         )
     )
-    good_evidence: dict[str, object]
-    weak_evidence: dict[str, object]
     abstain_guidance: str = Field(min_length=1, max_length=4000)
     common_questions: tuple[str, ...] = ()
     required: bool
@@ -104,6 +107,10 @@ class CompetencyModelVersion(BaseModel):
     criteria: tuple[EvaluationCriterion, ...] = Field(min_length=1)
     prohibited_topics: tuple[str, ...] = ()
     interview_duration_minutes: int = Field(ge=10, le=120)
+    #: How deep the interview digs. Versioned with the criteria rather than stored on
+    #: the position, so changing it produces a new published version and every report
+    #: stays traceable to the level its interview was conducted at.
+    interview_level: InterviewLevel = DEFAULT_INTERVIEW_LEVEL
     persona_definition: dict[str, object] = Field(default_factory=_system_persona_definition)
     status: CompetencyModelStatus = CompetencyModelStatus.DRAFT
     row_version: int = Field(default=1, ge=1)
@@ -149,6 +156,7 @@ class CompetencyModelVersion(BaseModel):
         criteria: tuple[EvaluationCriterion, ...],
         prohibited_topics: tuple[str, ...],
         interview_duration_minutes: int,
+        interview_level: InterviewLevel = DEFAULT_INTERVIEW_LEVEL,
         persona_definition: dict[str, object] | None = None,
     ) -> CompetencyModelVersion:
         return cls(
@@ -160,6 +168,7 @@ class CompetencyModelVersion(BaseModel):
             criteria=criteria,
             prohibited_topics=prohibited_topics,
             interview_duration_minutes=interview_duration_minutes,
+            interview_level=interview_level,
             persona_definition=persona_definition
             or {
                 "mode": "system_managed",

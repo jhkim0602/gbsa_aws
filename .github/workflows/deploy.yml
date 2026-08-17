@@ -6,7 +6,7 @@ on:
       environment:
         description: Deployment environment
         type: choice
-        options: [dev, stage, prod]
+        options: [dev, prod]
         default: dev
         required: true
       dev_root:

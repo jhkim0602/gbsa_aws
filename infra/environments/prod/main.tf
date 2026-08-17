@@ -168,6 +168,12 @@ module "compute" {
     SQS_MEDIA_QUEUE_URL        = module.async_workflow.queue_urls["media"]
     SQS_REPORTING_QUEUE_URL    = module.async_workflow.queue_urls["reporting"]
   }
+  # A GitHub credential, so it is referenced rather than passed: the analysis worker
+  # needs it to read a candidate's public repository above the 60-request anonymous
+  # hourly limit. The JSON key is written into the secret outside Terraform.
+  task_secrets = {
+    GITHUB_TOKEN = "${module.data.application_secret_arn}:github_token::"
+  }
   tags = local.tags
 }
 

@@ -197,8 +197,6 @@ async def _run_thin_journey() -> ThinJourneyResult:
                             "max_follow_ups": 2,
                             "time_budget_seconds": 300,
                         },
-                        "good_evidence": {"signal": "tradeoff"},
-                        "weak_evidence": {"signal": "unsupported"},
                         "abstain_guidance": "최종 답변 근거가 없으면 판단을 유보한다.",
                         "common_questions": ["어떤 대안을 비교했나요?"],
                         "required": True,

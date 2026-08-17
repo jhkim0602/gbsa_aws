@@ -30,3 +30,28 @@ jobs:
       - run: make contracts-check
       - run: make boundaries-check
       - run: make migration-check
+
+  infrastructure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.3
+          terraform_wrapper: false
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.9.28"
+          enable-cache: true
+
+      - run: uv sync --frozen --no-editable
+
+      # Every gate here needs no AWS credentials: fmt and validate are local, the
+      # contract tests read the files, and both plan tests use mock providers. Without
+      # this job a broken container command reaches the first real deploy to find it.
+      - run: make infra-format-check
+      - run: make infra-validate
+      - run: make infra-security-check
+      - run: make infra-plan-check

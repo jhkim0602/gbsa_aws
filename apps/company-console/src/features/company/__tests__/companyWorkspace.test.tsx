@@ -12,7 +12,11 @@ import {
   type CompanyOperationsApi,
   type CompanyWorkspaceApi,
 } from "../index";
-import type { PositionInvitationApi } from "../../hiring";
+import type {
+  InvitationEmailTemplateApi,
+  InvitationEmailTemplateState,
+  PositionInvitationApi,
+} from "../../hiring";
 
 const api: CompanyWorkspaceApi = {
   getCurrentUser: vi.fn().mockResolvedValue({
@@ -143,6 +147,7 @@ const publishedCriterionVersion = {
   ],
   prohibitedTopics: ["가족관계"],
   interviewDurationMinutes: 30,
+  interviewLevel: "senior",
 } as const;
 
 const operationsApi: CompanyOperationsApi = {
@@ -179,6 +184,36 @@ const invitationApi: PositionInvitationApi = {
     rejectedCount: 0,
     invitations: [],
   }),
+};
+
+const emailTemplate: InvitationEmailTemplateState = {
+  subject: "[{{회사명}}] {{포지션명}} 면접 안내",
+  headline: "서류 전형 합격을 축하드립니다",
+  intro: "{{지원자명}}님, 지원해주셔서 감사합니다.",
+  guides: ["소요 시간 | 약 25분"],
+  ctaLabel: "면접 시작하기",
+  outro: "곧 만나뵙기를 기대합니다.",
+  footer: "문의: hiring@example.com",
+  brandColor: "#5966ce",
+  useApplicantName: true,
+  emphasizeDeadline: true,
+  showSecurityNotice: true,
+  logoUrl: null,
+  isPositionOverride: false,
+};
+
+const templateApi: InvitationEmailTemplateApi = {
+  getCompanyTemplate: vi.fn().mockResolvedValue(emailTemplate),
+  saveCompanyTemplate: vi.fn().mockResolvedValue(emailTemplate),
+  resetCompanyTemplate: vi.fn().mockResolvedValue(emailTemplate),
+  getPositionTemplate: vi.fn().mockResolvedValue(emailTemplate),
+  savePositionTemplate: vi.fn().mockResolvedValue(emailTemplate),
+  resetPositionTemplate: vi.fn().mockResolvedValue(emailTemplate),
+  previewTemplate: vi
+    .fn()
+    .mockResolvedValue({ subject: "미리보기", htmlBody: "<p>본문</p>" }),
+  uploadLogo: vi.fn(),
+  deleteLogo: vi.fn(),
 };
 
 describe("company workspace", () => {
@@ -239,6 +274,7 @@ describe("company workspace", () => {
           positionId="position-2"
           api={operationsApi}
           invitationApi={invitationApi}
+          templateApi={templateApi}
         />
       </MemoryRouter>,
     );
@@ -263,6 +299,8 @@ describe("company workspace", () => {
     expect(
       screen.getByRole("heading", { name: "면접 기준 요약" }),
     ).toBeTruthy();
+    expect(screen.getByText("면접 난이도")).toBeTruthy();
+    expect(screen.getByText("시니어")).toBeTruthy();
     expect(
       screen
         .getByRole("link", { name: "검토할 지원자 종합 리포트" })
@@ -317,6 +355,8 @@ describe("company workspace", () => {
     expect(
       screen.getByRole("heading", { name: "현재 적용 중인 면접 기준" }),
     ).toBeTruthy();
+    expect(screen.getByText("면접 난이도")).toBeTruthy();
+    expect(screen.getByText("시니어")).toBeTruthy();
     expect(screen.getByText("제품 문제를 구조화하는 경험")).toBeTruthy();
     expect(screen.getByText("문제 해결")).toBeTruthy();
     expect(screen.queryByText(/버전/)).toBeNull();
@@ -376,6 +416,7 @@ describe("company workspace", () => {
           positionId="position-2"
           api={scopedOperationsApi}
           invitationApi={scopedInvitationApi}
+          templateApi={templateApi}
         />
       </MemoryRouter>,
     );
@@ -394,6 +435,7 @@ describe("company workspace", () => {
           positionId="position-1"
           api={operationsApi}
           invitationApi={invitationApi}
+          templateApi={templateApi}
         />
       </MemoryRouter>,
     );

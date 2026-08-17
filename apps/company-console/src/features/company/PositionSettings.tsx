@@ -491,5 +491,6 @@ function criterionDraft(
     criteria: criterionRows,
     prohibitedTopics: criteria.prohibitedTopics.join(", "),
     interviewDurationMinutes: criteria.interviewDurationMinutes,
+    interviewLevel: criteria.interviewLevel,
   };
 }

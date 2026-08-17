@@ -85,6 +85,35 @@ class Evidence:
 
 
 @dataclass(frozen=True, slots=True)
+class AxisAssessment:
+    """One evaluation axis as the model judged it, with what it cited.
+
+    The score is the model's, not a formula's: what separates a 40 from an 80 on depth is
+    a judgement about an answer, which is why ``rationale`` travels with it. A reviewer who
+    disagrees reads the rationale, plays the cited Evidence and overrules -- which only
+    works because ``quoted_evidence_ids`` was verified to resolve before this was stored.
+
+    ``score`` is None when the answers gave no basis to judge this axis. It is never zero
+    for that case: zero says the candidate was wrong, and treating "never asked" as wrong
+    would reject people for gaps in our own interview.
+    """
+
+    axis: str
+    label: str
+    score: int | None
+    rationale: str
+    quoted_evidence_ids: tuple[UUID, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.score is not None and not 0 <= self.score <= 100:
+            raise ValueError("axis score must fall between 0 and 100")
+        if self.score is not None and not self.quoted_evidence_ids:
+            raise ValueError("a scored axis must cite the Evidence it rests on")
+        if not self.rationale.strip():
+            raise ValueError("axis rationale is required")
+
+
+@dataclass(frozen=True, slots=True)
 class ReportItem:
     report_item_id: UUID
     company_id: UUID
@@ -97,7 +126,24 @@ class ReportItem:
     sufficiency: str
     uncertainty: str
     evidence: tuple[Evidence, ...]
+    #: Snapshot of the criterion name so a reviewer never reads a bare UUID, and so
+    #: the report stays readable after the criterion version it came from is deleted.
+    criterion_name: str = ""
     follow_up_question: str | None = None
+    #: How the model scored each axis. Empty for reports generated before scoring
+    #: existed, which the reviewer UI reads as "no scores on this report".
+    axis_assessments: tuple[AxisAssessment, ...] = ()
+
+    @property
+    def average_score(self) -> int | None:
+        """Mean of the axes that could be judged, or None when none could.
+
+        Unscored axes are left out rather than counted as zero, so a criterion where only
+        one axis was observable reports that axis honestly instead of being dragged toward
+        a failure by the four the interview never reached.
+        """
+        scored = [axis.score for axis in self.axis_assessments if axis.score is not None]
+        return round(sum(scored) / len(scored)) if scored else None
 
     def __post_init__(self) -> None:
         if (
@@ -134,6 +180,23 @@ class Report:
     summary: str
     created_at: datetime
     items: tuple[ReportItem, ...] = ()
+
+    @property
+    def scored_items(self) -> tuple[ReportItem, ...]:
+        return tuple(item for item in self.items if item.average_score is not None)
+
+    @property
+    def overall_score(self) -> int | None:
+        """Mean across the criteria that could be scored, or None when none could.
+
+        This is explicitly not a hiring score. It says nothing about the criteria the
+        interview never reached, which is why the reviewer UI shows it beside the
+        unscored count, and the constitution reserves the decision itself for a person.
+        """
+        scored = [
+            item.average_score for item in self.scored_items if item.average_score is not None
+        ]
+        return round(sum(scored) / len(scored)) if scored else None
 
     def __post_init__(self) -> None:
         if self.version < 1:

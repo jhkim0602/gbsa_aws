@@ -27,7 +27,6 @@ npm run test --workspaces --if-present
 npm run test:e2e:company
 UV_CACHE_DIR=.uv-cache uv run --no-sync pytest -q infra/tests/test_terraform_contracts.py
 terraform -chdir=infra/environments/prod validate
-terraform -chdir=infra/environments/stage validate
 terraform -chdir=infra/environments/dev/foundation validate
 terraform -chdir=infra/environments/dev/data-ai validate
 terraform -chdir=infra/environments/dev/application validate

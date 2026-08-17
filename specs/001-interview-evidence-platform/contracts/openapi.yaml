@@ -275,6 +275,224 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /invitation-email-template:
+    get:
+      operationId: getInvitationEmailTemplate
+      x-owner-lane: A
+      tags: [Hiring]
+      security:
+        - CompanyBearer: []
+      responses:
+        "200":
+          description: Company-wide invitation email template, or the platform default
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationEmailTemplateView"
+        default:
+          $ref: "#/components/responses/Error"
+    put:
+      operationId: replaceInvitationEmailTemplate
+      x-owner-lane: A
+      tags: [Hiring]
+      security:
+        - CompanyBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitationEmailTemplateInput"
+      responses:
+        "200":
+          description: Stored company-wide invitation email template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationEmailTemplateView"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: deleteInvitationEmailTemplate
+      x-owner-lane: A
+      tags: [Hiring]
+      security:
+        - CompanyBearer: []
+      responses:
+        "200":
+          description: Edits cleared; the platform default template is returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationEmailTemplateView"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /invitation-email-template/preview:
+    post:
+      operationId: previewInvitationEmailTemplate
+      x-owner-lane: A
+      tags: [Hiring]
+      security:
+        - CompanyBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitationEmailTemplateInput"
+      responses:
+        "200":
+          description: |
+            Unsaved edits rendered against sample data. Nothing is sent and no applicant
+            data is used.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationEmailPreview"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /invitation-email-template/logo:
+    put:
+      operationId: replaceCompanyLogo
+      x-owner-lane: A
+      tags: [Hiring]
+      security:
+        - CompanyBearer: []
+      requestBody:
+        required: true
+        content:
+          image/png:
+            schema:
+              type: string
+              format: binary
+          image/jpeg:
+            schema:
+              type: string
+              format: binary
+          image/webp:
+            schema:
+              type: string
+              format: binary
+          image/svg+xml:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: Stored brand logo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyLogoView"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: deleteCompanyLogo
+      x-owner-lane: A
+      tags: [Hiring]
+      security:
+        - CompanyBearer: []
+      responses:
+        "204":
+          description: Brand logo removed; invitations fall back to the company name
+        default:
+          $ref: "#/components/responses/Error"
+
+  /positions/{position_id}/invitation-email-template:
+    get:
+      operationId: getPositionInvitationEmailTemplate
+      x-owner-lane: A
+      tags: [Hiring]
+      security:
+        - CompanyBearer: []
+      parameters:
+        - $ref: "#/components/parameters/PositionId"
+      responses:
+        "200":
+          description: Position override, or the inherited company-wide template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationEmailTemplateView"
+        default:
+          $ref: "#/components/responses/Error"
+    put:
+      operationId: replacePositionInvitationEmailTemplate
+      x-owner-lane: A
+      tags: [Hiring]
+      security:
+        - CompanyBearer: []
+      parameters:
+        - $ref: "#/components/parameters/PositionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitationEmailTemplateInput"
+      responses:
+        "200":
+          description: Stored position override
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationEmailTemplateView"
+        default:
+          $ref: "#/components/responses/Error"
+    delete:
+      operationId: deletePositionInvitationEmailTemplate
+      x-owner-lane: A
+      tags: [Hiring]
+      security:
+        - CompanyBearer: []
+      parameters:
+        - $ref: "#/components/parameters/PositionId"
+      responses:
+        "200":
+          description: Override cleared; the inherited company-wide template is returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationEmailTemplateView"
+        default:
+          $ref: "#/components/responses/Error"
+
+  /public/companies/{company_id}/logo:
+    get:
+      operationId: getPublicCompanyLogo
+      x-owner-lane: A
+      tags: [Hiring]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/CompanyId"
+      responses:
+        "200":
+          description: |
+            Brand logo served without credentials, because a recipient's mail client
+            fetches remote images unauthenticated. Exposes only the logo a company chose
+            to embed in outbound email.
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+            image/svg+xml:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: "#/components/responses/Error"
+
   /applicant/access/exchange:
     post:
       operationId: exchangeApplicantInvitationToken
@@ -561,6 +779,32 @@ paths:
         default:
           $ref: "#/components/responses/Error"
 
+  /applicant/interview-sessions/{session_id}/media-uploads:
+    post:
+      operationId: confirmRecordingUpload
+      x-owner-lane: C
+      tags: [Interview]
+      security:
+        - ApplicantSession: []
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordingUploadIntentCreate"
+      responses:
+        "201":
+          description: Verified recording chunk
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecordingChunk"
+        default:
+          $ref: "#/components/responses/Error"
+
   /interview-sessions/{session_id}/report:
     get:
       operationId: getInterviewReport
@@ -779,6 +1023,13 @@ components:
         minimum: 1
         maximum: 100
         default: 50
+    CompanyId:
+      name: company_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     PositionId:
       name: position_id
       in: path
@@ -1006,13 +1257,21 @@ components:
         description: {type: string, minLength: 1, maxLength: 4000}
         weight: {type: number, minimum: 0}
         verification_guide: {$ref: "#/components/schemas/CriterionVerificationGuide"}
-        good_evidence: {type: object}
-        weak_evidence: {type: object}
         abstain_guidance: {type: string, minLength: 1}
         common_questions:
           type: array
           items: {type: string}
         required: {type: boolean}
+
+    InterviewLevel:
+      description: |
+        How deep the AI interviewer digs. The level shifts the follow-up budget the
+        criteria configure and selects the question-depth instructions the model is
+        given; it never changes which criteria are verified. Versions published before
+        the toggle existed read back as `junior`.
+      type: string
+      enum: [entry, junior, senior]
+      default: junior
 
     CompetencyModelVersionCreate:
       type: object
@@ -1034,6 +1293,7 @@ components:
           type: array
           items: {type: string}
         interview_duration_minutes: {type: integer, minimum: 10, maximum: 120}
+        interview_level: {$ref: "#/components/schemas/InterviewLevel"}
         persona_definition:
           type: object
           description: System-managed compatibility field; recruiter clients must not set it.
@@ -1069,6 +1329,7 @@ components:
           type: array
           items: {type: string}
         interview_duration_minutes: {type: integer, minimum: 10, maximum: 120}
+        interview_level: {$ref: "#/components/schemas/InterviewLevel"}
         persona_definition:
           type: object
           description: System-managed compatibility field.
@@ -1147,6 +1408,73 @@ components:
         invitations:
           type: array
           items: {$ref: "#/components/schemas/InvitationView"}
+
+    InvitationEmailTemplateInput:
+      type: object
+      additionalProperties: false
+      description: |
+        Company-editable invitation email copy. logo_url is absent on purpose: the server
+        derives it from the uploaded logo so a client cannot point outbound mail at a host
+        it controls.
+      required: [subject, headline, intro, cta_label]
+      properties:
+        subject: {type: string, minLength: 1, maxLength: 200}
+        headline: {type: string, minLength: 1, maxLength: 200}
+        intro: {type: string, minLength: 1, maxLength: 2000}
+        guides:
+          type: array
+          maxItems: 12
+          items: {type: string}
+        cta_label: {type: string, minLength: 1, maxLength: 40}
+        outro: {type: string, maxLength: 1000}
+        footer: {type: string, maxLength: 300}
+        brand_color: {type: string, pattern: "^#[0-9a-fA-F]{6}$"}
+        use_applicant_name: {type: boolean}
+        emphasize_deadline: {type: boolean}
+        show_security_notice: {type: boolean}
+
+    InvitationEmailTemplateView:
+      type: object
+      additionalProperties: false
+      required:
+        [subject, headline, intro, guides, cta_label, outro, footer, brand_color,
+         use_applicant_name, emphasize_deadline, show_security_notice, is_position_override]
+      properties:
+        subject: {type: string, minLength: 1, maxLength: 200}
+        headline: {type: string, minLength: 1, maxLength: 200}
+        intro: {type: string, minLength: 1, maxLength: 2000}
+        guides:
+          type: array
+          maxItems: 12
+          items: {type: string}
+        cta_label: {type: string, minLength: 1, maxLength: 40}
+        outro: {type: string, maxLength: 1000}
+        footer: {type: string, maxLength: 300}
+        brand_color: {type: string, pattern: "^#[0-9a-fA-F]{6}$"}
+        use_applicant_name: {type: boolean}
+        emphasize_deadline: {type: boolean}
+        show_security_notice: {type: boolean}
+        logo_url: {type: [string, "null"], maxLength: 2000}
+        is_position_override:
+          type: boolean
+          description: False when the position inherits the company-wide template.
+
+    InvitationEmailPreview:
+      type: object
+      additionalProperties: false
+      required: [subject, html_body]
+      properties:
+        subject: {type: string}
+        html_body: {type: string}
+
+    CompanyLogoView:
+      type: object
+      additionalProperties: false
+      required: [logo_url, content_type, byte_size]
+      properties:
+        logo_url: {type: string}
+        content_type: {type: string}
+        byte_size: {type: integer, minimum: 1}
 
     ApplicantTokenExchange:
       type: object
@@ -1388,6 +1716,19 @@ components:
         session_start_ms: {type: integer, minimum: 0}
         session_end_ms: {type: integer, minimum: 1}
 
+    RecordingChunk:
+      type: object
+      additionalProperties: false
+      required:
+        [recording_chunk_id, chunk_sequence, upload_status, session_start_ms,
+         session_end_ms]
+      properties:
+        recording_chunk_id: {type: string, format: uuid}
+        chunk_sequence: {type: integer, minimum: 0}
+        upload_status: {type: string, enum: [issued, uploaded, verified, failed]}
+        session_start_ms: {type: integer, minimum: 0}
+        session_end_ms: {type: integer, minimum: 1}
+
     AssessmentState:
       type: string
       enum: [confirmed, partially_confirmed, insufficient_evidence, needs_follow_up]
@@ -1408,15 +1749,50 @@ components:
         rationale: {type: string}
         sufficiency: {type: string, enum: [direct, supporting, weak]}
 
+    AxisAssessmentView:
+      description: One evaluation axis as the model judged it. The score is an AI
+        judgement offered to a reviewer as material, never a hiring decision, and it is
+        only present when the citations in quoted_evidence_ids resolved to real Evidence
+        at generation time.
+      type: object
+      additionalProperties: false
+      required: [axis, label, score, rationale, quoted_evidence_ids]
+      properties:
+        axis: {type: string, maxLength: 40}
+        label:
+          description: Korean label captured when the report was generated, so an older
+            report keeps its wording after the axis list changes.
+          type: string
+          maxLength: 40
+        score:
+          description: null means the answers gave no basis to judge this axis, or that
+            the score was withheld because its citations did not resolve. It is never a
+            zero, because zero says the answer was wrong.
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 100
+        rationale: {type: string}
+        quoted_evidence_ids:
+          description: The Evidence this score rests on. Empty exactly when score is null.
+          type: array
+          items: {type: string, format: uuid}
+
     ReportItemView:
       type: object
       additionalProperties: false
       required:
-        [report_item_id, criterion_id, assessment_state, observation, rationale,
-         evidence, uncertainty]
+        [report_item_id, criterion_id, criterion_name, assessment_state, observation,
+         rationale, evidence, uncertainty, axis_assessments]
       properties:
         report_item_id: {type: string, format: uuid}
         criterion_id: {type: string, format: uuid}
+        criterion_name:
+          description: Criterion name captured when the report was generated, so a
+            reviewer never reads a bare UUID and the report survives deletion of the
+            criterion version. Empty only for reports generated before this field
+            existed.
+          type: string
+          maxLength: 200
         assessment_state: {$ref: "#/components/schemas/AssessmentState"}
         observation: {type: string}
         rationale: {type: string}
@@ -1425,6 +1801,17 @@ components:
         evidence:
           type: array
           items: {$ref: "#/components/schemas/EvidenceView"}
+        axis_assessments:
+          description: Empty for reports generated before scoring existed, which the
+            console reads as "this report has no scores".
+          type: array
+          items: {$ref: "#/components/schemas/AxisAssessmentView"}
+        average_score:
+          description: Mean of this item's scored axes. Unscored axes are left out
+            rather than counted as zero.
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 100
 
     ReportView:
       type: object
@@ -1439,6 +1826,19 @@ components:
         items:
           type: array
           items: {$ref: "#/components/schemas/ReportItemView"}
+        overall_score:
+          description: Mean across the criteria that could be scored. Explicitly not a
+            hiring score - it says nothing about the criteria the interview never
+            reached, which is why the console shows it beside unscored_criteria_count
+            and the final decision stays with a person.
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 100
+        unscored_criteria_count:
+          description: How many criteria produced no score, so the reviewer can see what
+            overall_score does not cover.
+          type: integer
+          minimum: 0
         ai_original_immutable: {type: boolean, const: true}
         human_reviews:
           type: array

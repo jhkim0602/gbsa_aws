@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
+from interview_evidence.shared.email_templates import InvitationEmailTemplate
+
 
 class StalePositionVersionError(ValueError):
     """Raised when optimistic concurrency detects a late write."""
@@ -42,10 +44,51 @@ class Company(BaseModel):
     company_id: UUID
     name: str = Field(min_length=1, max_length=200)
     brand_config: dict[str, str] = Field(default_factory=dict)
+    # None means the company never edited the invitation email, so the platform default applies.
+    invitation_email_template: InvitationEmailTemplate | None = None
     default_retention_days: int = Field(default=180, ge=1, le=3650)
     status: CompanyStatus = CompanyStatus.ACTIVE
     created_at: datetime
     updated_at: datetime
+
+
+MAX_LOGO_BYTES = 512 * 1024
+LOGO_CONTENT_TYPES = frozenset(
+    {"image/png", "image/svg+xml", "image/jpeg", "image/webp"},
+)
+
+
+class CompanyLogo(BaseModel):
+    """A brand logo held inline so an unauthenticated mail client can fetch it."""
+
+    model_config = ConfigDict(frozen=True)
+
+    company_id: UUID
+    content_type: str
+    byte_size: int = Field(ge=1, le=MAX_LOGO_BYTES)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content: bytes
+    updated_at: datetime
+
+    @field_validator("content_type")
+    @classmethod
+    def validate_content_type(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in LOGO_CONTENT_TYPES:
+            raise ValueError("unsupported logo content type")
+        return normalized
+
+    @field_validator("content")
+    @classmethod
+    def validate_content_matches_declared_size(
+        cls,
+        value: bytes,
+        info: ValidationInfo,
+    ) -> bytes:
+        declared = info.data.get("byte_size")
+        if declared is not None and len(value) != declared:
+            raise ValueError("content length must match byte_size")
+        return value
 
 
 class CompanyUser(BaseModel):
@@ -79,6 +122,8 @@ class Position(BaseModel):
     recruitment_end_at: date | None = None
     created_by: UUID
     status: PositionStatus = PositionStatus.DRAFT
+    # None means this position inherits the company-wide invitation email template.
+    invitation_email_template: InvitationEmailTemplate | None = None
     row_version: int = Field(default=1, ge=1)
     created_at: datetime
 

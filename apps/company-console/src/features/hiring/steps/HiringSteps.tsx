@@ -13,10 +13,14 @@ import { Field, FormActions, FormSection } from "../components/FormPrimitives";
 import {
   createCriterionDraft,
   createRequirementDraft,
+  interviewLevelLabels,
   type CriterionDraft,
   type HiringDraft,
+  type InterviewLevel,
   type JobRequirementDraft,
 } from "../types";
+
+const interviewLevelOptions = ["entry", "junior", "senior"] as const;
 
 const roleOptions = [
   { value: "개발", label: "개발", description: "백엔드·프론트엔드·모바일" },
@@ -584,6 +588,23 @@ export function CriteriaStep(props: StepProps) {
                 }
               />
             </div>
+          </Field>
+          <Field
+            label="면접 난이도"
+            hint={interviewLevelLabels[draft.interviewLevel].hint}
+          >
+            <select
+              value={draft.interviewLevel}
+              onChange={(event) =>
+                update("interviewLevel", event.target.value as InterviewLevel)
+              }
+            >
+              {interviewLevelOptions.map((level) => (
+                <option key={level} value={level}>
+                  {interviewLevelLabels[level].name}
+                </option>
+              ))}
+            </select>
           </Field>
           <Field label="금지 주제" hint="쉼표로 구분합니다.">
             <input

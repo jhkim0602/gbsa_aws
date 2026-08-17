@@ -6,7 +6,21 @@ from typing import Protocol, TypeVar
 from uuid import UUID
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import JSON, DateTime, Float, Integer, String, Text, Uuid, delete, select
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    Float,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+    delete,
+    select,
+)
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import (
     DeclarativeBase,
     InstrumentedAttribute,
@@ -53,6 +67,15 @@ class TenantScopedSubmissionNotFound(LookupError):
     """Raised without revealing another tenant or applicant's resources."""
 
 
+class DuplicateStrategyVersion(ValueError):
+    """Raised when a strategy version already exists for the invitation.
+
+    An applicant submits more than one document and each finished analysis builds a
+    strategy, so this is a normal race rather than a defect: the caller keeps the strategy
+    already stored instead of failing the analysis.
+    """
+
+
 class TenantOwned(Protocol):
     @property
     def company_id(self) -> UUID: ...
@@ -68,10 +91,10 @@ class Base(DeclarativeBase):
 class SubmissionRow(Base):
     __tablename__ = "submissions"
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     submission_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    invitation_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    applicant_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    invitation_id: Mapped[UUID] = mapped_column(Uuid)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid)
     source_type: Mapped[str] = mapped_column(String(30))
     source_uri: Mapped[str] = mapped_column(String(4096))
     original_filename: Mapped[str | None] = mapped_column(String(255))
@@ -88,10 +111,23 @@ class SubmissionRow(Base):
 
 class SubmissionAnalysisRow(Base):
     __tablename__ = "submission_analyses"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "submission_id"],
+            ["submissions.company_id", "submissions.submission_id"],
+            name="fk_submission_analyses_company_id_submissions",
+        ),
+        UniqueConstraint(
+            "company_id",
+            "submission_id",
+            "analysis_version",
+            name="uq_submission_analyses_version",
+        ),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     analysis_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    submission_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    submission_id: Mapped[UUID] = mapped_column(Uuid)
     analysis_version: Mapped[int] = mapped_column(Integer)
     extractor_version: Mapped[str] = mapped_column(String(100))
     chunk_config_version: Mapped[str] = mapped_column(String(100))
@@ -106,12 +142,29 @@ class SubmissionAnalysisRow(Base):
 
 class SubmissionChunkRow(Base):
     __tablename__ = "submission_chunks"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "submission_id"],
+            ["submissions.company_id", "submissions.submission_id"],
+            name="fk_submission_chunks_company_id_submissions",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "analysis_id"],
+            ["submission_analyses.company_id", "submission_analyses.analysis_id"],
+            name="fk_submission_chunks_company_id_submission_analyses",
+        ),
+        UniqueConstraint(
+            "company_id", "index_document_id", name="uq_submission_chunks_index_document"
+        ),
+        Index("ix_submission_chunks_submission", "company_id", "submission_id"),
+        Index("ix_submission_chunks_analysis", "company_id", "analysis_id"),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     chunk_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    applicant_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    submission_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    analysis_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid)
+    submission_id: Mapped[UUID] = mapped_column(Uuid)
+    analysis_id: Mapped[UUID] = mapped_column(Uuid)
     source_location: Mapped[dict[str, object]] = mapped_column(JSON)
     text_object_key: Mapped[str] = mapped_column(String(2048))
     source_hash: Mapped[str] = mapped_column(String(64))
@@ -124,10 +177,18 @@ class SubmissionChunkRow(Base):
 
 class GitRepositoryAnalysisRow(Base):
     __tablename__ = "git_repository_analyses"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "submission_id"],
+            ["submissions.company_id", "submissions.submission_id"],
+            name="fk_git_repository_analyses_company_id_submissions",
+        ),
+        Index("ix_git_repository_analyses_submission", "company_id", "submission_id"),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     repository_analysis_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    submission_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    submission_id: Mapped[UUID] = mapped_column(Uuid)
     repository_url: Mapped[str] = mapped_column(String(4096))
     default_branch: Mapped[str] = mapped_column(String(500))
     pinned_head_sha: Mapped[str] = mapped_column(String(40))
@@ -138,10 +199,26 @@ class GitRepositoryAnalysisRow(Base):
 
 class GitCommitAnalysisRow(Base):
     __tablename__ = "git_commit_analyses"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "repository_analysis_id"],
+            [
+                "git_repository_analyses.company_id",
+                "git_repository_analyses.repository_analysis_id",
+            ],
+            name="fk_git_commit_analyses_company_id_git_repository_analyses",
+        ),
+        UniqueConstraint(
+            "company_id",
+            "repository_analysis_id",
+            "commit_sha",
+            name="uq_git_commit_analyses_commit",
+        ),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     git_commit_analysis_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    repository_analysis_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    repository_analysis_id: Mapped[UUID] = mapped_column(Uuid)
     parent_sha: Mapped[str] = mapped_column(String(40))
     commit_sha: Mapped[str] = mapped_column(String(40))
     author_match_inputs: Mapped[dict[str, object]] = mapped_column(JSON)
@@ -153,10 +230,18 @@ class GitCommitAnalysisRow(Base):
 
 class CandidateCodeUnitRow(Base):
     __tablename__ = "candidate_code_units"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "git_commit_analysis_id"],
+            ["git_commit_analyses.company_id", "git_commit_analyses.git_commit_analysis_id"],
+            name="fk_candidate_code_units_company_id_git_commit_analyses",
+        ),
+        Index("ix_candidate_code_units_commit", "company_id", "git_commit_analysis_id"),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     code_unit_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    git_commit_analysis_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    git_commit_analysis_id: Mapped[UUID] = mapped_column(Uuid)
     path: Mapped[str] = mapped_column(String(1000))
     language: Mapped[str] = mapped_column(String(100))
     symbol: Mapped[str] = mapped_column(String(500))
@@ -172,11 +257,19 @@ class CandidateCodeUnitRow(Base):
 
 class InterviewStrategyRow(Base):
     __tablename__ = "interview_strategies"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "invitation_id",
+            "strategy_version",
+            name="uq_interview_strategies_invitation_version",
+        ),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     interview_strategy_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    invitation_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    applicant_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    invitation_id: Mapped[UUID] = mapped_column(Uuid)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid)
     competency_model_version_id: Mapped[UUID] = mapped_column(Uuid)
     strategy_version: Mapped[int] = mapped_column(Integer)
     common_topics: Mapped[list[str]] = mapped_column(JSON)
@@ -191,15 +284,26 @@ class InterviewStrategyRow(Base):
 
 class RetrievalDocumentRow(Base):
     __tablename__ = "retrieval_documents"
+    __table_args__ = (
+        Index(
+            "ix_retrieval_scope",
+            "company_id",
+            "applicant_id",
+            "invitation_id",
+            "competency_model_version_id",
+            "criterion_id",
+        ),
+        Index("ix_retrieval_source", "company_id", "source_id"),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     retrieval_document_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    applicant_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
-    invitation_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
-    competency_model_version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    criterion_id: Mapped[UUID | None] = mapped_column(Uuid, index=True)
+    applicant_id: Mapped[UUID | None] = mapped_column(Uuid)
+    invitation_id: Mapped[UUID | None] = mapped_column(Uuid)
+    competency_model_version_id: Mapped[UUID] = mapped_column(Uuid)
+    criterion_id: Mapped[UUID | None] = mapped_column(Uuid)
     document_type: Mapped[str] = mapped_column(String(40))
-    source_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    source_id: Mapped[UUID] = mapped_column(Uuid)
     source_version: Mapped[str] = mapped_column(String(100))
     content_hash: Mapped[str] = mapped_column(String(64))
     locator: Mapped[dict[str, object]] = mapped_column(JSON)
@@ -218,16 +322,25 @@ class RetrievalDocumentRow(Base):
 
 class CandidateClaimRow(Base):
     __tablename__ = "candidate_claims"
+    __table_args__ = (
+        Index(
+            "ix_candidate_claim_scope",
+            "company_id",
+            "applicant_id",
+            "invitation_id",
+            "criterion_id",
+        ),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     candidate_claim_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    applicant_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    invitation_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    competency_model_version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    criterion_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid)
+    invitation_id: Mapped[UUID] = mapped_column(Uuid)
+    competency_model_version_id: Mapped[UUID] = mapped_column(Uuid)
+    criterion_id: Mapped[UUID] = mapped_column(Uuid)
     claim_type: Mapped[str] = mapped_column(String(40))
     neutral_text: Mapped[str] = mapped_column(String(4000))
-    source_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    source_id: Mapped[UUID] = mapped_column(Uuid)
     locator: Mapped[dict[str, object]] = mapped_column(JSON)
     content_hash: Mapped[str] = mapped_column(String(64))
     extraction_version: Mapped[str] = mapped_column(String(100))
@@ -236,27 +349,37 @@ class CandidateClaimRow(Base):
 
 class ClaimConflictRow(Base):
     __tablename__ = "claim_conflicts"
+    __table_args__ = (Index("ix_claim_conflicts_invitation", "company_id", "invitation_id"),)
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     claim_conflict_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    applicant_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    invitation_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    criterion_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    left_claim_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    right_claim_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid)
+    invitation_id: Mapped[UUID] = mapped_column(Uuid)
+    criterion_id: Mapped[UUID] = mapped_column(Uuid)
+    left_claim_id: Mapped[UUID] = mapped_column(Uuid)
+    right_claim_id: Mapped[UUID] = mapped_column(Uuid)
     conflict_type: Mapped[str] = mapped_column(String(50))
     verification_objective: Mapped[str] = mapped_column(String(4000))
 
 
 class VerificationTargetRow(Base):
     __tablename__ = "verification_targets"
+    __table_args__ = (
+        Index(
+            "ix_verification_target_scope",
+            "company_id",
+            "applicant_id",
+            "invitation_id",
+            "criterion_id",
+        ),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     verification_target_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    applicant_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    invitation_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    competency_model_version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    criterion_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid)
+    invitation_id: Mapped[UUID] = mapped_column(Uuid)
+    competency_model_version_id: Mapped[UUID] = mapped_column(Uuid)
+    criterion_id: Mapped[UUID] = mapped_column(Uuid)
     target_type: Mapped[str] = mapped_column(String(40))
     objective: Mapped[str] = mapped_column(String(4000))
     missing_dimensions: Mapped[list[str]] = mapped_column(JSON)
@@ -267,12 +390,21 @@ class VerificationTargetRow(Base):
 
 class CandidateVerificationMapRow(Base):
     __tablename__ = "candidate_verification_maps"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "invitation_id",
+            "competency_model_version_id",
+            "material_version",
+            name="uq_candidate_verification_map_version",
+        ),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     candidate_verification_map_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    applicant_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    invitation_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    competency_model_version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid)
+    invitation_id: Mapped[UUID] = mapped_column(Uuid)
+    competency_model_version_id: Mapped[UUID] = mapped_column(Uuid)
     criterion_version: Mapped[int] = mapped_column(Integer)
     material_version: Mapped[str] = mapped_column(String(100))
     retrieval_version: Mapped[str] = mapped_column(String(100))
@@ -581,6 +713,25 @@ class InMemorySubmissionRepository:
         self, context: TenantContext, strategy: InterviewStrategy
     ) -> InterviewStrategy:
         require_tenant_context(context).assert_company(strategy.company_id)
+        # uq_interview_strategies_invitation_version, enforced here as well because keying
+        # only by strategy id let a second strategy at the same version pass every test on
+        # this double and then fail the Postgres insert.
+        conflict = next(
+            (
+                existing
+                for existing in self.strategies.values()
+                if existing.company_id == strategy.company_id
+                and existing.invitation_id == strategy.invitation_id
+                and existing.strategy_version == strategy.strategy_version
+                and existing.interview_strategy_id != strategy.interview_strategy_id
+            ),
+            None,
+        )
+        if conflict is not None:
+            raise DuplicateStrategyVersion(
+                f"strategy version {strategy.strategy_version} already exists "
+                f"for invitation {strategy.invitation_id}"
+            )
         self.strategies[strategy.interview_strategy_id] = strategy
         return strategy
 
@@ -1192,7 +1343,16 @@ class SqlAlchemySubmissionRepository:
                 status=strategy.status.value,
             )
         )
-        self._session.flush()
+        # Raised as the domain error so the caller does not have to know this is a
+        # `uq_interview_strategies_invitation_version` violation, and so the in-memory
+        # repository can present the same behaviour without a database.
+        try:
+            self._session.flush()
+        except IntegrityError as error:
+            raise DuplicateStrategyVersion(
+                f"strategy version {strategy.strategy_version} already exists "
+                f"for invitation {strategy.invitation_id}"
+            ) from error
         return strategy
 
     def latest_strategy(

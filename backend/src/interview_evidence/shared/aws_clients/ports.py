@@ -8,6 +8,7 @@ from hashlib import sha256
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
+from interview_evidence.shared.email_templates import RenderedEmail
 from interview_evidence.shared.ids import new_uuid7
 from interview_evidence.shared.tenant import TenantContext, require_tenant_context
 
@@ -85,6 +86,7 @@ class EmailMessage:
     recipient_ref: UUID
     recipient_address_sha256: str
     template_data: Mapping[str, Any]
+    rendered: RenderedEmail
 
 
 class _DeterministicIds:
@@ -189,6 +191,7 @@ class EmailSender(Protocol):
         recipient_ref: UUID,
         recipient_address: str,
         template_data: Mapping[str, Any],
+        rendered: RenderedEmail,
     ) -> UUID: ...
 
 
@@ -221,6 +224,29 @@ class InMemoryObjectStorage:
         )
         self.intents.append(intent)
         return intent
+
+    def verify_uploaded_object(
+        self,
+        context: TenantContext,
+        *,
+        object_key: str,
+        expected_byte_size: int,
+        expected_sha256: str,
+    ) -> bool:
+        """Match the S3 adapter: an object is verified when an intent declared it.
+
+        Nothing is actually stored here, so the intent is the only record that the upload
+        was authorized with this size and digest.
+        """
+        tenant = require_tenant_context(context)
+        if not object_key.startswith(f"tenants/{tenant.company_id}/"):
+            raise PermissionError("object key is outside the tenant scope")
+        return any(
+            intent.object_key == object_key
+            and intent.byte_size == expected_byte_size
+            and intent.sha256 == expected_sha256
+            for intent in self.intents
+        )
 
     def delete_and_verify_object(
         self,
@@ -460,6 +486,7 @@ class InMemoryEmailSender:
         recipient_ref: UUID,
         recipient_address: str,
         template_data: Mapping[str, Any],
+        rendered: RenderedEmail,
     ) -> UUID:
         tenant = require_tenant_context(context)
         message = EmailMessage(
@@ -471,6 +498,7 @@ class InMemoryEmailSender:
                 recipient_address.strip().casefold().encode("utf-8")
             ).hexdigest(),
             template_data=deepcopy(dict(template_data)),
+            rendered=rendered,
         )
         self.messages.append(message)
         return message.message_id

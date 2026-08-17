@@ -13,7 +13,11 @@ from interview_evidence.company_management.adapters.applicant_session import (
 )
 from interview_evidence.company_management.adapters.company_auth import CompanyAuthAdapter
 from interview_evidence.company_management.api.applicant_routes import create_applicant_router
-from interview_evidence.company_management.api.company_routes import create_company_router
+from interview_evidence.company_management.api.company_routes import (
+    InvitationReviewResolver,
+    InvitationSessionResolver,
+    create_company_router,
+)
 from interview_evidence.company_management.application.applicant_access_service import (
     ApplicantAccessService,
 )
@@ -22,6 +26,9 @@ from interview_evidence.company_management.application.criteria_service import C
 from interview_evidence.company_management.application.hiring_service import HiringService
 from interview_evidence.company_management.application.interviewer_service import (
     InterviewerProfileService,
+)
+from interview_evidence.company_management.application.invitation_template_service import (
+    InvitationTemplateService,
 )
 from interview_evidence.company_management.domain.company import (
     Company,
@@ -76,6 +83,7 @@ class LaneARuntime:
     interviewer_service: InterviewerProfileService
     hiring_service: HiringService
     applicant_access_service: ApplicantAccessService
+    template_service: InvitationTemplateService
 
 
 def create_lane_a_runtime(
@@ -89,6 +97,9 @@ def create_lane_a_runtime(
     idempotency: ResourceIdempotencyStore | None = None,
     email_sender: EmailSender | None = None,
     applicant_access_base_url: str = "https://applicant.local/access",
+    logo_base_url: str = "https://console.local",
+    interview_sessions: InvitationSessionResolver | None = None,
+    invitation_reviews: InvitationReviewResolver | None = None,
 ) -> LaneARuntime:
     active_repository = repository or InMemoryCompanyRepository()
     active_audit = audit or InMemoryAuditAppender()
@@ -124,15 +135,23 @@ def create_lane_a_runtime(
         active_outbox,
         active_clock,
     )
+    template_service = InvitationTemplateService(
+        active_repository,
+        active_clock,
+        logo_base_url=logo_base_url,
+    )
     company_router = create_company_router(
         auth=CompanyAuthAdapter(principal_provider),
         company_service=company_service,
         criteria_service=criteria_service,
         interviewer_service=interviewer_service,
         hiring_service=hiring_service,
+        template_service=template_service,
         audit=active_audit,
         invitation_email=InvitationEmailHandler(active_email_sender),
         applicant_access_base_url=applicant_access_base_url,
+        interview_sessions=interview_sessions,
+        invitation_reviews=invitation_reviews,
     )
     applicant_router = create_applicant_router(
         sessions=active_sessions,
@@ -151,6 +170,7 @@ def create_lane_a_runtime(
         interviewer_service=interviewer_service,
         hiring_service=hiring_service,
         applicant_access_service=access_service,
+        template_service=template_service,
     )
 
 
@@ -165,6 +185,9 @@ def create_lane_a_app(
     idempotency: ResourceIdempotencyStore | None = None,
     email_sender: EmailSender | None = None,
     applicant_access_base_url: str = "https://applicant.local/access",
+    logo_base_url: str = "https://console.local",
+    interview_sessions: InvitationSessionResolver | None = None,
+    invitation_reviews: InvitationReviewResolver | None = None,
 ) -> FastAPI:
     return create_lane_a_runtime(
         principal_provider=principal_provider,
@@ -176,6 +199,9 @@ def create_lane_a_app(
         idempotency=idempotency,
         email_sender=email_sender,
         applicant_access_base_url=applicant_access_base_url,
+        logo_base_url=logo_base_url,
+        interview_sessions=interview_sessions,
+        invitation_reviews=invitation_reviews,
     ).app
 
 
@@ -224,13 +250,29 @@ def ensure_company_principal(
     )
 
 
+#: Reported on the seeded review screen as well, so the two must not drift apart.
+_DEMO_CRITERION_NAME = "운영 문제 해결"
+
+
+@dataclass(frozen=True, slots=True)
+class LocalDemoRecruiting:
+    """What the seeded demo workspace exposes to the lanes that build on it."""
+
+    position_id: UUID
+    competency_model_version_id: UUID
+    criterion_id: UUID
+    criterion_name: str
+    reviewed_invitation_id: UUID
+    reviewed_applicant_id: UUID
+
+
 def ensure_local_demo_recruiting(
     session: Session,
     *,
     company_id: UUID,
     company_user_id: UUID,
     now: datetime,
-) -> UUID:
+) -> LocalDemoRecruiting:
     """Seed one local-only recruiting workspace without resetting existing demo progress."""
     context = TenantContext(
         company_id=company_id,
@@ -242,6 +284,7 @@ def ensure_local_demo_recruiting(
     repository = SqlAlchemyCompanyRepository(session)
     position_id = uuid5(NAMESPACE_URL, f"local-recruiting-demo-position:{company_id}")
     version_id = uuid5(NAMESPACE_URL, f"local-recruiting-demo-version:{company_id}")
+    criterion_id = uuid5(NAMESPACE_URL, f"{version_id}:problem-solving")
 
     try:
         repository.get_position(context, position_id)
@@ -267,9 +310,9 @@ def ensure_local_demo_recruiting(
         repository.get_criterion_version(context, version_id)
     except TenantScopedResourceNotFound:
         criterion = EvaluationCriterion(
-            criterion_id=uuid5(NAMESPACE_URL, f"{version_id}:problem-solving"),
+            criterion_id=criterion_id,
             code="PROBLEM_SOLVING",
-            name="운영 문제 해결",
+            name=_DEMO_CRITERION_NAME,
             description="서비스 운영 문제를 분석하고 복구하는 역량",
             weight=1,
             verification_guide=CriterionVerificationGuide(
@@ -280,8 +323,6 @@ def ensure_local_demo_recruiting(
                 max_follow_ups=2,
                 time_budget_seconds=300,
             ),
-            good_evidence={"signals": ["구체적인 상황과 직접 수행한 행동"]},
-            weak_evidence={"signals": ["역할과 결과가 불명확한 설명"]},
             abstain_guidance="답변 근거가 부족하면 판단을 유보한다.",
             common_questions=("운영 문제를 해결한 경험을 설명해 주세요.",),
             required=True,
@@ -351,4 +392,17 @@ def ensure_local_demo_recruiting(
                 row_version=index,
             ),
         )
-    return position_id
+    # The last applicant is the reviewed one, so it is the row a seeded interview and
+    # report attach to. Returned rather than re-derived by the caller: the uuid5 recipe
+    # is this lane's, and a caller that guessed it wrong would silently seed an orphan.
+    reviewed_invitation_id = uuid5(
+        NAMESPACE_URL, f"{position_id}:invitation:{len(demo_applicants)}"
+    )
+    return LocalDemoRecruiting(
+        position_id=position_id,
+        competency_model_version_id=version_id,
+        criterion_id=criterion_id,
+        criterion_name=_DEMO_CRITERION_NAME,
+        reviewed_invitation_id=reviewed_invitation_id,
+        reviewed_applicant_id=uuid5(NAMESPACE_URL, f"{reviewed_invitation_id}:applicant"),
+    )

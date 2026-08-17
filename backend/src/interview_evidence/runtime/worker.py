@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import cast
+from typing import Protocol, cast
 from uuid import UUID
 
 from interview_evidence.company_management.application.company_service import (
@@ -17,6 +17,7 @@ from interview_evidence.integration.interview_reporting import (
 from interview_evidence.interview_engine.application.public import InterviewEnginePublic
 from interview_evidence.main import create_local_runtime
 from interview_evidence.reporting.api import LaneDRuntime
+from interview_evidence.reporting.application.assessment_service import CriterionAssessor
 from interview_evidence.reporting.application.deletion_service import DeletionService
 from interview_evidence.reporting.application.evidence_service import EvidenceService
 from interview_evidence.shared.aws_clients.ports import ConsumableQueue, InMemoryQueue
@@ -219,11 +220,9 @@ class ReportRequestedEventHandler:
             context,
             snapshot.competency_model_version_id,
         )
-        turns = tuple(
-            turn
-            for turn in self._interview.list_final_turns(context, session_id=session_id)
-            if turn.speaker.value == "applicant"
-        )
+        final_turns = self._interview.list_final_turns(context, session_id=session_id)
+        turns = tuple(turn for turn in final_turns if turn.speaker.value == "applicant")
+        questions = _questions_by_answer(final_turns)
         transcripts = {
             segment.turn_id: segment
             for segment in self._reporting.repository.list_transcripts(context, session_id)
@@ -243,6 +242,9 @@ class ReportRequestedEventHandler:
         inputs = tuple(
             CriterionInput(
                 criterion_id=criterion_item.criterion_id,
+                criterion_name=criterion_item.name,
+                criterion_text=criterion_item.description,
+                question=questions.get(turn.turn_id, ""),
                 observation="지원자의 최종 답변에서 관찰된 내용",
                 answer_turn_id=turn.turn_id,
                 transcript=transcripts[turn.turn_id],
@@ -263,7 +265,44 @@ class ReportRequestedEventHandler:
             recording=recording,
             events=self._reporting.repository.list_session_events(context, session_id),
             occurred_at=self._clock.now(),
+            interview_level=criterion.interview_level,
         )
+
+
+class _TurnLike(Protocol):
+    """The three fields pairing needs, so this helper is testable without a live Lane C."""
+
+    @property
+    def turn_id(self) -> UUID: ...
+
+    @property
+    def speaker(self) -> _SpeakerLike: ...
+
+    @property
+    def text(self) -> str | None: ...
+
+
+class _SpeakerLike(Protocol):
+    @property
+    def value(self) -> str: ...
+
+
+def _questions_by_answer(turns: Sequence[_TurnLike]) -> dict[UUID, str]:
+    """Pair each applicant answer with the question it followed.
+
+    Turns arrive in session order, so the interviewer turn most recently before an answer
+    is the one it answers. The scorer needs this: the same answer is strong for one
+    question and evasive for another, and judging it without the question asked would
+    penalise a candidate for being exactly as brief as we asked them to be.
+    """
+    paired: dict[UUID, str] = {}
+    asked = ""
+    for turn in turns:
+        if turn.speaker.value == "interviewer":
+            asked = turn.text or asked
+        elif turn.speaker.value == "applicant":
+            paired[turn.turn_id] = asked
+    return paired
 
 
 class DeletionRequestedEventHandler:
@@ -455,6 +494,7 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
                 generator=ReportGenerator(
                     lane_d.repository,
                     EvidenceService(lane_d.repository),
+                    CriterionAssessor(aws.model),
                 ),
                 clock=clock,
             ),

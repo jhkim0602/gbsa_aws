@@ -5,7 +5,20 @@ from datetime import UTC, datetime
 from typing import Protocol, TypeVar
 from uuid import UUID
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, Text, Uuid, select
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+    select,
+)
 from sqlalchemy.orm import (
     DeclarativeBase,
     InstrumentedAttribute,
@@ -22,6 +35,7 @@ from interview_evidence.reporting.domain.deletion import (
 )
 from interview_evidence.reporting.domain.report import (
     AssessmentState,
+    AxisAssessment,
     Evidence,
     Report,
     ReportItem,
@@ -55,16 +69,67 @@ def _aware(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
+def _stored_axes(axes: tuple[AxisAssessment, ...]) -> list[dict[str, object]]:
+    return [
+        {
+            "axis": axis.axis,
+            "label": axis.label,
+            "score": axis.score,
+            "rationale": axis.rationale,
+            "quoted_evidence_ids": [str(value) for value in axis.quoted_evidence_ids],
+        }
+        for axis in axes
+    ]
+
+
+def _restored_axes(stored: object) -> tuple[AxisAssessment, ...]:
+    """Rebuild the axis scores, skipping rows this build cannot read.
+
+    A stored axis that no longer parses -- an axis key retired since it was written, a
+    truncated row -- is dropped rather than raised on, because a reviewer needs the report
+    itself more than they need any one score, and the report is an immutable original we
+    cannot rewrite to fix.
+    """
+    if not isinstance(stored, list):
+        return ()
+    restored: list[AxisAssessment] = []
+    for entry in stored:
+        if not isinstance(entry, Mapping):
+            continue
+        raw_score = entry.get("score")
+        cited = entry.get("quoted_evidence_ids")
+        try:
+            restored.append(
+                AxisAssessment(
+                    axis=str(entry["axis"]),
+                    label=str(entry.get("label", entry["axis"])),
+                    score=None if raw_score is None else int(str(raw_score)),
+                    rationale=str(entry["rationale"]),
+                    quoted_evidence_ids=tuple(UUID(str(value)) for value in cited)
+                    if isinstance(cited, list)
+                    else (),
+                )
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    return tuple(restored)
+
+
 class Base(DeclarativeBase):
     pass
 
 
 class TranscriptSegmentRow(Base):
     __tablename__ = "transcript_segments"
+    __table_args__ = (
+        UniqueConstraint("company_id", "turn_id", "version", name="uq_transcript_segment_version"),
+        Index("ix_transcript_segments_session", "company_id", "interview_session_id"),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     transcript_segment_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    interview_session_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    turn_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    interview_session_id: Mapped[UUID] = mapped_column(Uuid)
+    turn_id: Mapped[UUID] = mapped_column(Uuid)
     speaker: Mapped[str] = mapped_column(String(30))
     text: Mapped[str] = mapped_column(Text)
     confidence: Mapped[float] = mapped_column(Float)
@@ -78,9 +143,11 @@ class TranscriptSegmentRow(Base):
 
 class RecordingAssetRow(Base):
     __tablename__ = "recording_assets"
+    __table_args__ = (Index("ix_recording_assets_session", "company_id", "interview_session_id"),)
+
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     recording_asset_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    interview_session_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    interview_session_id: Mapped[UUID] = mapped_column(Uuid)
     asset_type: Mapped[str] = mapped_column(String(30))
     object_key: Mapped[str] = mapped_column(String(2048))
     content_hash: Mapped[str] = mapped_column(String(64))
@@ -92,9 +159,11 @@ class RecordingAssetRow(Base):
 
 class SessionEventRow(Base):
     __tablename__ = "session_events"
+    __table_args__ = (Index("ix_session_events_session", "company_id", "interview_session_id"),)
+
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     session_event_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    interview_session_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    interview_session_id: Mapped[UUID] = mapped_column(Uuid)
     event_type: Mapped[str] = mapped_column(String(100))
     session_start_ms: Mapped[int] = mapped_column(Integer)
     session_end_ms: Mapped[int] = mapped_column(Integer)
@@ -105,10 +174,17 @@ class SessionEventRow(Base):
 
 class ReportRow(Base):
     __tablename__ = "reports"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id", "interview_session_id", "version", name="uq_report_session_version"
+        ),
+        Index("ix_reports_invitation", "company_id", "invitation_id"),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     report_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    interview_session_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    invitation_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    interview_session_id: Mapped[UUID] = mapped_column(Uuid)
+    invitation_id: Mapped[UUID] = mapped_column(Uuid)
     version: Mapped[int] = mapped_column(Integer)
     kind: Mapped[str] = mapped_column(String(30))
     model_version: Mapped[str] = mapped_column(String(100))
@@ -121,10 +197,20 @@ class ReportRow(Base):
 
 class ReportItemRow(Base):
     __tablename__ = "report_items"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "report_id"],
+            ["reports.company_id", "reports.report_id"],
+            name="fk_report_items_company_id_reports",
+        ),
+        Index("ix_report_items_report", "company_id", "report_id"),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     report_item_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    report_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    report_id: Mapped[UUID] = mapped_column(Uuid)
     criterion_id: Mapped[UUID] = mapped_column(Uuid)
+    criterion_name: Mapped[str] = mapped_column(String(200), server_default="")
     competency_model_version_id: Mapped[UUID] = mapped_column(Uuid)
     assessment_state: Mapped[str] = mapped_column(String(40))
     observation: Mapped[str] = mapped_column(Text)
@@ -132,13 +218,25 @@ class ReportItemRow(Base):
     sufficiency: Mapped[str] = mapped_column(String(30))
     uncertainty: Mapped[str] = mapped_column(Text)
     follow_up_question: Mapped[str | None] = mapped_column(Text)
+    #: The model's per-axis scores, stored as one JSON array rather than a child table:
+    #: they are read and written with their item and never queried across reports.
+    axis_assessments: Mapped[list[dict[str, object]]] = mapped_column(JSON, server_default="[]")
 
 
 class EvidenceRow(Base):
     __tablename__ = "evidence"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "report_item_id"],
+            ["report_items.company_id", "report_items.report_item_id"],
+            name="fk_evidence_company_id_report_items",
+        ),
+        Index("ix_evidence_report_item", "company_id", "report_item_id"),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     evidence_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    report_item_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    report_item_id: Mapped[UUID] = mapped_column(Uuid)
     criterion_id: Mapped[UUID] = mapped_column(Uuid)
     competency_model_version_id: Mapped[UUID] = mapped_column(Uuid)
     answer_turn_id: Mapped[UUID] = mapped_column(Uuid)
@@ -154,9 +252,18 @@ class EvidenceRow(Base):
 
 class HumanReviewRow(Base):
     __tablename__ = "human_reviews"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "report_id"],
+            ["reports.company_id", "reports.report_id"],
+            name="fk_human_reviews_company_id_reports",
+        ),
+        Index("ix_human_reviews_report", "company_id", "report_id"),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     human_review_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    report_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    report_id: Mapped[UUID] = mapped_column(Uuid)
     company_user_id: Mapped[UUID] = mapped_column(Uuid)
     review_type: Mapped[str] = mapped_column(String(40))
     target_id: Mapped[UUID] = mapped_column(Uuid)
@@ -167,8 +274,9 @@ class HumanReviewRow(Base):
 
 class DeletionRequestRow(Base):
     __tablename__ = "deletion_requests"
+
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     deletion_request_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
     scope_type: Mapped[str] = mapped_column(String(30))
     scope_id: Mapped[UUID] = mapped_column(Uuid)
     reason: Mapped[str] = mapped_column(Text)
@@ -180,17 +288,35 @@ class DeletionRequestRow(Base):
 
 class DeletionManifestRow(Base):
     __tablename__ = "deletion_manifests"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "deletion_request_id"],
+            ["deletion_requests.company_id", "deletion_requests.deletion_request_id"],
+            name="fk_deletion_manifests_company_id_deletion_requests",
+        ),
+        Index("ix_deletion_manifests_request", "company_id", "deletion_request_id"),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     manifest_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    deletion_request_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    deletion_request_id: Mapped[UUID] = mapped_column(Uuid)
     manifest_version: Mapped[int] = mapped_column(Integer)
 
 
 class DeletionTargetRow(Base):
     __tablename__ = "deletion_targets"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "manifest_id"],
+            ["deletion_manifests.company_id", "deletion_manifests.manifest_id"],
+            name="fk_deletion_targets_company_id_deletion_manifests",
+        ),
+        Index("ix_deletion_targets_manifest", "company_id", "manifest_id"),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     target_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    manifest_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    manifest_id: Mapped[UUID] = mapped_column(Uuid)
     owner_lane: Mapped[str] = mapped_column(String(1))
     store: Mapped[str] = mapped_column(String(30))
     target_type: Mapped[str] = mapped_column(String(100))
@@ -661,6 +787,11 @@ class SQLAlchemyReportingRepository:
                 created_at=report.created_at,
             )
         )
+        # Flushed per foreign key level, parents first. No relationship() links these
+        # mappers, so a single flush would have SQLAlchemy order the inserts by mapper
+        # sort key -- alphabetically -- which puts evidence before report_items and
+        # report_items before reports, the exact reverse of what the constraints allow.
+        self._session.flush()
         for item in report.items:
             self._session.add(
                 ReportItemRow(
@@ -668,6 +799,7 @@ class SQLAlchemyReportingRepository:
                     company_id=item.company_id,
                     report_id=item.report_id,
                     criterion_id=item.criterion_id,
+                    criterion_name=item.criterion_name,
                     competency_model_version_id=item.competency_model_version_id,
                     assessment_state=item.assessment_state.value,
                     observation=item.observation,
@@ -675,8 +807,11 @@ class SQLAlchemyReportingRepository:
                     sufficiency=item.sufficiency,
                     uncertainty=item.uncertainty,
                     follow_up_question=item.follow_up_question,
+                    axis_assessments=_stored_axes(item.axis_assessments),
                 )
             )
+        self._session.flush()
+        for item in report.items:
             for evidence in item.evidence:
                 self._session.add(
                     EvidenceRow(
@@ -708,15 +843,19 @@ class SQLAlchemyReportingRepository:
                 )
             )
         )
-        items = []
-        for item in item_rows:
-            evidence_rows = self._session.scalars(
-                select(EvidenceRow).where(
-                    EvidenceRow.company_id == row.company_id,
-                    EvidenceRow.report_item_id == item.report_item_id,
-                )
+        evidence_by_item: dict[UUID, list[Evidence]] = {
+            item.report_item_id: [] for item in item_rows
+        }
+        # One query for the whole report: an item-by-item fetch made the most-viewed
+        # screen issue N+1 round trips, each of them tenant-wide.
+        evidence_rows = self._session.scalars(
+            select(EvidenceRow).where(
+                EvidenceRow.company_id == row.company_id,
+                EvidenceRow.report_item_id.in_(tuple(evidence_by_item)),
             )
-            evidence = tuple(
+        )
+        for value in evidence_rows:
+            evidence_by_item[value.report_item_id].append(
                 Evidence(
                     evidence_id=value.evidence_id,
                     company_id=value.company_id,
@@ -733,24 +872,26 @@ class SQLAlchemyReportingRepository:
                     generation_version=value.generation_version,
                     created_at=_aware(value.created_at),
                 )
-                for value in evidence_rows
             )
-            items.append(
-                ReportItem(
-                    report_item_id=item.report_item_id,
-                    company_id=item.company_id,
-                    report_id=item.report_id,
-                    criterion_id=item.criterion_id,
-                    competency_model_version_id=item.competency_model_version_id,
-                    assessment_state=AssessmentState(item.assessment_state),
-                    observation=item.observation,
-                    rationale=item.rationale,
-                    sufficiency=item.sufficiency,
-                    uncertainty=item.uncertainty,
-                    evidence=evidence,
-                    follow_up_question=item.follow_up_question,
-                )
+        items = [
+            ReportItem(
+                report_item_id=item.report_item_id,
+                company_id=item.company_id,
+                report_id=item.report_id,
+                criterion_id=item.criterion_id,
+                criterion_name=item.criterion_name,
+                competency_model_version_id=item.competency_model_version_id,
+                assessment_state=AssessmentState(item.assessment_state),
+                observation=item.observation,
+                rationale=item.rationale,
+                sufficiency=item.sufficiency,
+                uncertainty=item.uncertainty,
+                evidence=tuple(evidence_by_item[item.report_item_id]),
+                follow_up_question=item.follow_up_question,
+                axis_assessments=_restored_axes(item.axis_assessments),
             )
+            for item in item_rows
+        ]
         return Report(
             report_id=row.report_id,
             company_id=row.company_id,
@@ -863,6 +1004,9 @@ class SQLAlchemyReportingRepository:
                 requested_at=_aware(request.requested_at),
             )
         )
+        # Flushed per foreign key level for the reason given in ``save_report``: mapper
+        # sort order puts deletion_manifests ahead of the deletion_requests they point at.
+        self._session.flush()
         self._session.add(
             DeletionManifestRow(
                 manifest_id=manifest.manifest_id,
@@ -871,6 +1015,7 @@ class SQLAlchemyReportingRepository:
                 manifest_version=manifest.manifest_version,
             )
         )
+        self._session.flush()
         for target in manifest.targets:
             self._session.add(
                 DeletionTargetRow(

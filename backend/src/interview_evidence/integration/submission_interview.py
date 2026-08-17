@@ -172,6 +172,9 @@ class SubmissionInterviewBoundary:
                     iter(criteria_by_id[target.criterion_id].common_questions),
                     "해당 경험에서 본인이 직접 수행한 작업을 설명해 주세요?",
                 ),
+                time_budget_seconds=_time_budget_seconds(
+                    criteria_by_id[target.criterion_id],
+                ),
             )
             for target in (verification_map.targets if verification_map else ())
             if target.criterion_id in criteria_by_id
@@ -216,6 +219,7 @@ class SubmissionInterviewBoundary:
             retrieval_config_version="aurora-hybrid-v1",
             voice_id=str(persona.get("voice_id", "Seoyeon")),
             verification_targets=verification_targets,
+            interview_level=criteria.interview_level,
         )
 
 
@@ -240,6 +244,21 @@ def _criterion_text(
         )
         if value.strip()
     )
+
+
+def _time_budget_seconds(criterion: CriterionSnapshot) -> int:
+    """Seconds this criterion may occupy, from its verification guide.
+
+    The guide is stored as JSON, so a legacy row can be missing the key or hold a
+    non-numeric value; both fall back to the domain default rather than failing the
+    interview, and the value is clamped to the range the domain accepts.
+    """
+    raw = criterion.verification_guide.get("time_budget_seconds")
+    try:
+        seconds = int(str(raw))
+    except (TypeError, ValueError):
+        return 300
+    return max(60, min(seconds, 1800))
 
 
 def _string_tuple(value: object) -> tuple[str, ...]:

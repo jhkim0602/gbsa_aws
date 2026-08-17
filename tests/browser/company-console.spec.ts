@@ -181,6 +181,31 @@ test("position settings can be edited and a draft can be confirmed", async ({
   await page.getByRole("button", { name: "간편 수정" }).click();
   await expect(page.getByRole("button", { name: "채용 마감" })).toBeVisible();
   await page.getByRole("button", { name: "포지션 간편 수정 닫기" }).click();
+
+  // Criterion editing is the other modal on this tab. It publishes a new immutable
+  // criterion version, and the reason it is worth driving in a real browser is that the
+  // recruiter must never see that: the workspace shows only what is currently applied.
+  await page.getByRole("button", { name: "면접 기준 수정" }).click();
+  const criteriaDialog = page.getByRole("dialog", { name: "면접 기준 수정" });
+  await expect(criteriaDialog).toBeVisible();
+  await expect(criteriaDialog.getByLabel("평가기준 이름 1")).toHaveValue(
+    "문제 해결",
+  );
+  await criteriaDialog.getByLabel("평가기준 이름 1").fill("장애 대응 판단");
+  const republished = page.waitForResponse(
+    (response) =>
+      response
+        .url()
+        .includes(
+          `/v1/positions/${position.positionId}/competency-model-versions`,
+        ) && response.request().method() === "POST",
+  );
+  await criteriaDialog.getByRole("button", { name: "변경 저장" }).click();
+  expect((await republished).status()).toBe(201);
+  await expect(criteriaDialog).toBeHidden();
+  await expect(page.getByText("장애 대응 판단")).toBeVisible();
+  await expect(page.getByText(/버전/)).toHaveCount(0);
+
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     path: path.join(SCREENSHOT_DIR, "company-position-settings.png"),
@@ -424,6 +449,89 @@ test("position dashboard summarises applicants in aligned rows and columns", asy
   });
 });
 
+/**
+ * The one path a reviewer actually walks: find the reviewable applicant, press 검토 시작,
+ * and read why each question was asked. Everything here is served by the running stack, so
+ * it covers the wiring the unit tests cannot see -- the timeline endpoint had shipped with
+ * ``question_rationale: null`` for every session because the composed application built its
+ * reporting router without the rationale provider, and the seed wrote its question
+ * transcript segments against a fabricated turn id that no rationale could join.
+ */
+test("the seeded review screen shows what the applicant submitted behind each question", async ({
+  page,
+}) => {
+  await page.goto("/positions");
+  await page
+    .getByRole("link", {
+      name: "로컬 데모 백엔드 엔지니어 운영 보기",
+    })
+    .click();
+  await page.getByRole("tab", { name: "지원자 목록" }).click();
+  await page.getByRole("link", { name: /강민재/ }).click();
+
+  await expect(page.getByRole("heading", { name: "강민재" })).toBeVisible();
+  await page.getByRole("link", { name: "검토 시작" }).click();
+  await expect(page).toHaveURL(/\/review\//);
+  await expect(
+    page.getByRole("heading", { name: "면접 타임라인" }),
+  ).toBeVisible();
+
+  // Three seeded questions, each carrying its own rationale disclosure.
+  const rationales = page.locator(".question-rationale");
+  await expect(rationales).toHaveCount(3);
+
+  const first = rationales.first();
+  await first.locator("summary").click();
+  await expect(
+    first.getByText("지원자 답변 Evidence가 아닌 질문 생성 참고 자료입니다."),
+  ).toBeVisible();
+  await expect(first.getByText("세부 내용 부족")).toBeVisible();
+  // The excerpt is the applicant's own submitted line, not an answer and not a paraphrase.
+  await expect(
+    first.getByText(
+      "결제 시스템 백엔드를 담당하며 일 300만 건 트래픽 증가에 대응했습니다.",
+    ),
+  ).toBeVisible();
+
+  // The follow-up cites two pieces of material, one of them a file and symbol the
+  // reviewer can locate in the submission.
+  const second = rationales.nth(1);
+  await second.locator("summary").click();
+  await expect(second.getByText("본인 기여 확인")).toBeVisible();
+  await expect(second.locator(".question-source-list > li")).toHaveCount(2);
+  await expect(
+    second.getByText("app/db/session.py", { exact: false }),
+  ).toBeVisible();
+
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: path.join(SCREENSHOT_DIR, "company-review-question-rationale.png"),
+    fullPage: true,
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  const mobileRationales = page.locator(".question-rationale");
+  await expect(mobileRationales).toHaveCount(3);
+  // Scoped to the one disclosure being opened: the resume line is cited by two questions,
+  // so a page-wide match would hit the still-collapsed second one as well.
+  const mobileFirst = mobileRationales.first();
+  await mobileFirst.locator("summary").click();
+  await expect(
+    mobileFirst.getByText(
+      "결제 시스템 백엔드를 담당하며 일 300만 건 트래픽 증가에 대응했습니다.",
+    ),
+  ).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: path.join(
+      SCREENSHOT_DIR,
+      "company-review-question-rationale-mobile.png",
+    ),
+    fullPage: true,
+  });
+});
+
 test("applicant management uses a readable cross-position operations layout", async ({
   page,
 }) => {
@@ -611,6 +719,90 @@ test("company recruiter workspace remains usable on mobile", async ({
   });
 });
 
+/**
+ * The report is meant to hand a reviewer an A4 document, and printing is the only thing
+ * that exercises the @media print rules, the @page size and page fragmentation. jsdom
+ * has no layout and no print media, so nothing else in the suite can see this.
+ *
+ * Four real defects lived here behind a green suite: the console sidebar and topbar
+ * printed on every page, `overflow: hidden` on the panel clipped everything past the
+ * first page break rather than paginating it, the sheet's three-row grid kept its footer
+ * with the first fragment so it overprinted the last criterion, and the page-content
+ * padding left the sheet inset with the console canvas printed around it.
+ *
+ * The clips are asserted as computed styles rather than by reading the PDF: Chrome
+ * subsets its fonts, so the printed text is not extractable, and the page count only
+ * shows that the document paginated at all.
+ */
+test("the report prints as a document rather than as a screenshot of the console", async ({
+  page,
+}) => {
+  const sessionId = "browser-print-session";
+  const report = printableReport();
+  await page.route(
+    `**/v1/interview-sessions/${sessionId}/report`,
+    async (route) => route.fulfill({ json: report }),
+  );
+  await page.route(
+    `**/v1/interview-sessions/${sessionId}/timeline`,
+    async (route) =>
+      route.fulfill({
+        json: {
+          entries: [],
+          playback: { url: null, expires_at: null, status: "unavailable" },
+        },
+      }),
+  );
+
+  await page.goto(`/review/${sessionId}?invitationId=${crypto.randomUUID()}`);
+  await expect(
+    page.getByRole("heading", { name: "면접 리포트" }),
+  ).toBeVisible();
+  await page.getByRole("tab", { name: "기준별 평가" }).click();
+
+  await expect(page.locator(".report-item .report-axis")).toHaveCount(20);
+
+  await page.emulateMedia({ media: "print" });
+
+  // Navigation and controls are not part of the document.
+  for (const selector of [
+    ".company-sidebar",
+    ".company-topbar",
+    ".skip-link",
+    ".report-document__tabs",
+    ".review-workspace__timeline",
+    ".review-workspace__decision",
+  ]) {
+    await expect(page.locator(selector)).toBeHidden();
+  }
+
+  // A clipping container cannot paginate, so this must not be `hidden` when printing.
+  await expect(page.locator(".report-panel")).toHaveCSS("overflow", "visible");
+  // Neither can a grid container fragment: as a grid the sheet kept its footer row with
+  // the first page and printed it over the body instead of after it.
+  await expect(page.locator(".report-page")).toHaveCSS("display", "block");
+
+  // The sheet is the paper. Left inset means the console canvas prints around it.
+  const sheet = await page.locator(".report-page").boundingBox();
+  expect(sheet?.x).toBe(0);
+
+  const pdf = await page.pdf({
+    path: path.join(SCREENSHOT_DIR, "company-report-print.pdf"),
+    format: "A4",
+    printBackground: true,
+  });
+
+  // Four criteria of five axes each outgrow one A4 sheet, so the document has to paginate.
+  // This is a floor on the artifact, not a substitute for the two rules above: it catches
+  // the sheet being squeezed onto one page, while each clip is caught by its own rule.
+  expect(countPdfPages(pdf)).toBeGreaterThanOrEqual(2);
+});
+
+/** Page count straight from the PDF, so pagination is asserted on the real artifact. */
+function countPdfPages(pdf: Buffer) {
+  return pdf.toString("latin1").match(/\/Type\s*\/Page[^s]/g)?.length ?? 0;
+}
+
 test("stale hashed assets return 404 instead of the SPA document", async ({
   request,
 }) => {
@@ -621,6 +813,64 @@ test("stale hashed assets return 404 instead of the SPA document", async ({
   expect(body).not.toContain('<div id="root">');
   expect(body).not.toContain("InterviewEP");
 });
+
+/**
+ * A report long enough to need a second printed page: four criteria, five axes each.
+ *
+ * Four is what the seeded local report holds and what was measured to run past one A4
+ * sheet; two criteria fit on one page and would make the pagination assertion vacuous.
+ * Built here rather than seeded so the test does not depend on an interview having been
+ * run. The last criterion is unscored on every axis, which is the case the sheet is most
+ * likely to render as a zero.
+ */
+function printableReport() {
+  const axes = [
+    { axis: "correctness", label: "정확성", score: 61 },
+    { axis: "depth", label: "깊이", score: 53 },
+    { axis: "fundamentals", label: "CS 기본기", score: 46 },
+    { axis: "ownership", label: "본인 기여", score: 66 },
+    { axis: "communication", label: "설명력", score: 71 },
+  ];
+  const item = (name: string, scored: boolean) => ({
+    report_item_id: crypto.randomUUID(),
+    criterion_id: crypto.randomUUID(),
+    criterion_name: name,
+    assessment_state: scored ? "confirmed" : "insufficient_evidence",
+    observation: scored
+      ? "답변 1건을 근거로 이 기준을 검토했습니다."
+      : "면접에서 이 기준을 확인할 답변이 기록되지 않았습니다.",
+    rationale: "인용한 답변 구간에서 확인한 내용입니다.",
+    uncertainty: "",
+    follow_up_question: "구체적인 사례를 한 가지 더 확인해 주세요.",
+    evidence: [],
+    axis_assessments: axes.map((axis) => ({
+      axis: axis.axis,
+      label: axis.label,
+      score: scored ? axis.score : null,
+      rationale: scored
+        ? `답변에서 ${axis.label}에 해당하는 내용을 확인했습니다.`
+        : "인용할 답변이 없어 이 축은 판단하지 않았습니다.",
+      quoted_evidence_ids: [],
+    })),
+  });
+
+  return {
+    report_id: crypto.randomUUID(),
+    report_version: 1,
+    status: "ready",
+    summary: "지원자의 답변에서 확인한 내용을 기준별로 정리했습니다.",
+    items: [
+      item("장애 대응 판단", true),
+      item("데이터 모델링", true),
+      item("협업과 코드 리뷰", true),
+      item("대규모 트래픽 운영", false),
+    ],
+    overall_score: 59,
+    unscored_criteria_count: 1,
+    ai_original_immutable: true,
+    human_reviews: [],
+  };
+}
 
 async function createRecruitingPosition(request: APIRequestContext) {
   const suffix = crypto.randomUUID();

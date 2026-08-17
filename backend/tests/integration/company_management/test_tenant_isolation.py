@@ -6,8 +6,11 @@ from httpx import ASGITransport, AsyncClient
 from interview_evidence.company_management.api import create_lane_a_app
 from interview_evidence.company_management.domain.company import Company, Position
 from interview_evidence.company_management.domain.criteria import (
+    CompetencyModelStatus,
     CompetencyModelVersion,
     EvaluationCriterion,
+    JobRequirement,
+    RequirementType,
 )
 from interview_evidence.company_management.repositories.postgres import (
     Base,
@@ -22,7 +25,8 @@ from interview_evidence.shared.security.principals import (
     FakePrincipalProvider,
 )
 from interview_evidence.shared.tenant import ActorType, TenantContext
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
+from sqlalchemy.engine.interfaces import DBAPIConnection
 from sqlalchemy.orm import Session
 
 COMPANY_A = UUID("00000000-0000-7000-8000-000000000001")
@@ -118,8 +122,6 @@ def test_sqlalchemy_repository_applies_the_tenant_predicate() -> None:
                     name="문제 해결",
                     description="대안을 비교한다.",
                     weight=1,
-                    good_evidence={},
-                    weak_evidence={},
                     abstain_guidance="근거가 없으면 보류한다.",
                     required=True,
                 ),
@@ -142,6 +144,80 @@ def test_sqlalchemy_repository_applies_the_tenant_predicate() -> None:
         )
         with pytest.raises(TenantScopedResourceNotFound):
             repository.get_position(tenant_b, POSITION_ID)
+
+
+def test_resaving_a_version_keeps_requirements_within_their_criterion_foreign_key() -> None:
+    # Publishing re-saves an existing version, which replaces its criteria and
+    # requirements. fk_job_requirements_criterion means the requirement rows have to be
+    # deleted before the criteria they reference, so this exercises that ordering
+    # against a database that actually enforces the constraint.
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+
+    @event.listens_for(engine, "connect")
+    def enforce_foreign_keys(connection: DBAPIConnection, _record: object) -> None:
+        cursor = connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    Base.metadata.create_all(engine)
+    tenant_a = context(COMPANY_A, USER_A)
+    with Session(engine) as session:
+        repository = SqlAlchemyCompanyRepository(session)
+        repository.save_company(
+            tenant_a,
+            Company(company_id=COMPANY_A, name="회사 A", created_at=NOW, updated_at=NOW),
+        )
+        repository.save_position(
+            tenant_a,
+            Position(
+                position_id=POSITION_ID,
+                company_id=COMPANY_A,
+                title="백엔드 개발자",
+                description="서비스 개발",
+                created_by=USER_A,
+                created_at=NOW,
+            ),
+        )
+        version = CompetencyModelVersion.create(
+            competency_model_version_id=UUID("00000000-0000-7000-8000-000000000009"),
+            company_id=COMPANY_A,
+            position_id=POSITION_ID,
+            version_number=1,
+            job_requirements=(
+                JobRequirement(
+                    job_requirement_id=UUID("00000000-0000-7000-8000-00000000000a"),
+                    requirement_type=RequirementType.REQUIRED,
+                    statement="장애 대응 경험",
+                    priority=1,
+                    criterion_code="PROBLEM_SOLVING",
+                ),
+            ),
+            criteria=(
+                EvaluationCriterion(
+                    criterion_id=UUID("00000000-0000-7000-8000-00000000000b"),
+                    code="PROBLEM_SOLVING",
+                    name="문제 해결",
+                    description="대안을 비교한다.",
+                    weight=1,
+                    abstain_guidance="근거가 없으면 보류한다.",
+                    required=True,
+                ),
+            ),
+            prohibited_topics=(),
+            interview_duration_minutes=30,
+        )
+        repository.save_criterion_version(tenant_a, version)
+
+        published = version.publish(expected_version=version.row_version, published_at=NOW)
+        repository.save_criterion_version(tenant_a, published)
+
+        stored = repository.get_criterion_version(
+            tenant_a,
+            version.competency_model_version_id,
+        )
+        assert stored.status is CompetencyModelStatus.PUBLISHED
+        assert stored.job_requirements[0].criterion_code == "PROBLEM_SOLVING"
+        assert stored.criteria[0].code == "PROBLEM_SOLVING"
 
 
 @pytest.mark.asyncio

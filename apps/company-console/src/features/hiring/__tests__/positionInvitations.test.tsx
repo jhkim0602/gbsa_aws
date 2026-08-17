@@ -7,6 +7,47 @@ import {
   PositionInvitations,
   type PositionInvitationApi,
 } from "../PositionInvitations";
+import type {
+  InvitationEmailTemplateApi,
+  InvitationEmailTemplateState,
+} from "../invitationEmailTemplate";
+
+const emailTemplate: InvitationEmailTemplateState = {
+  subject: "[{{회사명}}] {{포지션명}} 면접 안내",
+  headline: "서류 전형 합격을 축하드립니다",
+  intro: "{{지원자명}}님, 지원해주셔서 감사합니다.",
+  guides: ["소요 시간 | 약 25분"],
+  ctaLabel: "면접 시작하기",
+  outro: "곧 만나뵙기를 기대합니다.",
+  footer: "문의: hiring@example.com",
+  brandColor: "#5966ce",
+  useApplicantName: true,
+  emphasizeDeadline: true,
+  showSecurityNotice: true,
+  logoUrl: null,
+  isPositionOverride: false,
+};
+
+function buildTemplateApi(
+  overrides: Partial<InvitationEmailTemplateApi> = {},
+): InvitationEmailTemplateApi {
+  return {
+    getCompanyTemplate: vi.fn().mockResolvedValue(emailTemplate),
+    saveCompanyTemplate: vi.fn().mockResolvedValue(emailTemplate),
+    resetCompanyTemplate: vi.fn().mockResolvedValue(emailTemplate),
+    getPositionTemplate: vi.fn().mockResolvedValue(emailTemplate),
+    savePositionTemplate: vi.fn((_positionId, next) =>
+      Promise.resolve({ ...emailTemplate, ...next, isPositionOverride: true }),
+    ),
+    resetPositionTemplate: vi.fn().mockResolvedValue(emailTemplate),
+    previewTemplate: vi
+      .fn()
+      .mockResolvedValue({ subject: "미리보기", htmlBody: "<p>본문</p>" }),
+    uploadLogo: vi.fn(),
+    deleteLogo: vi.fn(),
+    ...overrides,
+  };
+}
 
 const invitations = [
   {
@@ -201,6 +242,80 @@ describe("PositionInvitations", () => {
     expect(screen.getByText("발송 가능 2명")).toBeTruthy();
     expect(screen.getByText("중복 제외 1명")).toBeTruthy();
     expect(screen.getByText("이미 등록된 지원자")).toBeTruthy();
+  });
+
+  it("summarises the outgoing mail and edits it in place", async () => {
+    const api: PositionInvitationApi = {
+      listInvitations: vi.fn().mockResolvedValue(invitations),
+      createInvitations: vi.fn(),
+    };
+    const templateApi = buildTemplateApi();
+
+    render(
+      <MemoryRouter>
+        <PositionInvitations
+          embedded
+          view="workspace"
+          positionId="position-1"
+          positionName="백엔드 개발자"
+          api={api}
+          templateApi={templateApi}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText("[{{회사명}}] {{포지션명}} 면접 안내"),
+    ).toBeTruthy();
+    expect(screen.getByText("전사 기본 문구")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "수정" }));
+    const drawer = screen.getByRole("dialog", { name: "초대 메일 수정" });
+    expect(templateApi.getPositionTemplate).toHaveBeenCalledWith("position-1");
+
+    fireEvent.change(
+      await screen.findByRole("textbox", { name: /버튼 텍스트/ }),
+      { target: { value: "지금 응답하기" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "저장하고 닫기" }));
+
+    await waitFor(() =>
+      expect(templateApi.savePositionTemplate).toHaveBeenCalledWith(
+        "position-1",
+        expect.objectContaining({ ctaLabel: "지금 응답하기" }),
+      ),
+    );
+    // Saving closes the drawer and the card reflects the new scope, so the
+    // recruiter can see what will go out without leaving the send screen.
+    await waitFor(() => expect(drawer.isConnected).toBe(false));
+    expect(await screen.findByText("이 포지션 전용 문구")).toBeTruthy();
+  });
+
+  it("keeps sending available when the mail summary cannot load", async () => {
+    const api: PositionInvitationApi = {
+      listInvitations: vi.fn().mockResolvedValue(invitations),
+      createInvitations: vi.fn(),
+    };
+    const templateApi = buildTemplateApi({
+      getPositionTemplate: vi.fn().mockRejectedValue(new Error("boom")),
+    });
+
+    render(
+      <MemoryRouter>
+        <PositionInvitations
+          embedded
+          view="workspace"
+          positionId="position-1"
+          positionName="백엔드 개발자"
+          api={api}
+          templateApi={templateApi}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("홍길동")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "수정" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /초대 보내기/ })).toBeTruthy();
   });
 });
 

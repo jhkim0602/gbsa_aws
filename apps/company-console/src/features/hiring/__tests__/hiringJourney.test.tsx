@@ -65,6 +65,9 @@ describe("HiringWorkspace", () => {
     fireEvent.change(screen.getByLabelText("공통 질문 1"), {
       target: { value: "운영 장애를 해결한 경험을 설명해 주세요." },
     });
+    fireEvent.change(screen.getByLabelText("면접 난이도"), {
+      target: { value: "senior" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "평가기준 게시" }));
 
     expect(await screen.findByText("채용 기준 게시 완료")).toBeTruthy();
@@ -98,6 +101,7 @@ describe("HiringWorkspace", () => {
       ],
       prohibitedTopics: ["가족관계", "출신지역", "혼인·임신 여부", "외모"],
       interviewDurationMinutes: 30,
+      interviewLevel: "senior",
     });
   });
 

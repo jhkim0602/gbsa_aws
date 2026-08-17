@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import cast
+from urllib.parse import urlsplit
 
 from interview_evidence.company_management.adapters.applicant_session import (
     ApplicantSessionAdapter,
@@ -79,6 +80,7 @@ from interview_evidence.reporting.api import (
 from interview_evidence.reporting.api.company_routes import (
     create_company_router as create_reporting_router,
 )
+from interview_evidence.reporting.application.assessment_service import CriterionAssessor
 from interview_evidence.reporting.application.deletion_service import DeletionService
 from interview_evidence.reporting.application.evidence_service import EvidenceService
 from interview_evidence.reporting.application.public import ReportingPublic
@@ -158,6 +160,7 @@ def create_production_runtime(
     text_to_speech: TextToSpeech | None = None,
 ) -> LocalRuntime:
     applicant_access_base_url = _applicant_access_base_url(environment)
+    logo_base_url = _logo_base_url(environment, applicant_access_base_url)
     aws = None
     if (
         principal_provider is None
@@ -215,6 +218,7 @@ def create_production_runtime(
         idempotency=resource_idempotency,
         email_sender=email_sender,
         applicant_access_base_url=applicant_access_base_url,
+        logo_base_url=logo_base_url,
     )
 
     class RuntimePrincipalProvider:
@@ -364,10 +368,12 @@ def create_production_runtime(
                 criteria_service=lane_a.criteria_service,
                 interviewer_service=lane_a.interviewer_service,
                 hiring_service=lane_a.hiring_service,
+                template_service=lane_a.template_service,
                 audit=audit,
                 invitation_email=InvitationEmailHandler(lane_a.email_sender),
                 applicant_access_base_url=applicant_access_base_url,
                 interview_sessions=interview_public,
+                invitation_reviews=reporting_company,
             ),
             create_company_applicant_router(
                 sessions=lane_a.sessions,
@@ -396,6 +402,10 @@ def create_production_runtime(
                 clock=clock,
                 deletion_service=lane_d.deletion_service,
                 playback=ScopedPlaybackLocator(),
+                # This router, not `lane_d.app`, is what serves the timeline. Without the
+                # provider here the response carries no question rationale, so the console
+                # shows each question with nothing behind it -- as if the AI made it up.
+                rationale_provider=interview_public,
             ),
         ],
         readiness=readiness,
@@ -426,6 +436,7 @@ def create_production_runtime(
             "report_generation": ReportGenerator(
                 lane_d.repository,
                 EvidenceService(lane_d.repository),
+                CriterionAssessor(model),
             ),
             "privacy_deletion": lane_d.deletion_service,
         },
@@ -450,3 +461,18 @@ def _applicant_access_base_url(environment: Mapping[str, str]) -> str:
     if not value.startswith(("https://", "http://")) or "?" in value or "#" in value:
         raise RuntimeError("valid APPLICANT_ACCESS_BASE_URL is required")
     return value.rstrip("/")
+
+
+def _logo_base_url(environment: Mapping[str, str], applicant_access_base_url: str) -> str:
+    """Resolve the origin a recipient's mail client uses to fetch the company logo.
+
+    Defaults to the origin of the applicant access URL, which is already public and
+    already fronts ``/v1/*``, so a deployment gets working logos without new settings.
+    """
+    value = environment.get("PUBLIC_ASSET_BASE_URL", "").strip()
+    if value:
+        if not value.startswith(("https://", "http://")) or "?" in value or "#" in value:
+            raise RuntimeError("PUBLIC_ASSET_BASE_URL must be an absolute URL without a query")
+        return value.rstrip("/")
+    parsed = urlsplit(applicant_access_base_url)
+    return f"{parsed.scheme}://{parsed.netloc}"

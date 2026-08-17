@@ -56,9 +56,29 @@ MODULE_RESOURCES = {
 }
 
 
+APPLICATION_ROOTS = (
+    ROOT / "environments" / "dev" / "application" / "main.tf",
+    ROOT / "environments" / "prod" / "main.tf",
+)
+
+
 def read(path: Path) -> str:
     assert path.is_file(), f"missing Terraform file: {path.relative_to(ROOT)}"
     return path.read_text(encoding="utf-8")
+
+
+def container_commands(compute: str) -> list[list[str]]:
+    """Every `command = [...]` in the module, as the words the container would exec."""
+    return [
+        re.findall(r'"([^"]+)"', body)
+        for body in re.findall(r"command\s*=\s*\[(.*?)\]", compute, re.DOTALL)
+    ]
+
+
+def assignment_body(source: str, label: str) -> str:
+    """The body of a `label = { ... }` argument passed to a module at two-space indent."""
+    start = source.index(f"{label} = {{")
+    return source[start : source.index("\n  }", start)]
 
 
 def test_modules_define_required_aws_resources_without_provisioners() -> None:
@@ -81,13 +101,14 @@ def test_dev_roots_use_distinct_native_lockfile_state_keys() -> None:
     assert len(set(sources.values())) == len(roots)
 
 
-def test_stage_and_prod_have_independent_state_and_production_protection() -> None:
-    stage = read(ROOT / "environments" / "stage" / "main.tf")
+def test_dev_and_prod_have_independent_state_and_production_protection() -> None:
+    dev_foundation = read(ROOT / "environments" / "dev" / "foundation" / "main.tf")
+    dev_data = read(ROOT / "environments" / "dev" / "data-ai" / "main.tf")
     prod = read(ROOT / "environments" / "prod" / "main.tf")
-    assert 'key          = "stage/terraform.tfstate"' in stage
     assert 'key          = "prod/terraform.tfstate"' in prod
     assert "deletion_protection = true" in prod
-    assert "deletion_protection = false" in stage
+    assert "deletion_protection   = false" in dev_foundation
+    assert "deletion_protection        = false" in dev_data
     assert re.search(r"force_destroy\s*=\s*false", prod)
     assert re.search(r"nat_gateway_per_az\s*=\s*true", prod)
     assert re.search(r"enable_deletion_protection\s*=\s*true", prod)
@@ -98,7 +119,6 @@ def test_all_roots_pin_region_and_default_security_tags() -> None:
         ROOT / "environments" / "dev" / "foundation" / "main.tf",
         ROOT / "environments" / "dev" / "data-ai" / "main.tf",
         ROOT / "environments" / "dev" / "application" / "main.tf",
-        ROOT / "environments" / "stage" / "main.tf",
         ROOT / "environments" / "prod" / "main.tf",
     )
     for path in roots:
@@ -149,7 +169,6 @@ def test_compute_and_data_define_durable_private_runtime_boundaries() -> None:
 def test_application_roots_pass_secret_identifiers_without_secret_values() -> None:
     roots = (
         ROOT / "environments" / "dev" / "application" / "main.tf",
-        ROOT / "environments" / "stage" / "main.tf",
         ROOT / "environments" / "prod" / "main.tf",
     )
     for root in roots:
@@ -163,7 +182,6 @@ def test_application_roots_pass_secret_identifiers_without_secret_values() -> No
 def test_application_roots_pass_complete_production_adapter_configuration() -> None:
     roots = (
         ROOT / "environments" / "dev" / "application" / "main.tf",
-        ROOT / "environments" / "stage" / "main.tf",
         ROOT / "environments" / "prod" / "main.tf",
     )
     required = {
@@ -197,6 +215,45 @@ def test_application_roots_pass_complete_production_adapter_configuration() -> N
     assert '"cognito-idp:GetUser"' in compute
     assert '"ses:SendEmail"' in compute
     assert "MEDIACONVERT_ROLE_ARN" in compute
+
+
+def test_every_task_command_runs_python_through_the_image_virtualenv() -> None:
+    """The image installs the package with `uv sync --no-editable`, into a virtualenv.
+
+    A container told to run a bare `python -m interview_evidence...` therefore starts the
+    interpreter outside that virtualenv and dies on ModuleNotFoundError before any code
+    of ours runs -- the ECS worker shipped that way, crash-looping while the api beside it
+    was fine. Asserting the module name is right is not enough; the launcher has to be.
+    """
+    commands = container_commands(read(ROOT / "modules" / "compute" / "main.tf"))
+    assert commands, "the compute module defines container commands"
+    for command in commands:
+        assert command[:3] == ["uv", "run", "--no-sync"], command
+        assert any(word.startswith("interview_evidence") for word in command), command
+
+
+def test_application_roots_deliver_the_github_credential_by_reference_only() -> None:
+    """The analysis worker needs a GitHub token, and a token is not configuration.
+
+    Anonymous GitHub allows 60 API requests an hour, which one real repository analysis
+    can spend by itself, so without the token the submission analysis a reviewer is
+    reading stops mid-fetch. It still must never be a plaintext environment value: the
+    task definition, every saved plan and every deploy log would carry it.
+    """
+    for root in APPLICATION_ROOTS:
+        source = read(root)
+        environment = assignment_body(source, "task_environment")
+        secrets = assignment_body(source, "task_secrets")
+        assert "GITHUB_TOKEN" not in environment, f"{root.parent.name} exposes the token"
+        assert "GITHUB_TOKEN" in secrets, f"{root.parent.name} never delivers the token"
+        assert "application_secret_arn" in secrets
+
+    compute = read(ROOT / "modules" / "compute" / "main.tf")
+    assert "valueFrom = value_from" in compute
+    assert compute.count("secrets     = local.secrets") == 2, "api and worker both need it"
+    # The execution role, not the task role, resolves `secrets`, and the application
+    # secret is encrypted with the customer key -- so it needs its own decrypt grant.
+    assert 'Action   = ["kms:Decrypt"]' in compute
 
 
 def test_async_ai_identity_and_audit_resources_enforce_safety_controls() -> None:

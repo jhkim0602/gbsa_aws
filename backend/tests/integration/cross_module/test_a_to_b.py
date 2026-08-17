@@ -82,8 +82,6 @@ def build_consented_invitation() -> tuple[
                 "name": "Problem solving",
                 "description": "Explains alternatives and tradeoffs.",
                 "weight": 1.0,
-                "good_evidence": {"signal": "tradeoff"},
-                "weak_evidence": {"signal": "unsupported"},
                 "abstain_guidance": "Abstain without final-answer evidence.",
                 "common_questions": ("Which alternatives did you compare?",),
                 "required": True,

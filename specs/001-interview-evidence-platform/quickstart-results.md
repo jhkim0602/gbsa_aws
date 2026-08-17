@@ -64,3 +64,31 @@ environment restrictions, not application failures.
 
 No Terraform apply, AWS mutation, or live stage call was performed. Applicant and candidate-pipeline
 visual alignment remains assigned to T212 and T214-T218.
+
+## Addendum: Phase 25 Rerun
+
+**Executed**: 2026-08-16, Asia/Seoul
+
+The table above records the 2026-08-15 run and is left unchanged. After Phase 25 (T261-T269),
+`make migrate` upgrades through `merge_002_criterion_grounded_rag` and `m_004_hot_path_indexes` and
+`m_005_requirement_criterion_fk` to `m_006_drop_duplicate_evidence`, and the full workspace gate
+reports 203 passing Python tests with the live stage smoke test still the only skip. Lint, Prettier
+across 324 files, and TypeScript across 151 files pass. `docker compose up -d --build api --wait`
+reaches `healthy` and the rebuilt API returns the corrected 422 and 409 statuses for malformed and
+conflicting criterion-version requests.
+
+## Addendum: Phase 27 Two-Environment Topology
+
+**Executed**: 2026-08-17, Asia/Seoul
+
+The stage environment was removed, so two rows in the table above changed names or scope.
+
+| Row above | Value after Phase 27 |
+|---|---|
+| `make infra-validate` | PASS over 4 roots: dev foundation/data-ai/application and prod |
+| `make infra-plan-dev` | Renamed to `make infra-plan-check`; PASS with 1/1 passing run against the prod root |
+
+`make infra-security-check` reports 9 contracts. The live smoke test remains the only skip, now as
+`tests/e2e/test_prod_smoke.py` activated by `PROD_COMPANY_URL`, `PROD_APPLICANT_URL` and
+`PROD_API_URL` instead of the former `STAGE_*` names. No Terraform apply or AWS mutation was
+performed by this change either, and `infra/environments/stage/` contained no state file to release.

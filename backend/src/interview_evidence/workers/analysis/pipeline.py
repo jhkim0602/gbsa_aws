@@ -44,28 +44,45 @@ from interview_evidence.submission_analysis.domain.submission import (
     SubmissionStatus,
 )
 from interview_evidence.submission_analysis.repositories.postgres import (
+    DuplicateStrategyVersion,
     SubmissionRepository,
 )
-from interview_evidence.workers.analysis.code_units import expand_python_code_units
+from interview_evidence.workers.analysis.code_units import (
+    ExpandedCodeUnit,
+    expand_python_code_units,
+)
 from interview_evidence.workers.analysis.document_chunker import (
     ChunkingConfig,
     chunk_document,
 )
 from interview_evidence.workers.analysis.document_extract import (
     DocumentExtractionAdapter,
+    DocumentExtractionError,
 )
 from interview_evidence.workers.analysis.git_commits import (
     CommitDiff,
     analyze_candidate_commits,
 )
-from interview_evidence.workers.analysis.git_fetch import BoundedGitFetcher
+from interview_evidence.workers.analysis.git_fetch import BoundedGitFetcher, GitFetchError
 from interview_evidence.workers.analysis.handlers import (
     AnalysisJob,
     AnalysisProcessor,
     AnalysisResult,
     JobStatus,
     NonRetryableAnalysisError,
+    RetryableAnalysisError,
 )
+
+RETRYABLE_SOURCE_CODES = frozenset(
+    {
+        "public_git_fetch_failed",
+        "public_git_file_fetch_failed",
+        "repository_commit_files_unavailable",
+        "public_git_parent_unavailable",
+        "public_git_author_unavailable",
+    }
+)
+SOURCE_FAILURE_SUMMARY = "제출 자료를 분석할 수 없어 해당 자료는 면접 준비에서 제외됩니다."
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,13 +179,20 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
             or submission.source_type is not job.source_type
         ):
             raise NonRetryableAnalysisError("analysis_job_scope_mismatch")
-        if submission.source_type is SourceType.PUBLIC_GIT:
-            if self._git_fetcher is None:
-                return self._record_partial_git(context, submission, job)
-            return self._process_git(context, submission, job)
         if submission.source_type is SourceType.PUBLIC_URL:
             raise NonRetryableAnalysisError("public_url_analysis_not_supported")
-        return self._process_document(context, submission, job)
+        try:
+            if submission.source_type is SourceType.PUBLIC_GIT:
+                if self._git_fetcher is None:
+                    return self._record_partial_git(context, submission, job)
+                return self._process_git(context, submission, job)
+            return self._process_document(context, submission, job)
+        except (GitFetchError, DocumentExtractionError) as error:
+            code = str(error)
+            if code in RETRYABLE_SOURCE_CODES:
+                raise RetryableAnalysisError(code) from error
+            self._record_failed(context, job.submission_id, code)
+            raise NonRetryableAnalysisError(code) from error
 
     def _process_document(
         self,
@@ -265,21 +289,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     ownership_confidence=1.0,
                 )
             )
-        StrategyService(
-            self._strategy_model,
-            model_config_version="strategy-v1",
-            repository=self._repository,
-            outbox=self._outbox,
-            clock=self._clock,
-        ).generate(
-            context,
-            invitation_id=submission.invitation_id,
-            applicant_id=submission.applicant_id,
-            competency_model_version_id=axis.competency_model_version_id,
-            criterion_ids=axis.criterion_ids,
-            source_candidates=tuple(candidates),
-            strategy_version=1,
-        )
+        self._generate_strategy(context, submission=submission, axis=axis, candidates=candidates)
         self._build_verification_map(
             context,
             submission=submission,
@@ -350,7 +360,10 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
         assert self._git_fetcher is not None
         analyzing = self._to_analyzing(submission)
         self._repository.save_submission(context, analyzing)
-        snapshot = self._git_fetcher.fetch(submission.source_uri)
+        identity = CommitIdentityInput.model_validate(submission.candidate_identity_inputs or {})
+        # The identity is resolved before the fetch so the transport can ask GitHub for
+        # this candidate's commits instead of whatever landed on the branch last.
+        snapshot = self._git_fetcher.fetch(submission.source_uri, identity=identity)
         if not snapshot.commits:
             return self._record_partial_git(context, analyzing, job)
         occurred_at = self._clock.now()
@@ -370,11 +383,13 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                 limits_applied={
                     "max_files": len(snapshot.files),
                     "max_commits": snapshot.commit_count,
+                    # What was actually deep-fetched, which is what the evidence rests
+                    # on when the listing was larger than the analysis budget.
+                    "analyzed_commits": len(snapshot.commits),
                 },
                 status=GitAnalysisStatus.RUNNING,
             ),
         )
-        identity = CommitIdentityInput.model_validate(submission.candidate_identity_inputs or {})
         commits = analyze_candidate_commits(
             company_id=context.company_id,
             repository_analysis_id=repository_analysis.repository_analysis_id,
@@ -404,7 +419,25 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
             identity=identity,
         )
         self._repository.save_git_commit_analyses(context, commits)
-        files = {file.path: file.content.decode("utf-8") for file in snapshot.files}
+        # One path can exist at several contents once more than one commit is analyzed,
+        # so a blob is looked up by the commit it was read at. A transport that reports
+        # only the head snapshot leaves the commit blank, and those files serve every
+        # commit.
+        head_files: dict[str, str] = {}
+        files_by_commit: dict[str, dict[str, str]] = {}
+        for file in snapshot.files:
+            source = file.content.decode("utf-8")
+            if file.commit_sha:
+                files_by_commit.setdefault(file.commit_sha, {})[file.path] = source
+            else:
+                head_files[file.path] = source
+        # Related-test detection asks which *other* file mentions a symbol, so it reads
+        # across the whole snapshot rather than one commit. First occurrence wins to keep
+        # two runs over the same repository identical.
+        related_corpus: dict[str, str] = dict(head_files)
+        for commit_files in files_by_commit.values():
+            for path, source in commit_files.items():
+                related_corpus.setdefault(path, source)
         axis = self._axis_provider.get_axis(
             context,
             invitation_id=submission.invitation_id,
@@ -417,17 +450,19 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
             for commit, analysis in zip(snapshot.commits, commits, strict=True)
         }
         for commit_sha, (commit, commit_analysis) in commit_by_sha.items():
+            commit_files = {**head_files, **files_by_commit.get(commit_sha, {})}
             for path, ranges in commit.changed_line_ranges.items():
-                if not path.endswith(".py") or path not in files:
+                if not path.endswith(".py") or path not in commit_files:
                     continue
+                source = commit_files[path]
                 related = {
-                    candidate_path: source
-                    for candidate_path, source in files.items()
+                    candidate_path: related_source
+                    for candidate_path, related_source in related_corpus.items()
                     if candidate_path != path
                 }
-                for expanded in expand_python_code_units(
+                for expanded in self._python_code_units(
                     path=path,
-                    source=files[path],
+                    source=source,
                     changed_line_ranges=ranges,
                     related_files=related,
                 ):
@@ -472,8 +507,8 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                             company_id=context.company_id,
                             applicant_id=submission.applicant_id,
                             source_id=unit.code_unit_id,
-                            text=f"{unit.symbol} {files[path]}",
-                            vector=self.embed(context, files[path]),
+                            text=f"{unit.symbol} {source}",
+                            vector=self.embed(context, source),
                             symbols=(unit.symbol,),
                             locator=locator,
                             ownership_confidence=commit_analysis.ownership_confidence,
@@ -494,7 +529,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                             source_id=unit.code_unit_id,
                             source_type="candidate_code_unit",
                             locator=locator,
-                            content_hash=hashlib.sha256(files[path].encode("utf-8")).hexdigest(),
+                            content_hash=hashlib.sha256(source.encode("utf-8")).hexdigest(),
                             relevance_score=1.0,
                             ownership_confidence=commit_analysis.ownership_confidence,
                         )
@@ -530,21 +565,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                 created_at=occurred_at,
             ),
         )
-        StrategyService(
-            self._strategy_model,
-            model_config_version="strategy-v1",
-            repository=self._repository,
-            outbox=self._outbox,
-            clock=self._clock,
-        ).generate(
-            context,
-            invitation_id=submission.invitation_id,
-            applicant_id=submission.applicant_id,
-            competency_model_version_id=axis.competency_model_version_id,
-            criterion_ids=axis.criterion_ids,
-            source_candidates=tuple(candidates),
-            strategy_version=1,
-        )
+        self._generate_strategy(context, submission=submission, axis=axis, candidates=candidates)
         self._build_verification_map(
             context,
             submission=submission,
@@ -562,6 +583,31 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
             analyzing.transition(SubmissionStatus.READY),
         )
         return AnalysisResult(status=JobStatus.READY, analysis_id=analysis.analysis_id)
+
+    @staticmethod
+    def _python_code_units(
+        *,
+        path: str,
+        source: str,
+        changed_line_ranges: tuple[tuple[int, int], ...],
+        related_files: dict[str, str],
+    ) -> tuple[ExpandedCodeUnit, ...]:
+        """Expand one changed file, tolerating a file that does not parse.
+
+        Analyzing many commits instead of one makes it likely that a real repository
+        contains at least one ``.py`` file the local interpreter cannot parse -- Python 2
+        syntax, a template, a deliberately broken fixture. That file yields no evidence,
+        but it must not cost the recruiter every other commit in the repository.
+        """
+        try:
+            return expand_python_code_units(
+                path=path,
+                source=source,
+                changed_line_ranges=changed_line_ranges,
+                related_files=related_files,
+            )
+        except SyntaxError:
+            return ()
 
     def _index_criterion_axis(
         self,
@@ -636,6 +682,46 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                 )
             )
 
+    def _generate_strategy(
+        self,
+        context: TenantContext,
+        *,
+        submission: Submission,
+        axis: AnalysisAxis,
+        candidates: list[SourceReferenceCandidate],
+    ) -> None:
+        """Build the interview strategy for this analysis, versioned after the last one.
+
+        An applicant submits several documents and each finished analysis builds a
+        strategy, so this runs more than once per invitation. Pinning the version at 1
+        made the second analysis violate `uq_interview_strategies_invitation_version`,
+        which failed the whole job and left the applicant with no strategy at all -- and
+        therefore unable to enter the interview.
+
+        A concurrent worker can still win the insert between the read and the write. That
+        is a strategy for the same invitation built from the same axis, so the one already
+        stored is kept rather than retrying the analysis.
+        """
+        previous = self._repository.latest_strategy(context, submission.invitation_id)
+        try:
+            StrategyService(
+                self._strategy_model,
+                model_config_version="strategy-v1",
+                repository=self._repository,
+                outbox=self._outbox,
+                clock=self._clock,
+            ).generate(
+                context,
+                invitation_id=submission.invitation_id,
+                applicant_id=submission.applicant_id,
+                competency_model_version_id=axis.competency_model_version_id,
+                criterion_ids=axis.criterion_ids,
+                source_candidates=tuple(candidates),
+                strategy_version=1 if previous is None else previous.strategy_version + 1,
+            )
+        except DuplicateStrategyVersion:
+            return
+
     def _build_verification_map(
         self,
         context: TenantContext,
@@ -685,6 +771,25 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                 for requirement in axis.requirements
             ),
             material_version=material_version,
+        )
+
+    def _record_failed(
+        self,
+        context: TenantContext,
+        submission_id: UUID,
+        failure_code: str,
+    ) -> None:
+        """Leave a terminal state so the applicant is not stuck on 분석 중 forever."""
+        submission = self._repository.get_submission(context, submission_id)
+        if submission.status is not SubmissionStatus.ANALYZING:
+            return
+        self._repository.save_submission(
+            context,
+            submission.transition(
+                SubmissionStatus.FAILED,
+                failure_code=failure_code,
+                impact_summary=SOURCE_FAILURE_SUMMARY,
+            ),
         )
 
     @staticmethod

@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import JSON, DateTime, Integer, String, Uuid, delete, select
+from sqlalchemy import JSON, DateTime, Index, Integer, String, Uuid, delete, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 from interview_evidence.company_management.adapters.applicant_session import (
@@ -35,6 +35,14 @@ def _utc(value: datetime) -> datetime:
 
 class OutboxEventRow(Base):
     __tablename__ = "outbox_events"
+    __table_args__ = (
+        Index(
+            "ix_outbox_events_pending",
+            "publish_status",
+            "occurred_at",
+            "outbox_event_id",
+        ),
+    )
 
     outbox_event_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     company_id: Mapped[UUID] = mapped_column(Uuid, index=True)

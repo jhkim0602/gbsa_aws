@@ -40,7 +40,9 @@ def test_local_company_principal_seed_is_idempotent() -> None:
 
         assert session.scalar(select(func.count()).select_from(CompanyRow)) == 1
         assert session.scalar(select(func.count()).select_from(CompanyUserRow)) == 1
-        company_user = session.get(CompanyUserRow, COMPANY_USER_ID)
+        company_user = session.get(
+            CompanyUserRow, {"company_id": COMPANY_ID, "company_user_id": COMPANY_USER_ID}
+        )
         assert company_user is not None
         assert company_user.company_id == COMPANY_ID
 
@@ -60,7 +62,7 @@ def test_local_recruiting_demo_seed_is_idempotent_and_status_diverse() -> None:
             now=NOW,
         )
         for _ in range(2):
-            demo_position_id = ensure_local_demo_recruiting(
+            demo = ensure_local_demo_recruiting(
                 session,
                 company_id=COMPANY_ID,
                 company_user_id=COMPANY_USER_ID,
@@ -71,7 +73,7 @@ def test_local_recruiting_demo_seed_is_idempotent_and_status_diverse() -> None:
         assert session.scalar(select(func.count()).select_from(PositionRow)) == 1
         assert session.scalar(select(func.count()).select_from(CompetencyModelVersionRow)) == 1
         invitations = session.scalars(
-            select(InvitationRow).where(InvitationRow.position_id == demo_position_id)
+            select(InvitationRow).where(InvitationRow.position_id == demo.position_id)
         ).all()
         assert len(invitations) == 5
         assert {invitation.status for invitation in invitations} >= {
@@ -81,3 +83,13 @@ def test_local_recruiting_demo_seed_is_idempotent_and_status_diverse() -> None:
             "completed",
             "reviewed",
         }
+        # The interview and report seeds hang off this invitation, so a caller that
+        # re-derived the id would seed an orphan the review screen never finds.
+        reviewed = next(
+            invitation
+            for invitation in invitations
+            if invitation.invitation_id == demo.reviewed_invitation_id
+        )
+        assert reviewed.status == "reviewed"
+        assert reviewed.applicant_id == demo.reviewed_applicant_id
+        assert reviewed.competency_model_version_id == demo.competency_model_version_id

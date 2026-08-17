@@ -36,8 +36,6 @@ def criterion_version() -> CompetencyModelVersion:
         description="근거를 바탕으로 문제를 해결한다.",
         weight=1,
         verification_guide=guide,
-        good_evidence={"signal": "대안을 비교한다"},
-        weak_evidence={"signal": "근거가 없다"},
         abstain_guidance="근거가 없으면 판단을 보류한다.",
         common_questions=("어떤 대안을 검토했나요?",),
         required=True,

@@ -8,6 +8,7 @@ import {
   CompanyLoginRoute,
   CompanyPositionsRoute,
   HiringRoute,
+  InvitationEmailSettingsRoute,
   PositionOperationsRoute,
   ReviewRoute,
 } from "./routeAdapters";
@@ -32,6 +33,10 @@ export const companyRouteObjects: RouteObject[] = [
         Component: ApplicantDetailRoute,
       },
       { path: "/hiring/*", Component: HiringRoute },
+      {
+        path: "/settings/invitation-email",
+        Component: InvitationEmailSettingsRoute,
+      },
       { path: "/review/:sessionId", Component: ReviewRoute },
     ],
   },

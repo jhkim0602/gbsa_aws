@@ -9,6 +9,7 @@ from interview_evidence.interview_engine.application.authorization import (
     InterviewAuthorizationDenied,
 )
 from interview_evidence.interview_engine.application.recording_service import (
+    RecordingIntegrityError,
     RecordingUploadUnavailable,
 )
 from interview_evidence.interview_engine.application.session_service import (
@@ -99,6 +100,16 @@ class UploadIntentView(BaseModel):
     url: str
     required_headers: dict[str, str]
     expires_at: datetime
+
+
+class RecordingChunkView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    recording_chunk_id: UUID
+    chunk_sequence: int
+    upload_status: str
+    session_start_ms: int
+    session_end_ms: int
 
 
 class ApplicantScope(BaseModel):
@@ -295,12 +306,86 @@ def create_applicant_interview_router(
                 "byte_size": intent.byte_size,
             },
         )
+        # The presigned URL and its headers come from the storage adapter. Rebuilding them
+        # here sent the browser to a host that does not exist, so no recording chunk ever
+        # reached the bucket and every session finished with an empty timeline.
         return UploadIntentView(
             upload_id=intent.object_id,
-            method="PUT",
-            url=f"https://uploads.local/{intent.object_id}",
-            required_headers={"x-amz-checksum-sha256": intent.content_hash},
-            expires_at=service.upload_intent_expires_at(),
+            method=intent.method,
+            url=intent.url,
+            required_headers=intent.required_headers,
+            expires_at=intent.expires_at or service.upload_intent_expires_at(),
+        )
+
+    @router.post(
+        "/applicant/interview-sessions/{session_id}/media-uploads",
+        response_model=RecordingChunkView,
+        status_code=status.HTTP_201_CREATED,
+        operation_id="confirmRecordingUpload",
+    )
+    def confirm_recording_upload(
+        session_id: UUID,
+        body: RecordingUploadIntentCreate,
+        scope: Scope,
+        idempotency_key: IdempotencyKey,
+    ) -> RecordingChunkView:
+        """Record a chunk the applicant has finished uploading.
+
+        The same idempotency key as the intent returns that stored intent rather than
+        issuing a second one, so this confirms exactly the upload that was authorized.
+        """
+        try:
+            intent = service.create_recording_upload_intent(
+                scope.context,
+                scope.principal,
+                session_id=session_id,
+                sequence=body.chunk_sequence,
+                byte_size=body.byte_size,
+                content_hash=body.sha256,
+                session_start_ms=body.session_start_ms,
+                session_end_ms=body.session_end_ms,
+                idempotency_key=idempotency_key,
+            )
+            chunk = service.confirm_recording_upload(
+                scope.context,
+                scope.principal,
+                session_id=session_id,
+                intent=intent,
+            )
+        except TenantScopedInterviewNotFound as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        except PermissionError as error:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN) from error
+        except RecordingIntegrityError as error:
+            # The object is missing or does not match what the intent declared. Retrying
+            # the upload is the fix, so this is the applicant's error, not a server fault.
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "RECORDING_CHUNK_NOT_VERIFIED", "retryable": True},
+            ) from error
+        except RecordingUploadUnavailable as error:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"code": "RECORDING_UPLOAD_UNAVAILABLE", "retryable": error.retryable},
+            ) from error
+        audit.append(
+            scope.context,
+            action="interview.recording_chunk_verified",
+            resource_type="recording_chunk",
+            resource_id=chunk.recording_chunk_id,
+            result="verified",
+            metadata={
+                "session_id": str(session_id),
+                "chunk_sequence": chunk.sequence,
+                "byte_size": chunk.byte_size,
+            },
+        )
+        return RecordingChunkView(
+            recording_chunk_id=chunk.recording_chunk_id,
+            chunk_sequence=chunk.sequence,
+            upload_status=chunk.upload_status.value,
+            session_start_ms=chunk.session_start_ms,
+            session_end_ms=chunk.session_end_ms,
         )
 
     return router

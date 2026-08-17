@@ -35,6 +35,11 @@ x-runtime-environment: &runtime-environment
   LOCAL_COMPANY_USER_ID: 00000000-0000-7000-8000-000000000002
   LOCAL_DEMO_DATA_ENABLED: ${LOCAL_DEMO_DATA_ENABLED:-true}
   APPLICANT_ACCESS_BASE_URL: http://localhost:${APPLICANT_INTERVIEW_PORT:-5174}/access
+  # Optional read-only GitHub personal access token. Anonymous callers get 60 API
+  # requests an hour, which one public-repository analysis can exhaust on its own; a
+  # token raises the ceiling to 5000. Left empty the analysis still runs, only slower
+  # and at risk of rate limiting.
+  GITHUB_TOKEN: ${GITHUB_TOKEN:-}
 
 services:
   postgres:

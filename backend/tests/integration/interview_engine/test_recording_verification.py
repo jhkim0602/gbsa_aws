@@ -50,11 +50,11 @@ class StaticVerifier:
         self,
         _context: TenantContext,
         *,
-        object_id: UUID,
+        object_key: str,
         expected_byte_size: int,
         expected_sha256: str,
     ) -> bool:
-        del object_id, expected_byte_size, expected_sha256
+        del object_key, expected_byte_size, expected_sha256
         return self.verified
 
 

@@ -1,6 +1,7 @@
 import { ClipboardCheck, ShieldCheck } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
+import { buildEvidenceContext } from "./evidenceContext";
 import { HumanReview } from "./HumanReview";
 import { ReportView } from "./ReportView";
 import { TimelineView } from "./TimelineView";
@@ -31,6 +32,10 @@ export function ReviewWorkspace({
   history?: ReviewHistoryEntry[];
 }) {
   const [selectedStartMs, setSelectedStartMs] = useState<number | null>(null);
+  const evidenceContext = useMemo(
+    () => buildEvidenceContext(timeline.entries),
+    [timeline.entries],
+  );
 
   function overrideAssessment(
     reportItemId: string,
@@ -79,6 +84,7 @@ export function ReviewWorkspace({
         <div className="review-workspace__report">
           <ReportView
             report={report}
+            evidenceContext={evidenceContext}
             onOverride={overrideAssessment}
             onSelectEvidence={setSelectedStartMs}
           />

@@ -28,6 +28,7 @@ from interview_evidence.interview_engine.domain.session import (
 from interview_evidence.interview_engine.domain.turn import (
     HotViewSyncStatus,
     InterviewTurn,
+    RecordingChunk,
     TurnSpeaker,
 )
 from interview_evidence.interview_engine.repositories.postgres import InterviewRepository
@@ -342,6 +343,23 @@ class SessionApplicationService:
             ),
             occurred_at=self._clock.now(),
         )
+
+    def confirm_recording_upload(
+        self,
+        context: TenantContext,
+        principal: ApplicantPrincipal,
+        *,
+        session_id: UUID,
+        intent: RecordingUploadIntent,
+    ) -> RecordingChunk:
+        """Record the chunk once the applicant's PUT has landed in the bucket.
+
+        Issuing the intent only authorizes the upload, so without this the session had no
+        verified recording at all: the manifest, the review player and the report all
+        depend on there being at least one chunk.
+        """
+        self._authorized_session(context, principal, session_id)
+        return self._recording.verify_uploaded_chunk(context, intent=intent)
 
     def upload_intent_expires_at(self) -> datetime:
         return self._clock.now() + timedelta(minutes=15)

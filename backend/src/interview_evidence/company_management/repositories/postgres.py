@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
-from typing import Protocol, TypeVar
+from typing import Any, Protocol, TypeVar
 from uuid import UUID
 
 from sqlalchemy import (
@@ -12,8 +12,12 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
+    Index,
     Integer,
+    LargeBinary,
     String,
+    UniqueConstraint,
     Uuid,
     delete,
     select,
@@ -33,6 +37,8 @@ from interview_evidence.company_management.domain.applicant_access import (
 )
 from interview_evidence.company_management.domain.company import (
     Company,
+    CompanyLogo,
+    CompanyStatus,
     CompanyUser,
     CompanyUserStatus,
     InterviewerProfile,
@@ -53,6 +59,8 @@ from interview_evidence.company_management.domain.hiring import (
     InvitationStateChange,
     InvitationStatus,
 )
+from interview_evidence.shared.email_templates import InvitationEmailTemplate
+from interview_evidence.shared.interview_level import InterviewLevel
 from interview_evidence.shared.tenant import TenantContext, require_tenant_context
 
 
@@ -68,6 +76,14 @@ class TenantOwned(Protocol):
 TenantOwnedT = TypeVar("TenantOwnedT", bound=TenantOwned)
 
 
+def _template_to_row(template: InvitationEmailTemplate | None) -> dict[str, Any] | None:
+    return None if template is None else template.model_dump(mode="json")
+
+
+def _template_from_row(payload: dict[str, Any] | None) -> InvitationEmailTemplate | None:
+    return None if payload is None else InvitationEmailTemplate.model_validate(payload)
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -78,17 +94,39 @@ class CompanyRow(Base):
     company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
     brand_config: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
+    invitation_email_template: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     default_retention_days: Mapped[int] = mapped_column(Integer, default=180)
     status: Mapped[str] = mapped_column(String(30))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class CompanyLogoRow(Base):
+    __tablename__ = "company_logos"
+
+    company_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("companies.company_id"), primary_key=True
+    )
+    content_type: Mapped[str] = mapped_column(String(100))
+    byte_size: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    content: Mapped[bytes] = mapped_column(LargeBinary)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class CompanyUserRow(Base):
     __tablename__ = "company_users"
+    __table_args__ = (
+        UniqueConstraint("company_id", "email_normalized", name="uq_company_users_company_email"),
+        UniqueConstraint(
+            "company_id", "identity_subject", name="uq_company_users_company_identity_subject"
+        ),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("companies.company_id"), primary_key=True
+    )
     company_user_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("companies.company_id"), index=True)
     identity_subject: Mapped[str] = mapped_column(String(512))
     email_normalized: Mapped[str] = mapped_column(String(320))
     role_code: Mapped[str] = mapped_column(String(100))
@@ -100,8 +138,10 @@ class CompanyUserRow(Base):
 class PositionRow(Base):
     __tablename__ = "positions"
 
+    company_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("companies.company_id"), primary_key=True
+    )
     position_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("companies.company_id"), index=True)
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(String(20_000))
     role_type: Mapped[str | None] = mapped_column(String(100))
@@ -110,12 +150,14 @@ class PositionRow(Base):
     recruitment_end_at: Mapped[date | None] = mapped_column(Date)
     created_by: Mapped[UUID] = mapped_column(Uuid)
     status: Mapped[str] = mapped_column(String(30))
+    invitation_email_template: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     row_version: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class InterviewerProfileRow(Base):
     __tablename__ = "interviewer_profiles"
+    __table_args__ = (Index("ix_interviewer_profiles_company_created", "company_id", "created_at"),)
 
     company_id: Mapped[UUID] = mapped_column(
         Uuid, ForeignKey("companies.company_id"), primary_key=True
@@ -130,13 +172,27 @@ class InterviewerProfileRow(Base):
 
 class CompetencyModelVersionRow(Base):
     __tablename__ = "competency_model_versions"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "position_id"],
+            ["positions.company_id", "positions.position_id"],
+            name="fk_competency_model_versions_company_id_positions",
+        ),
+        UniqueConstraint(
+            "company_id",
+            "position_id",
+            "version_number",
+            name="uq_competency_versions_position_number",
+        ),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     competency_model_version_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    position_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("positions.position_id"))
+    position_id: Mapped[UUID] = mapped_column(Uuid)
     version_number: Mapped[int] = mapped_column(Integer)
     prohibited_topics: Mapped[list[str]] = mapped_column(JSON)
     interview_duration_minutes: Mapped[int] = mapped_column(Integer)
+    interview_level: Mapped[str] = mapped_column(String(20))
     persona_definition: Mapped[dict[str, object]] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(30))
     row_version: Mapped[int] = mapped_column(Integer)
@@ -145,21 +201,31 @@ class CompetencyModelVersionRow(Base):
 
 class EvaluationCriterionRow(Base):
     __tablename__ = "evaluation_criteria"
-
-    criterion_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    competency_model_version_id: Mapped[UUID] = mapped_column(
-        Uuid,
-        ForeignKey("competency_model_versions.competency_model_version_id"),
-        index=True,
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "competency_model_version_id"],
+            [
+                "competency_model_versions.company_id",
+                "competency_model_versions.competency_model_version_id",
+            ],
+            name="fk_evaluation_criteria_company_id_competency_model_versions",
+        ),
+        UniqueConstraint(
+            "company_id",
+            "competency_model_version_id",
+            "code",
+            name="uq_evaluation_criteria_version_code",
+        ),
     )
+
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    competency_model_version_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    criterion_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     code: Mapped[str] = mapped_column(String(40))
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(String(4000))
     weight: Mapped[float] = mapped_column(Float)
     verification_guide: Mapped[dict[str, object]] = mapped_column(JSON)
-    good_evidence: Mapped[dict[str, object]] = mapped_column(JSON)
-    weak_evidence: Mapped[dict[str, object]] = mapped_column(JSON)
     abstain_guidance: Mapped[str] = mapped_column(String(4000))
     common_questions: Mapped[list[str]] = mapped_column(JSON)
     required: Mapped[bool] = mapped_column(Boolean)
@@ -167,14 +233,29 @@ class EvaluationCriterionRow(Base):
 
 class JobRequirementRow(Base):
     __tablename__ = "job_requirements"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "competency_model_version_id"],
+            [
+                "competency_model_versions.company_id",
+                "competency_model_versions.competency_model_version_id",
+            ],
+            name="fk_job_requirements_company_id_competency_model_versions",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "competency_model_version_id", "criterion_code"],
+            [
+                "evaluation_criteria.company_id",
+                "evaluation_criteria.competency_model_version_id",
+                "evaluation_criteria.code",
+            ],
+            name="fk_job_requirements_criterion",
+        ),
+        Index("ix_job_requirements_version", "company_id", "competency_model_version_id"),
+    )
 
     company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    competency_model_version_id: Mapped[UUID] = mapped_column(
-        Uuid,
-        ForeignKey("competency_model_versions.competency_model_version_id"),
-        primary_key=True,
-        index=True,
-    )
+    competency_model_version_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     job_requirement_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     requirement_type: Mapped[str] = mapped_column(String(20))
     statement: Mapped[str] = mapped_column(String(4000))
@@ -184,14 +265,31 @@ class JobRequirementRow(Base):
 
 class InvitationRow(Base):
     __tablename__ = "invitations"
-
-    invitation_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    position_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("positions.position_id"))
-    competency_model_version_id: Mapped[UUID] = mapped_column(
-        Uuid, ForeignKey("competency_model_versions.competency_model_version_id")
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "position_id"],
+            ["positions.company_id", "positions.position_id"],
+            name="fk_invitations_position",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "competency_model_version_id"],
+            [
+                "competency_model_versions.company_id",
+                "competency_model_versions.competency_model_version_id",
+            ],
+            name="fk_invitations_criterion_version",
+        ),
+        UniqueConstraint("company_id", "applicant_id", name="uq_invitations_company_applicant"),
+        UniqueConstraint("company_id", "token_hash", name="uq_invitations_company_token_hash"),
+        Index("ix_invitations_position", "company_id", "position_id"),
+        Index("ix_invitations_criterion_version", "company_id", "competency_model_version_id"),
     )
-    applicant_id: Mapped[UUID] = mapped_column(Uuid, unique=True)
+
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    invitation_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    position_id: Mapped[UUID] = mapped_column(Uuid)
+    competency_model_version_id: Mapped[UUID] = mapped_column(Uuid)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid)
     applicant_email_normalized: Mapped[str] = mapped_column(String(320))
     applicant_display_name: Mapped[str] = mapped_column(String(200))
     token_hash: Mapped[str] = mapped_column(String(64))
@@ -204,10 +302,23 @@ class InvitationRow(Base):
 
 class InvitationStateHistoryRow(Base):
     __tablename__ = "invitation_state_history"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "invitation_id"],
+            ["invitations.company_id", "invitations.invitation_id"],
+            name="fk_invitation_state_history_company_id_invitations",
+        ),
+        UniqueConstraint(
+            "company_id",
+            "invitation_id",
+            "aggregate_version",
+            name="uq_invitation_history_aggregate_version",
+        ),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     invitation_state_change_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    invitation_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("invitations.invitation_id"))
+    invitation_id: Mapped[UUID] = mapped_column(Uuid)
     from_status: Mapped[str] = mapped_column(String(40))
     to_status: Mapped[str] = mapped_column(String(40))
     actor_type: Mapped[str] = mapped_column(String(30))
@@ -217,12 +328,20 @@ class InvitationStateHistoryRow(Base):
 
 class ApplicantProfileRow(Base):
     __tablename__ = "applicant_profiles"
-
-    applicant_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    invitation_id: Mapped[UUID] = mapped_column(
-        Uuid, ForeignKey("invitations.invitation_id"), unique=True
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "invitation_id"],
+            ["invitations.company_id", "invitations.invitation_id"],
+            name="fk_applicant_profiles_company_id_invitations",
+        ),
+        UniqueConstraint(
+            "company_id", "invitation_id", name="uq_applicant_profiles_company_invitation"
+        ),
     )
+
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    invitation_id: Mapped[UUID] = mapped_column(Uuid)
     display_name: Mapped[str] = mapped_column(String(200))
     verification_method: Mapped[str] = mapped_column(String(50))
     technology_tags: Mapped[list[str]] = mapped_column(JSON)
@@ -230,10 +349,18 @@ class ApplicantProfileRow(Base):
 
 class ConsentRecordRow(Base):
     __tablename__ = "consent_records"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "invitation_id"],
+            ["invitations.company_id", "invitations.invitation_id"],
+            name="fk_consent_records_company_id_invitations",
+        ),
+        Index("ix_consent_records_invitation", "company_id", "invitation_id"),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     consent_record_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    invitation_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("invitations.invitation_id"))
+    invitation_id: Mapped[UUID] = mapped_column(Uuid)
     policy_version: Mapped[str] = mapped_column(String(100))
     purposes: Mapped[list[str]] = mapped_column(JSON)
     retention_days: Mapped[int] = mapped_column(Integer)
@@ -244,9 +371,16 @@ class ConsentRecordRow(Base):
 
 class RetentionPolicyRow(Base):
     __tablename__ = "retention_policies"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id", "policy_version", name="uq_retention_policies_company_version"
+        ),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("companies.company_id"), primary_key=True
+    )
     retention_policy_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
     retention_days: Mapped[int] = mapped_column(Integer)
     policy_version: Mapped[int] = mapped_column(Integer)
     effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -254,6 +388,10 @@ class RetentionPolicyRow(Base):
 
 class CompanyRepository(Protocol):
     def save_company(self, context: TenantContext, company: Company) -> Company: ...
+    def get_company(self, context: TenantContext) -> Company: ...
+    def save_company_logo(self, context: TenantContext, logo: CompanyLogo) -> CompanyLogo: ...
+    def delete_company_logo(self, context: TenantContext) -> None: ...
+    def find_public_company_logo(self, company_id: UUID) -> CompanyLogo | None: ...
     def save_company_user(
         self, context: TenantContext, company_user: CompanyUser
     ) -> CompanyUser: ...
@@ -306,6 +444,7 @@ class CompanyRepository(Protocol):
 class InMemoryCompanyRepository:
     def __init__(self) -> None:
         self.companies: dict[UUID, Company] = {}
+        self.company_logos: dict[UUID, CompanyLogo] = {}
         self.company_users: dict[UUID, CompanyUser] = {}
         self.positions: dict[UUID, Position] = {}
         self.interviewer_profiles: dict[UUID, InterviewerProfile] = {}
@@ -337,6 +476,25 @@ class InMemoryCompanyRepository:
         self._tenant(context, company.company_id)
         self.companies[company.company_id] = company
         return company
+
+    def get_company(self, context: TenantContext) -> Company:
+        tenant = require_tenant_context(context)
+        company = self.companies.get(tenant.company_id)
+        if company is None:
+            raise TenantScopedResourceNotFound("tenant-scoped resource not found")
+        return company
+
+    def save_company_logo(self, context: TenantContext, logo: CompanyLogo) -> CompanyLogo:
+        self._tenant(context, logo.company_id)
+        self.company_logos[logo.company_id] = logo
+        return logo
+
+    def delete_company_logo(self, context: TenantContext) -> None:
+        tenant = require_tenant_context(context)
+        self.company_logos.pop(tenant.company_id, None)
+
+    def find_public_company_logo(self, company_id: UUID) -> CompanyLogo | None:
+        return self.company_logos.get(company_id)
 
     def save_company_user(self, context: TenantContext, company_user: CompanyUser) -> CompanyUser:
         self._tenant(context, company_user.company_id)
@@ -534,6 +692,7 @@ class SqlAlchemyCompanyRepository:
                 company_id=company.company_id,
                 name=company.name,
                 brand_config=company.brand_config,
+                invitation_email_template=_template_to_row(company.invitation_email_template),
                 default_retention_days=company.default_retention_days,
                 status=company.status.value,
                 created_at=company.created_at,
@@ -542,6 +701,62 @@ class SqlAlchemyCompanyRepository:
         )
         self._session.flush()
         return company
+
+    def get_company(self, context: TenantContext) -> Company:
+        tenant = self._tenant(context)
+        row = self._session.scalar(
+            select(CompanyRow).where(CompanyRow.company_id == tenant.company_id)
+        )
+        if row is None:
+            raise TenantScopedResourceNotFound("tenant-scoped resource not found")
+        return Company(
+            company_id=row.company_id,
+            name=row.name,
+            brand_config=row.brand_config,
+            invitation_email_template=_template_from_row(row.invitation_email_template),
+            default_retention_days=row.default_retention_days,
+            status=CompanyStatus(row.status),
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+
+    def save_company_logo(self, context: TenantContext, logo: CompanyLogo) -> CompanyLogo:
+        self._tenant(context).assert_company(logo.company_id)
+        self._session.merge(
+            CompanyLogoRow(
+                company_id=logo.company_id,
+                content_type=logo.content_type,
+                byte_size=logo.byte_size,
+                sha256=logo.sha256,
+                content=logo.content,
+                updated_at=logo.updated_at,
+            )
+        )
+        self._session.flush()
+        return logo
+
+    def delete_company_logo(self, context: TenantContext) -> None:
+        tenant = self._tenant(context)
+        self._session.execute(
+            delete(CompanyLogoRow).where(CompanyLogoRow.company_id == tenant.company_id)
+        )
+        self._session.flush()
+
+    def find_public_company_logo(self, company_id: UUID) -> CompanyLogo | None:
+        """Read a logo without a tenant context, for the unauthenticated image route."""
+        row = self._session.scalar(
+            select(CompanyLogoRow).where(CompanyLogoRow.company_id == company_id)
+        )
+        if row is None:
+            return None
+        return CompanyLogo(
+            company_id=row.company_id,
+            content_type=row.content_type,
+            byte_size=row.byte_size,
+            sha256=row.sha256,
+            content=row.content,
+            updated_at=row.updated_at,
+        )
 
     def save_company_user(self, context: TenantContext, company_user: CompanyUser) -> CompanyUser:
         self._tenant(context).assert_company(company_user.company_id)
@@ -595,6 +810,7 @@ class SqlAlchemyCompanyRepository:
                 recruitment_end_at=position.recruitment_end_at,
                 created_by=position.created_by,
                 status=position.status.value,
+                invitation_email_template=_template_to_row(position.invitation_email_template),
                 row_version=position.row_version,
                 created_at=position.created_at,
             )
@@ -674,23 +890,26 @@ class SqlAlchemyCompanyRepository:
                 version_number=version.version_number,
                 prohibited_topics=list(version.prohibited_topics),
                 interview_duration_minutes=version.interview_duration_minutes,
+                interview_level=version.interview_level.value,
                 persona_definition=version.persona_definition,
                 status=version.status.value,
                 row_version=version.row_version,
                 published_at=version.published_at,
             )
         )
-        self._session.execute(
-            delete(EvaluationCriterionRow).where(
-                EvaluationCriterionRow.company_id == version.company_id,
-                EvaluationCriterionRow.competency_model_version_id
-                == version.competency_model_version_id,
-            )
-        )
+        # Requirements reference their criterion through fk_job_requirements_criterion,
+        # so the child rows have to go before the criteria they point at.
         self._session.execute(
             delete(JobRequirementRow).where(
                 JobRequirementRow.company_id == version.company_id,
                 JobRequirementRow.competency_model_version_id
+                == version.competency_model_version_id,
+            )
+        )
+        self._session.execute(
+            delete(EvaluationCriterionRow).where(
+                EvaluationCriterionRow.company_id == version.company_id,
+                EvaluationCriterionRow.competency_model_version_id
                 == version.competency_model_version_id,
             )
         )
@@ -719,8 +938,6 @@ class SqlAlchemyCompanyRepository:
                     description=criterion.description,
                     weight=criterion.weight,
                     verification_guide=criterion.verification_guide.model_dump(mode="json"),
-                    good_evidence=criterion.good_evidence,
-                    weak_evidence=criterion.weak_evidence,
                     abstain_guidance=criterion.abstain_guidance,
                     common_questions=list(criterion.common_questions),
                     required=criterion.required,
@@ -782,8 +999,6 @@ class SqlAlchemyCompanyRepository:
                     verification_guide=CriterionVerificationGuide.model_validate(
                         criterion.verification_guide
                     ),
-                    good_evidence=criterion.good_evidence,
-                    weak_evidence=criterion.weak_evidence,
                     abstain_guidance=criterion.abstain_guidance,
                     common_questions=tuple(criterion.common_questions),
                     required=criterion.required,
@@ -817,6 +1032,7 @@ class SqlAlchemyCompanyRepository:
                 criteria=tuple(criteria.get(row.competency_model_version_id, ())),
                 prohibited_topics=tuple(row.prohibited_topics),
                 interview_duration_minutes=row.interview_duration_minutes,
+                interview_level=InterviewLevel(row.interview_level),
                 persona_definition=row.persona_definition,
                 status=CompetencyModelStatus(row.status),
                 row_version=row.row_version,
@@ -1010,6 +1226,7 @@ class SqlAlchemyCompanyRepository:
             recruitment_end_at=row.recruitment_end_at,
             created_by=row.created_by,
             status=PositionStatus(row.status),
+            invitation_email_template=_template_from_row(row.invitation_email_template),
             row_version=row.row_version,
             created_at=row.created_at,
         )

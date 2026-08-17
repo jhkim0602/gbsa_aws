@@ -2,7 +2,7 @@ import { ArrowRight, ClipboardCheck, Route, Target, Users } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
-import { invitationStatusMeta } from "../hiring";
+import { interviewLevelLabels, invitationStatusMeta } from "../hiring";
 import { summarizeApplicantPipeline } from "./applicantSummary";
 import {
   countAttentionInvitations,
@@ -194,6 +194,12 @@ export function PositionDashboard({
             <div>
               <span>면접 시간</span>
               <strong>{criteria.interviewDurationMinutes}분</strong>
+            </div>
+            <div>
+              <span>면접 난이도</span>
+              <strong>
+                {interviewLevelLabels[criteria.interviewLevel].name}
+              </strong>
             </div>
             <div>
               <span>직무 요구사항</span>

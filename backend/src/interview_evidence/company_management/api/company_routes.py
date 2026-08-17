@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Annotated, Protocol
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from interview_evidence.company_management.adapters.company_auth import CompanyAuthAdapter
@@ -15,6 +15,11 @@ from interview_evidence.company_management.application.hiring_service import (
 from interview_evidence.company_management.application.interviewer_service import (
     InterviewerProfileService,
 )
+from interview_evidence.company_management.application.invitation_template_service import (
+    InvitationTemplateService,
+    LogoTooLargeError,
+    UnsupportedLogoTypeError,
+)
 from interview_evidence.company_management.domain.company import (
     InterviewerProfile,
     InterviewerTone,
@@ -22,7 +27,11 @@ from interview_evidence.company_management.domain.company import (
     PositionStatus,
     StalePositionVersionError,
 )
-from interview_evidence.company_management.domain.criteria import CompetencyModelVersion
+from interview_evidence.company_management.domain.criteria import (
+    CompetencyModelVersion,
+    PublishedVersionImmutableError,
+    StaleCriterionVersionError,
+)
 from interview_evidence.company_management.domain.hiring import Invitation
 from interview_evidence.company_management.repositories.postgres import (
     TenantScopedResourceNotFound,
@@ -30,8 +39,17 @@ from interview_evidence.company_management.repositories.postgres import (
 from interview_evidence.company_management.workers.invitation_email import (
     InvitationEmailCommand,
     InvitationEmailHandler,
+    format_deadline,
 )
 from interview_evidence.shared.audit import AuditAppender
+from interview_evidence.shared.email_templates import (
+    MAX_GUIDE_LINES,
+    InvitationEmailTemplate,
+)
+from interview_evidence.shared.interview_level import (
+    DEFAULT_INTERVIEW_LEVEL,
+    InterviewLevel,
+)
 from interview_evidence.shared.security.principals import (
     CompanyPrincipal,
     PrincipalNotFoundError,
@@ -106,8 +124,6 @@ class EvaluationCriterionInput(BaseModel):
     description: str = Field(min_length=1, max_length=4000)
     weight: float = Field(ge=0)
     verification_guide: "CriterionVerificationGuideInput"
-    good_evidence: dict[str, object] = Field(default_factory=dict)
-    weak_evidence: dict[str, object] = Field(default_factory=dict)
     abstain_guidance: str = Field(min_length=1)
     common_questions: tuple[str, ...] = ()
     required: bool
@@ -140,6 +156,7 @@ class CompetencyModelVersionCreate(BaseModel):
     criteria: tuple[EvaluationCriterionInput, ...] = Field(min_length=1)
     prohibited_topics: tuple[str, ...]
     interview_duration_minutes: int = Field(ge=10, le=120)
+    interview_level: InterviewLevel = DEFAULT_INTERVIEW_LEVEL
     persona_definition: dict[str, object] | None = None
 
 
@@ -208,6 +225,20 @@ class InvitationSessionResolver(Protocol):
     ) -> InvitationSessionSnapshot | None: ...
 
 
+class InvitationReviewSnapshot(Protocol):
+    @property
+    def report_status(self) -> str: ...
+
+
+class InvitationReviewResolver(Protocol):
+    def get_invitation_review(
+        self,
+        context: TenantContext,
+        *,
+        invitation_id: UUID,
+    ) -> InvitationReviewSnapshot | None: ...
+
+
 class InvitationPage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -221,6 +252,52 @@ class InvitationBatchResult(BaseModel):
     accepted_count: int
     rejected_count: int
     invitations: list[InvitationView]
+
+
+class InvitationEmailTemplateInput(BaseModel):
+    """The editable template as the console sends it.
+
+    ``logo_url`` is deliberately absent: the server derives it from the uploaded logo so
+    a client cannot point every invitation at a host it controls.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    subject: str = Field(min_length=1, max_length=200)
+    headline: str = Field(min_length=1, max_length=200)
+    intro: str = Field(min_length=1, max_length=2_000)
+    guides: tuple[str, ...] = Field(default=(), max_length=MAX_GUIDE_LINES)
+    cta_label: str = Field(min_length=1, max_length=40)
+    outro: str = Field(default="", max_length=1_000)
+    footer: str = Field(default="", max_length=300)
+    brand_color: str = Field(default="#5966ce", pattern=r"^#[0-9a-fA-F]{6}$")
+    use_applicant_name: bool = True
+    emphasize_deadline: bool = True
+    show_security_notice: bool = True
+
+    def to_template(self) -> InvitationEmailTemplate:
+        return InvitationEmailTemplate.model_validate(self.model_dump())
+
+
+class InvitationEmailTemplateView(InvitationEmailTemplateInput):
+    logo_url: str | None = None
+    #: False when this position inherits the company-wide template.
+    is_position_override: bool = False
+
+
+class InvitationEmailPreview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subject: str
+    html_body: str
+
+
+class CompanyLogoView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    logo_url: str
+    content_type: str
+    byte_size: int
 
 
 class CompanyRequestScope(BaseModel):
@@ -237,10 +314,12 @@ def create_company_router(
     criteria_service: CriteriaService,
     interviewer_service: InterviewerProfileService,
     hiring_service: HiringService,
+    template_service: InvitationTemplateService,
     audit: AuditAppender,
     invitation_email: InvitationEmailHandler | None = None,
     applicant_access_base_url: str = "https://applicant.local/access",
     interview_sessions: InvitationSessionResolver | None = None,
+    invitation_reviews: InvitationReviewResolver | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1")
 
@@ -443,10 +522,15 @@ def create_company_router(
                 criteria=tuple(item.model_dump() for item in body.criteria),
                 prohibited_topics=body.prohibited_topics,
                 interview_duration_minutes=body.interview_duration_minutes,
+                interview_level=body.interview_level,
                 idempotency_key=idempotency_key,
             )
         except TenantScopedResourceNotFound as error:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
+            ) from error
         audit.append(
             scope.context,
             action="criterion_version.created",
@@ -495,6 +579,8 @@ def create_company_router(
             )
         except TenantScopedResourceNotFound as error:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        except (StaleCriterionVersionError, PublishedVersionImmutableError) as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
         audit.append(
             scope.context,
             action="criterion_version.published",
@@ -526,6 +612,7 @@ def create_company_router(
                 _invitation_view(
                     invitation,
                     interview_sessions=interview_sessions,
+                    invitation_reviews=invitation_reviews,
                     context=scope.context,
                 )
                 for invitation in invitations
@@ -569,16 +656,24 @@ def create_company_router(
             metadata={"accepted_count": len(issuances), "rejected_count": 0},
         )
         if invitation_email is not None:
+            position = company_service.get_position(scope.context, position_id)
+            template = template_service.resolve_for_sending(scope.context, position_id)
+            company_name = template_service.company_name(scope.context)
             for issuance in issuances:
                 invitation_email.handle(
                     scope.context,
                     InvitationEmailCommand(
                         invitation_id=issuance.invitation.invitation_id,
                         applicant_ref=issuance.invitation.applicant_id,
+                        company_name=company_name,
+                        position_title=position.title,
+                        deadline_text=format_deadline(issuance.invitation.expires_at),
+                        template=template,
                         recipient_address=issuance.invitation.applicant_email,
                         invitation_url=(
                             f"{applicant_access_base_url}?token={issuance.token.raw_token}"
                         ),
+                        applicant_display_name=issuance.invitation.applicant_display_name,
                     ),
                 )
         return InvitationBatchResult(
@@ -588,13 +683,263 @@ def create_company_router(
                 _invitation_view(
                     issuance.invitation,
                     interview_sessions=interview_sessions,
+                    invitation_reviews=invitation_reviews,
                     context=scope.context,
                 )
                 for issuance in issuances
             ],
         )
 
+    @router.get(
+        "/invitation-email-template",
+        response_model=InvitationEmailTemplateView,
+        operation_id="getInvitationEmailTemplate",
+    )
+    def get_invitation_email_template(scope: Scope) -> InvitationEmailTemplateView:
+        try:
+            template = template_service.get_company_template(scope.context)
+        except TenantScopedResourceNotFound as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        return _template_view(template, is_position_override=False)
+
+    @router.put(
+        "/invitation-email-template",
+        response_model=InvitationEmailTemplateView,
+        operation_id="replaceInvitationEmailTemplate",
+    )
+    def replace_invitation_email_template(
+        body: InvitationEmailTemplateInput,
+        scope: Scope,
+    ) -> InvitationEmailTemplateView:
+        try:
+            template = template_service.save_company_template(
+                scope.context,
+                body.to_template(),
+            )
+        except TenantScopedResourceNotFound as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        audit.append(
+            scope.context,
+            action="invitation_email_template.updated",
+            resource_type="company",
+            resource_id=scope.principal.company_id,
+            result="success",
+            metadata={"scope": "company"},
+        )
+        return _template_view(template, is_position_override=False)
+
+    @router.delete(
+        "/invitation-email-template",
+        response_model=InvitationEmailTemplateView,
+        operation_id="deleteInvitationEmailTemplate",
+    )
+    def delete_invitation_email_template(scope: Scope) -> InvitationEmailTemplateView:
+        """Drop the company's edits so it tracks the platform default copy again.
+
+        The console needs this to offer "revert to default" without shipping its own
+        copy of the Korean wording, which would drift from the renderer.
+        """
+        try:
+            template = template_service.clear_company_template(scope.context)
+        except TenantScopedResourceNotFound as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        audit.append(
+            scope.context,
+            action="invitation_email_template.reverted",
+            resource_type="company",
+            resource_id=scope.principal.company_id,
+            result="success",
+            metadata={"scope": "company"},
+        )
+        return _template_view(template, is_position_override=False)
+
+    @router.get(
+        "/positions/{position_id}/invitation-email-template",
+        response_model=InvitationEmailTemplateView,
+        operation_id="getPositionInvitationEmailTemplate",
+    )
+    def get_position_invitation_email_template(
+        position_id: UUID,
+        scope: Scope,
+    ) -> InvitationEmailTemplateView:
+        try:
+            resolved = template_service.get_position_template(scope.context, position_id)
+        except TenantScopedResourceNotFound as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        return _template_view(
+            resolved.template,
+            is_position_override=resolved.is_position_override,
+        )
+
+    @router.put(
+        "/positions/{position_id}/invitation-email-template",
+        response_model=InvitationEmailTemplateView,
+        operation_id="replacePositionInvitationEmailTemplate",
+    )
+    def replace_position_invitation_email_template(
+        position_id: UUID,
+        body: InvitationEmailTemplateInput,
+        scope: Scope,
+    ) -> InvitationEmailTemplateView:
+        try:
+            resolved = template_service.save_position_template(
+                scope.context,
+                position_id,
+                body.to_template(),
+            )
+        except TenantScopedResourceNotFound as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        audit.append(
+            scope.context,
+            action="invitation_email_template.updated",
+            resource_type="position",
+            resource_id=position_id,
+            result="success",
+            metadata={"scope": "position"},
+        )
+        return _template_view(
+            resolved.template,
+            is_position_override=resolved.is_position_override,
+        )
+
+    @router.delete(
+        "/positions/{position_id}/invitation-email-template",
+        response_model=InvitationEmailTemplateView,
+        operation_id="deletePositionInvitationEmailTemplate",
+    )
+    def delete_position_invitation_email_template(
+        position_id: UUID,
+        scope: Scope,
+    ) -> InvitationEmailTemplateView:
+        """Drop the position override so the position inherits the company template."""
+        try:
+            resolved = template_service.save_position_template(scope.context, position_id, None)
+        except TenantScopedResourceNotFound as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        audit.append(
+            scope.context,
+            action="invitation_email_template.reverted",
+            resource_type="position",
+            resource_id=position_id,
+            result="success",
+            metadata={"scope": "position"},
+        )
+        return _template_view(
+            resolved.template,
+            is_position_override=resolved.is_position_override,
+        )
+
+    @router.post(
+        "/invitation-email-template/preview",
+        response_model=InvitationEmailPreview,
+        operation_id="previewInvitationEmailTemplate",
+    )
+    def preview_invitation_email_template(
+        body: InvitationEmailTemplateInput,
+        scope: Scope,
+    ) -> InvitationEmailPreview:
+        """Render unsaved edits against sample data so the console can show a live preview."""
+        rendered = template_service.preview(scope.context, body.to_template())
+        return InvitationEmailPreview(subject=rendered.subject, html_body=rendered.html_body)
+
+    @router.put(
+        "/invitation-email-template/logo",
+        response_model=CompanyLogoView,
+        operation_id="replaceCompanyLogo",
+    )
+    async def replace_company_logo(request: Request, scope: Scope) -> CompanyLogoView:
+        content_type = request.headers.get("content-type", "")
+        body = await request.body()
+        try:
+            logo = template_service.upload_logo(
+                scope.context,
+                content=body,
+                content_type=content_type,
+            )
+        except TenantScopedResourceNotFound as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        except LogoTooLargeError as error:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=str(error),
+            ) from error
+        except UnsupportedLogoTypeError as error:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail=str(error),
+            ) from error
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(error),
+            ) from error
+        audit.append(
+            scope.context,
+            action="company_logo.replaced",
+            resource_type="company",
+            resource_id=logo.company_id,
+            result="success",
+            metadata={"byte_size": logo.byte_size, "content_type": logo.content_type},
+        )
+        return CompanyLogoView(
+            logo_url=template_service.logo_url(logo.company_id),
+            content_type=logo.content_type,
+            byte_size=logo.byte_size,
+        )
+
+    @router.delete(
+        "/invitation-email-template/logo",
+        status_code=status.HTTP_204_NO_CONTENT,
+        operation_id="deleteCompanyLogo",
+    )
+    def delete_company_logo(scope: Scope) -> None:
+        template_service.delete_logo(scope.context)
+        audit.append(
+            scope.context,
+            action="company_logo.deleted",
+            resource_type="company",
+            resource_id=scope.principal.company_id,
+            result="success",
+            metadata={},
+        )
+
+    @router.get(
+        "/public/companies/{company_id}/logo",
+        response_class=Response,
+        operation_id="getPublicCompanyLogo",
+    )
+    def get_public_company_logo(company_id: UUID) -> Response:
+        """Serve the logo to unauthenticated mail clients rendering an invitation.
+
+        A recipient's mail client fetches remote images with no credentials, so this
+        route cannot require a tenant context. It exposes only the logo a company chose
+        to embed in its outbound email, and nothing else about the tenant.
+        """
+        logo = template_service.find_public_logo(company_id)
+        if logo is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        return Response(
+            content=logo.content,
+            media_type=logo.content_type,
+            headers={
+                "Cache-Control": "public, max-age=3600",
+                "ETag": f'"{logo.sha256}"',
+            },
+        )
+
     return router
+
+
+def _template_view(
+    template: InvitationEmailTemplate,
+    *,
+    is_position_override: bool,
+) -> InvitationEmailTemplateView:
+    return InvitationEmailTemplateView(
+        **template.model_dump(exclude={"logo_url"}),
+        logo_url=template.logo_url,
+        is_position_override=is_position_override,
+    )
 
 
 def _optional_uuid(value: str | None) -> UUID | None:
@@ -649,6 +994,7 @@ def _criterion_view(version: CompetencyModelVersion) -> CompetencyModelVersionVi
         ],
         prohibited_topics=version.prohibited_topics,
         interview_duration_minutes=version.interview_duration_minutes,
+        interview_level=version.interview_level,
         persona_definition=version.persona_definition,
         status=version.status.value,
         row_version=version.row_version,
@@ -660,6 +1006,7 @@ def _invitation_view(
     invitation: Invitation,
     *,
     interview_sessions: InvitationSessionResolver | None = None,
+    invitation_reviews: InvitationReviewResolver | None = None,
     context: TenantContext | None = None,
 ) -> InvitationView:
     session = (
@@ -668,6 +1015,16 @@ def _invitation_view(
             invitation_id=invitation.invitation_id,
         )
         if interview_sessions is not None and context is not None
+        else None
+    )
+    # Absent until Lane D has a report for the invitation, which is what the console reads
+    # to decide whether the analysis report can be opened at all.
+    review = (
+        invitation_reviews.get_invitation_review(
+            context,
+            invitation_id=invitation.invitation_id,
+        )
+        if invitation_reviews is not None and context is not None
         else None
     )
     return InvitationView(
@@ -680,5 +1037,6 @@ def _invitation_view(
         expires_at=invitation.expires_at,
         row_version=invitation.row_version,
         interview_status=session.state if session is not None else None,
+        report_status=review.report_status if review is not None else None,
         interview_session_id=(session.interview_session_id if session is not None else None),
     )

@@ -4,6 +4,7 @@ import {
   FileUp,
   PanelRightClose,
   PanelRightOpen,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
@@ -14,6 +15,12 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+
+import { InvitationEmailEditor } from "./InvitationEmailEditor";
+import type {
+  InvitationEmailTemplateApi,
+  InvitationEmailTemplateState,
+} from "./invitationEmailTemplate";
 
 export type InvitationStatus =
   | "invited"
@@ -132,12 +139,15 @@ export function PositionInvitations({
   positionId,
   positionName,
   api,
+  templateApi,
   embedded = false,
   view = "all",
 }: {
   positionId: string;
   positionName?: string;
   api: PositionInvitationApi;
+  /** Omitted where the invitation email is not editable, e.g. read-only rosters. */
+  templateApi?: InvitationEmailTemplateApi;
   embedded?: boolean;
   view?: "all" | "roster" | "invite" | "workspace";
 }) {
@@ -155,6 +165,9 @@ export function PositionInvitations({
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [invitePanelOpen, setInvitePanelOpen] = useState(true);
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [emailTemplate, setEmailTemplate] =
+    useState<InvitationEmailTemplateState | null>(null);
   const workspace = view === "workspace";
   const validatedDrafts = useMemo(
     () =>
@@ -214,6 +227,22 @@ export function PositionInvitations({
       active = false;
     };
   }, [api, positionId]);
+
+  useEffect(() => {
+    if (!templateApi) return;
+    let active = true;
+    templateApi
+      .getPositionTemplate(positionId)
+      .then((state) => {
+        if (active) setEmailTemplate(state);
+      })
+      .catch(() => {
+        // The mail card is informational; a failure must not block sending invitations.
+      });
+    return () => {
+      active = false;
+    };
+  }, [positionId, templateApi]);
 
   const metrics = useMemo(
     () => ({
@@ -569,6 +598,55 @@ export function PositionInvitations({
                     </tbody>
                   </table>
                 </div>
+                {templateApi ? (
+                  <div className="invitation-mailcard">
+                    <div className="invitation-mailcard__top">
+                      <span className="invitation-mailcard__logo">
+                        {emailTemplate?.logoUrl ? (
+                          <img
+                            src={emailTemplate.logoUrl}
+                            alt="기업 로고"
+                            height={22}
+                          />
+                        ) : (
+                          <em>로고 없음</em>
+                        )}
+                      </span>
+                      <div>
+                        <small>발송될 메일</small>
+                        <strong>
+                          {emailTemplate?.subject ??
+                            "초대 메일 내용을 불러오는 중"}
+                        </strong>
+                      </div>
+                    </div>
+                    <div className="invitation-mailcard__foot">
+                      {emailTemplate ? (
+                        <>
+                          <i
+                            className="invitation-mailcard__dot"
+                            style={{ background: emailTemplate.brandColor }}
+                            aria-hidden="true"
+                          />
+                          <small>
+                            {emailTemplate.isPositionOverride
+                              ? "이 포지션 전용 문구"
+                              : "전사 기본 문구"}
+                          </small>
+                        </>
+                      ) : null}
+                      <button
+                        className="button-quiet invitation-mailcard__edit"
+                        type="button"
+                        onClick={() => setTemplateOpen(true)}
+                      >
+                        <Pencil size={13} aria-hidden="true" />
+                        수정
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="invitation-composer__footer">
                   <div className="invitation-validation" aria-live="polite">
                     {validationSummary.hasInput ? (
@@ -638,6 +716,44 @@ export function PositionInvitations({
           ) : null}
         </div>
       </div>
+
+      {templateApi && templateOpen ? (
+        <>
+          <button
+            className="template-drawer__scrim"
+            type="button"
+            aria-label="초대 메일 수정 닫기"
+            onClick={() => setTemplateOpen(false)}
+          />
+          <div
+            className="template-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="초대 메일 수정"
+          >
+            <header className="template-drawer__head">
+              <div>
+                <h2>초대 메일 수정</h2>
+                <p>{positionName ?? "이 포지션"}에 보낼 초대 메일입니다.</p>
+              </div>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="초대 메일 수정 닫기"
+                onClick={() => setTemplateOpen(false)}
+              >
+                <X size={16} aria-hidden="true" />
+              </button>
+            </header>
+            <InvitationEmailEditor
+              api={templateApi}
+              scope={{ kind: "position", positionId, positionName }}
+              onSaved={setEmailTemplate}
+              onClose={() => setTemplateOpen(false)}
+            />
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

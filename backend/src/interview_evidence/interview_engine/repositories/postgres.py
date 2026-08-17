@@ -5,7 +5,19 @@ from datetime import datetime
 from typing import Protocol, TypeVar
 from uuid import UUID
 
-from sqlalchemy import JSON, DateTime, Integer, String, Text, Uuid, delete, select
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+    delete,
+    select,
+)
 from sqlalchemy.orm import (
     DeclarativeBase,
     InstrumentedAttribute,
@@ -54,11 +66,12 @@ class Base(DeclarativeBase):
 
 class EquipmentCheckRow(Base):
     __tablename__ = "equipment_checks"
+    __table_args__ = (Index("ix_equipment_checks_invitation", "company_id", "invitation_id"),)
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     equipment_check_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    invitation_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    applicant_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    invitation_id: Mapped[UUID] = mapped_column(Uuid)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid)
     camera_status: Mapped[str] = mapped_column(String(30))
     camera_sanitized_code: Mapped[str | None] = mapped_column(String(100))
     microphone_status: Mapped[str] = mapped_column(String(30))
@@ -71,11 +84,14 @@ class EquipmentCheckRow(Base):
 
 class InterviewSessionRow(Base):
     __tablename__ = "interview_sessions"
+    __table_args__ = (
+        UniqueConstraint("company_id", "invitation_id", name="uq_interview_sessions_invitation"),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     interview_session_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    invitation_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    applicant_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    invitation_id: Mapped[UUID] = mapped_column(Uuid)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid)
     interview_strategy_id: Mapped[UUID] = mapped_column(Uuid)
     competency_model_version_id: Mapped[UUID] = mapped_column(Uuid)
     state: Mapped[str] = mapped_column(String(40))
@@ -89,10 +105,26 @@ class InterviewSessionRow(Base):
 
 class InterviewTurnRow(Base):
     __tablename__ = "interview_turns"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "interview_session_id"],
+            ["interview_sessions.company_id", "interview_sessions.interview_session_id"],
+            name="fk_interview_turns_company_id_interview_sessions",
+        ),
+        UniqueConstraint(
+            "company_id",
+            "interview_session_id",
+            "idempotency_key",
+            name="uq_interview_turns_idempotency",
+        ),
+        UniqueConstraint(
+            "company_id", "interview_session_id", "sequence", name="uq_interview_turns_sequence"
+        ),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     turn_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    interview_session_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    interview_session_id: Mapped[UUID] = mapped_column(Uuid)
     sequence: Mapped[int] = mapped_column(Integer)
     speaker: Mapped[str] = mapped_column(String(30))
     status: Mapped[str] = mapped_column(String(30))
@@ -105,10 +137,23 @@ class InterviewTurnRow(Base):
 
 class SessionCheckpointRow(Base):
     __tablename__ = "session_checkpoints"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "interview_session_id"],
+            ["interview_sessions.company_id", "interview_sessions.interview_session_id"],
+            name="fk_session_checkpoints_company_id_interview_sessions",
+        ),
+        UniqueConstraint(
+            "company_id",
+            "interview_session_id",
+            "session_sequence",
+            name="uq_session_checkpoints_sequence",
+        ),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     checkpoint_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    interview_session_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    interview_session_id: Mapped[UUID] = mapped_column(Uuid)
     session_sequence: Mapped[int] = mapped_column(Integer)
     last_final_turn_id: Mapped[UUID | None] = mapped_column(Uuid)
     last_media_chunk_sequence: Mapped[int] = mapped_column(Integer)
@@ -119,10 +164,26 @@ class SessionCheckpointRow(Base):
 
 class RecordingChunkRow(Base):
     __tablename__ = "recording_chunks"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "interview_session_id"],
+            ["interview_sessions.company_id", "interview_sessions.interview_session_id"],
+            name="fk_recording_chunks_company_id_interview_sessions",
+        ),
+        UniqueConstraint(
+            "company_id",
+            "interview_session_id",
+            "idempotency_key",
+            name="uq_recording_chunks_idempotency",
+        ),
+        UniqueConstraint(
+            "company_id", "interview_session_id", "sequence", name="uq_recording_chunks_sequence"
+        ),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     recording_chunk_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    interview_session_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    interview_session_id: Mapped[UUID] = mapped_column(Uuid)
     sequence: Mapped[int] = mapped_column(Integer)
     object_key: Mapped[str] = mapped_column(String(2048))
     content_hash: Mapped[str] = mapped_column(String(64))
@@ -136,11 +197,30 @@ class RecordingChunkRow(Base):
 
 class QuestionSourceReferenceRow(Base):
     __tablename__ = "question_source_references"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "interview_session_id"],
+            ["interview_sessions.company_id", "interview_sessions.interview_session_id"],
+            name="fk_question_source_references_company_id_interview_sessions",
+        ),
+        ForeignKeyConstraint(
+            ["company_id", "question_turn_id"],
+            ["interview_turns.company_id", "interview_turns.turn_id"],
+            name="fk_question_source_references_company_id_interview_turns",
+        ),
+        UniqueConstraint(
+            "company_id",
+            "question_turn_id",
+            "source_id",
+            name="uq_question_source_references_source",
+        ),
+        Index("ix_question_source_references_session", "company_id", "interview_session_id"),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     source_reference_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    interview_session_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    question_turn_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    interview_session_id: Mapped[UUID] = mapped_column(Uuid)
+    question_turn_id: Mapped[UUID] = mapped_column(Uuid)
     source_id: Mapped[UUID] = mapped_column(Uuid)
     source_type: Mapped[str] = mapped_column(String(100))
     locator: Mapped[dict[str, object]] = mapped_column(JSON)
@@ -154,13 +234,22 @@ class QuestionSourceReferenceRow(Base):
 
 class VerificationProgressRow(Base):
     __tablename__ = "verification_progress"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "interview_session_id",
+            "verification_target_id",
+            name="uq_verification_progress_target",
+        ),
+        Index("ix_verification_progress_session", "company_id", "interview_session_id"),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     verification_progress_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    interview_session_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    applicant_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    verification_target_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    criterion_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    interview_session_id: Mapped[UUID] = mapped_column(Uuid)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid)
+    verification_target_id: Mapped[UUID] = mapped_column(Uuid)
+    criterion_id: Mapped[UUID] = mapped_column(Uuid)
     state: Mapped[str] = mapped_column(String(40))
     follow_up_count: Mapped[int] = mapped_column(Integer)
     final_answer_turn_ids: Mapped[list[str]] = mapped_column(JSON)
@@ -169,15 +258,19 @@ class VerificationProgressRow(Base):
 
 class QuestionRationaleRow(Base):
     __tablename__ = "question_rationales"
+    __table_args__ = (
+        UniqueConstraint("company_id", "question_turn_id", name="uq_question_rationale_turn"),
+        Index("ix_question_rationales_session", "company_id", "interview_session_id"),
+    )
 
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     question_rationale_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
-    company_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    interview_session_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    question_turn_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    applicant_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    competency_model_version_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    criterion_id: Mapped[UUID] = mapped_column(Uuid, index=True)
-    verification_target_id: Mapped[UUID] = mapped_column(Uuid, index=True)
+    interview_session_id: Mapped[UUID] = mapped_column(Uuid)
+    question_turn_id: Mapped[UUID] = mapped_column(Uuid)
+    applicant_id: Mapped[UUID] = mapped_column(Uuid)
+    competency_model_version_id: Mapped[UUID] = mapped_column(Uuid)
+    criterion_id: Mapped[UUID] = mapped_column(Uuid)
+    verification_target_id: Mapped[UUID] = mapped_column(Uuid)
     verification_target_type: Mapped[str] = mapped_column(String(40))
     objective: Mapped[str] = mapped_column(String(4000))
     question_type: Mapped[str] = mapped_column(String(40))

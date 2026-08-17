@@ -22,6 +22,7 @@ from interview_evidence.shared.idempotency import (
     ResourceIdempotencyStore,
 )
 from interview_evidence.shared.ids import Clock, CommandMeta, new_uuid7
+from interview_evidence.shared.interview_level import InterviewLevel
 from interview_evidence.shared.security.principals import CompanyPrincipal
 from interview_evidence.shared.tenant import TenantContext
 
@@ -44,8 +45,6 @@ class CriterionSnapshot(BaseModel):
     description: str
     weight: float
     verification_guide: dict[str, object]
-    good_evidence: dict[str, object]
-    weak_evidence: dict[str, object]
     abstain_guidance: str
     common_questions: tuple[str, ...]
     required: bool
@@ -72,6 +71,7 @@ class CriterionVersionSnapshot(BaseModel):
     criteria: tuple[CriterionSnapshot, ...]
     prohibited_topics: tuple[str, ...]
     interview_duration_minutes: int
+    interview_level: InterviewLevel
     persona_definition: dict[str, object]
     published_at: datetime
 
@@ -284,6 +284,7 @@ class CompanyManagementPublic:
             ),
             prohibited_topics=version.prohibited_topics,
             interview_duration_minutes=version.interview_duration_minutes,
+            interview_level=version.interview_level,
             persona_definition=version.persona_definition,
             published_at=version.published_at,
         )

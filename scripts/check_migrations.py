@@ -22,6 +22,10 @@ DESTRUCTIVE_CALLS = {
     "drop_index",
     "drop_table",
 }
+#: Width of ``alembic_version.version_num``. Postgres rejects a longer revision id at
+#: upgrade time, while sqlite truncates silently -- so the test suite passes on an id
+#: that breaks the first real deployment. Checked here instead.
+MAX_REVISION_ID_LENGTH = 32
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +91,15 @@ def destructive_calls(module: ast.Module) -> set[str]:
     return calls
 
 
+def revision_id_errors(path: Path, revision: str) -> list[str]:
+    if len(revision) <= MAX_REVISION_ID_LENGTH:
+        return []
+    return [
+        f"{path.relative_to(ROOT)}: revision id is {len(revision)} characters; "
+        f"alembic_version.version_num holds {MAX_REVISION_ID_LENGTH}"
+    ]
+
+
 def load_revision(path: Path, lane: str, prefix: str) -> tuple[Revision | None, list[str]]:
     errors: list[str] = []
     try:
@@ -144,6 +157,26 @@ def check_lane(lane: str, prefix: str) -> list[str]:
     return errors
 
 
+def check_revision_id_lengths() -> list[str]:
+    """Check every revision, not just the lane-owned ones.
+
+    ``check_lane`` only walks the four lane directories, so integration and merge
+    revisions would otherwise never have their ids measured.
+    """
+    errors: list[str] = []
+    for path in sorted(VERSIONS_ROOT.glob("*/*.py")):
+        if path.name.startswith("__"):
+            continue
+        try:
+            module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            revision = str(assigned_value(module, "revision"))
+        except (OSError, SyntaxError, ValueError) as error:
+            errors.append(f"{path.relative_to(ROOT)}: {error}")
+            continue
+        errors.extend(revision_id_errors(path, revision))
+    return errors
+
+
 def check_merge_revisions() -> list[str]:
     errors: list[str] = []
     for path in sorted((VERSIONS_ROOT / "merge").glob("*.py")):
@@ -186,6 +219,7 @@ def main() -> int:
     parser.parse_args()
 
     errors = [error for lane, prefix in LANE_RULES.items() for error in check_lane(lane, prefix)]
+    errors.extend(check_revision_id_lengths())
     errors.extend(check_merge_revisions())
     errors.extend(run_orm_drift_check())
 

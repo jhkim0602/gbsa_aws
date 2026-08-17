@@ -369,6 +369,7 @@ class LiveInterviewHandler:
                         VerificationProgressState.EXHAUSTED,
                     }
                 ),
+                elapsed_seconds=self._elapsed_seconds(session),
             )
             if question_target is None:
                 self._interview_service.finalize_answer_and_complete(
@@ -430,12 +431,17 @@ class LiveInterviewHandler:
             previous_questions=previous_questions,
             fallback_question=plan.fallback_question,
             remaining_criterion_ids=plan.criterion_ids,
-            remaining_time_seconds=plan.remaining_time_seconds,
+            # What the model is told is the time actually left, not the slot length, so
+            # it can wrap up instead of opening a topic the clock cannot finish.
+            remaining_time_seconds=max(
+                0, plan.remaining_time_seconds - self._elapsed_seconds(session)
+            ),
             query_vector=None,
             model_config_version=plan.model_config_version,
             retrieval_config_version=plan.retrieval_config_version,
             voice_id=plan.voice_id,
             occurred_at=self._clock.now(),
+            interview_level=plan.interview_level,
             answered_target=answered_target,
             question_target=question_target,
             existing_progress=existing_progress,
@@ -502,6 +508,17 @@ class LiveInterviewHandler:
             strategy_id=session.interview_strategy_id,
             competency_model_version_id=session.competency_model_version_id,
         )
+
+    def _elapsed_seconds(self, session: InterviewSession) -> int:
+        """Wall-clock seconds since the applicant started answering.
+
+        A session that has not started yet has consumed nothing. Resuming after a pause
+        keeps counting, which matches what the applicant experiences: the recruiter
+        bought a 30 minute slot, not 30 minutes of model time.
+        """
+        if session.started_at is None:
+            return 0
+        return max(0, int((self._clock.now() - session.started_at).total_seconds()))
 
     def _next_turn_sequence(self, context: TenantContext, session_id: UUID) -> int:
         turns = self._repository.list_turns(context, session_id)

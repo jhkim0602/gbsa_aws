@@ -193,6 +193,7 @@ export function toCriteriaConfiguration(
     })),
     prohibitedTopics: splitCommaSeparated(draft.prohibitedTopics),
     interviewDurationMinutes: draft.interviewDurationMinutes,
+    interviewLevel: draft.interviewLevel,
   };
 }
 

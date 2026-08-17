@@ -469,12 +469,22 @@ hr{border:none;border-top:.5pt solid var(--rule);margin:5mm 0;}
   .page{
     margin:0;box-shadow:none;
     width:auto;height:auto;min-height:0;overflow:visible;
+    padding:0;
+  }
+  /* 콘텐츠가 A4 한 장을 넘으면 자연 분할되므로 러닝 헤더를 흐름 배치로 바꾼다 */
+  .rh{
+    position:static;top:auto;left:auto;right:auto;
+    margin-bottom:5mm;
   }
   thead{display:table-header-group;}
   tfoot{display:table-footer-group;}
   .arch-figure,.sequence-spec{box-shadow:none;}
   .pn{display:none;}
-  @page{size:A4;margin:0;}
+  /* 페이지 경계에서 잘리면 안 되는 단위 */
+  tr,img,figure,pre{break-inside:avoid;page-break-inside:avoid;}
+  .box,.tile,.sec,.toc-row,.arch-figure,.sequence-spec{break-inside:avoid;page-break-inside:avoid;}
+  h2,h3{break-after:avoid;page-break-after:avoid;}
+  @page{size:A4;margin:14mm 16mm;}
 }
 
 @media screen and (max-width:820px){
@@ -502,16 +512,18 @@ hr{border:none;border-top:.5pt solid var(--rule);margin:5mm 0;}
 <div class="page cover">
   <div class="cover-bar"></div>
   <div class="cover-body">
-    <div class="cover-eyebrow">Historical Architecture Baseline</div>
+    <div class="cover-eyebrow">Architecture Baseline · 002 Retrieval Cutover Applied</div>
     <h1>Interview Evidence<br>Platform</h1>
-    <div class="sub">IT/개발 직군 특화 AI 구조화 면접 플랫폼 · 001 기준선</div>
-    <div style="margin-bottom:7mm;padding:4mm 5mm;border-left:3px solid var(--warn);background:var(--warn-soft);font-size:8.2pt;line-height:1.55;color:var(--ink);">
-      <strong>검색 아키텍처 대체 안내</strong><br>
-      이 문서는 초기 001 설계 기준선을 보존합니다. 현재 구현의 기업 기준 기반 RAG,
-      Aurora PostgreSQL <code>pgvector</code>·전문검색, OpenSearch 제거 결정은
-      <a href="aws-architecture.svg">AWS 배포 구성도</a>,
-      <a href="aws-ai-rag-flow.svg">AI/RAG 흐름도</a>,
-      <a href="../specs/002-criterion-grounded-rag/quickstart.md">002 운영 문서</a>를 기준으로 합니다.
+    <div class="sub">IT/개발 직군 특화 AI 구조화 면접 플랫폼 · 아키텍처와 AWS 리소스 타당성</div>
+    <div style="margin-bottom:7mm;padding:4mm 5mm;border-left:3px solid var(--accent);background:var(--accent-soft);font-size:8.2pt;line-height:1.55;color:var(--ink);">
+      <strong>v2.0 최신화 범위</strong><br>
+      001 설계 기준선의 계약·경계·상태 정의는 유지하고,
+      <strong>002 검색 전환(OpenSearch Serverless·Bedrock Knowledge Base 제거 → Aurora PostgreSQL
+      <code>pgvector</code> + <code>tsvector</code> 하이브리드 검색)</strong>을 본문에 반영했습니다.
+      13절에 <strong>AWS 리소스별 사용 타당성과 기각 대안(EC2 단독·EC2 리버스 프록시·EKS·OpenSearch/전용 벡터DB)</strong>을
+      추가했습니다. 배치도는 <a href="aws-architecture.svg">AWS 배포 구성도</a>와
+      <a href="aws-ai-rag-flow.svg">AI/RAG 흐름도</a>, 전환 운영 절차는
+      <a href="../specs/002-criterion-grounded-rag/quickstart.md">002 quickstart</a>가 권위입니다.
     </div>
     <div class="kicker">
       기업의 평가 기준으로 질문하고, 지원자의 실무 산출물과 실제 답변에서
@@ -531,22 +543,22 @@ hr{border:none;border-top:.5pt solid var(--rule);margin:5mm 0;}
         </div>
         <div>
           <div class="lbl">API 계약</div>
-          <div class="val on">동결 대기</div>
+          <div class="val on">생성 계약 동결</div>
         </div>
         <div>
           <div class="lbl">구현</div>
-          <div class="val off">착수 전</div>
+          <div class="val on">001 + 002 반영</div>
         </div>
       </div>
 
       <div class="cover-meta">
         <div>
           <dt>문서 버전</dt>
-          <dd>v1.2<small>2026-08-14 · Spec Kit alignment</small></dd>
+          <dd>v2.0<small>2026-08-16 · 002 반영 · 리소스 타당성 추가</small></dd>
         </div>
         <div>
           <dt>기준 문서</dt>
-          <dd>기획서 v1.4<small>헌장 v1.0.0</small></dd>
+          <dd>기획서 v1.4<small>헌장 v1.0.0 · 002 research/quickstart</small></dd>
         </div>
         <div>
           <dt>배포 리전</dt>
@@ -554,7 +566,7 @@ hr{border:none;border-top:.5pt solid var(--rule);margin:5mm 0;}
         </div>
         <div>
           <dt>개발 체계</dt>
-          <dd>4-Lane 병렬<small>태스크 192</small></dd>
+          <dd>4-Lane 병렬<small>Terraform 8모듈 · 환경 3종</small></dd>
         </div>
       </div>
     </div>
@@ -597,14 +609,17 @@ hr{border:none;border-top:.5pt solid var(--rule);margin:5mm 0;}
     <div class="toc-row"><span class="n">10</span><span class="t">AWS 인프라 구성<small>Terraform 8모듈, Multi-AZ 배포 경계, 생성 순서</small></span><span class="p">22</span></div>
     <div class="toc-row"><span class="n">11</span><span class="t">마이그레이션 전략<small>Alembic 4브랜치, 머지 규칙</small></span><span class="p">25</span></div>
     <div class="toc-row"><span class="n">12</span><span class="t">관측·보안 설계<small>로그 금지 항목, 지표, 저하 모드</small></span><span class="p">26</span></div>
-    <div class="toc-row"><span class="n">A</span><span class="t">착수 전 확인 사항<small>리전·비용·운영·DR·계약 동결 전 결정</small></span><span class="p">27</span></div>
+    <div class="toc-row"><span class="n">13</span><span class="t">AWS 리소스 타당성과 기각 대안<small>리소스별 사용 근거, EC2·리버스 프록시·EKS·OpenSearch 비교, 고정비 금액, 동시 면접 확장</small></span><span class="p">27</span></div>
+    <div class="toc-row"><span class="n">A</span><span class="t">잔여 결정 사항<small>리전·운영자 접근·DR·SLA·계약 공백</small></span><span class="p">35</span></div>
   </div>
 
   <div class="box" style="margin-top:8mm;">
     <div class="t">이 문서의 성격</div>
-    <p>본 문서는 <strong>설계 기준선</strong>입니다. 구현 코드는 착수 전이며, 여기 기록된 계약·경계·상태 정의가
-    Wave 0에서 동결된 뒤 4개 레인이 병렬로 구현을 시작합니다. 계약 동결 이후의 변경은
-    영향 레인 검토와 별도 통합 커밋을 요구합니다.</p>
+    <p>본 문서는 <strong>구현된 시스템의 아키텍처 기준선</strong>입니다. 001에서 동결한 계약·경계·상태 정의를
+    권위로 유지하면서, 002 검색 전환처럼 <strong>이미 코드와 Terraform에 반영된 결정</strong>을 함께 기술합니다.
+    본문의 인프라 서술은 <code>infra/modules/</code>와 <code>infra/environments/</code>가 실제 권위이며,
+    <code>infra/tests/test_terraform_contracts.py</code>가 문서와 코드의 이탈을 자동으로 차단합니다.
+    계약 변경은 여전히 영향 레인 검토와 별도 통합 커밋을 요구합니다.</p>
   </div>
 
   <div class="pn"><span>Interview Evidence Platform</span><span class="num">02</span></div>
@@ -675,8 +690,10 @@ hr{border:none;border-top:.5pt solid var(--rule);margin:5mm 0;}
   <div class="box ok">
     <div class="t">기업 기준과 지원자 검색의 경계</div>
     <p><strong>Position·CompetencyModelVersion·EvaluationCriterion은 Aurora의 구조화된 권위 데이터</strong>이며
-    버전 ID로 직접 읽습니다. OpenSearch에 임베딩하는 대상은 지원자 제출 자료·코드와 필요한 대화 파생뷰입니다.
-    검색 유사도가 기업의 고정 평가축을 선택하거나 변경하지 않습니다.</p>
+    버전 ID로 직접 읽습니다. 임베딩 대상은 지원자 제출 자료·코드와 필요한 대화 파생뷰이고,
+    저장 위치는 같은 Aurora 클러스터의 <code>retrieval_documents</code> 테이블입니다(002 · R-003).
+    검색 유사도가 기업의 고정 평가축을 선택하거나 변경하지 않습니다.
+    <strong>기준 문항 자체를 벡터 검색으로 고르는 설계는 여전히 금지</strong>입니다.</p>
   </div>
 
   <h3>범위 경계</h3>
@@ -753,10 +770,12 @@ hr{border:none;border-top:.5pt solid var(--rule);margin:5mm 0;}
       <tr><td class="mono">PD-06</td><td>AI 서비스</td><td>Bedrock Claude · Titan Text Embeddings V2 · Transcribe Streaming · Polly + viseme</td></tr>
       <tr><td class="mono">PD-07</td><td>실행 환경</td><td>개발은 Docker Compose · 운영은 CloudFront·S3·ALB·ECS Fargate</td></tr>
       <tr><td class="mono">PD-13</td><td>인증</td><td>기업은 Cognito 이메일·비밀번호 · 지원자는 만료 토큰 링크 + 본인 확인</td></tr>
-      <tr><td class="mono">PD-14</td><td>테넌트</td><td>기업 단위 격리 · <strong>Aurora 조회·DynamoDB 파티션·S3 경로·OpenSearch 필터·워커에 기업 식별자 강제</strong></td></tr>
+      <tr><td class="mono">PD-14</td><td>테넌트</td><td>기업 단위 격리 · <strong>Aurora 조회·검색 조건·DynamoDB 파티션·S3 경로·워커에 기업 식별자 강제</strong></td></tr>
       <tr><td class="mono">PD-15</td><td>개인정보</td><td>기업별 보관 기간 기본 6개월 · <strong>요약·색인·임베딩도 삭제 대상</strong></td></tr>
       <tr><td class="mono">PD-21</td><td>관계형 DB</td><td>Aurora PostgreSQL Serverless v2 기준 DB · 관계·버전·Evidence 무결성</td></tr>
-      <tr><td class="mono">PD-22</td><td>RAG·검색</td><td>Bedrock KB + OpenSearch Serverless · 문서는 Vector, GitHub는 <strong>Hybrid</strong></td></tr>
+      <tr><td class="mono">PD-22</td><td>RAG·검색</td><td>문서는 Vector, GitHub는 <strong>Hybrid</strong> ·
+        구현 백엔드는 002에서 <strong>Aurora <code>pgvector</code> + PostgreSQL <code>tsvector</code></strong>로 확정
+        (기존 Bedrock KB + OpenSearch Serverless 대체 · 13.4절)</td></tr>
       <tr><td class="mono">PD-23</td><td>파일·미디어</td><td>S3 원본 · MediaConvert 후처리 · 타임라인 메타데이터만 Aurora</td></tr>
       <tr><td class="mono">PD-24</td><td>인증·알림</td><td>Cognito User Pools · SES · 지원자는 Cognito 계정 없음</td></tr>
       <tr><td class="mono">PD-25</td><td>운영·보안</td><td>CloudWatch · X-Ray · KMS · Secrets Manager · WAF · CloudTrail</td></tr>
@@ -767,10 +786,24 @@ hr{border:none;border-top:.5pt solid var(--rule);margin:5mm 0;}
   <div class="box warn">
     <div class="t">PD-03이 남긴 숙제</div>
     <p>"기본 리전은 서울로 두고 <strong>서비스·모델 가용성을 배포 전에 확인한다</strong>"는 조건부 결정입니다.
-    Bedrock Claude, Titan V2, Transcribe 한국어, <strong>Polly 한국어 viseme</strong>,
-    Bedrock KB의 <code>ap-northeast-2</code> 가용성이 확인되지 않았습니다.
+    Bedrock Claude, Titan V2, Transcribe 한국어, <strong>Polly 한국어 viseme</strong>의
+    <code>ap-northeast-2</code> 가용성 확인이 여전히 남아 있습니다.
     특히 viseme Speech Marks는 PD-10의 2D 아바타 입 모양이 전적으로 의존하는 기능입니다.
-    미가용 시 교차 리전 추론이 필요하고, 그러면 개인정보 국외 이전 승인이 일정에 추가됩니다.</p>
+    미가용 시 교차 리전 추론이 필요하고, 그러면 개인정보 국외 이전 승인이 일정에 추가됩니다.
+    <strong>Bedrock Knowledge Base 가용성은 더 이상 차단 요소가 아닙니다</strong> —
+    002에서 KB를 사용하지 않는 구조로 전환했기 때문입니다(13.4절).</p>
+  </div>
+
+  <div class="box ok">
+    <div class="t">PD-22 개정 경로 — 하위 문서가 임의로 바꾼 것이 아니다</div>
+    <p>PD 결정은 하위 문서가 재검토할 수 없습니다. 002의 검색 백엔드 변경은
+    <strong>정식 개정 경로</strong>를 따랐습니다 —
+    <code>specs/002-criterion-grounded-rag/research.md</code> R-003이 "파일럿 규모가 Aurora에 들어가고
+    트랜잭션 삭제·테넌트 강제가 같은 커밋에서 보장된다"는 근거로 결정을 기록하고,
+    R-008이 <code>SearchIndex</code> 인터페이스 뒤에서 Aurora 구현을 추가한 뒤
+    회귀 비교 후 OpenSearch 인프라를 제거하는 단계적 절차를 규정했습니다.
+    PD-22가 고정한 것은 <strong>"문서는 Vector, 코드는 Hybrid"라는 검색 성질</strong>이며 그 성질은 유지됩니다.
+    변경된 것은 <strong>그 성질을 구현하는 관리형 서비스</strong>입니다.</p>
   </div>
 
   <div class="pn"><span>02 · 확정 기술 결정</span><span class="num">04</span></div>
@@ -798,7 +831,7 @@ hr{border:none;border-top:.5pt solid var(--rule);margin:5mm 0;}
         <td class="mono c">II</td>
         <td><strong>테넌트 격리 · 구조적 개인정보 보호</strong></td>
         <td>모든 repository·검색·객체 키·비동기 메시지·워커 작업이 <code>company_id</code> 보유·강제.
-        분석·녹화·평가 전 유효 동의 필수. 삭제는 Aurora·DynamoDB·S3·OpenSearch·요약·임베딩 전부 + 검증 manifest</td>
+        분석·녹화·평가 전 유효 동의 필수. 삭제는 Aurora·DynamoDB·S3·검색 행·요약·임베딩 전부 + 검증 manifest</td>
       </tr>
       <tr>
         <td class="mono c">III</td>
@@ -882,14 +915,18 @@ hr{border:none;border-top:.5pt solid var(--rule);margin:5mm 0;}
 
   <div class="figure-legend" aria-label="저장소 권위 범례">
     <span><i style="background:#0B6E5F;"></i><strong>Aurora</strong> durable authority</span>
-    <span><i style="background:#2C74C9;"></i><strong>DynamoDB · OpenSearch</strong> rebuildable view</span>
+    <span><i style="background:#2C74C9;"></i><strong>DynamoDB · retrieval_documents</strong> rebuildable view</span>
     <span><i style="background:#8A5A00;"></i><strong>SQS · Step Functions</strong> long-running work</span>
   </div>
 
   <div class="box ok">
     <div class="t">토폴로지 핵심 원칙</div>
-    <p><strong>Aurora PostgreSQL은 Evidence와 영속 상태의 권위 저장소</strong>입니다. DynamoDB의 Hot Context와 OpenSearch 색인은
-    동일한 ID·버전·테넌트 범위로 재구축 가능한 파생 뷰이며, S3는 문서·미디어·스냅샷 객체를 보관합니다.</p>
+    <p><strong>Aurora PostgreSQL은 Evidence와 영속 상태의 권위 저장소</strong>입니다. DynamoDB의 Hot Context와
+    검색 파생 테이블(<code>retrieval_documents</code>)은 동일한 ID·버전·테넌트 범위로 재구축 가능한 파생 뷰이며,
+    S3는 문서·미디어·스냅샷 객체를 보관합니다.
+    <strong>같은 클러스터에 있어도 권위 등급은 다릅니다</strong> —
+    파생 테이블은 원본과 <code>content_hash</code>·<code>embedding_version</code>으로 재생성 가능하고,
+    복구 시 재구축 대상이지 복원 기준이 아닙니다.</p>
   </div>
 
   <div class="pn"><span>03 · 시스템 토폴로지</span><span class="num">06</span></div>
@@ -906,9 +943,10 @@ hr{border:none;border-top:.5pt solid var(--rule);margin:5mm 0;}
       <tr><td><strong>프론트엔드</strong></td><td>React 18+, TypeScript, Vite, TanStack Query, Zustand</td><td>기업 콘솔·면접룸 · 서버 상태와 면접 로컬 상태 분리</td></tr>
       <tr><td><strong>브라우저 미디어</strong></td><td>MediaDevices, MediaRecorder, Web Audio API</td><td>장비 점검, 영상 조각 녹화, 음성 스트리밍</td></tr>
       <tr><td><strong>백엔드</strong></td><td>Python 3.12+, FastAPI, Pydantic, SQLAlchemy 2, Alembic</td><td>REST, WebSocket, 도메인 규칙, DB 접근·마이그레이션</td></tr>
-      <tr><td><strong>실시간 채널</strong></td><td>FastAPI WebSocket + ALB</td><td>질문 상태·텍스트·TTS 결과·복구 이벤트 전달</td></tr>
-      <tr><td><strong>백그라운드</strong></td><td>SQS, Step Functions, ECS Fargate 워커, Lambda</td><td>분석·색인·리포트·삭제·영상 후처리</td></tr>
-      <tr><td><strong>인프라 코드</strong></td><td>Terraform HCL, AWS Provider, OpenSearch Provider</td><td>네트워크·컴퓨팅·데이터·AI 검색·보안 리소스 재현</td></tr>
+      <tr><td><strong>실시간 채널</strong></td><td>FastAPI WebSocket + ALB (CloudFront <code>/v1/*</code> 경유)</td><td>질문 상태·텍스트·TTS 결과·복구 이벤트 전달</td></tr>
+      <tr><td><strong>검색</strong></td><td>Aurora PostgreSQL <code>pgvector</code> + <code>tsvector</code> · Bedrock Titan V2 임베딩</td><td>테넌트 우선 필터 후 벡터·렉시컬·심볼 exact 하이브리드 랭킹</td></tr>
+      <tr><td><strong>백그라운드</strong></td><td>SQS, Step Functions, ECS Fargate 워커</td><td>분석·색인·리포트·삭제·영상 후처리 · <strong>Lambda 미사용</strong>(13.3절)</td></tr>
+      <tr><td><strong>인프라 코드</strong></td><td>Terraform HCL, AWS Provider ~&gt; 5.80</td><td>네트워크·컴퓨팅·데이터·AI 안전장치·보안 리소스 재현</td></tr>
       <tr><td><strong>컨테이너</strong></td><td>Docker, ECR, ECS Fargate</td><td>API와 워커 이미지의 동일 실행 환경</td></tr>
     </tbody>
   </table>
@@ -944,7 +982,7 @@ backend/alembic/versions/{company,submission,interview,reporting,merge}/
 infra/
 ├─ bootstrap/{state-backend, pipeline-role}/
 ├─ modules/{network,edge,compute,data,async-workflow,ai-search,identity,observability}/
-└─ environments/{dev,stage,prod}/{foundation,data-ai,application}/
+└─ environments/dev/{foundation,data-ai,application}/ · environments/prod/
 
 tests/{e2e, fixtures/shared, regression, load}/</pre>
 
@@ -1317,10 +1355,22 @@ CommandMeta {
         <td>Hot 대화 문맥과 복구 체크포인트. <strong>Aurora + 자막 객체에서 재구축 가능.</strong> 장기 보관의 유일한 기준 저장소로 사용하지 않음</td></tr>
       <tr><td><strong>S3</strong></td><td>불변 객체</td>
         <td>원본 문서, 코드 스냅샷, 영상·음성·자막 파일, 리포트 산출물</td></tr>
-      <tr><td><strong>OpenSearch Serverless<br>+ Bedrock KB</strong></td><td>파생</td>
-        <td>벡터·렉시컬·하이브리드 검색. <strong>재구축 가능한 색인이며 캐스케이딩 권위가 아님</strong></td></tr>
+      <tr><td><strong>Aurora <code>retrieval_documents</code></strong><br><small style="color:var(--muted);">pgvector + tsvector</small></td><td>파생</td>
+        <td>벡터·렉시컬·심볼 exact 하이브리드 검색. <strong>재구축 가능한 색인이며 캐스케이딩 권위가 아님.</strong>
+        권위 테이블과 같은 클러스터에 있으므로 삭제·테넌트 강제가 <strong>같은 트랜잭션</strong>에서 성립</td></tr>
     </tbody>
   </table>
+
+  <div class="box">
+    <div class="t">파생 검색 테이블이 권위 테이블과 같은 클러스터에 있는 이유</div>
+    <p>별도 검색 클러스터는 <strong>두 개의 진실</strong>을 만듭니다. 지원자 삭제가 Aurora에서 커밋된 뒤
+    외부 색인 삭제가 실패하면, 헌장 원칙 II가 요구하는 "스토어별 부재 검증"이 비동기 재시도에 의존하게 됩니다.
+    <code>retrieval_documents</code>를 같은 클러스터에 두면 원본 row 삭제와 검색 row 삭제가
+    <strong>하나의 트랜잭션</strong>이고, 실패 시 둘 다 롤백됩니다.
+    검색 쿼리도 <code>company_id</code>·<code>applicant_id</code>·<code>deleted_at IS NULL</code>을
+    스코어링 <em>전에</em> WHERE로 강제하므로 테넌트 누출 경로가 애초에 생기지 않습니다
+    (<code>submission_analysis/adapters/postgres_hybrid.py</code>).</p>
+  </div>
 
   <h3>공통 규약</h3>
   <table class="sm">
@@ -1402,13 +1452,13 @@ SK : META
   <table class="sm">
     <thead><tr><th style="width:22%">자료</th><th style="width:26%">기준 저장소</th><th>검색 전략</th></tr></thead>
     <tbody>
-      <tr><td>자기소개서·이력서</td><td>텍스트는 Aurora, 원본은 S3</td><td>Bedrock KB + OpenSearch <strong>Vector RAG</strong> · 서술형 경험 구간만</td></tr>
-      <tr><td>포트폴리오·기술문서</td><td>S3</td><td>Bedrock KB + OpenSearch Vector RAG</td></tr>
-      <tr><td>공개 GitHub 코드</td><td>워커 임시 저장소 · 스냅샷·diff·산출물은 S3</td><td>커밋별 변경 청크와 코드 유닛을 <strong>벡터 + BM25 + 심볼·경로 keyword</strong>로 색인</td></tr>
+      <tr><td>자기소개서·이력서</td><td>텍스트는 Aurora, 원본은 S3</td><td>Titan V2 임베딩 + <code>pgvector</code> <strong>Vector RAG</strong> · 서술형 경험 구간만</td></tr>
+      <tr><td>포트폴리오·기술문서</td><td>S3</td><td>Titan V2 임베딩 + <code>pgvector</code> Vector RAG</td></tr>
+      <tr><td>공개 GitHub 코드</td><td>워커 임시 저장소 · 스냅샷·diff·산출물은 S3</td><td>커밋별 변경 청크와 코드 유닛을 <strong>벡터 + <code>tsvector</code> 렉시컬 + 심볼·경로 exact</strong>로 색인</td></tr>
       <tr><td>최근 질문·답변</td><td>DynamoDB</td><td>Aurora에 최소 영구 <code>Turn</code> 앵커</td></tr>
-      <tr><td>오래된 대화</td><td>Aurora / S3 자막 원본</td><td>요약 + OpenSearch 대화 RAG</td></tr>
-      <tr><td>자막</td><td>Aurora 세그먼트 + S3 전체 파일</td><td>OpenSearch 키워드 색인 · 영상 타임스탬프 연결</td></tr>
-      <tr><td>질문의 자료 출처</td><td>Aurora <code>SourceReference</code></td><td>OpenSearch 문서·청크 ID 연결</td></tr>
+      <tr><td>오래된 대화</td><td>Aurora / S3 자막 원본</td><td>요약 + <code>retrieval_documents</code> 대화 파생뷰</td></tr>
+      <tr><td>자막</td><td>Aurora 세그먼트 + S3 전체 파일</td><td><code>tsvector</code> 키워드 검색 · 영상 타임스탬프 연결</td></tr>
+      <tr><td>질문의 자료 출처</td><td>Aurora <code>SourceReference</code></td><td><code>retrieval_document_id</code>·<code>locator</code> 연결</td></tr>
       <tr><td><strong>평가 Evidence</strong></td><td><strong>Aurora 전용</strong></td><td><strong>없음</strong> · 평가 항목·답변 Turn·영상 시점의 관계를 강제</td></tr>
     </tbody>
   </table>
@@ -1419,10 +1469,24 @@ SK : META
     <li>제출된 GitHub 계정·커밋 SHA·PR 정보로 지원자의 커밋 범위를 확정</li>
     <li>각 커밋을 부모와 비교해 추가·수정 코드와 영향받은 파일·함수·클래스·테스트 추출 → <code>CommitChangeChunk</code></li>
     <li>변경된 함수·클래스를 <code>CandidateCodeUnit</code>으로 확장 — 커밋 당시 전체 구현, 현재 스냅샷, 변경 영역, 직접 호출하는 코드·모델·인터페이스, 관련 테스트</li>
-    <li>둘을 각각 Titan Text Embeddings V2로 임베딩해 OpenSearch에 색인</li>
+    <li>둘을 각각 Titan Text Embeddings V2(1024차원)로 임베딩해 <code>retrieval_documents</code>에 적재</li>
     <li>코드 유닛을 <code>primary_owned</code> / <code>shared</code> / <code>context_only</code> / <code>unrelated</code>로 분류하고 <code>ownership_confidence</code> 계산</li>
     <li>최종 점수 = <code>vector_score</code> + <code>lexical_score</code> + <code>symbol_exact_score</code> + 메타데이터 보정 (설정 가능 가중치)</li>
   </ol>
+  <p>현재 구현의 SQL 랭킹은 <code>1 - cosine_distance(embedding, query)</code>를 벡터 점수로,
+  <code>ts_rank_cd(to_tsvector('simple', search_text), websearch_to_tsquery('simple', query))</code>를
+  렉시컬 점수로, 소문자 심볼 일치를 exact 점수로 두고
+  <strong><code>vector×0.55 + lexical×0.30 + exact×0.80</code></strong>으로 정렬해 <code>LIMIT 200</code>을
+  가져온 뒤 애플리케이션에서 <code>ownership_confidence×0.15</code>를 더해 상위 5건으로 재랭킹합니다.
+  가중치와 <code>token_budget</code>은 12절의 <strong>버전드 설정</strong>이며 코드 상수가 아닙니다.</p>
+  <div class="box warn">
+    <div class="t">한국어 토크나이저 한계 — 알려진 제약</div>
+    <p><code>tsvector</code> 설정이 <code>'simple'</code>이므로 <strong>한국어 형태소 분석이 없습니다.</strong>
+    공백 단위 토큰화만 수행되어 조사가 붙은 한국어 표현의 렉시컬 재현율이 낮습니다.
+    현재는 벡터 점수(0.55)가 한국어 서술 자료의 주 신호이고, 렉시컬 점수는
+    <strong>영문 기술 용어·심볼·경로</strong>에서 실효를 냅니다.
+    개선 경로는 형태소 사전 확장이나 별도 분석기 도입이며 회귀 비교 후 결정합니다.</p>
+  </div>
   <div class="box warn">
     <div class="t">질문 생성 제약</div>
     <p>커밋 메시지나 SHA 자체를 묻는 질문은 생성하지 않습니다. <strong>커밋은 지원자 작성 코드의 범위와 출처를
@@ -1472,14 +1536,14 @@ SK : META
       <div class="pipe-arrow">→</div>
       <div class="pipe-step derived"><div class="k">B-04</div><div class="v">Chunk · Code Unit</div><div class="s">page/section/location · diff/AST/test</div></div>
       <div class="pipe-arrow">→</div>
-      <div class="pipe-step derived"><div class="k">B-05</div><div class="v">Titan V2 · OpenSearch</div><div class="s">문서 Vector · 코드 lexical/exact 병합</div></div>
+      <div class="pipe-step derived"><div class="k">B-05</div><div class="v">Titan V2 · pgvector</div><div class="s">문서 Vector · 코드 lexical/exact 병합</div></div>
       <div class="pipe-arrow">→</div>
       <div class="pipe-step control"><div class="k">B-06</div><div class="v">InterviewStrategy</div><div class="s">검증 포인트 · source 후보 · 시간 예산</div></div>
     </div>
     <div class="invariant-strip">
       <span><strong>스코프</strong>company_id · invitation/applicant 범위</span>
       <span><strong>재현성</strong>source/chunk hash · extractor/config/model version</span>
-      <span><strong>파생뷰</strong>OpenSearch는 원본 권위가 아니며 재구축 가능</span>
+      <span><strong>파생뷰</strong><code>retrieval_documents</code>는 원본 권위가 아니며 재구축 가능</span>
       <span><strong>삭제</strong>원본·청크·임베딩·검색 문서 부재까지 검증</span>
     </div>
   </div>
@@ -1594,7 +1658,7 @@ SK : META
     </tbody>
   </table>
 
-  <div class="pn"><span>07 · 이벤트 아키텍처와 Outbox</span><span class="num">14</span></div>
+  <div class="pn"><span>07 · 이벤트 아키텍처와 Outbox</span><span class="num">15</span></div>
 </div>
 
 <!-- ══════════════════ 07b ══════════════════ -->
@@ -1623,7 +1687,7 @@ SK : META
       <div class="seq-step"><div class="seq-route">Browser → FastAPI</div><div class="seq-detail"><code>답변 완료</code>, 업로드 manifest, <code>Idempotency-Key</code>, <code>expected_sequence</code>를 전송합니다.</div></div>
       <div class="seq-step"><div class="seq-route">FastAPI ↔ Transcribe</div><div class="seq-detail">스트리밍 결과를 final transcript로 닫고 자막 구간과 원본 미디어 참조를 연결합니다.</div></div>
       <div class="seq-step commit"><div class="seq-route">FastAPI → Aurora</div><div class="seq-detail"><strong>단일 트랜잭션:</strong> Turn·Checkpoint·Outbox를 커밋하고 <code>session_sequence</code>를 증가시킵니다.</div></div>
-      <div class="seq-step degraded"><div class="seq-route">FastAPI ↔ Context</div><div class="seq-detail">DynamoDB 최근 문맥과 OpenSearch 근거를 조회합니다. 파생 뷰 장애 시 Aurora 최근 Turn으로 제한 모드를 구성합니다.</div></div>
+      <div class="seq-step degraded"><div class="seq-route">FastAPI ↔ Context</div><div class="seq-detail">DynamoDB 최근 문맥과 Aurora 하이브리드 검색 근거를 조회합니다. 파생 뷰 장애 시 Aurora 최근 Turn으로 제한 모드를 구성합니다.</div></div>
       <div class="seq-step"><div class="seq-route">FastAPI ↔ Bedrock</div><div class="seq-detail">구조화 질문을 생성한 뒤 Pydantic → 애플리케이션 정책 → Guardrail 순으로 검증합니다.</div></div>
       <div class="seq-step"><div class="seq-route">FastAPI ↔ Polly</div><div class="seq-detail">검증된 질문만 음성·viseme으로 합성하고 텍스트·오디오·상태를 WebSocket으로 전달합니다.</div></div>
     </div>
@@ -1683,7 +1747,7 @@ SK : META
     <strong>요약에서 원본 Turn과 영상 구간으로 되돌아가 실제 답변을 근거로</strong> 사용합니다.</p>
   </div>
 
-  <div class="pn"><span>07 · 이벤트 아키텍처와 Outbox</span><span class="num">15</span></div>
+  <div class="pn"><span>07 · 이벤트 아키텍처와 Outbox</span><span class="num">16</span></div>
 </div>
 
 <!-- ══════════════════ 07c · DYNAMIC INTERVIEW ENGINE ══════════════════ -->
@@ -1892,13 +1956,13 @@ SK : META
       <div class="node lane-d"><div class="n-t">Lane D</div><div class="n-s">자막·미디어·리포트</div></div>
     </div>
     <div class="arrow">↑ &nbsp; <code>deletion.target_verified</code> &nbsp; ↑</div>
-    <div class="node soft"><div class="n-t">스토어별 부재 검증 완료까지 삭제 미완료</div><div class="n-s">Aurora · DynamoDB · S3 · OpenSearch · 요약 · 임베딩</div></div>
+    <div class="node soft"><div class="n-t">스토어별 부재 검증 완료까지 삭제 미완료</div><div class="n-s">Aurora 권위 row · <code>retrieval_documents</code> · DynamoDB · S3 · 요약 · 임베딩</div></div>
     <div class="dg-note">각 레인은 <strong>자기 타겟만</strong> 삭제·검증하고 결과를 D에 반송합니다.
     삭제 열거는 durable 관계 레코드에서 시작하고 알려진 모든 파생 ID를 포함합니다.
     <strong>소프트 삭제는 개인정보 삭제를 충족하지 않습니다.</strong></div>
   </div>
 
-  <div class="pn"><span>08 · 상태 머신</span><span class="num">16</span></div>
+  <div class="pn"><span>08 · 상태 머신</span><span class="num">18</span></div>
 </div>
 
 <!-- ══════════════════ 08b 복구 ══════════════════ -->
@@ -1962,7 +2026,7 @@ SK : META
     </tbody>
   </table>
 
-  <div class="pn"><span>08 · 상태 머신</span><span class="num">17</span></div>
+  <div class="pn"><span>08 · 상태 머신</span><span class="num">19</span></div>
 </div>
 
 <!-- ══════════════════ 09 ══════════════════ -->
@@ -2067,7 +2131,7 @@ SK : META
     </ul>
   </div>
 
-  <div class="pn"><span>09 · Evidence 무결성 규칙</span><span class="num">18</span></div>
+  <div class="pn"><span>09 · Evidence 무결성 규칙</span><span class="num">20</span></div>
 </div>
 
 <!-- ══════════════════ 09b 사람검토 ══════════════════ -->
@@ -2133,7 +2197,7 @@ SK : META
   <p>새 계약이나 불변식을 정의하는 테스트는 프로덕션 코드 전에 또는 함께 커밋되고,
   <strong>이전 구현에 대해 실패하는 것이 관찰되어야</strong> 합니다.</p>
 
-  <div class="pn"><span>09 · Evidence 무결성 규칙</span><span class="num">19</span></div>
+  <div class="pn"><span>09 · Evidence 무결성 규칙</span><span class="num">21</span></div>
 </div>
 
 <!-- ══════════════════ 10 ══════════════════ -->
@@ -2153,33 +2217,46 @@ SK : META
   <table class="sm">
     <thead><tr><th style="width:20%">모듈</th><th style="width:44%">리소스</th><th>게이트</th></tr></thead>
     <tbody>
-      <tr><td class="mono">network</td><td>VPC, 서브넷, VPC 엔드포인트, 시큐리티 그룹 · <strong>최소 2 AZ</strong></td><td>QG-14, QG-16</td></tr>
-      <tr><td class="mono">edge</td><td>비공개 S3 오리진, CloudFront OAC, WAF, Route 53, ACM</td><td>QG-14</td></tr>
-      <tr><td class="mono">compute</td><td>ECR, ALB, ECS API·워커 서비스, 오토스케일 소유권 규칙</td><td>PD-05, QG-13</td></tr>
-      <tr><td class="mono">data</td><td>Aurora, DynamoDB, S3, KMS, Secrets Manager</td><td>PD-21, PD-23, QG-14</td></tr>
-      <tr><td class="mono">async-workflow</td><td>SQS·DLQ, Step Functions, EventBridge</td><td>FR-050</td></tr>
-      <tr><td class="mono">ai-search</td><td>OpenSearch Serverless, 인덱스 매핑, Bedrock KB, Guardrail</td><td>PD-06, PD-22, QG-15</td></tr>
-      <tr><td class="mono">identity</td><td>Cognito, SES · 최소권한 role</td><td>PD-13, PD-24</td></tr>
-      <tr><td class="mono">observability</td><td>CloudWatch, X-Ray, 알람, Budgets, 감사 리소스</td><td>FR-051</td></tr>
+      <tr><td class="mono">network</td><td>VPC <code>10.40.0.0/16</code>, AZ당 Public·Private 서브넷, NAT, 인터페이스 엔드포인트 8종 + 게이트웨이 2종, 시큐리티 그룹 · <strong>ALB 인그레스는 CloudFront 관리형 prefix list만</strong></td><td>QG-14, QG-16</td></tr>
+      <tr><td class="mono">edge</td><td>비공개 S3 오리진, CloudFront OAC, WAFv2(CLOUDFRONT), Route 53, ACM(us-east-1)</td><td>QG-14</td></tr>
+      <tr><td class="mono">compute</td><td>ECR(태그 IMMUTABLE), ALB, ECS API·워커 서비스, 오토스케일·배포 서킷브레이커, 태스크 IAM</td><td>PD-05, QG-13</td></tr>
+      <tr><td class="mono">data</td><td>Aurora Serverless v2(writer+reader), DynamoDB, S3 6버킷, KMS, Secrets Manager 관리형 마스터 비밀번호</td><td>PD-21, PD-23, QG-14</td></tr>
+      <tr><td class="mono">async-workflow</td><td>SQS 4큐·DLQ 4, Step Functions 디스패처, EventBridge 커스텀 버스</td><td>FR-050</td></tr>
+      <tr><td class="mono">ai-search</td><td><strong>Bedrock Guardrail 전용</strong> · PROMPT_ATTACK·HATE 입·출력 HIGH 필터
+        <br><small style="color:var(--muted);">002 전환으로 OpenSearch Serverless·Bedrock KB 리소스 제거</small></td><td>PD-06, QG-15</td></tr>
+      <tr><td class="mono">identity</td><td>Cognito User Pool(최소 14자·TOTP MFA·관리자 생성 전용), SESv2 + DKIM · 최소권한 role</td><td>PD-13, PD-24</td></tr>
+      <tr><td class="mono">observability</td><td>CloudWatch 로그·알람·대시보드, X-Ray 샘플링, SNS, Budgets, CloudTrail(멀티리전·파일 검증)</td><td>FR-051</td></tr>
     </tbody>
   </table>
+
+  <div class="box ok">
+    <div class="t">모듈 이름은 남기고 내용만 축소한 이유 — <code>ai-search</code></div>
+    <p>002 전환으로 <code>ai-search</code> 모듈에 남은 리소스는 <code>aws_bedrock_guardrail</code> 하나입니다.
+    모듈을 삭제하지 않은 것은 <strong>Guardrail이 검색이 아니라 AI 안전 경계</strong>이고,
+    모듈 내부 태그가 <code>Component = "ai-safety"</code>로 이미 그 역할을 표현하기 때문입니다.
+    모듈 경로를 없애면 세 환경의 상태 파일에서 리소스 주소가 이동해
+    <strong>Guardrail 재생성과 실행 중 세션의 안전 필터 공백</strong>이 발생합니다.
+    <code>infra/tests/test_terraform_contracts.py</code>가
+    <code>aws_opensearchserverless</code>·<code>aws_bedrockagent_knowledge_base</code> 문자열의
+    <strong>재등장을 실패로 처리</strong>하므로, 이 모듈이 다시 검색 인프라로 자라는 일은 테스트가 막습니다.</p>
+  </div>
 
   <h3>환경과 상태 분리</h3>
   <pre class="flow">infra/
 ├─ bootstrap/{state-backend, pipeline-role}/      ← 최초 1회, 이후 자기 상태도 원격 이전
 ├─ modules/  (위 8개)
-└─ environments/{dev, stage, prod}/{foundation, data-ai, application}/
+└─ environments/dev/{foundation, data-ai, application}/ · environments/prod/
 
 terraform-state/
 ├─ dev/{foundation, data-ai, application}.tfstate
-├─ stage/{foundation, data-ai, application}.tfstate
-└─ prod/{foundation, data-ai, application}.tfstate</pre>
+└─ prod/terraform.tfstate</pre>
 
   <div class="box">
     <div class="t">3루트 분리의 목적</div>
     <p><code>foundation</code> · <code>data-ai</code> · <code>application</code> 상태를 분리해
-    <strong>자주 배포하는 ECS 변경이 Aurora·S3·OpenSearch 같은 장기 데이터 리소스의 변경 계획에 섞이지 않게</strong> 합니다.
-    개발·스테이징·운영은 Workspace 이름만으로 구분하지 않고 별도 Root Module, 변수, Backend Key를 씁니다.
+    <strong>자주 배포하는 ECS 변경이 Aurora·S3 같은 장기 데이터 리소스의 변경 계획에 섞이지 않게</strong> 합니다.
+    개발과 운영은 Workspace 이름만으로 구분하지 않고 별도 Root Module, 변수, Backend Key를 씁니다.
+    운영은 데이터 리소스를 자주 바꾸지 않으므로 단일 루트를 유지합니다.
     최소 조건은 환경별 상태·IAM Role·KMS Key·데이터 저장소의 분리이며, 운영은 별도 계정을 권장합니다.</p>
   </div>
 
@@ -2189,9 +2266,9 @@ terraform-state/
     <tbody>
       <tr><td>VPC, Subnet, SG, VPC Endpoint</td><td>프론트·백엔드 테스트와 빌드</td><td>지원자 자료 추출·청킹·임베딩</td></tr>
       <tr><td>ALB, ECS Cluster·Service, ECR, IAM Role</td><td>Docker 이미지 ECR 업로드, ECS 새 버전 배포</td><td>GitHub 커밋별 분석과 Hybrid RAG 색인</td></tr>
-      <tr><td>Aurora, DynamoDB, S3, KMS, Secrets Manager</td><td><strong>Alembic 마이그레이션 ECS Task 실행</strong></td><td>Bedrock KB 자료 동기화·직접 수집</td></tr>
+      <tr><td>Aurora, DynamoDB, S3, KMS, Secrets Manager</td><td><strong>Alembic 마이그레이션 ECS Task 실행</strong></td><td>Titan V2 임베딩 생성과 <code>retrieval_documents</code> 적재·삭제</td></tr>
       <tr><td>SQS, DLQ, Step Functions, EventBridge</td><td>React 정적 자산 S3 업로드, CloudFront 무효화</td><td>면접·평가·리포트·삭제 워크플로 실행</td></tr>
-      <tr><td>OpenSearch SL, Bedrock KB·Data Source·Guardrail</td><td>프롬프트·모델·청킹·검색 설정 배포와 회귀 테스트</td><td>실시간 질문 생성과 대화 메모리 갱신</td></tr>
+      <tr><td>Bedrock Guardrail</td><td>프롬프트·모델·청킹·검색 가중치 배포와 회귀 테스트</td><td>실시간 질문 생성과 대화 메모리 갱신</td></tr>
       <tr><td>Cognito, SES, CloudFront, WAF, Route 53, ACM, CloudWatch</td><td>배포 후 Smoke Test와 종단 검증</td><td>업무 데이터·검색 문서의 생성·수정·삭제</td></tr>
     </tbody>
   </table>
@@ -2206,7 +2283,7 @@ terraform-state/
     Terraform Apply 성공과 DB 마이그레이션 성공은 서로 다른 배포 단계와 실패 상태를 가집니다.</p>
   </div>
 
-  <div class="pn"><span>10 · AWS 인프라 구성</span><span class="num">20</span></div>
+  <div class="pn"><span>10 · AWS 인프라 구성</span><span class="num">22</span></div>
 </div>
 
 <!-- ══════════════════ 10b ══════════════════ -->
@@ -2216,7 +2293,7 @@ terraform-state/
   <h3>개발·배포 제어 흐름 — Build Once · Promote by Digest</h3>
   <p>인프라 변경과 애플리케이션 릴리스는 같은 파이프라인이 아닙니다. Terraform은 실행 환경과
   ARN·Endpoint·Role을 제공하고, 애플리케이션 파이프라인은 <strong>한 번 생성한 이미지 다이제스트</strong>를
-  Stage에서 검증한 뒤 Prod로 승격합니다.</p>
+  dev에서 검증한 뒤 Prod로 승격합니다.</p>
 
   <figure class="arch-figure deployment">
     <div class="figure-head">
@@ -2226,8 +2303,8 @@ terraform-state/
     <img src="assets/architecture/cicd-release-control-v1.png"
          alt="Pull Request부터 품질 게이트, 단일 이미지 빌드, ECR 다이제스트, Stage ECS 배포, Alembic ECS Task, Smoke와 E2E, 수동 승인, Prod Rolling 배포와 관측·롤백으로 이어지는 애플리케이션 릴리스와 별도의 Terraform 인프라 파이프라인">
     <figcaption>
-      <span><strong>승격 불변식.</strong> Stage와 Prod가 동일 ECR digest를 사용합니다. Alembic은 Stage ECS Task에서 먼저 검증하고, 계약·테넌트 격리·migration head·개인정보 로그 검사가 통과해야 승인 단계로 이동합니다.</span>
-      <span class="source">PD-26 · QG-01~16 · R-015</span>
+      <span><strong>승격 불변식.</strong> dev와 Prod가 동일 ECR digest를 사용합니다. Alembic은 dev ECS Task에서 먼저 검증하고, 계약·테넌트 격리·migration head·개인정보 로그 검사가 통과해야 승인 단계로 이동합니다.</span>
+      <span class="source">PD-26 · QG-01~16 · R-015 · 그림의 "Stage" 단계는 stage 환경 제거 전에 생성되었으며 현재는 dev가 그 자리를 맡습니다</span>
     </figcaption>
   </figure>
 
@@ -2236,23 +2313,37 @@ terraform-state/
     <thead><tr><th style="width:22%">실패 지점</th><th style="width:23%">배포 상태</th><th>자동 동작</th><th style="width:27%">운영자 판단</th></tr></thead>
     <tbody>
       <tr><td>Quality Gates</td><td>아티팩트 미생성</td><td>파이프라인 즉시 중단</td><td>계약·테넌트·로그·migration head 수정 후 재실행</td></tr>
-      <tr><td>Stage Alembic Task</td><td>기존 Stage 서비스 유지</td><td>승격 금지 · 오류 코드와 revision만 기록</td><td>forward-compatible migration 보정 · 운영 DB에 수동 적용 금지</td></tr>
-      <tr><td>Smoke · E2E</td><td>Stage digest 격리</td><td>Prod 승인 단계 비활성</td><td>원인별 애플리케이션 또는 설정 수정 후 새 digest 생성</td></tr>
+      <tr><td>dev Alembic Task</td><td>기존 dev 서비스 유지</td><td>승격 금지 · 오류 코드와 revision만 기록</td><td>forward-compatible migration 보정 · 운영 DB에 수동 적용 금지</td></tr>
+      <tr><td>Smoke · E2E</td><td>dev digest 격리</td><td>Prod 승인 단계 비활성</td><td>원인별 애플리케이션 또는 설정 수정 후 새 digest 생성</td></tr>
       <tr><td>Prod Health Regression</td><td>이전 digest가 기준</td><td>ECS Task Definition 롤백 · 알람 유지</td><td><strong>DB 자동 downgrade 금지</strong> · 호환성 또는 보상 migration 결정</td></tr>
     </tbody>
   </table>
 
-  <h3>Bedrock · OpenSearch 생성 순서</h3>
-  <p>OpenSearch Serverless와 Bedrock Knowledge Base는 IAM과 검색 인덱스의 선행 조건이 있으므로
-  아래 순서를 <strong>Terraform 의존성으로 표현</strong>합니다.</p>
-  <pre class="flow">KMS · IAM Role
-  → OpenSearch 암호화 정책
-    → OpenSearch 네트워크·데이터 접근 정책과 VPC Endpoint
-      → OpenSearch Serverless Vector Search Collection
-        → 버전이 있는 벡터·키워드 인덱스와 필드 매핑
-          → Bedrock Knowledge Base</pre>
-  <p>인덱스와 매핑은 OpenSearch Provider 또는 동일한 결과를 만드는 <strong>버전 관리형 초기화 작업</strong>으로
-  구성합니다.</p>
+  <h3>검색 인프라 생성 순서 — Terraform이 아니라 Alembic이 소유한다</h3>
+  <p>002 전환의 부수 효과 중 실무적으로 가장 큰 것은 <strong>검색 스키마의 소유자가 바뀐 것</strong>입니다.
+  이전 설계에서는 컬렉션·접근 정책·인덱스 매핑이 Terraform 의존성 그래프에 있었고,
+  인덱스 매핑만 별도 Provider나 초기화 작업으로 빠져 <strong>Apply 성공과 검색 가능 상태가 일치하지 않는 구간</strong>이
+  존재했습니다. 현재는 검색 스키마가 관계형 스키마와 같은 도구를 씁니다.</p>
+  <pre class="flow">Terraform  : KMS · Aurora 클러스터 · Secrets Manager 관리형 마스터 비밀번호
+             (검색 리소스 없음 · ai-search 모듈은 Guardrail만 생성)
+      ↓
+Alembic    : CREATE EXTENSION IF NOT EXISTS vector
+      ↓      b_002_pgvector_verification
+             retrieval_documents(embedding Vector(1024), search_text, locator, deleted_at)
+             ix_retrieval_scope(company_id, applicant_id, invitation_id,
+                                competency_model_version_id, criterion_id)
+             ix_retrieval_source(company_id, source_id)
+      ↓
+애플리케이션 : Titan V2 임베딩 생성 → 테넌트 스코프 upsert → 하이브리드 랭킹</pre>
+  <div class="box ok">
+    <div class="t">소유자 통합의 효과</div>
+    <p>검색 스키마 변경이 <strong>DB 마이그레이션 게이트</strong>를 통과합니다 —
+    <code>make migration-check</code>가 head 단일성을 검사하고, dev ECS Task에서 먼저 적용·검증한 뒤
+    Prod로 승격하는 동일한 절차를 탑니다. 별도 Provider·초기화 Job·전용 롤백 절차가 사라졌고,
+    <strong>"Terraform Apply는 성공했는데 검색은 비어 있다"</strong>는 상태가 구조적으로 제거됩니다.
+    임베딩 차원(1024)은 마이그레이션의 <code>Vector(1024)</code>와 애플리케이션 적재·질의 양쪽의
+    차원 검증으로 <strong>이중 강제</strong>됩니다.</p>
+  </div>
 
   <h3>상태 관리 규칙</h3>
   <ul class="tight">
@@ -2276,11 +2367,21 @@ terraform-state/
   <table class="sm">
     <thead><tr><th style="width:30%">항목</th><th>구성</th></tr></thead>
     <tbody>
-      <tr><td>VPC</td><td>최소 2개 가용 영역</td></tr>
-      <tr><td>노출 경계</td><td><strong>ALB만 외부 요청을 받고</strong> ECS 태스크와 Aurora는 Private Subnet</td></tr>
-      <tr><td>내부 통신</td><td>가능한 AWS 서비스는 VPC Endpoint로 인터넷 경유 축소</td></tr>
-      <tr><td>자격증명</td><td>Aurora 자격증명·외부 설정은 Secrets Manager · ECS Task Role로 접근</td></tr>
-      <tr><td>암호화</td><td>S3, Aurora, DynamoDB, OpenSearch, 로그에 <strong>KMS 암호화</strong></td></tr>
+      <tr><td>VPC</td><td><code>10.40.0.0/16</code> · 2개 가용 영역 · <strong>Public / Private 2계층</strong>
+        <br><small style="color:var(--muted);">Figure 3.1·10.1의 App·Data 구분은 <strong>논리적 배치 의도</strong>이며,
+        현재 Terraform은 AZ당 Public·Private 각 1개를 만들고 ECS 태스크와 Aurora가 같은 Private 서브넷을 공유합니다.
+        분리 강제는 서브넷이 아니라 시큐리티 그룹입니다.</small></td></tr>
+      <tr><td>노출 경계</td><td><strong>ALB만 외부 요청을 받고</strong> ECS 태스크와 Aurora는 Private Subnet ·
+        태스크는 <code>assign_public_ip = false</code></td></tr>
+      <tr><td>ALB 인그레스</td><td><strong>CloudFront 관리형 prefix list
+        <code>com.amazonaws.global.cloudfront.origin-facing</code>만 허용</strong> ·
+        ALB DNS 직접 호출은 WAF·CloudFront를 우회하므로 SG에서 차단</td></tr>
+      <tr><td>내부 통신</td><td>인터페이스 엔드포인트 8종(<code>ecr.api</code>, <code>ecr.dkr</code>, <code>logs</code>,
+        <code>secretsmanager</code>, <code>sqs</code>, <code>states</code>, <code>sts</code>, <code>xray</code>) +
+        게이트웨이 2종(<code>s3</code>, <code>dynamodb</code>)</td></tr>
+      <tr><td>자격증명</td><td>Aurora 자격증명은 <strong>관리형 마스터 비밀번호</strong> · ECS Task Role로 Secrets Manager 접근</td></tr>
+      <tr><td>암호화</td><td>S3, Aurora, DynamoDB, 로그에 <strong>KMS 암호화</strong> ·
+        검색 벡터는 Aurora 암호화에 포함되므로 별도 스토어 키 관리가 없음</td></tr>
       <tr><td>IAM 분리</td><td>API 태스크, 분석 워커, 삭제 워커, 배포 역할의 권한 분리</td></tr>
       <tr><td>객체 접근</td><td>S3 Block Public Access 유지 · <strong>CloudFront OAC 또는 짧은 만료 사전 서명 URL만</strong></td></tr>
       <tr><td>감사</td><td>CloudTrail은 AWS API 변경 · 애플리케이션은 지원자 자료 조회·수정·다운로드를 <strong>별도 감사 테이블</strong>에 기록</td></tr>
@@ -2289,18 +2390,51 @@ terraform-state/
     </tbody>
   </table>
 
-  <div class="box warn">
-    <div class="t">비용 모델 공백</div>
-    <p>기획서 전체에서 비용 관련 언급은 두 곳입니다 — Budgets·Cost Anomaly Detection으로 <strong>감지</strong>하겠다(1753행),
-    그리고 R-10 위험 항목에서 "실제 배포에서 권한·네트워크·<strong>비용</strong> 문제가 뒤늦게 발생"(1322행).
-    <strong>위험으로 인지했으나 추정 숫자가 없습니다.</strong>
-    OpenSearch Serverless 최소 OCU와 Aurora Serverless v2 최소 ACU는 트래픽 0에도 과금되며,
-    NAT Gateway·ALB·VPC Endpoint도 시간당 고정비입니다. 헌장이 <code>dev</code>·<code>stage</code>·<code>prod</code>
-    분리를 MUST로 규정하므로 <strong>고정비 × 3환경</strong>이 개발 기간 내내 발생합니다.
-    착수 전 실측이 필요합니다.</p>
+  <h3>환경별 고정비 구조 — 무엇이 트래픽 0에도 과금되는가</h3>
+  <p>기획서는 비용을 Budgets·Cost Anomaly Detection으로 <strong>감지</strong>하겠다고만 했고 추정 숫자가 없었습니다.
+  002 전환으로 검색 계층의 시간당 고정비가 사라졌으므로, 남은 고정비 항목을 환경별 실제 변수 값으로 명시합니다.
+  이 표는 <strong>"무엇이 몇 개인가"</strong>를 확정하고,
+  <strong>서울 리전 단가를 적용한 금액은 13.7절</strong>에서 산출합니다.</p>
+  <table class="sm">
+    <thead><tr><th style="width:30%">고정비 항목</th><th style="width:20%">dev</th><th style="width:20%">prod</th><th>비고</th></tr></thead>
+    <tbody>
+      <tr><td>NAT Gateway</td><td>1</td><td><strong>AZ당 1 = 2</strong></td><td>시간당 + 처리 GB · prod는 <code>nat_gateway_per_az = true</code></td></tr>
+      <tr><td>ALB</td><td>1</td><td>1</td><td>시간당 + LCU</td></tr>
+      <tr><td>인터페이스 VPC Endpoint</td><td>8 × 2 AZ</td><td>8 × 2 AZ</td><td>ENI당 시간 과금 · 게이트웨이 엔드포인트(s3·dynamodb)는 무료</td></tr>
+      <tr><td>Aurora 최소 ACU</td><td>0.5</td><td><strong>2</strong></td><td>writer + reader <strong>인스턴스 2개</strong>가 각각 최소 ACU를 유지</td></tr>
+      <tr><td>Fargate 상시 태스크</td><td>API 2 · 워커 1</td><td><strong>API 4 · 워커 4</strong></td><td>API 1024 CPU / 2048 MiB · 오토스케일 하한이 곧 고정비</td></tr>
+      <tr><td>검색 클러스터</td><td colspan="2" class="c"><strong>없음</strong></td><td>002 전환으로 제거 · 이전 설계의 최소 OCU 시간당 과금이 소멸</td></tr>
+      <tr><td>DynamoDB</td><td colspan="2" class="c">온디맨드</td><td><code>PAY_PER_REQUEST</code> · 유휴 시 스토리지·PITR만</td></tr>
+      <tr><td>SQS · EventBridge · Step Functions</td><td colspan="2" class="c">요청당</td><td>대기 상태 고정비 없음 · Step Functions는 STANDARD 상태 전이당</td></tr>
+    </tbody>
+  </table>
+
+  <div class="box ok">
+    <div class="t">002 전환이 실제로 줄인 것과 줄이지 않은 것</div>
+    <p><strong>줄인 것:</strong> 검색 전용 관리형 클러스터의 <strong>최소 용량 시간당 과금</strong>이
+    3개 환경 전부에서 사라졌습니다. 회피된 월 기준선은
+    <code>리전 OCU-시간 단가 × 설정 최소 OCU × 월 시간</code>이며
+    — 서울 단가를 넣으면 <strong>환경당 월 약 428 USD · 3환경 약 1,283 USD</strong>입니다(13.7절) —
+    이것이 개발 기간 내내 면접 0건에도 발생하던 항목이었습니다. 벡터·키워드 저장은 <strong>새 클러스터를 추가하지 않고</strong>
+    기존 Aurora 클러스터의 테이블과 인덱스로 흡수됐습니다.</p>
+    <p><strong>줄이지 않은 것:</strong> Aurora ACU·스토리지·I/O는 검색 행과 인덱스만큼 증가합니다.
+    그리고 <strong>운영 환경의 고정비를 지배하는 것은 이제 <code>pgvector</code>가 아니라 가용성 설정</strong>입니다 —
+    API·워커 각 4태스크, Aurora 최소 2 ACU × 2인스턴스, AZ당 NAT Gateway.
+    이 값들은 비용 최적화가 아니라 <strong>PD-02의 "정확성·추적성·복구 우선"</strong> 선언에서 나온 의도적 선택이며,
+    파일럿 트래픽만 근거로 낮추면 AZ 단일 장애에서 면접이 중단됩니다.</p>
   </div>
 
-  <div class="pn"><span>10 · AWS 인프라 구성</span><span class="num">21</span></div>
+  <div class="box warn">
+    <div class="t">비용 관측이 실측을 대체하지 않는다</div>
+    <p>Budgets는 기본 500 USD 임계값으로 생성되지만 <strong><code>alarm_email</code>이 설정된 경우에만 알림이 붙습니다.</strong>
+    이메일이 비어 있으면 예산은 존재하되 통지 대상이 없습니다.
+    추적 대상 변동비는 Bedrock 질문 모델 입·출력 토큰, Titan 임베딩 입력 토큰,
+    Transcribe 시간, Polly 문자, MediaConvert 분, Aurora ACU-시간·I/O이며,
+    <strong>F-06(매 턴 질의 재임베딩)</strong>처럼 코드 결함이 임베딩 토큰 비용을 선형 증가시키는 경로가
+    별도 감사 문서에 기록돼 있습니다.</p>
+  </div>
+
+  <div class="pn"><span>10 · AWS 인프라 구성</span><span class="num">23</span></div>
 </div>
 
 <!-- ══════════════════ 10c ══════════════════ -->
@@ -2340,7 +2474,7 @@ terraform-state/
     </div>
   </div>
 
-  <div class="pn"><span>10 · AWS 인프라 구성</span><span class="num">22</span></div>
+  <div class="pn"><span>10 · AWS 인프라 구성</span><span class="num">24</span></div>
 </div>
 
 <!-- ══════════════════ 11 ══════════════════ -->
@@ -2426,7 +2560,7 @@ git worktree add ../iep-lane-b -b feature/001-lane-b-analysis  foundation-v1
 git worktree add ../iep-lane-c -b feature/001-lane-c-interview foundation-v1
 git worktree add ../iep-lane-d -b feature/001-lane-d-reporting foundation-v1</pre>
 
-  <div class="pn"><span>11 · 마이그레이션 전략</span><span class="num">23</span></div>
+  <div class="pn"><span>11 · 마이그레이션 전략</span><span class="num">25</span></div>
 </div>
 
 <!-- ══════════════════ 12 ══════════════════ -->
@@ -2466,13 +2600,24 @@ git worktree add ../iep-lane-d -b feature/001-lane-d-reporting foundation-v1</pr
       <li>재시도 횟수</li>
     </ul>
   </div>
-  <p>알람 대상 — ECS CPU·메모리, WebSocket 연결 수, SQS 적체, DLQ,
-  Aurora 연결·지연, <strong>DynamoDB throttle</strong>, OpenSearch 오류,
+  <p>설계상 알람 대상 — ECS CPU·메모리, WebSocket 연결 수, SQS 적체, DLQ,
+  Aurora 연결·지연, <strong>DynamoDB throttle</strong>, 검색 쿼리 지연·오류,
   <strong>Bedrock·Transcribe 서비스 쿼터</strong>.
-  OpenTelemetry와 X-Ray로 브라우저 요청부터 ALB, ECS, Aurora, DynamoDB, OpenSearch, Bedrock 호출까지
-  trace ID를 연결합니다.
+  X-Ray로 브라우저 요청부터 ALB, ECS, Aurora, DynamoDB, Bedrock 호출까지 trace ID를 연결합니다.
   AWS Budgets와 Cost Anomaly Detection으로 Bedrock 토큰, Transcribe 시간, Polly 문자,
-  OpenSearch·MediaConvert 비용 이상을 감지합니다.</p>
+  Aurora ACU·MediaConvert 비용 이상을 감지합니다.</p>
+
+  <div class="box warn">
+    <div class="t">현재 구현된 알람 범위 — 설계보다 좁다</div>
+    <p><code>infra/modules/observability</code>가 실제로 생성하는 알람은
+    <strong>큐별 DLQ 가시 메시지 &gt; 0</strong>과 <strong>큐별 최장 대기 age &gt; 600초</strong> 두 종류입니다.
+    ECS CPU·메모리, WebSocket 연결 수, Aurora 연결·지연, DynamoDB throttle,
+    Bedrock·Transcribe 쿼터 알람은 <strong>아직 Terraform에 없습니다.</strong>
+    CloudWatch 대시보드도 텍스트 위젯만 있는 껍데기이고, X-Ray는 샘플링 규칙(고정 10%)과 그룹만 생성되어
+    <strong>태스크 정의에 트레이싱 사이드카나 데몬이 없으면 세그먼트가 수집되지 않습니다.</strong>
+    이 절의 지표 목록은 <strong>목표 상태</strong>이며, 위 두 알람 외에는 구현 항목으로 읽지 않아야 합니다.
+    비동기 파이프라인의 적체·실패는 이미 감시되고, <strong>실시간 면접 경로의 감시가 비어 있는 상태</strong>입니다.</p>
+  </div>
 
   <h3>운영 접근 통제</h3>
   <ul class="tight">
@@ -2487,40 +2632,671 @@ git worktree add ../iep-lane-d -b feature/001-lane-d-reporting foundation-v1</pr
     <thead><tr><th style="width:34%">설정</th><th>영역</th></tr></thead>
     <tbody>
       <tr><td class="mono">chunk size</td><td>문서·코드 청킹</td></tr>
-      <tr><td class="mono">retrieval weights</td><td><code>vector_score</code> · <code>lexical_score</code> · <code>symbol_exact_score</code> · 메타데이터 보정</td></tr>
+      <tr><td class="mono">retrieval weights</td><td><code>vector_score</code> 0.55 · <code>lexical_score</code> 0.30 ·
+        <code>symbol_exact_score</code> 0.80 · <code>ownership_confidence</code> 0.15 (현재 값)</td></tr>
+      <tr><td class="mono">candidate limit · top_k</td><td>SQL <code>LIMIT 200</code> → 애플리케이션 재랭킹 상위 5</td></tr>
+      <tr><td class="mono">token_budget</td><td>질문 생성에 넣는 발췌 토큰 상한 (현재 2400)</td></tr>
       <tr><td class="mono">max_recent_turns · max_recent_tokens</td><td>대화 문맥 예산</td></tr>
       <tr><td class="mono">summary_trigger_tokens</td><td>요약 시작 기준</td></tr>
       <tr><td class="mono">hot_context_ttl</td><td>DynamoDB Hot View 유지 기간</td></tr>
       <tr><td class="mono">timeouts</td><td>외부 서비스 호출</td></tr>
       <tr><td class="mono">media chunk duration</td><td>영상 조각 길이</td></tr>
-      <tr><td class="mono">AWS capacity</td><td>ACU · OCU · 태스크 수</td></tr>
+      <tr><td class="mono">AWS capacity</td><td>Aurora ACU 하한·상한 · Fargate 태스크 수와 오토스케일 목표</td></tr>
     </tbody>
   </table>
 
   <h3>로컬 개발 패리티</h3>
-  <p>Docker Compose로 PostgreSQL, 객체·큐 에뮬레이션, DynamoDB 에뮬레이션, 로컬 검색을 띄웁니다.
+  <p>Docker Compose로 <code>pgvector/pgvector:pg16</code>, LocalStack(S3·SQS·SES·Secrets·CloudWatch),
+  DynamoDB Local, Mailpit을 띄웁니다.
+  <strong>로컬 검색 엔진 에뮬레이터가 필요하지 않은 것이 002 전환의 부수 이득</strong>입니다 —
+  검색이 PostgreSQL 기능이므로 운영과 동일한 확장·연산자·인덱스로 로컬에서 검증됩니다.
   외부 AI 클라이언트는 인터페이스를 노출하고 <strong>기록된 결정론적 fake</strong>를 제공하며,
   개발 프로파일이 실제 승인된 AWS 서비스를 호출해 통합 검증할 수 있습니다.
   애플리케이션은 환경별로 저장소와 AWS Client 구현만 교체하며
   <strong>도메인 규칙, API 계약, 질문 출력 스키마, Evidence 제약은 동일하게 유지</strong>됩니다.</p>
 
-  <div class="pn"><span>12 · 관측·보안 설계</span><span class="num">24</span></div>
+  <div class="pn"><span>12 · 관측·보안 설계</span><span class="num">26</span></div>
+</div>
+
+<!-- ══════════════════ 13 ══════════════════ -->
+<div class="page">
+  <div class="rh"><b>13 · AWS 리소스 타당성과 기각 대안</b><span>4부 인프라와 운영</span></div>
+
+  <div class="sec">
+    <div class="no">13</div>
+    <div class="tx">
+      <h2>AWS 리소스 타당성과 기각 대안</h2>
+      <p>왜 이 서비스인가, 그리고 왜 더 싼 방법을 쓰지 않았는가</p>
+    </div>
+  </div>
+
+  <p class="lead">앞의 12개 절은 <strong>무엇을 어떻게 만들었는지</strong>를 기술합니다.
+  이 절은 다른 질문에 답합니다 — <strong>각 AWS 리소스가 이 제품에서 정말로 필요한가,
+  그리고 EC2 한 대·리버스 프록시·EKS·전용 검색 클러스터 같은 대안을 왜 택하지 않았는가.</strong></p>
+
+  <h3>판단 기준 — 무엇을 근거로 "타당하다"고 말하는가</h3>
+  <p>클라우드 리소스 선택을 "관리형이 편하다"로 정당화하면 검증할 수 없는 주장이 됩니다.
+  이 문서는 아래 네 개 질문을 순서대로 적용하고, <strong>1번이 부정되면 그 리소스는 제거 대상</strong>으로 봅니다.</p>
+  <table class="sm">
+    <thead><tr><th style="width:8%">#</th><th style="width:26%">질문</th><th>기각 조건</th></tr></thead>
+    <tbody>
+      <tr><td class="mono c">1</td><td><strong>제품 제약이 요구하는가</strong></td>
+        <td>헌장 원칙(Evidence·테넌트·복구)이나 확정 결정(PD)이 요구하지 않고, 없어도 요구사항이 성립하면 <strong>제거</strong></td></tr>
+      <tr><td class="mono c">2</td><td><strong>직접 구현 대비 이득이 있는가</strong></td>
+        <td>직접 운영해도 위험이 같고 비용이 낮으면 <strong>직접 구현</strong></td></tr>
+      <tr><td class="mono c">3</td><td><strong>고정비가 규모에 맞는가</strong></td>
+        <td>파일럿 규모(1~5개사·동시 5건)에 대해 최소 용량 과금이 사용량과 무관하게 지배하면 <strong>재검토</strong></td></tr>
+      <tr><td class="mono c">4</td><td><strong>이탈 비용이 감당 가능한가</strong></td>
+        <td>표준 인터페이스로 감싸지 못해 교체가 재설계가 되면 <strong>추상화 요구</strong></td></tr>
+    </tbody>
+  </table>
+  <div class="box ok">
+    <div class="t">이 기준이 실제로 리소스를 제거한 사례</div>
+    <p>OpenSearch Serverless + Bedrock Knowledge Base가 정확히 이 절차로 제거됐습니다 —
+    기준 3(파일럿 규모에 최소 OCU 고정비가 지배)과 기준 1(테넌트 삭제 원자성을 별도 스토어가 오히려 약화)이
+    동시에 부정됐고, 기준 4를 미리 확보해 둔 덕분에(<code>SearchIndex</code> 인터페이스)
+    교체가 재설계가 아니라 <strong>어댑터 교체</strong>로 끝났습니다(13.4절).
+    이 절의 나머지 판단도 같은 방식으로 뒤집힐 수 있으며, 뒤집히는 조건을 각 항목에 명시합니다.</p>
+  </div>
+
+  <h3>13.1 리소스별 사용 근거 — 컴퓨팅과 엣지</h3>
+  <table class="sm">
+    <thead><tr><th style="width:15%">리소스</th><th style="width:34%">이 제품에서의 역할</th><th>없으면 무엇이 깨지는가 · 대안 대비 근거</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">ECS Fargate<br>(API)</td>
+        <td>단일 모놀리스 이미지의 API·WebSocket 서빙 · 1024 CPU / 2048 MiB · 2~20 태스크 오토스케일</td>
+        <td>면접은 <strong>수 분간 유지되는 WebSocket 세션</strong>이라 요청당 과금 런타임에 맞지 않습니다.
+        EC2 대비 이득은 OS 패치·AMI·드레이닝 운영의 제거이고, 서버 관리 대상이 0이 되므로
+        4-Lane 병렬 개발에서 인프라 담당(Lane A) 한 명에게 몰리는 운영 부담이 줄어듭니다(13.2절).</td></tr>
+      <tr><td class="mono">ECS Fargate<br>(Worker)</td>
+        <td><code>python -m interview_evidence.worker</code> · SQS 소비 · 1~30 태스크</td>
+        <td>분석·미디어·리포트·삭제는 <strong>분 단위 장기 작업</strong>입니다.
+        Lambda 15분 상한과 임시 디스크 제약이 Git 스냅샷·MediaConvert 대기·대용량 추출에 맞지 않아
+        <strong>Lambda를 아예 쓰지 않습니다</strong>(13.3절 표).</td></tr>
+      <tr><td class="mono">ECR</td>
+        <td><strong>태그 IMMUTABLE</strong> 레지스트리</td>
+        <td>dev와 Prod가 <strong>동일 digest</strong>를 쓰는 승격 불변식(10절)의 강제 장치입니다.
+        태그 덮어쓰기가 가능하면 "dev에서 검증한 것과 Prod에 있는 것이 같다"는 주장이 무너집니다.</td></tr>
+      <tr><td class="mono">ALB</td>
+        <td>ECS 타깃 그룹 라우팅 · <code>/health/ready</code> 헬스체크 · WebSocket 업그레이드</td>
+        <td>Fargate 태스크는 배포마다 사설 IP가 바뀌므로 <strong>안정된 등록·해제 지점</strong>이 필요합니다.
+        직접 운영하는 프록시로 대체하면 이 등록·해제를 스스로 만들어야 합니다(13.3절).</td></tr>
+      <tr><td class="mono">CloudFront</td>
+        <td>SPA 정적 자산 캐시 + <code>/v1/*</code> API·WebSocket 오리진 전달 · SPA 라우팅용 403→200 <code>/index.html</code></td>
+        <td>단일 도메인으로 두 SPA와 API를 서비스해 <strong>브라우저 CORS와 서드파티 쿠키 문제를 구조적으로 제거</strong>합니다.
+        지원자 세션 쿠키 <code>iep_applicant_session</code>이 같은 오리진에서 동작하는 것이 전제입니다.</td></tr>
+      <tr><td class="mono">WAFv2</td>
+        <td>CLOUDFRONT 스코프 · <code>AWSManagedRulesCommonRuleSet</code> + IP당 2000 요청 레이트 제한</td>
+        <td>지원자 진입점은 <strong>인증 없이 접근하는 만료 토큰 링크</strong>입니다.
+        Cognito 뒤에 숨지 않는 공개 표면이므로 토큰 대입·초대 링크 스캔에 대한 상위 계층 차단이 필요합니다.</td></tr>
+      <tr><td class="mono">S3 + OAC</td>
+        <td>정적 자산·원본 문서·미디어·리포트 · 6버킷 KMS 암호화·버전관리</td>
+        <td>버킷은 <strong>퍼블릭 접근 차단을 유지</strong>하고 CloudFront OAC 또는 짧은 만료 사전 서명 URL로만 읽힙니다.
+        지원자 원본 자료가 공개 URL을 갖는 순간 헌장 원칙 II 위반입니다.</td></tr>
+      <tr><td class="mono">Route 53<br>· ACM</td>
+        <td>도메인·인증서 · 인증서는 <strong>us-east-1</strong> 발급</td>
+        <td>CloudFront가 요구하는 리전 제약이라 선택 사항이 아닙니다. 갱신 자동화로
+        <strong>인증서 만료로 인한 면접 중단</strong> 경로를 없앱니다.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="pn"><span>13 · AWS 리소스 타당성</span><span class="num">27</span></div>
+</div>
+
+<!-- ══════════════════ 13b ══════════════════ -->
+<div class="page">
+  <div class="rh"><b>13 · AWS 리소스 타당성과 기각 대안</b><span>4부 인프라와 운영</span></div>
+
+  <h3>13.1 리소스별 사용 근거 — 데이터·비동기·AI·운영</h3>
+  <table class="sm">
+    <thead><tr><th style="width:15%">리소스</th><th style="width:34%">이 제품에서의 역할</th><th>없으면 무엇이 깨지는가 · 대안 대비 근거</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">Aurora PostgreSQL<br>Serverless v2</td>
+        <td>Evidence·상태·버전의 권위 저장소 + <code>pgvector</code> 벡터 검색 + <code>tsvector</code> 전문검색 ·
+        writer/reader 2인스턴스</td>
+        <td>Evidence 무결성 규칙(9절)은 <strong>관계 제약과 트랜잭션</strong>을 요구합니다.
+        평가 상태 <code>confirmed</code>가 실제 답변 Turn·자막 구간을 가리키는 것을 DB가 강제하지 못하면
+        애플리케이션 버그가 곧바로 "근거 없는 평가"가 됩니다.
+        Serverless v2를 쓰는 이유는 면접 트래픽이 <strong>0과 동시 5건 사이를 오가는 극단적 버스트</strong>여서
+        고정 인스턴스 사이징이 과소·과대 어느 쪽이든 손해이기 때문입니다.</td></tr>
+      <tr><td class="mono">DynamoDB</td>
+        <td>세션 Hot Context·체크포인트 · <code>PAY_PER_REQUEST</code> · TTL · PITR</td>
+        <td>실시간 루프가 매 턴 최근 문맥을 읽는데, 이 읽기를 Aurora에 얹으면
+        <strong>질문 생성 지연이 DB 커넥션 경쟁에 묶입니다.</strong>
+        TTL로 만료를 자동화해 개인정보 잔존 기간도 줄입니다. 재구축 가능한 파생 뷰이므로 손실 위험이 낮습니다.</td></tr>
+      <tr><td class="mono">SQS 4큐<br>+ DLQ 4</td>
+        <td>analysis·media·reporting·deletion 분리 · <code>maxReceiveCount</code> 5 · DLQ 14일 보관</td>
+        <td>큐를 도메인별로 나눈 이유는 <strong>장애 격리</strong>입니다.
+        미디어 후처리 적체가 삭제 요청 처리를 막으면 개인정보 삭제 기한이 미디어 파이프라인 사정에 종속됩니다.
+        미디어 큐만 가시성 타임아웃 900초, 나머지 300초인 것도 작업 길이 차이를 반영한 값입니다.</td></tr>
+      <tr><td class="mono">EventBridge<br>커스텀 버스</td>
+        <td>15종 이벤트 라우팅 · <code>retention.expired</code> 규칙 → deletion 큐</td>
+        <td>보관 기간 만료를 <strong>스케줄러 없이 규칙으로 선언</strong>합니다.
+        Outbox가 내구성을 담당하고 버스는 라우팅만 담당하므로, 라우팅 규칙 변경이 코드 배포를 요구하지 않습니다.</td></tr>
+      <tr><td class="mono">Step Functions<br>(STANDARD)</td>
+        <td>이벤트 타입 Choice → <code>sqs:sendMessage</code> 디스패치</td>
+        <td><strong>현재 사용 범위가 가장 얇은 리소스입니다.</strong>
+        상태 머신에 재시도·보상·병렬 분기가 없고 Choice 한 단계뿐이므로,
+        EventBridge 규칙만으로 동일 결과를 얻을 수 있습니다.
+        13.6절에 재검토 항목으로 명시합니다.</td></tr>
+      <tr><td class="mono">Bedrock<br>(Claude · Titan V2)</td>
+        <td>질문 생성 + 1024차원 임베딩 · Guardrail 2차 안전 필터</td>
+        <td>모델을 자체 호스팅하면 GPU 상시 비용이 파일럿 규모의 사용량을 압도합니다.
+        Guardrail을 <strong>애플리케이션 정책 검증 뒤 마지막 단계</strong>에 두는 이유는
+        Pydantic 스키마·질문 정책이 1차 방어이고 Guardrail이 최후 차단선이기 때문입니다.
+        IAM 정책은 <code>ApprovedAI</code> Sid로 <strong>리전 조건</strong>을 걸어 승인되지 않은 리전 호출을 차단합니다.</td></tr>
+      <tr><td class="mono">Transcribe<br>· Polly</td>
+        <td>한국어 STT 스트리밍 · TTS + <strong>viseme Speech Marks</strong></td>
+        <td>viseme은 PD-10의 2D 아바타 입 모양이 <strong>전적으로 의존</strong>하는 데이터입니다.
+        자체 STT/TTS는 한국어 품질과 실시간 지연 모두에서 파일럿 단계에 감당할 수 없는 투자입니다.</td></tr>
+      <tr><td class="mono">Textract<br>· MediaConvert</td>
+        <td>PDF 텍스트·레이아웃 추출 · 녹화 청크 → HLS 후처리</td>
+        <td>추출된 <strong>페이지·섹션 locator</strong>가 SourceReference의 근거이므로 좌표를 보존하는 추출이 필요합니다.
+        MediaConvert는 Evidence의 영상 구간 재생을 위한 것이며, 직접 FFmpeg 운영 대비
+        <strong>실패 재시도와 코덱 호환</strong> 부담을 없앱니다.</td></tr>
+      <tr><td class="mono">Cognito<br>· SESv2</td>
+        <td>기업 사용자 인증(최소 14자·TOTP MFA·관리자 생성 전용·15분 액세스 토큰) · 초대 메일 DKIM 발송</td>
+        <td>지원자는 <strong>Cognito 계정이 없습니다</strong>(PD-24). 만료 토큰 링크 + 본인 확인 경로이므로
+        인증 스택은 기업 사용자만 담당합니다. 자체 인증 구현은 MFA·토큰 회전·비밀번호 정책을 직접 만드는 일이고
+        이 제품의 차별점이 아닙니다. SES는 <code>ses:FromAddress</code> 조건으로 발신 주소를 IAM에서 고정합니다.</td></tr>
+      <tr><td class="mono">KMS<br>· Secrets Manager</td>
+        <td>S3·Aurora·DynamoDB·로그 암호화 · Aurora <strong>관리형 마스터 비밀번호</strong></td>
+        <td>관리형 마스터 비밀번호는 <strong>비밀번호가 Terraform 상태 파일에 남지 않게</strong> 합니다.
+        <code>random_password</code>를 쓰면 평문이 상태 파일에 기록되고, 상태 버킷이 새 비밀 저장소가 됩니다.</td></tr>
+      <tr><td class="mono">CloudTrail<br>· CloudWatch</td>
+        <td>멀티리전 트레일 + <strong>로그 파일 검증</strong> · 감사 로그 365일 보관</td>
+        <td>CloudTrail은 <strong>AWS API 변경</strong>을, 애플리케이션 감사 테이블은
+        <strong>지원자 자료 조회·다운로드</strong>를 기록합니다. 둘은 대체 관계가 아니며
+        후자는 CloudTrail에 나타나지 않습니다.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="pn"><span>13 · AWS 리소스 타당성</span><span class="num">28</span></div>
+</div>
+
+<!-- ══════════════════ 13c · EC2 비교 ══════════════════ -->
+<div class="page">
+  <div class="rh"><b>13 · AWS 리소스 타당성과 기각 대안</b><span>13.2 EC2 단독 구성</span></div>
+
+  <h3>13.2 대안 A — EC2 한 대에 전부 올렸다면</h3>
+  <p class="lead">가장 먼저 나오는 질문이자 가장 정직하게 답해야 하는 질문입니다.
+  파일럿 규모가 1~5개사·동시 5건이면 <strong>EC2 한 대로 충분한 처리량</strong>인 것이 사실입니다.
+  이 대안을 기각한 이유는 처리량이 아니라 <strong>PD-02가 처리량보다 우선한다고 선언한 것 — 복구 가능성과 추적성</strong>입니다.</p>
+
+  <table class="sm">
+    <thead><tr><th style="width:19%">항목</th><th style="width:38%">EC2 단독 구성 (Docker Compose 그대로)</th><th>현재 구성</th></tr></thead>
+    <tbody>
+      <tr><td>구성</td><td>EC2 1대에 API·워커·PostgreSQL·nginx 컨테이너 · EIP 직결</td>
+        <td>CloudFront → ALB → Fargate(API/워커) · Aurora · 관리형 서비스</td></tr>
+      <tr><td><strong>월 고정비</strong></td><td><strong>현저히 낮음</strong> — 인스턴스 1대 + EBS + EIP.
+        NAT·ALB·인터페이스 엔드포인트·Aurora 최소 ACU가 전부 없음</td>
+        <td>NAT·ALB·엔드포인트 16 ENI·Aurora 2인스턴스·상시 Fargate 8태스크(prod)</td></tr>
+      <tr><td>배포</td><td><code>docker compose pull &amp;&amp; up -d</code> — 컨테이너 교체 중 <strong>진행 중 면접 연결 단절</strong></td>
+        <td>롤링 배포 + <strong>서킷 브레이커 자동 롤백</strong> · 이전 태스크가 드레이닝될 때까지 연결 유지</td></tr>
+      <tr><td><strong>AZ 장애</strong></td><td>인스턴스가 있는 AZ가 죽으면 <strong>서비스 전체 중단 + 진행 중 면접 소실</strong>.
+        EBS 스냅샷에서 복구하는 동안 RPO는 마지막 스냅샷 시점</td>
+        <td>두 AZ에 태스크 분산 · Aurora writer/reader 분리 · 남은 AZ가 트래픽 수용</td></tr>
+      <tr><td><strong>DB 백업·복구</strong></td><td>스냅샷·PITR·자동 페일오버를 <strong>직접 구성·검증</strong>.
+        면접 데이터가 Evidence이므로 백업 실패가 곧 평가 근거 소실</td>
+        <td>Aurora 자동 백업·PITR·페일오버 · DynamoDB PITR · S3 버전관리</td></tr>
+      <tr><td>비밀 관리</td><td>DB 비밀번호가 <code>.env</code>나 Compose 파일에 상주 · 회전 수단 없음</td>
+        <td>관리형 마스터 비밀번호 + Task Role 런타임 조회 · <strong>상태 파일·이미지에 평문 없음</strong></td></tr>
+      <tr><td>OS 운영</td><td>커널·Docker·PostgreSQL 패치를 Lane A가 상시 담당.
+        <strong>패치 창이 면접 일정과 충돌</strong></td>
+        <td>패치 대상 서버 0 · 이미지 교체가 유일한 갱신 경로</td></tr>
+      <tr><td>감사</td><td>인스턴스 안의 변경은 CloudTrail에 남지 않음. SSH 접속·수동 수정이 <strong>추적 불가</strong></td>
+        <td>모든 리소스 변경이 CloudTrail(파일 검증) · Terraform 상태 · 배포 파이프라인에 기록</td></tr>
+      <tr><td>환경 분리</td><td>인스턴스 3대 또는 한 대에 포트 분리 — 후자는 <strong>dev 사고가 운영 데이터에 도달</strong></td>
+        <td>환경별 상태·IAM·KMS·데이터 저장소 분리(헌장 MUST)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="box">
+    <div class="t">정직한 결론 — 비용은 EC2가 이긴다</div>
+    <p>순수 인프라 비용만 보면 <strong>EC2 단독 구성이 압도적으로 저렴합니다.</strong>
+    이 문서는 그 사실을 부정하지 않습니다.
+    기각 근거는 <strong>이 제품이 잃으면 재생성할 수 없는 데이터를 다룬다</strong>는 점입니다 —
+    면접은 재녹음이 불허(PD-09)되고, 지원자의 답변은 그 시점에만 존재합니다.
+    EC2 단독 구성에서 인스턴스 장애로 진행 중 면접이 소실되면
+    <strong>지원자에게 다시 면접을 요구</strong>해야 하고, 그것은 비용 절감으로 상쇄되지 않는 손실입니다.</p>
+  </div>
+  <div class="box warn">
+    <div class="t">이 판단이 뒤집히는 조건</div>
+    <p>제품이 <strong>사내 데모·PoC</strong>로 축소되고 면접 데이터가 폐기 가능해지면 EC2 단독 구성이 정답입니다.
+    이때 필요한 변경은 크지 않습니다 — 애플리케이션은 이미
+    <code>compose.yaml</code>에서 PostgreSQL·LocalStack·DynamoDB Local로 완전히 동작하고,
+    AWS 클라이언트가 포트 인터페이스 뒤에 있어 <strong>도메인 코드 수정 없이</strong> 실행 환경만 바뀝니다.
+    다만 PD-01이 "화면 시안이나 단순 챗봇으로 축소하지 않는다"고 못박았으므로
+    이 전환은 아키텍처 결정이 아니라 <strong>제품 결정 개정</strong>입니다.</p>
+  </div>
+
+  <div class="pn"><span>13 · AWS 리소스 타당성</span><span class="num">29</span></div>
+</div>
+
+<!-- ══════════════════ 13d · 리버스 프록시 ══════════════════ -->
+<div class="page">
+  <div class="rh"><b>13 · AWS 리소스 타당성과 기각 대안</b><span>13.3 리버스 프록시 · 서버리스</span></div>
+
+  <h3>13.3 대안 B — EC2에 리버스 프록시를 두고 ALB·CloudFront를 대체했다면</h3>
+  <p class="lead">엣지 계층만 자체 운영하는 중간 대안입니다. EC2에 nginx나 Caddy를 올려
+  TLS 종료·정적 자산 서빙·API 프록시를 담당시키고, ALB와 CloudFront를 걷어냅니다.
+  ALB 시간당 요금과 CloudFront가 사라지므로 <strong>고정비 절감 효과가 실제로 있습니다.</strong></p>
+
+  <table class="sm">
+    <thead><tr><th style="width:17%">기능</th><th style="width:38%">EC2 리버스 프록시로 하면</th><th>현재 구성이 제공하는 것</th></tr></thead>
+    <tbody>
+      <tr><td>TLS 종료</td><td>Let's Encrypt 갱신 크론 · <strong>갱신 실패가 서비스 중단</strong>.
+        프록시 인스턴스에 사설키 상주</td>
+        <td>ACM 자동 갱신 · 사설키가 인스턴스에 존재하지 않음</td></tr>
+      <tr><td><strong>백엔드 탐색</strong></td><td>Fargate 태스크 IP가 배포마다 바뀌므로
+        <strong>서비스 디스커버리를 직접 구현</strong>하거나 백엔드를 고정 IP EC2로 되돌려야 함 —
+        후자면 13.2절 문제로 회귀</td>
+        <td>타깃 그룹 등록·해제와 <code>/health/ready</code> 헬스체크가 배포에 내장</td></tr>
+      <tr><td>가용성</td><td>프록시 인스턴스가 <strong>단일 장애점</strong>.
+        이중화하려면 앞에 로드밸런서가 필요하고, 그러면 ALB를 다시 만드는 셈</td>
+        <td>ALB 자체가 다중 AZ 관리형</td></tr>
+      <tr><td>WAF</td><td>ModSecurity 규칙셋을 직접 관리·튜닝.
+        <strong>지원자 공개 진입점 앞의 방어를 자체 운영</strong></td>
+        <td>관리형 규칙셋 + IP 레이트 제한 · 규칙 갱신은 AWS가 담당</td></tr>
+      <tr><td>정적 자산</td><td>프록시 디스크나 S3에서 서빙 · 엣지 캐시 없음 · 오리진 대역폭 전부 부담</td>
+        <td>CloudFront 캐시 · SPA 라우팅용 403→200 <code>/index.html</code> 처리 내장</td></tr>
+      <tr><td>WebSocket</td><td><code>proxy_read_timeout</code>·<code>Upgrade</code> 헤더·유휴 타임아웃을 수동 튜닝.
+        <strong>면접 세션이 프록시 타임아웃으로 끊기는 실패 모드</strong>가 새로 생김</td>
+        <td>ALB의 WebSocket 지원 · CloudFront <code>/v1/*</code> 비캐시 동작으로 통과</td></tr>
+      <tr><td>운영 부담</td><td>프록시 설정이 <strong>코드 리뷰 대상 밖의 운영 산출물</strong>이 되기 쉬움</td>
+        <td>동작·캐시 정책·헤더 허용 목록이 Terraform 코드이고 계약 테스트 대상</td></tr>
+    </tbody>
+  </table>
+
+  <div class="box ok">
+    <div class="t">현재 구성이 실제로 얻은 것 — 프록시로는 만들기 어려운 통제</div>
+    <p>ALB 시큐리티 그룹 인그레스가 CloudFront 관리형 prefix list
+    <code>com.amazonaws.global.cloudfront.origin-facing</code><strong>만</strong> 허용합니다.
+    즉 <strong>ALB DNS를 직접 알아내도 WAF를 우회할 수 없습니다.</strong>
+    자체 프록시 구성에서 동일 보증을 만들려면 프록시 앞단의 IP 목록을 스스로 유지해야 하고,
+    그 목록은 AWS가 갱신하는 대상입니다. 이것이 엣지를 관리형으로 둔 핵심 이유입니다.</p>
+  </div>
+  <div class="box warn">
+    <div class="t">현재 구성에 남은 약점 — 오리진 홉이 평문 HTTP다</div>
+    <p>CloudFront → ALB 구간은 <code>origin_protocol_policy = "http-only"</code>이고
+    ALB 리스너는 <strong>포트 80 HTTP 하나뿐</strong>입니다.
+    브라우저 → CloudFront 구간은 TLS이지만 <strong>AWS 네트워크 내부 홉은 암호화되지 않습니다.</strong>
+    지원자 자료와 답변 텍스트가 이 구간을 지나므로, 리버스 프록시 대안을 논하기 전에
+    <strong>이 홉을 HTTPS로 올리는 것이 우선순위가 더 높은 개선</strong>입니다(13.6절).</p>
+  </div>
+
+  <h3>왜 Lambda·API Gateway 서버리스가 아닌가</h3>
+  <table class="sm">
+    <thead><tr><th style="width:24%">제약</th><th>서버리스 구성에서 발생하는 문제</th></tr></thead>
+    <tbody>
+      <tr><td>면접 세션 지속성</td><td>WebSocket 세션이 수 분간 유지되고 서버가 상태 권위입니다.
+        API Gateway WebSocket + Lambda는 연결 상태를 외부 스토어로 밀어내 <strong>매 메시지마다 상태 복원</strong>을 요구합니다.</td></tr>
+      <tr><td>실행 시간</td><td>Git 스냅샷 수집·문서 추출·리포트 생성이 <strong>15분을 넘을 수 있는 작업</strong>입니다.</td></tr>
+      <tr><td>지연 예측성</td><td>콜드 스타트가 질문 생성 지연에 직접 더해집니다. STT·검색·LLM·TTS가 이미 직렬로 쌓입니다.</td></tr>
+      <tr><td>모듈러 모놀리스</td><td>PD-05가 단일 이미지 모놀리스를 확정했습니다.
+        함수 단위 분해는 <strong>4-Lane 경계를 배포 단위로 승격</strong>시켜 계약 우선 소유권 모델과 충돌합니다.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="pn"><span>13 · AWS 리소스 타당성</span><span class="num">30</span></div>
+</div>
+
+<!-- ══════════════════ 13e · 검색 ══════════════════ -->
+<div class="page">
+  <div class="rh"><b>13 · AWS 리소스 타당성과 기각 대안</b><span>13.4 검색 백엔드</span></div>
+
+  <h3>13.4 대안 C — OpenSearch Serverless · 전용 벡터 DB 대신 <code>pgvector</code>를 택한 이유</h3>
+  <p class="lead">이 결정은 가정이 아니라 <strong>이미 실행된 전환</strong>입니다.
+  001 설계는 OpenSearch Serverless + Bedrock Knowledge Base를 전제했고,
+  002에서 Aurora <code>pgvector</code> + PostgreSQL <code>tsvector</code>로 옮기며 해당 인프라를 제거했습니다.
+  따라서 이 절은 <strong>가설 비교가 아니라 사후 근거 정리</strong>입니다.</p>
+
+  <table class="sm">
+    <thead><tr><th style="width:16%">비교축</th><th style="width:29%">OpenSearch Serverless + Bedrock KB</th><th style="width:26%">전용 벡터 DB (Pinecone·Qdrant·Milvus 류)</th><th>Aurora pgvector (채택)</th></tr></thead>
+    <tbody>
+      <tr><td><strong>고정비</strong></td><td>최소 OCU가 <strong>트래픽 0에도 시간당 과금</strong> · 환경 3개면 3배</td>
+        <td>관리형은 최소 플랜 상시 과금 · 자체 호스팅은 노드 운영 부담</td>
+        <td><strong>추가 클러스터 0</strong> · 기존 Aurora의 ACU·스토리지·I/O 증분만</td></tr>
+      <tr><td><strong>삭제 원자성</strong></td><td>원본 삭제와 색인 삭제가 <strong>분산 트랜잭션</strong> ·
+        실패 시 비동기 재시도에 의존</td>
+        <td>동일 문제 · 외부 스토어이므로 구조적으로 같음</td>
+        <td><strong>같은 트랜잭션에서 커밋·롤백</strong> · 헌장 원칙 II의 "부재 검증"이 SQL로 성립</td></tr>
+      <tr><td><strong>테넌트 강제</strong></td><td>쿼리 필터에 <code>company_id</code>를 넣는 <strong>애플리케이션 규율</strong>에 의존</td>
+        <td>네임스페이스·컬렉션 분리 또는 메타데이터 필터 · 동일한 규율 의존</td>
+        <td>스코어링 <strong>전에</strong> WHERE로 강제 · 인덱스
+        <code>ix_retrieval_scope</code>가 테넌트 선두</td></tr>
+      <tr><td>하이브리드 검색</td><td>벡터 + BM25 네이티브 지원 · 랭킹 기능 성숙</td>
+        <td>벡터 중심 · 키워드는 별도 스토어나 제한적 지원</td>
+        <td><code>pgvector</code> 코사인 + <code>ts_rank_cd</code> 가중 합산 · <strong>SQL 한 문장</strong></td></tr>
+      <tr><td>대규모 확장</td><td><strong>우위 명확</strong> · 샤딩·복제·수억 문서 규모</td>
+        <td><strong>우위 명확</strong> · ANN 인덱스 최적화가 본업</td>
+        <td>파일럿 규모(1~5개사)에 충분 · <strong>수천만 벡터 구간에서 재검토 필요</strong></td></tr>
+      <tr><td>한국어 렉시컬</td><td>형태소 분석기 플러그인 사용 가능</td><td>해당 없음</td>
+        <td><code>'simple'</code> 설정이라 <strong>형태소 분석 없음</strong> — 알려진 제약(6절)</td></tr>
+      <tr><td>운영 표면</td><td>암호화·네트워크·데이터 접근 정책 3종 + 인덱스 매핑 + KB 데이터소스 동기화</td>
+        <td>별도 인증·네트워크·백업·버전 업그레이드 경로</td>
+        <td><strong>Alembic 마이그레이션 한 경로</strong> · 백업·암호화·감사가 Aurora에 흡수</td></tr>
+      <tr><td>로컬 개발</td><td>검색 엔진 에뮬레이터 별도 필요</td><td>컨테이너 추가 필요</td>
+        <td><code>pgvector/pgvector:pg16</code> — <strong>운영과 동일 확장</strong></td></tr>
+    </tbody>
+  </table>
+
+  <div class="box ok">
+    <div class="t">결정의 핵심 — 규모 문제가 아니라 정합성 문제였다</div>
+    <p>OpenSearch를 제거한 1차 이유로 비용이 자주 언급되지만, 설계상 더 무거운 이유는 <strong>삭제 원자성</strong>입니다.
+    이 제품에서 개인정보 삭제는 "베스트 에포트"가 아니라 <strong>릴리즈 차단 조건</strong>입니다 —
+    헌장 원칙 II가 Aurora·DynamoDB·S3·검색·요약·임베딩 전부의 <strong>부재를 검증</strong>하라고 요구합니다.
+    검색 색인이 외부 스토어면 이 검증은 항상 "두 시스템의 최종 일관성"에 걸립니다.
+    같은 클러스터의 테이블이면 <code>DELETE</code>가 원본 삭제와 같은 트랜잭션에 들어가고,
+    <strong>부재 검증이 재시도 로직이 아니라 SQL 사실</strong>이 됩니다.
+    비용 절감은 그 결정에 따라온 결과입니다.</p>
+  </div>
+
+  <div class="box warn">
+    <div class="t">이 판단이 뒤집히는 조건 — 그리고 이미 준비된 이탈 경로</div>
+    <p>기업 수가 수십으로 늘고 지원자 자료가 <strong>수천만 벡터 규모</strong>에 접근하면
+    단일 Aurora 클러스터의 벡터 인덱스가 병목이 됩니다.
+    이때 필요한 것은 재설계가 아니라 <strong>어댑터 교체</strong>입니다 —
+    <code>SearchIndex</code> 인터페이스와 <code>RETRIEVAL_BACKEND</code> 환경 변수가 남아 있어
+    <code>opensearch</code> 값으로 되돌릴 수 있습니다(002 R-008의 단계적 제거 설계).
+    다만 <strong>Terraform이 더 이상 OpenSearch를 생성하지 않으므로</strong>
+    이전 모듈 리비전에서 인프라를 먼저 복원해야 하고,
+    되돌리는 순간 위 표의 삭제 원자성 문제를 다시 감수하는 것이므로
+    <strong>삭제 검증 경로 보강이 전제 조건</strong>입니다.</p>
+  </div>
+
+  <div class="pn"><span>13 · AWS 리소스 타당성</span><span class="num">31</span></div>
+</div>
+
+<!-- ══════════════════ 13f · EKS ══════════════════ -->
+<div class="page">
+  <div class="rh"><b>13 · AWS 리소스 타당성과 기각 대안</b><span>13.5 EKS · 13.6 재검토</span></div>
+
+  <h3>13.5 대안 D — EKS를 쓰지 않은 이유</h3>
+  <p class="lead">쿠버네티스는 이 시스템이 필요로 하지 않는 문제를 해결합니다.
+  <strong>배포 단위가 두 개(API·워커)이고 그 둘이 같은 이미지</strong>인데,
+  EKS는 다수 서비스의 스케줄링·서비스 메시·정책을 다루는 도구입니다.</p>
+
+  <table class="sm">
+    <thead><tr><th style="width:19%">항목</th><th style="width:38%">EKS로 하면</th><th>ECS Fargate 현재 구성</th></tr></thead>
+    <tbody>
+      <tr><td><strong>고정비</strong></td><td>컨트롤 플레인 <strong>클러스터당 시간당 요금 × 환경 3개</strong> +
+        노드 또는 Fargate 프로파일</td>
+        <td>컨트롤 플레인 요금 <strong>없음</strong> · 태스크 실행 시간만 과금</td></tr>
+      <tr><td>운영 표면</td><td>클러스터 버전 업그레이드, 애드온(CNI·CoreDNS·kube-proxy) 호환,
+        노드 그룹 교체를 <strong>주기적으로 수행</strong></td>
+        <td>업그레이드 대상 컨트롤 플레인이 없음 · 플랫폼 버전은 AWS가 관리</td></tr>
+      <tr><td>필요 역량</td><td>Deployment·Service·Ingress·HPA·RBAC·NetworkPolicy 이해가 <strong>팀 전체에 요구됨</strong></td>
+        <td>Task Definition·Service·타깃 그룹·Auto Scaling 정책 4개 개념</td></tr>
+      <tr><td>IAM 통합</td><td>IRSA 또는 Pod Identity 설정 · <strong>추가 신뢰 관계 계층</strong></td>
+        <td>Task Role이 직접 부여 · 정책 Sid 5개로 데이터·AI·미디어·KMS·비밀 권한 분리</td></tr>
+      <tr><td>배포 안전장치</td><td>롤아웃 전략·프로브·PDB를 직접 구성. 롤백은 별도 도구·절차</td>
+        <td><code>deployment_circuit_breaker</code> <strong>자동 롤백 내장</strong></td></tr>
+      <tr><td>Terraform 표면</td><td>클러스터·노드그룹·애드온·IRSA + <strong>Kubernetes/Helm Provider 추가</strong> —
+        상태 파일이 클러스터 내부 오브젝트까지 소유</td>
+        <td>AWS Provider 하나 · 클러스터 내부 상태 개념이 없음</td></tr>
+      <tr><td>얻는 것</td><td>멀티 클라우드 이식성, 풍부한 에코시스템, 세밀한 스케줄링</td>
+        <td>이 제품이 <strong>현재 필요로 하지 않는 항목들</strong></td></tr>
+    </tbody>
+  </table>
+
+  <div class="box">
+    <div class="t">판단 — 도구의 우열이 아니라 문제의 크기</div>
+    <p>EKS가 열등해서가 아니라, <strong>PD-02가 "대규모 분산 시스템보다 정확성·추적성·복구를 우선한다"고
+    선언한 시스템</strong>에서 쿠버네티스는 해결할 문제 없이 운영 표면만 늘립니다.
+    파일럿 단계에서 인프라를 담당하는 Lane A가 클러스터 업그레이드 주기를 안게 되면
+    그 시간은 Evidence 무결성·삭제 검증·복구 테스트에서 빠져나갑니다.
+    <strong>뒤집히는 조건:</strong> 배포 단위가 10개 이상으로 늘거나,
+    멀티 클라우드·온프레미스 요구가 계약에 들어오거나,
+    GPU 워크로드·복잡한 배치 스케줄링이 필요해지는 시점입니다.</p>
+  </div>
+
+  <h3>13.6 이 검토에서 드러난 재검토 항목</h3>
+  <p>리소스 타당성을 항목별로 점검하는 과정에서 <strong>현재 구성이 설계 의도에 미달하는 지점</strong>이 확인됐습니다.
+  아래는 대안 비교가 아니라 <strong>현재 구성 안에서 고쳐야 할 항목</strong>입니다.</p>
+  <table class="sm">
+    <thead><tr><th style="width:6%">#</th><th style="width:22%">항목</th><th>내용과 우선순위 근거</th></tr></thead>
+    <tbody>
+      <tr><td class="mono c">1</td><td><strong>오리진 홉 평문 HTTP</strong></td>
+        <td>ALB 리스너가 포트 80 HTTP 단독이고 CloudFront 오리진 정책이 <code>http-only</code>입니다.
+        지원자 자료·답변 텍스트가 이 구간을 지나므로 <strong>가장 높은 우선순위</strong>입니다.
+        ACM 인증서를 리전에 발급해 HTTPS 리스너를 추가하고 오리진 정책을 전환해야 합니다.</td></tr>
+      <tr><td class="mono c">2</td><td><strong>실시간 경로 알람 공백</strong></td>
+        <td>현재 알람은 DLQ 가시 메시지와 큐 대기 age뿐입니다.
+        면접이 실패하는 경로(ECS 리소스 고갈, WebSocket 급감, Aurora 커넥션 포화, Bedrock 쿼터)에
+        알람이 없어 <strong>장애를 지원자 신고로 알게 되는 구조</strong>입니다.</td></tr>
+      <tr><td class="mono c">3</td><td><strong>X-Ray 수집 경로 미완성</strong></td>
+        <td>샘플링 규칙과 그룹, VPC 엔드포인트, IAM 권한은 있으나 태스크 정의에 트레이싱 사이드카가 없습니다.
+        12절이 약속한 단계별 지연(STT·검색·LLM·TTS) 분해가 <strong>현재는 불가능</strong>합니다.</td></tr>
+      <tr><td class="mono c">4</td><td><strong>대시보드 껍데기</strong></td>
+        <td>CloudWatch 대시보드에 텍스트 위젯만 있습니다. 지표가 수집돼도 <strong>볼 곳이 없습니다.</strong></td></tr>
+      <tr><td class="mono c">5</td><td><strong>Step Functions 사용 근거 부족</strong></td>
+        <td>상태 머신이 Choice → <code>sqs:sendMessage</code> 한 단계입니다.
+        EventBridge 규칙으로 동일 결과를 얻을 수 있어 <strong>리소스 하나만큼의 복잡도가 근거 없이 남아</strong> 있습니다.
+        재시도·보상·병렬 분기를 실제로 넣을 계획이 없다면 제거가 타당합니다.</td></tr>
+      <tr><td class="mono c">6</td><td><strong>Budgets 통지 미설정 시 무음</strong></td>
+        <td>예산은 생성되지만 <code>alarm_email</code>이 비면 통지 대상이 없습니다.
+        <strong>예산이 있다는 사실이 안전감을 주는데 실제 경고는 오지 않습니다.</strong></td></tr>
+      <tr><td class="mono c">7</td><td><strong>실시간 경로의 블로킹 처리</strong></td>
+        <td><code>async</code> WebSocket 핸들러가 배치 Transcribe를 <strong>1초 폴링으로 동기 대기</strong>하고,
+        코드베이스에 <code>to_thread</code>·<code>run_in_executor</code>가 없습니다.
+        <strong>체감 지연과 동시 처리량이 같은 원인</strong>이며, 오토스케일 지표가 CPU 단독이어서
+        밀려도 태스크가 늘지 않습니다 — 13.8절에 병목 순서와 선행 조건을 정리했습니다.</td></tr>
+      <tr><td class="mono c">8</td><td><strong>Aurora 리더 미사용</strong></td>
+        <td>인스턴스 2개 중 리더가 있는데 <code>reader_endpoint</code> 출력이 없어
+        <strong>비용은 지불하면서 읽기 트래픽은 받지 않습니다</strong>(13.7절 Aurora 행 · 13.8절 4번).</td></tr>
+      <tr><td class="mono c">9</td><td><strong>001 문서군의 잔여 OpenSearch 참조</strong></td>
+        <td><code>specs/001-interview-evidence-platform/</code>의 <code>plan.md</code>·<code>tasks.md</code>(T165·T195),
+        <code>contracts/openapi.yaml</code>의 store enum, <code>contracts/async-events.md</code>의
+        <code>target_store</code> 예시에 <code>opensearch</code>가 남아 있습니다.
+        <strong>계약 파일이므로 이 문서에서 임의 수정하지 않고 보고만 합니다</strong> — 변경은 계약 개정 절차 대상입니다.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="box ok">
+    <div class="t">이 표가 이 문서에 있는 이유</div>
+    <p>리소스 타당성 검토의 산출물은 "전부 타당하다"는 결론이 아닙니다.
+    항목 1~5는 <strong>선택한 관리형 서비스의 능력을 아직 다 쓰지 않은 상태</strong>이고,
+    항목 7~8은 <strong>확장·지연에 직접 작용하는 구현 격차</strong>이며(13.8절),
+    항목 6·9는 <strong>설정 공백과 문서·코드 이탈</strong>입니다.
+    앞의 것들은 구현 작업이고 9번은 계약 개정 절차이므로 처리 경로가 다릅니다.</p>
+  </div>
+
+  <div class="pn"><span>13 · AWS 리소스 타당성</span><span class="num">32</span></div>
+</div>
+
+<!-- ══════════════════ 13g · 고정비 실측 ══════════════════ -->
+<div class="page">
+  <div class="rh"><b>13 · AWS 리소스 타당성과 기각 대안</b><span>13.7 고정비 금액</span></div>
+
+  <h3>13.7 검색 백엔드 전환의 금액 — 공식이 아니라 숫자로</h3>
+  <p class="lead">10절과 13.4절은 "최소 OCU 고정비가 지배했다"고 서술하면서 <strong>금액을 비워 뒀습니다.</strong>
+  근거 없는 절감 주장을 피하려는 의도였지만, 결과적으로 <strong>"꽤 차이 난다"가 검증 불가능한 문장</strong>으로 남았습니다.
+  이 절은 서울 리전 공개 단가를 적용해 <strong>차이의 크기</strong>를 확정합니다.</p>
+
+  <div class="box warn">
+    <div class="t">이 절의 숫자를 읽는 규칙</div>
+    <p>아래는 <strong>AWS Price List API의 <code>ap-northeast-2</code> 온디맨드 단가(조회 시점 2026-08-17)</strong>에
+    Terraform의 실제 변수 값을 곱한 <strong>고정비 산술</strong>입니다. 월 730시간, 데이터 전송·요청·토큰 등
+    <strong>사용량 비례 항목은 전부 제외</strong>했습니다. 실제 청구액이 아니며,
+    단가는 변경되고 약정·크레딧·프리티어가 반영되지 않습니다.
+    <strong>권위는 언제나 리전 요금표와 Cost Explorer 실측</strong>이고 이 표는 의사결정용 근사입니다.</p>
+  </div>
+
+  <h3>제거된 검색 계층의 고정비</h3>
+  <p>제거 이전 모듈(<code>aws_opensearchserverless_collection</code>, <code>type = "VECTORSEARCH"</code>)은
+  중복성 설정을 지정하지 않았으므로 <strong>표준 컬렉션 최소 구성</strong>입니다 —
+  인덱싱 최소 1 OCU + 검색 최소 1 OCU = <strong>2 OCU가 상시</strong>.
+  서울 단가는 인덱싱·검색 모두 <strong>OCU-시간당 0.293 USD</strong>입니다.</p>
+  <table class="sm">
+    <thead><tr><th style="width:30%">항목</th><th style="width:22%">산식</th><th style="width:16%">월 USD</th><th>비고</th></tr></thead>
+    <tbody>
+      <tr><td>환경 1개 검색 고정비</td><td class="mono">2 × 0.293 × 730</td><td class="mono"><strong>≈ 428</strong></td>
+        <td>면접 0건에도 발생</td></tr>
+      <tr><td>dev · prod 합계</td><td class="mono">428 × 2</td><td class="mono"><strong>≈ 856</strong></td>
+        <td><strong>환경별 KMS 키가 달라 OCU 공유 불가</strong> — 계정 단위 풀링 조건을 만족하지 않음</td></tr>
+      <tr><td>관리형 스토리지</td><td class="mono">GB-월 단가 × 색인 크기</td><td class="mono">사용량</td>
+        <td>파일럿 데이터량에서는 OCU 대비 무시 가능</td></tr>
+    </tbody>
+  </table>
+
+  <h3>남은 고정비와의 비교 — 전환이 실제로 몇 %를 줄였는가</h3>
+  <table class="sm">
+    <thead><tr><th style="width:26%">고정비 항목</th><th style="width:16%">dev</th><th style="width:16%">prod</th><th style="width:14%">2환경 월</th><th>적용 단가</th></tr></thead>
+    <tbody>
+      <tr><td>NAT Gateway</td><td class="mono">1 → 43</td><td class="mono">2 → 86</td><td class="mono">≈ 129</td>
+        <td>0.059/시간 · 처리 GB 별도</td></tr>
+      <tr><td>ALB</td><td class="mono">16</td><td class="mono">16</td><td class="mono">≈ 33</td>
+        <td>0.0225/시간 · LCU 별도</td></tr>
+      <tr><td>인터페이스 엔드포인트</td><td class="mono">8×2 → 152</td><td class="mono">152</td><td class="mono">≈ 304</td>
+        <td>0.013/ENI-시간 · <strong>게이트웨이 2종은 무료</strong></td></tr>
+      <tr><td>Aurora 최소 ACU</td><td class="mono">0.5×2 → 146</td><td class="mono">2×2 → 584</td><td class="mono">≈ 730</td>
+        <td>0.20/ACU-시간 · <strong>writer+reader 각각</strong></td></tr>
+      <tr><td>Fargate 상시 태스크</td><td class="mono">3 → 124</td><td class="mono">8 → 332</td><td class="mono">≈ 456</td>
+        <td>1 vCPU/2 GiB = 0.0465600 + 2×0.0051100 시간당 → <strong>태스크당 41.45</strong></td></tr>
+      <tr><td><strong>전환 후 합계</strong></td><td class="mono">481</td><td class="mono">1,170</td>
+        <td class="mono"><strong>≈ 1,652</strong></td><td>검색 클러스터 <strong>0</strong></td></tr>
+      <tr><td>전환 전(위 + 검색)</td><td class="mono">909</td><td class="mono">1,598</td>
+        <td class="mono"><strong>≈ 2,507</strong></td><td>검색이 전체의 <strong>34%</strong></td></tr>
+    </tbody>
+  </table>
+
+  <div class="box ok">
+    <div class="t">숫자가 말해 주는 것 — 절감률보다 "어느 환경에서 지배적이었나"</div>
+    <p>전체로 보면 <strong>약 34% 감소</strong>(2,507 → 1,652)입니다. 그런데 더 중요한 사실은 환경별 편차입니다 —
+    <strong>dev에서 검색 계층은 전체 고정비의 47%</strong>(428 / 909)로 <strong>단일 최대 항목</strong>이었고,
+    prod에서는 27%였습니다. 즉 이 비용은 <strong>운영이 아니라 개발 기간에 가장 아팠습니다.</strong>
+    면접이 한 건도 없는 dev 환경에서 월 428 USD가 색인 없는 빈 컬렉션에 나가고 있었다는 뜻입니다.</p>
+    <p>그리고 전환 후 <strong>최대 고정비 항목은 Aurora 최소 ACU(730)로 이동</strong>했습니다.
+    2번째는 인터페이스 엔드포인트(304)이고, 이것은 NAT(129)를 줄이려고 도입한 리소스가
+    <strong>NAT의 2.4배 비용</strong>이 된 구조입니다 — 엔드포인트 8종 × 2 AZ × 2환경 = ENI 32개.
+    보안(프라이빗 서브넷에서 인터넷 경유 없이 AWS API 호출)이 목적이므로 <strong>제거 대상은 아니지만</strong>,
+    dev에서 <code>states</code>·<code>xray</code>처럼 실사용이 적은 엔드포인트는 재검토 여지가 있습니다.</p>
+    <p>위 표의 34%는 <strong>검색 계층 제거만</strong>의 효과입니다. 이와 별개로 stage 환경을 없앴으므로
+    표에서 stage 열이 사라졌습니다 — stage는 전환 후 기준 월 약 <strong>627 USD</strong>
+    (NAT 43 + ALB 16 + 엔드포인트 152 + Aurora 292 + Fargate 124)였고,
+    <strong>3환경 2,278 → 2환경 1,652</strong>로 고정비 하한이 한 번 더 내려갔습니다.</p>
+  </div>
+
+  <div class="box warn">
+    <div class="t">이 표에서 읽어서는 안 되는 것</div>
+    <p>"prod 고정비 1,170 USD"는 <strong>트래픽 0일 때의 하한</strong>입니다. 실제 면접이 오가면
+    Bedrock 토큰, Transcribe 시간, Polly 문자, MediaConvert 분, Aurora ACU 상승분·I/O,
+    NAT·엔드포인트 처리 GB가 더해집니다. <strong>Budgets 기본 임계값 500 USD는 prod 고정비 하한보다 낮으므로</strong>
+    prod에 그대로 적용하면 첫 달부터 상시 초과 상태가 됩니다 — 13.6절 6번 항목과 함께 조정 대상입니다.</p>
+  </div>
+
+  <div class="pn"><span>13 · AWS 리소스 타당성</span><span class="num">33</span></div>
+</div>
+
+<!-- ══════════════════ 13h · 동시 면접 확장 ══════════════════ -->
+<div class="page">
+  <div class="rh"><b>13 · AWS 리소스 타당성과 기각 대안</b><span>13.8 동시 면접 확장</span></div>
+
+  <h3>13.8 동시 면접자가 늘면 무엇이 먼저 막히는가</h3>
+  <p class="lead">PD-02는 초기 규모를 <strong>동시 면접 1~5건</strong>으로 고정했고, 이 문서의 앞부분은
+  그 전제 위에 쓰여 있습니다. 그러나 <strong>"5건을 넘으면 어디가 먼저 한계에 닿는가"</strong>는
+  어느 절에도 없었습니다. 오토스케일 상·하한만으로는 답이 되지 않습니다 —
+  <strong>스케일아웃이 실제로 작동하는지가 병목의 종류에 달려 있기 때문</strong>입니다.</p>
+
+  <h3>병목 순서 — 코드와 Terraform에서 확인된 순서대로</h3>
+  <table class="sm">
+    <thead><tr><th style="width:5%">#</th><th style="width:20%">한계 지점</th><th style="width:34%">무엇이 먼저 막히는가</th><th>확장 수단과 현재 상태</th></tr></thead>
+    <tbody>
+      <tr><td class="mono c">1</td><td><strong>API 태스크의 블로킹 처리</strong></td>
+        <td>답변 1건의 받아쓰기를 기다리는 동안 <strong>같은 태스크의 다른 세션도 함께 지연</strong>됩니다.
+        WebSocket 핸들러는 <code>async</code>인데 그 안에서 동기 어댑터를 직접 호출하고,
+        코드베이스에 <code>run_in_executor</code>·<code>to_thread</code>가 <strong>한 곳도 없습니다.</strong></td>
+        <td><strong>스케일아웃으로 해결되지 않음</strong> — 태스크를 늘려도 태스크당 실질 동시 처리량이 낮게 고정됩니다.
+        블로킹 호출을 스레드로 내보내는 <strong>코드 변경이 선행 조건</strong>입니다.</td></tr>
+      <tr><td class="mono c">2</td><td><strong>오토스케일 지표 불일치</strong></td>
+        <td>API 2→20, 워커 1→30 태스크가 <strong>둘 다 <code>ECSServiceAverageCPUUtilization</code> 단독</strong>입니다.
+        1번의 대기는 CPU를 쓰지 않으므로 <strong>세션이 밀려도 CPU는 낮게 유지</strong>되고 스케일아웃이 트리거되지 않습니다.
+        워커도 큐가 쌓이는 동안 CPU가 낮으면 늘지 않습니다.</td>
+        <td>API는 <strong>태스크당 활성 WebSocket 수</strong> 또는 ALB 요청 수,
+        워커는 <strong><code>ApproximateNumberOfMessagesVisible</code> 기반 목표 추적</strong>을 추가해야 합니다.</td></tr>
+      <tr><td class="mono c">3</td><td><strong>외부 AI 서비스 쿼터</strong></td>
+        <td>Bedrock 질문 모델·Titan 임베딩의 <strong>분당 요청·토큰 쿼터</strong>,
+        Transcribe 동시 작업 수, Polly 요청률이 <strong>계정·리전 단위 상한</strong>입니다.
+        태스크를 20개로 늘려도 이 상한은 늘어나지 않습니다.</td>
+        <td>쿼터 증설 신청이 유일한 수단이며 <strong>리드 타임이 있습니다.</strong>
+        현재 <strong>쿼터 접근을 감지하는 알람이 없습니다</strong>(13.6절 2번).</td></tr>
+      <tr><td class="mono c">4</td><td>Aurora 쓰기 집중</td>
+        <td>리더 인스턴스가 2개 중 1개로 존재하지만 <strong><code>reader_endpoint</code> 출력이 없어</strong>
+        애플리케이션이 읽기를 분산할 수 없습니다. 검색·타임라인 조회까지 <strong>writer로 갑니다.</strong></td>
+        <td>모듈에 리더 엔드포인트 출력을 추가하고 읽기 전용 세션을 분리.
+        <strong>비용은 이미 지불 중</strong>(13.7절 Aurora 행의 ×2)이므로 즉시 이득입니다.</td></tr>
+      <tr><td class="mono c">5</td><td>벡터 검색 비용</td>
+        <td><code>b_002_pgvector_verification</code>이 만드는 인덱스는 <code>ix_retrieval_scope</code>·
+        <code>ix_retrieval_source</code>의 <strong>B-tree 2개뿐이고 HNSW·IVFFlat이 없습니다.</strong>
+        테넌트 WHERE로 좁힌 뒤 <strong>정확 스캔</strong>이므로 기업당 행 수에 선형입니다.</td>
+        <td>파일럿 규모에서는 오히려 정확·단순하지만,
+        기업당 벡터가 수십만을 넘으면 <strong>ANN 인덱스 추가</strong>가 필요합니다(13.4절 반전 조건).</td></tr>
+      <tr><td class="mono c">6</td><td>커넥션 — <strong>병목 아님</strong></td>
+        <td>SQLAlchemy 풀 크기가 미설정(기본 5+10)이지만,
+        Aurora Serverless v2의 <code>max_connections</code>는 <strong>최대 ACU 기준으로 산정</strong>됩니다 —
+        prod <code>max 64</code>면 5,000, dev <code>max 8</code>이면 1,669.</td>
+        <td>현재 규모에서 <strong>여유가 큽니다.</strong> 다만 워커 30 + API 20 태스크까지 커지면
+        풀 크기를 명시하는 편이 예측 가능합니다.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="box warn">
+    <div class="t">실시간 체감 — 지금 구조는 "실시간 대화"가 아니라 "턴 단위 왕복"이다</div>
+    <p>1번 항목은 동시성 문제로만 보이지만 <strong>단일 지원자의 체감 지연에도 그대로 작용</strong>합니다.
+    <code>AwsTranscribeSpeechToText</code>는 <strong>스트리밍 API가 아니라 배치 작업</strong>을 씁니다 —
+    음성을 S3에 올리고 <code>start_transcription_job</code>을 등록한 뒤,
+    <strong><code>get_transcription_job</code>을 1초 간격으로 최대 120회 폴링</strong>합니다.
+    받아쓰기가 끝나야 Bedrock 질문 생성이 시작되고, 그 뒤에 Polly 합성이 붙습니다 — <strong>전부 직렬</strong>입니다.</p>
+    <p>따라서 지원자가 답변을 마친 뒤 다음 질문이 들릴 때까지의 지연은
+    <strong>(배치 STT 큐 대기 + 폴링 눈금 오차 + LLM + TTS)</strong>의 합입니다.
+    배치 STT는 짧은 음성이라도 초 단위가 걸리고, 폴링은 작업이 0.2초에 끝나도 <strong>다음 1초 경계까지 대기</strong>합니다.
+    별도 감사 문서의 <strong>F-06(매 턴 질의 재임베딩)</strong>이 여기에 한 번 더 더해집니다.
+    <strong>이 문단은 코드 구조에서 도출한 설계 진단이며 측정값이 아닙니다</strong> —
+    실제 초 단위 수치는 12절이 요구하는 단계별 지연 계측이 선행돼야 하고,
+    그 계측 경로(X-Ray 수집)가 아직 미완성입니다(13.6절 3번).</p>
+  </div>
+
+  <div class="box ok">
+    <div class="t">확장 순서 — 무엇을 먼저 해야 태스크 증설이 의미를 갖는가</div>
+    <p>동시 면접자를 늘리려 할 때 <strong>가장 흔한 오답은 <code>max_capacity</code>를 올리는 것</strong>입니다.
+    1번이 남아 있으면 태스크를 늘려도 태스크당 처리량이 낮아 비용만 선형으로 증가하고,
+    2번이 남아 있으면 <strong>애초에 늘어나지도 않습니다.</strong> 순서는 다음과 같습니다.</p>
+    <table class="sm" style="margin-bottom:0;">
+      <thead><tr><th style="width:8%">순서</th><th style="width:34%">작업</th><th>이것이 먼저여야 하는 이유</th></tr></thead>
+      <tbody>
+        <tr><td class="mono c">1</td><td>블로킹 호출을 스레드로 분리 · Transcribe 스트리밍 전환 검토</td>
+          <td>태스크당 동시 처리량을 올리는 <strong>유일한 방법</strong>. 체감 지연도 같이 개선됨</td></tr>
+        <tr><td class="mono c">2</td><td>오토스케일 지표 추가(WebSocket 수 · 큐 깊이)</td>
+          <td>이것이 없으면 확보한 처리량이 <strong>실제로 투입되지 않음</strong></td></tr>
+        <tr><td class="mono c">3</td><td>Bedrock·Transcribe 쿼터 확인과 알람</td>
+          <td>1·2를 고쳐도 <strong>계정 상한에서 동일하게 막힘</strong> · 증설은 리드 타임 필요</td></tr>
+        <tr><td class="mono c">4</td><td>리더 엔드포인트 노출 후 읽기 분리</td>
+          <td>이미 비용을 내고 있는 리소스를 <strong>사용 상태로 전환</strong></td></tr>
+        <tr><td class="mono c">5</td><td>부하 테스트로 실측 후 ANN 인덱스·용량 재산정</td>
+          <td>1~4 이전의 측정은 <strong>1번의 병목만 반복 확인</strong>하게 됨</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="pn"><span>13 · AWS 리소스 타당성</span><span class="num">34</span></div>
 </div>
 
 <!-- ══════════════════ 부록 ══════════════════ -->
 <div class="page">
-  <div class="rh"><b>부록 · 착수 전 확인 사항</b><span>Appendix</span></div>
+  <div class="rh"><b>부록 · 잔여 결정 사항</b><span>Appendix</span></div>
 
   <div class="sec">
     <div class="no">A</div>
     <div class="tx">
-      <h2>착수 전 확인 사항</h2>
+      <h2>잔여 결정 사항</h2>
       <p>아키텍처 외부의 미해결 항목</p>
     </div>
   </div>
 
-  <p class="lead">설계 자체는 구현 가능한 수준으로 완성됐습니다. 아래는 <strong>아키텍처 결함이 아니라
-  코드 착수 전에 답이 필요한 항목</strong>들입니다.</p>
+  <p class="lead">설계와 구현은 진행됐습니다. 아래는 <strong>아키텍처 결함이 아니라
+  아키텍처 외부의 판단이 필요한 항목</strong>들입니다.
+  구현 자체의 개선 항목은 13.6절에 별도로 있습니다.</p>
 
   <table>
     <thead><tr><th style="width:5%">#</th><th style="width:26%">항목</th><th>내용과 영향</th></tr></thead>
@@ -2529,24 +3305,27 @@ git worktree add ../iep-lane-d -b feature/001-lane-d-reporting foundation-v1</pr
         <td class="mono c">1</td>
         <td><strong>서울 리전 가용성</strong><br><small style="color:var(--muted);">확인 소요 30분</small></td>
         <td>Bedrock Claude, Titan Text Embeddings V2, Transcribe 한국어,
-        <strong>Polly 한국어 viseme Speech Marks</strong>, Bedrock KB의 <code>ap-northeast-2</code> 가용성.
+        <strong>Polly 한국어 viseme Speech Marks</strong>의 <code>ap-northeast-2</code> 가용성.
         viseme 미지원 시 PD-10의 2D 아바타 입 모양 설계가 무너집니다.
-        교차 리전 추론이 필요하면 개인정보 국외 이전 승인이 일정에 추가됩니다 (PD-03 조건부 결정).</td>
+        교차 리전 추론이 필요하면 개인정보 국외 이전 승인이 일정에 추가됩니다 (PD-03 조건부 결정).
+        <strong>Bedrock Knowledge Base 가용성은 002 전환으로 해소</strong>됐습니다.</td>
       </tr>
       <tr>
         <td class="mono c">2</td>
-        <td><strong>월 고정비 실측</strong></td>
-        <td>OpenSearch Serverless 최소 OCU, Aurora Serverless v2 최소 ACU, NAT Gateway, ALB,
-        VPC Endpoint 개수 × <code>dev</code>·<code>stage</code>·<code>prod</code> 3환경.
-        면접 0건인 개발 기간에도 발생합니다. 감당 가능성에 따라 환경 구성 재검토가 필요할 수 있으며,
-        헌장 78~80행 수정은 정식 개정 절차를 요구합니다.</td>
+        <td><strong>월 고정비 실측</strong><br><small style="color:var(--muted);">수량 10절 · 금액 13.7절 · 실측 미완</small></td>
+        <td>고정비 <strong>항목과 수량</strong>은 10절에서, <strong>서울 리전 단가를 적용한 금액</strong>은
+        13.7절에서 산출했습니다(전환 후 3환경 월 약 2,278 USD · 검색 제거로 약 36% 감소).
+        <strong>남은 것은 Cost Explorer 실측과의 대조</strong>입니다 —
+        13.7절은 사용량 비례 항목을 제외한 산술이므로 청구액이 아닙니다.
+        또한 <strong>Budgets 기본 500 USD가 prod 고정비 하한보다 낮아</strong> 임계값 재설정이 필요하고,
+        환경 분리를 축소하려면 헌장 개정 절차가 필요합니다.</td>
       </tr>
       <tr>
         <td class="mono c">3</td>
-        <td><strong>일정과 레인 재배분</strong></td>
-        <td>태스크 실측 <strong>Integration 53 · A 40 · C 40 · B 32 · D 32</strong>.
-        Wave 0 담당자가 Lane A(<code>infra/</code> 포함)를 겸하면 시작 지점이 병목이 되고
-        나머지 3명이 21개 foundation 태스크를 대기합니다. 문서에 일정 추정이 없습니다.</td>
+        <td><strong>운영 인력과 인프라 소유</strong></td>
+        <td>Lane A가 <code>infra/</code>를 소유하므로 13.6절의 인프라 개선 항목(HTTPS 오리진·알람·X-Ray·대시보드)이
+        모두 한 소유자에게 쌓입니다. 실시간 경로 알람 공백은 <strong>기능 개발과 경합하는 운영 작업</strong>이므로
+        우선순위를 명시적으로 배정해야 합니다.</td>
       </tr>
       <tr>
         <td class="mono c">4</td>
@@ -2558,19 +3337,20 @@ git worktree add ../iep-lane-d -b feature/001-lane-d-reporting foundation-v1</pr
       </tr>
       <tr>
         <td class="mono c">5</td>
-        <td><strong>사용량 미터링</strong><br><small style="color:var(--muted);">Wave 0 반영 권장</small></td>
-        <td>원가가 Bedrock 토큰·Transcribe 시간·Polly 문자·MediaConvert 분에 <strong>비례하는 변동비</strong>인데
-        측정 장치가 설계에 없습니다. 모든 AI 호출 경로를 지나가므로
-        <code>shared/aws_clients/ports.py</code>(T025)에 포트를 함께 넣는 것이 가장 쌉니다.
-        Wave 0 이후에는 4개 레인 전체를 수정해야 합니다.</td>
+        <td><strong>사용량 미터링</strong></td>
+        <td>원가가 Bedrock 토큰·Transcribe 시간·Polly 문자·MediaConvert 분에 <strong>비례하는 변동비</strong>입니다.
+        모든 AI 호출이 <code>shared/aws_clients/ports.py</code> 포트를 지나므로 계측 지점은 확보돼 있고,
+        CloudWatch 커스텀 지표 네임스페이스(<code>InterviewEvidencePlatform</code>)와 권한도 준비돼 있습니다.
+        남은 것은 <strong>기업별 사용량 집계 정의</strong>입니다 — 과금 근거로 쓸지, 이상 감지용으로만 쓸지가 미정입니다.</td>
       </tr>
       <tr>
         <td class="mono c">6</td>
         <td><strong>DR · RPO · RTO</strong></td>
-        <td>세션 복구(재접속·체크포인트)는 정교하게 설계됐으나 <strong>인프라 재해 대응은 한 줄</strong>입니다
-        (1687행 "백업과 복구 절차를 적용한다"). Aurora RPO/RTO 목표값, Multi-AZ 배치 명시,
-        S3 버전관리·복제, DynamoDB PITR, 리전 장애 대응, 복구 훈련 절차가 미정입니다.
-        결정된 값은 <code>infra/modules/data/</code>(T163)에 반영해야 합니다.</td>
+        <td>세션 복구(재접속·체크포인트)는 정교하게 설계됐고 인프라 측 <strong>수단</strong>도 배치돼 있습니다 —
+        Aurora writer/reader 2인스턴스·자동 백업, DynamoDB PITR, S3 버전관리, prod <code>deletion_protection</code>.
+        미정인 것은 <strong>목표값과 검증</strong>입니다 — RPO/RTO 숫자, 리전 장애 대응 여부,
+        <strong>복구 훈련 절차</strong>. 백업이 존재하는 것과 복구가 검증된 것은 다르며,
+        Evidence가 재생성 불가 데이터이므로 훈련 없는 백업은 근거 없는 안심입니다.</td>
       </tr>
       <tr>
         <td class="mono c">7</td>
@@ -2601,17 +3381,19 @@ git worktree add ../iep-lane-d -b feature/001-lane-d-reporting foundation-v1</pr
       <tr><td>실시간 동적 면접</td><td class="mono">FR-023~036</td><td><strong>07 Strategy·ContextBuilder·질문 루프</strong> · 08 세션 상태 · 장애 복구</td><td>US3 · T094~130 · QG-07·08·12</td></tr>
       <tr><td>Evidence·사람 검토</td><td class="mono">FR-037~049</td><td>09 Evidence 무결성 · 05 Lane D 계약 · 12 접근·감사·삭제</td><td>US4 · Lane D · QG-04·05·06·11</td></tr>
       <tr><td>실패·관측·회귀</td><td class="mono">FR-050~052</td><td>07 저하 모드 · 09 품질 게이트 · 12 지표·버전드 설정</td><td>통합 · 장애·부하·회귀·실제 AWS 패리티 테스트</td></tr>
-      <tr><td>측정 가능한 결과</td><td class="mono">SC-001~016</td><td>09 테스트 전략 · 12 지표 · 부록 착수 전 결정</td><td><code>quickstart.md</code>와 T173~192에서 E2E·성능·보안 증거 수집</td></tr>
+      <tr><td>측정 가능한 결과</td><td class="mono">SC-001~016</td><td>09 테스트 전략 · 12 지표 · 부록 잔여 결정</td><td><code>quickstart.md</code>와 T173~192에서 E2E·성능·보안 증거 수집</td></tr>
+      <tr><td>기준 기반 RAG 전환</td><td class="mono">002 R-001~008</td><td><strong>06 검색 아키텍처 · 10 생성 순서 · 13.4 대안 비교</strong></td><td><code>infra/tests/test_terraform_contracts.py</code>가 OpenSearch 재도입을 차단</td></tr>
+      <tr><td>리소스 타당성</td><td class="mono">PD-03·05·21·22 · 13절</td><td><strong>13 리소스별 근거와 기각 대안 · 13.6 재검토 항목 · 13.7 고정비 금액 · 13.8 동시 면접 확장</strong></td><td>Terraform 모듈·환경 루트가 권위 · 계약 테스트가 이탈 차단</td></tr>
       <tr><td>헌장 원칙</td><td class="mono">I~V</td><td>Evidence 우선 · 테넌트 격리 · 계약 경계 · 테스트 우선 · 복구 가능한 상태</td><td>위반은 기술 부채가 아니라 머지·릴리즈 차단</td></tr>
     </tbody>
   </table>
 
   <h3>현재 상태 요약</h3>
   <div class="tiles">
-    <div class="tile"><div class="k">문서</div><div class="v">9</div><div class="u">사양·계획·계약·데이터모델</div></div>
-    <div class="tile"><div class="k">REST 엔드포인트</div><div class="v">24</div><div class="u">openapi.yaml 1,331행</div></div>
-    <div class="tile"><div class="k">이벤트 · WS 메시지</div><div class="v">14<span style="font-size:9pt;">+17</span></div><div class="u">비동기 14 · WS 클라 7 서버 10</div></div>
-    <div class="tile"><div class="k">태스크</div><div class="v">192</div><div class="u">전부 미착수</div></div>
+    <div class="tile"><div class="k">Terraform 모듈</div><div class="v">8</div><div class="u">환경 루트 5 · 계약 테스트 강제</div></div>
+    <div class="tile"><div class="k">이벤트 라우팅</div><div class="v">15</div><div class="u">4큐 + DLQ 4 · Outbox 경유</div></div>
+    <div class="tile"><div class="k">검색 백엔드</div><div class="v">1</div><div class="u">Aurora pgvector + tsvector</div></div>
+    <div class="tile"><div class="k">재검토 항목</div><div class="v">9</div><div class="u">13.6절 · 구현 8 · 계약 1</div></div>
   </div>
 
   <div class="box">
@@ -2624,6 +3406,10 @@ git worktree add ../iep-lane-d -b feature/001-lane-d-reporting foundation-v1</pr
         <tr><td>사용자 시나리오 · 수락 조건 · FR</td><td class="mono">specs/001-.../spec.md</td></tr>
         <tr><td>구조 · 웨이브 · 소유권</td><td class="mono">specs/001-.../plan.md</td></tr>
         <tr><td>설계 근거 R-001~016 · 기각 대안</td><td class="mono">specs/001-.../research.md</td></tr>
+        <tr><td>기준 기반 RAG 결정 · 검색 전환 운영 절차</td><td class="mono">specs/002-criterion-grounded-rag/{research,quickstart}.md</td></tr>
+        <tr><td>인프라 실제 구성 (문서보다 권위)</td><td class="mono">infra/modules/ · infra/environments/</td></tr>
+        <tr><td>문서·코드 이탈 차단 규칙</td><td class="mono">infra/tests/test_terraform_contracts.py</td></tr>
+        <tr><td>구현 실태 감사 · 확인된 결함</td><td class="mono">docs/interview-pipeline-audit.html</td></tr>
         <tr><td>엔티티 · 상태 머신 · S3 키 · 정합 규칙</td><td class="mono">specs/001-.../data-model.md</td></tr>
         <tr><td>REST · WS · 이벤트 · 모듈 경계 계약</td><td class="mono">specs/001-.../contracts/</td></tr>
         <tr><td>태스크 192개 · 레인 배정</td><td class="mono">specs/001-.../tasks.md</td></tr>
@@ -2633,7 +3419,7 @@ git worktree add ../iep-lane-d -b feature/001-lane-d-reporting foundation-v1</pr
     </table>
   </div>
 
-  <div class="pn"><span>부록 · 착수 전 확인 사항</span><span class="num">25</span></div>
+  <div class="pn"><span>부록 · 잔여 결정 사항</span><span class="num">35</span></div>
 </div>
 
 </body>

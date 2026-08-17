@@ -22,6 +22,10 @@ import {
 import {
   type InvitationStatus,
   HiringWorkspace,
+  InvitationEmailSettings,
+  type InvitationEmailTemplate,
+  type InvitationEmailTemplateApi,
+  type InvitationEmailTemplateState,
   type PositionInvitationApi,
   type HiringWorkspaceApi,
 } from "../features/hiring";
@@ -89,6 +93,7 @@ const hiringApi: HiringWorkspaceApi = {
         })),
         prohibited_topics: input.prohibitedTopics,
         interview_duration_minutes: input.interviewDurationMinutes,
+        interview_level: input.interviewLevel,
       }),
     });
     const published = await companyRequest<
@@ -157,6 +162,119 @@ const positionInvitationApi: PositionInvitationApi = {
         rowVersion: invitation.row_version,
       })),
     };
+  },
+};
+
+type TemplateResponse = components["schemas"]["InvitationEmailTemplateView"];
+
+function toTemplateState(
+  response: TemplateResponse,
+): InvitationEmailTemplateState {
+  return {
+    subject: response.subject,
+    headline: response.headline,
+    intro: response.intro,
+    guides: response.guides,
+    ctaLabel: response.cta_label,
+    outro: response.outro,
+    footer: response.footer,
+    brandColor: response.brand_color,
+    useApplicantName: response.use_applicant_name,
+    emphasizeDeadline: response.emphasize_deadline,
+    showSecurityNotice: response.show_security_notice,
+    logoUrl: response.logo_url ?? null,
+    isPositionOverride: response.is_position_override,
+  };
+}
+
+function toTemplateBody(template: InvitationEmailTemplate) {
+  // logo_url is deliberately not sent: the server derives it from the uploaded logo.
+  return JSON.stringify({
+    subject: template.subject,
+    headline: template.headline,
+    intro: template.intro,
+    guides: template.guides,
+    cta_label: template.ctaLabel,
+    outro: template.outro,
+    footer: template.footer,
+    brand_color: template.brandColor,
+    use_applicant_name: template.useApplicantName,
+    emphasize_deadline: template.emphasizeDeadline,
+    show_security_notice: template.showSecurityNotice,
+  });
+}
+
+const invitationEmailTemplateApi: InvitationEmailTemplateApi = {
+  async getCompanyTemplate() {
+    return toTemplateState(
+      await companyRequest<TemplateResponse>("/v1/invitation-email-template"),
+    );
+  },
+  async saveCompanyTemplate(template) {
+    return toTemplateState(
+      await companyRequest<TemplateResponse>("/v1/invitation-email-template", {
+        method: "PUT",
+        body: toTemplateBody(template),
+      }),
+    );
+  },
+  async resetCompanyTemplate() {
+    return toTemplateState(
+      await companyRequest<TemplateResponse>("/v1/invitation-email-template", {
+        method: "DELETE",
+      }),
+    );
+  },
+  async getPositionTemplate(positionId) {
+    return toTemplateState(
+      await companyRequest<TemplateResponse>(
+        `/v1/positions/${positionId}/invitation-email-template`,
+      ),
+    );
+  },
+  async savePositionTemplate(positionId, template) {
+    return toTemplateState(
+      await companyRequest<TemplateResponse>(
+        `/v1/positions/${positionId}/invitation-email-template`,
+        { method: "PUT", body: toTemplateBody(template) },
+      ),
+    );
+  },
+  async resetPositionTemplate(positionId) {
+    return toTemplateState(
+      await companyRequest<TemplateResponse>(
+        `/v1/positions/${positionId}/invitation-email-template`,
+        { method: "DELETE" },
+      ),
+    );
+  },
+  async previewTemplate(template) {
+    const result = await companyRequest<
+      components["schemas"]["InvitationEmailPreview"]
+    >("/v1/invitation-email-template/preview", {
+      method: "POST",
+      body: toTemplateBody(template),
+    });
+    return { subject: result.subject, htmlBody: result.html_body };
+  },
+  async uploadLogo(file) {
+    const result = await companyRequest<
+      components["schemas"]["CompanyLogoView"]
+    >("/v1/invitation-email-template/logo", {
+      method: "PUT",
+      headers: { "Content-Type": file.type },
+      body: file,
+    });
+    return {
+      logoUrl: result.logo_url,
+      contentType: result.content_type,
+      byteSize: result.byte_size,
+    };
+  },
+  async deleteLogo() {
+    await companyRequest("/v1/invitation-email-template/logo", {
+      method: "DELETE",
+    });
   },
 };
 
@@ -231,6 +349,8 @@ const companyOperationsApi: CompanyOperationsApi = {
       })),
       prohibitedTopics: version.prohibited_topics,
       interviewDurationMinutes: version.interview_duration_minutes,
+      // Versions published before the difficulty toggle existed omit the field.
+      interviewLevel: version.interview_level ?? "junior",
     }));
   },
   publishCriteria: hiringApi.publishCriteria,
@@ -267,8 +387,16 @@ export function PositionOperationsRoute() {
       positionId={positionId}
       api={companyOperationsApi}
       invitationApi={positionInvitationApi}
+      templateApi={invitationEmailTemplateApi}
     />
   );
+}
+
+export function InvitationEmailSettingsRoute() {
+  if (AUTH_CONFIG && !getCompanyAccessToken(localStorage)) {
+    return <Navigate replace to="/auth/login" />;
+  }
+  return <InvitationEmailSettings api={invitationEmailTemplateApi} />;
 }
 
 export function ApplicantManagementRoute() {
@@ -426,15 +554,36 @@ export function ReviewRoute() {
           report={{
             summary: report.summary,
             status: report.status,
+            overallScore: report.overall_score ?? null,
+            unscoredCriteriaCount: report.unscored_criteria_count ?? 0,
             items: report.items.map((item) => ({
               reportItemId: item.report_item_id,
-              criterionName: item.criterion_id,
+              criterionId: item.criterion_id,
+              // Reports generated before the name was captured carry an empty string.
+              criterionName: item.criterion_name || item.criterion_id,
               assessmentState: item.assessment_state,
               observation: item.observation,
+              followUpQuestion: item.follow_up_question ?? null,
+              averageScore: item.average_score ?? null,
+              // Absent on reports generated before scoring existed.
+              axisAssessments: (item.axis_assessments ?? []).map((axis) => ({
+                axis: axis.axis,
+                label: axis.label,
+                score: axis.score,
+                rationale: axis.rationale,
+                quotedEvidenceIds: [...axis.quoted_evidence_ids],
+              })),
               evidence: item.evidence.map((evidence) => ({
                 evidenceId: evidence.evidence_id,
+                answerTurnId: evidence.answer_turn_id,
+                // Matches a timeline entry id, which is how the report resolves the
+                // quoted answer text without asking the API for it again.
+                transcriptSegmentId: evidence.transcript_segment_id,
                 startMs: evidence.video_start_ms,
                 endMs: evidence.video_end_ms,
+                observation: evidence.observation,
+                rationale: evidence.rationale,
+                sufficiency: evidence.sufficiency,
               })),
             })),
           }}

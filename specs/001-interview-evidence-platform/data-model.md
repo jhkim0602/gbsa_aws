@@ -113,7 +113,7 @@ when it is issued, so later position changes cannot alter an existing interview.
 | `company_id`, `competency_model_version_id` | UUID | Tenant/version FKs |
 | `code`, `name`, `description` | text | Code unique within version |
 | `weight` | decimal | Non-negative; all active criteria sum to configured total |
-| `good_evidence`, `weak_evidence` | JSON object | Observable answer guidance |
+| `verification_guide` | JSON object | Observable answer guidance; see CriterionVerificationGuide |
 | `abstain_guidance` | text | Required for insufficient evidence |
 | `common_questions` | JSON array | Versioned prompts, not generated results |
 | `required` | boolean | Drives coverage priority |
@@ -498,3 +498,7 @@ session in the current tenant context.
 6. Technical-failure intervals cannot be used by Evidence.
 7. Report AI originals and human review rows are append-only.
 8. Deletion enumeration starts from durable relational records and includes all known derived IDs.
+9. A JobRequirement resolves to an EvaluationCriterion in the same company and criterion version
+   through `(company_id, competency_model_version_id, criterion_code)`, enforced in the database by
+   `fk_job_requirements_criterion`. Replacing a version therefore deletes requirement rows before
+   the criteria they reference.

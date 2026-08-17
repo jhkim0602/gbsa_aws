@@ -212,7 +212,7 @@ backend/
 infra/
 ├── bootstrap/{state-backend,pipeline-role}/
 ├── modules/{network,edge,compute,data,async-workflow,ai-search,identity,observability}/
-└── environments/{dev,stage,prod}/{foundation,data-ai,application}/
+└── environments/dev/{foundation,data-ai,application}/ and environments/prod/
 
 tests/
 ├── e2e/
@@ -318,6 +318,9 @@ progress indicators and full-width primary actions instead of copying that defec
 - **Visual reference**: reproducible Figma Make captures, implementation comparison screenshots,
   1440px/390px layout assertions and no-mock-data checks.
 - **Infrastructure**: static validation, policy/security scan, plan review and environment smoke tests.
+  Static validation is not sufficient on its own: a well-formed configuration says nothing about what
+  a container is told to run, so the rendered `container_definitions` is asserted under a mock
+  provider, and every gate runs in CI without AWS credentials.
 - **End-to-end**: the thin journey in `quickstart.md` is mandatory after every lane merge.
 
 Tests that define a new contract or invariant are committed before or with production code and must
