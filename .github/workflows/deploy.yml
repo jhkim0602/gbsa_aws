@@ -512,10 +512,22 @@ jobs:
           APPLICANT_DISTRIBUTION_ID: ${{ steps.targets.outputs.applicant_distribution_id }}
         run: |
           set -euo pipefail
-          aws s3 sync apps/company-console/dist \
-            "s3://$COMPANY_SPA_BUCKET" --delete
-          aws s3 sync apps/applicant-interview/dist \
-            "s3://$APPLICANT_SPA_BUCKET" --delete
+          # `cp --recursive` before `sync --delete`, because an object carries the encryption
+          # it was written with: changing a bucket's server-side encryption leaves every
+          # existing object sealed under the old key, and both buckets are full of objects
+          # written under the customer key that CloudFront cannot decrypt. `sync` alone would
+          # not rewrite them -- it skips a same-sized source that is not newer, and
+          # `index.html` keeps its name and roughly its size across builds. (`--exact-
+          # timestamps` is not the fix; the CLI applies it only when syncing S3 to local.)
+          #
+          # `cp` copies unconditionally, so the bytes land under whatever encryption the
+          # bucket carries now. The `sync --delete` after it is then only doing what `cp`
+          # cannot: pruning the previous build's hashed asset files, which would otherwise
+          # accumulate forever. Nothing is deleted before it has been replaced.
+          aws s3 cp apps/company-console/dist "s3://$COMPANY_SPA_BUCKET" --recursive
+          aws s3 sync apps/company-console/dist "s3://$COMPANY_SPA_BUCKET" --delete
+          aws s3 cp apps/applicant-interview/dist "s3://$APPLICANT_SPA_BUCKET" --recursive
+          aws s3 sync apps/applicant-interview/dist "s3://$APPLICANT_SPA_BUCKET" --delete
           aws cloudfront create-invalidation \
             --distribution-id "$COMPANY_DISTRIBUTION_ID" --paths '/*'
           aws cloudfront create-invalidation \

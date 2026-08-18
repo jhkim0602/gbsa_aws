@@ -198,7 +198,10 @@ def test_compute_and_data_define_durable_private_runtime_boundaries() -> None:
     assert 'command     = ["python", "-m", "interview_evidence.main"]' not in compute
     assert compute.count('"secretsmanager:GetSecretValue"') == 2
     assert "block_public_policy     = true" in data
-    assert 'sse_algorithm     = "aws:kms"' in data
+    # The customer key still encrypts the buckets holding applicant material. This read
+    # `sse_algorithm     = "aws:kms"` until the algorithm became conditional per bucket --
+    # see `test_the_spa_origins_are_not_encrypted_with_the_customer_key` for why.
+    assert 'contains(local.spa_bucket_names, each.key) ? "AES256" : "aws:kms"' in data
     assert "point_in_time_recovery" in data
     assert "manage_master_user_password" in data
     assert "deletion_protection             = var.deletion_protection" in data
@@ -325,6 +328,57 @@ def test_async_ai_identity_and_audit_resources_enforce_safety_controls() -> None
     assert "is_multi_region_trail         = true" in observability
     assert "block_public_policy     = true" in observability
     assert "aws_budgets_budget" in observability
+
+
+def test_the_spa_origins_are_not_encrypted_with_the_customer_key() -> None:
+    """CloudFront holds no grant on the customer key, so it cannot read what that key sealed.
+
+    Every bucket in this module shared one `aws_kms_key`, which made the deployed SPAs answer
+    `403 AccessDenied` from `server: AmazonS3` for `/index.html` -- while a key that did not
+    exist still returned 404 and `/v1/*` still reached the API. Nothing failed on the way
+    there: terraform applied, both bundles published, nine of ten deploy jobs were green.
+
+    The fix has to stay on the SPA side. Granting `cloudfront.amazonaws.com` decrypt on that
+    key is the other way to make a public JavaScript bundle readable, and the same key
+    encrypts Aurora, the media bucket holding interview recordings and the audit trail.
+    """
+    data = read(ROOT / "modules" / "data" / "main.tf")
+
+    assert 'spa_bucket_names = toset(["company-spa", "applicant-spa"])' in data
+    rule = data.split('resource "aws_s3_bucket_server_side_encryption_configuration"')[1]
+    rule = rule.split("\nresource ")[0]
+    # Conditional on the bucket, not a blanket setting either way: the applicant material
+    # buckets must keep the customer key, and SSE-S3 everywhere would be the opposite defect.
+    assert "contains(local.spa_bucket_names, each.key) ? null : aws_kms_key.data.arn" in rule
+    assert 'contains(local.spa_bucket_names, each.key) ? "AES256" : "aws:kms"' in rule
+    # S3 rejects a bucket key on an SSE-S3 rule, which would fail the apply.
+    assert "bucket_key_enabled = !contains(local.spa_bucket_names, each.key)" in rule
+
+    # And the existing objects have to be rewritten, because an object keeps the encryption it
+    # was written with: the buckets are full of objects sealed under the customer key, and
+    # changing the bucket's encryption does not re-encrypt one of them. `sync` skips a
+    # same-sized source that is not newer and `index.html` keeps its name, so an unconditional
+    # `cp --recursive` has to precede it. `--exact-timestamps` looks like the fix and is not --
+    # the CLI applies it only when syncing S3 to local, so it was inert on an upload.
+    workflow = read(ROOT.parent / ".github" / "workflows" / "deploy.yml")
+    publish = workflow.split("Publish private SPA origins")[1].split("\n      - name:")[0]
+    # Comments dropped before matching: they name these flags while saying nothing about
+    # whether the commands pass them, and a match against the raw step body passed on the
+    # comment alone.
+    script = "\n".join(
+        line.strip() for line in publish.splitlines() if not line.lstrip().startswith("#")
+    )
+    for dist, bucket in (
+        ("apps/company-console/dist", "$COMPANY_SPA_BUCKET"),
+        ("apps/applicant-interview/dist", "$APPLICANT_SPA_BUCKET"),
+    ):
+        copy = f'aws s3 cp {dist} "s3://{bucket}" --recursive'
+        sync = f'aws s3 sync {dist} "s3://{bucket}" --delete'
+        assert copy in script, copy
+        assert sync in script, sync
+        # The copy first, so nothing is deleted before it has been replaced.
+        assert script.index(copy) < script.index(sync)
+    assert "--exact-timestamps" not in script
 
 
 def test_the_deploy_role_trusts_the_numeric_repository_subject() -> None:

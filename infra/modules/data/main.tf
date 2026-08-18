@@ -59,6 +59,23 @@ locals {
     "company-spa",
     "applicant-spa",
   ])
+  # The two SPA origins hold the built frontend -- `index.html` and hashed asset bundles,
+  # served to every anonymous browser that opens the site. Everything else holds applicant
+  # material: uploaded documents, interview recordings, generated reports, audit trails.
+  #
+  # The distinction decides the encryption key. A bucket encrypted with the customer key is
+  # unreadable by CloudFront, which holds no grant on it, so S3 answers a request for an
+  # object that exists with 403 -- indistinguishable from a permissions error, and it was:
+  # every document returned `AccessDenied` from `server: AmazonS3` while a missing key still
+  # returned 404 and `/v1/*` still reached the API. The deploy published both bundles and
+  # reported success.
+  #
+  # Granting cloudfront.amazonaws.com `kms:Decrypt` on that key is the other way to make this
+  # work, and it is the wrong one: the same key encrypts Aurora, the media bucket and the
+  # audit trail, so a policy written to serve a public JavaScript bundle would also cover
+  # applicant recordings. SSE-S3 on the SPA buckets keeps the customer key scoped to data
+  # that is actually confidential.
+  spa_bucket_names = toset(["company-spa", "applicant-spa"])
   tags = merge(var.tags, {
     Component = "data"
   })
@@ -99,11 +116,16 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "data" {
 
   bucket = each.value.id
   rule {
+    # SSE-S3 for the SPA origins, the customer key for applicant material. See
+    # `local.spa_bucket_names` for why the two are not encrypted alike. Still encrypted at
+    # rest either way, and both are private: the bucket policy admits one distribution and
+    # public access is blocked four ways.
     apply_server_side_encryption_by_default {
-      kms_master_key_id = aws_kms_key.data.arn
-      sse_algorithm     = "aws:kms"
+      kms_master_key_id = contains(local.spa_bucket_names, each.key) ? null : aws_kms_key.data.arn
+      sse_algorithm     = contains(local.spa_bucket_names, each.key) ? "AES256" : "aws:kms"
     }
-    bucket_key_enabled = true
+    # A bucket key is a KMS cost optimisation and S3 rejects it on an SSE-S3 rule.
+    bucket_key_enabled = !contains(local.spa_bucket_names, each.key)
   }
 }
 
