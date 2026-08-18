@@ -46,6 +46,7 @@ from interview_evidence.shared.aws_clients.ports import (
     DeterministicAIModel,
     DeterministicTextToSpeech,
     InMemoryEmailSender,
+    InMemoryObjectStorage,
 )
 from interview_evidence.shared.ids import Clock, new_uuid7
 from interview_evidence.shared.security.principals import (
@@ -154,6 +155,7 @@ async def _run_thin_journey() -> ThinJourneyResult:
     )
     search_index = cast(InMemorySearchIndex, runtime.resources["search_index"])
     clock = cast(Clock, runtime.resources["clock"])
+    object_storage = cast(InMemoryObjectStorage, runtime.resources["object_storage"])
 
     company_headers = {"Authorization": f"Bearer {COMPANY_TOKEN}"}
     async with AsyncClient(
@@ -451,14 +453,21 @@ async def _run_thin_journey() -> ThinJourneyResult:
             target=InterviewSessionState.AWAITING_ANSWER,
         )
         lane_c.repository.save_session(applicant_context, awaiting)
+        # The layout a live upload produces, not a shorthand. `RecordingAssembler` refuses a
+        # chunk outside `tenants/<company_id>/` -- correctly, it is the tenant boundary -- so
+        # a `local/...` key made this journey exercise a path no deployed run can take.
+        chunk_object_key = (
+            f"tenants/{COMPANY_ID}/sessions/{session_id}/recording/chunks/{0:06d}/{new_uuid7()}"
+        )
+        chunk_bytes = b"\x00" * 4096
         recording = RecordingChunk(
             recording_chunk_id=new_uuid7(),
             company_id=COMPANY_ID,
             interview_session_id=session_id,
             sequence=1,
-            object_key=f"local/{session_id}/recording-1.webm",
-            content_hash="c" * 64,
-            byte_size=4096,
+            object_key=chunk_object_key,
+            content_hash=sha256(chunk_bytes).hexdigest(),
+            byte_size=len(chunk_bytes),
             session_start_ms=0,
             session_end_ms=10_000,
             upload_status=RecordingUploadStatus.VERIFIED,
@@ -466,6 +475,16 @@ async def _run_thin_journey() -> ThinJourneyResult:
             created_at=clock.now(),
         )
         lane_c.repository.save_recording_chunk(applicant_context, recording)
+        # A row marked VERIFIED asserts the bytes are in the bucket, and the assembler reads
+        # them to build the playable recording. Saving the row alone left the digest, the
+        # byte size and the object itself all describing something absent -- the same shape as
+        # the review screen that offered playback for a recording nobody had uploaded.
+        object_storage.write_object(
+            applicant_context,
+            object_key=chunk_object_key,
+            body=chunk_bytes,
+            content_type="video/webm",
+        )
 
         checkpoints = CheckpointService(lane_c.repository, lane_c.outbox)
         recovery = RecoveryService(
@@ -544,11 +563,13 @@ async def _run_thin_journey() -> ThinJourneyResult:
                 confidence=0.99,
             ),
         )
+        # No `output_object_key`: the boundary derives it from the assembler's write, so an
+        # asset can never name an object that was not produced. A caller-supplied key is what
+        # let the review screen offer playback for bytes nobody had uploaded.
         interview_reporting.project_completed_session(
             company_context,
             session_id=session_id,
             turn_ranges=turn_ranges,
-            output_object_key=f"local/{session_id}/final.m3u8",
             occurred_at=clock.now(),
         )
         transcripts = lane_d.repository.list_transcripts(company_context, session_id)

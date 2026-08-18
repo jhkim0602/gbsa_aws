@@ -180,20 +180,26 @@ jobs:
         working-directory: ${{ steps.target.outputs.root }}
         run: terraform plan -input=false -out=tfplan
 
+      # Not a dot-directory. `upload-artifact` defaults `include-hidden-files` to false and
+      # treats a leading dot anywhere in the path as hidden, so `.deploy-plan` uploaded
+      # nothing at all: the copy below succeeded, then the upload failed with `No files were
+      # found with the provided path` and every downstream job skipped. Enabling hidden files
+      # would fix the symptom and weaken a default that exists to keep `.git` and `.env` out
+      # of artifacts -- while a saved plan carries subnet and security group ids.
       - name: Create review artifact
         env:
           ROOT: ${{ steps.target.outputs.root }}
         run: |
           set -euo pipefail
-          mkdir -p .deploy-plan
-          cp "$ROOT/tfplan" .deploy-plan/tfplan
-          terraform -chdir="$ROOT" show -no-color tfplan > .deploy-plan/tfplan.txt
+          mkdir -p deploy-plan
+          cp "$ROOT/tfplan" deploy-plan/tfplan
+          terraform -chdir="$ROOT" show -no-color tfplan > deploy-plan/tfplan.txt
 
       - name: Upload saved plan
         uses: actions/upload-artifact@v4
         with:
           name: terraform-plan-${{ github.run_id }}
-          path: .deploy-plan
+          path: deploy-plan
           if-no-files-found: error
           retention-days: 1
 
@@ -236,13 +242,13 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: terraform-plan-${{ github.run_id }}
-          path: .deploy-plan
+          path: deploy-plan
 
       - name: Apply exact saved plan
         if: ${{ needs.settings.outputs.apply_infrastructure == 'true' }}
         working-directory: ${{ needs.terraform_plan.outputs.root }}
         run: |
-          cp "$GITHUB_WORKSPACE/.deploy-plan/tfplan" tfplan
+          cp "$GITHUB_WORKSPACE/deploy-plan/tfplan" tfplan
           terraform apply -input=false tfplan
 
   build_images:
