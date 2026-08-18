@@ -16,6 +16,20 @@ The default local configuration contains only emulator credentials. Never place 
 text, answer text, production credentials, raw invitation tokens or signed URLs in configuration or
 logs.
 
+### Resetting the local demo data
+
+The seed is idempotent by returning early once a session exists, and the report projections it writes
+are immutable by design, so a database seeded by an older revision is not repaired by booting again —
+its rows keep pointing at whatever the previous seed wrote. Recreate the volume instead:
+
+```bash
+docker compose down -v
+make compose-up
+```
+
+The symptom to watch for is a review screen whose video will not play while the object is present in
+the bucket: that is a stale asset row naming the old key, not a broken player.
+
 ### Public repository analysis
 
 Set `GITHUB_TOKEN` in `.env` to analyse public Git submissions at full speed. An anonymous caller

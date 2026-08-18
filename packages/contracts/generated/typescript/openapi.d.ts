@@ -1529,9 +1529,7 @@ export interface operations {
     };
     readonly getInterviewTimeline: {
         readonly parameters: {
-            readonly query?: {
-                readonly query?: string;
-            };
+            readonly query?: never;
             readonly header?: never;
             readonly path: {
                 readonly session_id: components["parameters"]["SessionId"];

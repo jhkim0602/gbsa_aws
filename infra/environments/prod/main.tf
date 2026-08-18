@@ -44,6 +44,23 @@ variable "interview_model_id" {
   type = string
 }
 
+variable "cognito_domain_prefix" {
+  description = <<-EOT
+    Prefix of the hosted login domain, e.g. `iep-prod-company` becomes
+    `iep-prod-company.auth.<region>.amazoncognito.com`. Globally unique within the region.
+
+    Required, unlike in dev: the console sends a user to `/oauth2/authorize` on this domain,
+    and a pool without one has no such endpoint. Left unset the console builds cleanly, falls
+    back to a demo token the API rejects, and prod ships with no way to log in.
+  EOT
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9-]{3,63}$", var.cognito_domain_prefix))
+    error_message = "cognito_domain_prefix must contain 3-63 lowercase letters, numbers, or hyphens."
+  }
+}
+
 provider "aws" {
   region = var.aws_region
 
@@ -79,10 +96,11 @@ module "network" {
 module "identity" {
   source = "../../modules/identity"
 
-  name                = local.name
-  company_domain      = var.company_domain
-  deletion_protection = true
-  tags                = local.tags
+  name                  = local.name
+  company_domain        = var.company_domain
+  cognito_domain_prefix = var.cognito_domain_prefix
+  deletion_protection   = true
+  tags                  = local.tags
 }
 
 module "data" {
@@ -118,7 +136,14 @@ module "observability" {
   name       = local.name
   queue_arns = module.async_workflow.queue_arns
   dlq_arns   = module.async_workflow.dlq_arns
-  tags       = local.tags
+  # The dimension AWS/RDS metrics carry, which is what creates the two Aurora alarms. Prod
+  # holds every module in one root, so no state read is involved here.
+  aurora_cluster_identifier = module.data.aurora_cluster_identifier
+  # `aurora_max_connections` is left at its default. Aurora PostgreSQL Serverless v2 sets
+  # `max_connections` from the current ACU in steps, and 0.5 through 2 ACU all resolve to 189 --
+  # so prod's 2-ACU floor is the same ceiling as dev's 0.5, and an override here would only
+  # invent a difference the engine does not have.
+  tags = local.tags
 }
 
 module "compute" {
@@ -146,8 +171,16 @@ module "compute" {
     [module.data.dynamodb_table_arn],
     values(module.async_workflow.queue_arns),
   )
+  access_log_bucket = module.observability.access_log_bucket
+  access_log_prefix = module.observability.access_log_prefix
+  alarm_topic_arn   = module.observability.alarm_topic_arn
+  # Explicit, because the module cannot infer it from the ARN above: the topic is created in
+  # this same apply, so its ARN is unknown while planning, and a `count` derived from it fails
+  # the plan with "depends on resource attributes that cannot be determined until apply".
+  create_alarms  = true
+  enable_tracing = true
   task_environment = {
-    APPLICANT_ACCESS_BASE_URL  = "https://${var.applicant_domain}/access"
+    APPLICANT_ACCESS_BASE_URL  = "${module.edge.site_urls["applicant"]}/access"
     APP_ENVIRONMENT            = "prod"
     AWS_REGION                 = var.aws_region
     AURORA_DATABASE            = module.data.aurora_database_name
@@ -161,7 +194,7 @@ module "compute" {
     KMS_KEY_ARN                = module.data.kms_key_arn
     MEDIA_BUCKET               = module.data.bucket_ids["media"]
     RETRIEVAL_BACKEND          = "aurora"
-    SES_FROM_ADDRESS           = "noreply@${var.company_domain}"
+    SES_FROM_ADDRESS           = module.identity.from_address
     SOURCE_BUCKET              = module.data.bucket_ids["source"]
     SQS_ANALYSIS_QUEUE_URL     = module.async_workflow.queue_urls["analysis"]
     SQS_DELETION_QUEUE_URL     = module.async_workflow.queue_urls["deletion"]
@@ -197,4 +230,31 @@ module "edge" {
   applicant_bucket_domain_name = module.data.bucket_regional_domain_names["applicant-spa"]
   api_origin_domain_name       = module.compute.alb_dns_name
   tags                         = local.tags
+}
+
+# The same shape the dev application root publishes, because one pipeline job reads it for
+# both environments. See that root for why these are outputs rather than repository
+# variables; here the domain is fixed, so only the bucket names and distribution ids are
+# genuinely unknowable in advance.
+output "frontend" {
+  value = {
+    api_base_url = ""
+    sites = {
+      company = {
+        bucket          = module.data.bucket_ids["company-spa"]
+        distribution_id = module.edge.distribution_ids["company"]
+        url             = module.edge.site_urls["company"]
+      }
+      applicant = {
+        bucket          = module.data.bucket_ids["applicant-spa"]
+        distribution_id = module.edge.distribution_ids["applicant"]
+        url             = module.edge.site_urls["applicant"]
+      }
+    }
+    cognito = {
+      login_domain = module.identity.user_pool_login_domain
+      client_id    = module.identity.user_pool_client_id
+      redirect_uri = "${module.edge.site_urls["company"]}/auth/callback"
+    }
+  }
 }

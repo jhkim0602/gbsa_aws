@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from hashlib import sha256
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from sqlalchemy.orm import Session
@@ -109,8 +108,11 @@ def ensure_local_demo_review_projections(
     criterion_id: UUID,
     criterion_name: str,
     answers: tuple[LocalDemoAnswerRange, ...],
+    chunk_object_key: str,
     recording_object_key: str,
+    recording_content_hash: str,
     recording_duration_ms: int,
+    recording_playable: bool,
     now: datetime,
 ) -> UUID:
     """Seed the transcript, recording and report a finished local demo session would have.
@@ -120,6 +122,11 @@ def ensure_local_demo_review_projections(
     Every axis score cites the Evidence it rests on, the same rule the generated path is
     held to -- a seeded score a reviewer cannot play back would teach them to trust the
     number instead of the answer.
+
+    Two keys, because the reviewer plays the assembled recording while a citation is traced
+    back to the chunk it came from. ``recording_playable`` is False when no bucket was in
+    reach, and the asset then stays PROCESSING: an asset marked ready is a promise that
+    playback can sign a URL for bytes that are there.
     """
     context = TenantContext(
         company_id=company_id,
@@ -150,7 +157,7 @@ def ensure_local_demo_review_projections(
                 # the timeline reads question-then-answer instead of interleaving them.
                 session_start_ms=max(answer.session_start_ms - 10_000, 0),
                 session_end_ms=answer.session_start_ms,
-                source_audio_key=recording_object_key,
+                source_audio_key=chunk_object_key,
                 version=1,
                 corrected_by=None,
                 created_at=completed_at,
@@ -168,7 +175,7 @@ def ensure_local_demo_review_projections(
                 confidence=0.94,
                 session_start_ms=answer.session_start_ms,
                 session_end_ms=answer.session_end_ms,
-                source_audio_key=recording_object_key,
+                source_audio_key=chunk_object_key,
                 version=1,
                 corrected_by=None,
                 created_at=completed_at,
@@ -184,9 +191,9 @@ def ensure_local_demo_review_projections(
             interview_session_id=interview_session_id,
             asset_type="final_video",
             object_key=recording_object_key,
-            content_hash=sha256(f"local-demo-asset:{interview_session_id}".encode()).hexdigest(),
+            content_hash=recording_content_hash,
             duration_ms=recording_duration_ms,
-            status=RecordingStatus.READY,
+            status=(RecordingStatus.READY if recording_playable else RecordingStatus.PROCESSING),
             missing_ranges=(),
             created_at=completed_at,
         ),

@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WhyYou - RAG 기반 AI 구조화 면접 플랫폼</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Noto+Sans+KR:wght@400;500;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#172033;--body:#3f4b5f;--muted:#738096;--line:#dce4ee;--line-soft:#edf1f6;
+  --paper:#fff;--blue:#2764e7;--blue-soft:#edf3ff;--cyan:#1f9db5;--cyan-soft:#eaf8fb;
+  --green:#14966f;--green-soft:#e9f7f2;--amber:#c97812;--amber-soft:#fff5e7;
+  --rose:#c94764;--rose-soft:#fff0f3;
+  --sans:'Inter','Noto Sans KR',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:#dfe5ec}
+body{font-family:var(--sans);color:var(--body);font-size:9.4pt;line-height:1.62;-webkit-font-smoothing:antialiased}
+.page{position:relative;width:min(210mm,calc(100% - 24px));height:297mm;margin:20px auto;padding:16mm 17mm 18mm;overflow:hidden;background:var(--paper);box-shadow:0 3px 18px rgba(23,32,51,.13)}
+.page.wide{padding:14mm 12mm 18mm}
+.rh{display:flex;align-items:center;justify-content:space-between;margin-bottom:8mm;padding-bottom:5px;border-bottom:1px solid var(--line);color:#97a2b2;font-size:7.3pt;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.rh b{color:var(--blue)}
+.pf{position:absolute;right:17mm;bottom:9mm;left:17mm;display:flex;justify-content:space-between;padding-top:5px;border-top:1px solid var(--line-soft);color:#9aa5b5;font-size:7.2pt}
+.wide .pf{right:12mm;left:12mm}
+h1,h2,h3,h4{color:var(--ink);letter-spacing:0}
+h1{font-size:24pt;line-height:1.18;font-weight:900}
+h2{margin-bottom:3mm;font-size:15pt;line-height:1.3;font-weight:800}
+h2 .num{display:inline-block;width:28px;color:var(--blue);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11pt;font-weight:600}
+h3{margin:5.5mm 0 2.2mm;font-size:10.8pt;line-height:1.4;font-weight:800}
+h4{font-size:9.4pt;font-weight:800}
+p{margin-bottom:2.5mm}
+strong{color:var(--ink);font-weight:800}
+code{padding:1px 4px;border-radius:3px;background:#f0f3f7;color:var(--ink);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:8.2pt}
+.lead{margin:0 0 5mm;padding-left:4mm;border-left:3px solid var(--blue);color:#344158;font-size:10.6pt;line-height:1.62}
+.sec-intro{margin-bottom:4mm;color:var(--muted)}
+.eyebrow{margin-bottom:2mm;color:var(--blue);font-size:7.7pt;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
+.grid{display:grid;gap:3mm}.g2{grid-template-columns:repeat(2,minmax(0,1fr))}.g3{grid-template-columns:repeat(3,minmax(0,1fr))}.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.panel{padding:3.3mm 3.7mm;border:1px solid var(--line);border-radius:6px;background:#fbfcfe}
+.panel.blue{border-color:#cddcff;background:var(--blue-soft)}.panel.cyan{border-color:#c9e9ef;background:var(--cyan-soft)}.panel.green{border-color:#cbeade;background:var(--green-soft)}.panel.amber{border-color:#f2dfbf;background:var(--amber-soft)}.panel.rose{border-color:#f0ced6;background:var(--rose-soft)}
+.panel p{margin:1.5mm 0 0;color:#526076;font-size:8.6pt;line-height:1.55}
+.icon-title{display:flex;align-items:center;gap:2.5mm}
+.icon-circle{display:flex;width:9mm;height:9mm;flex:0 0 9mm;align-items:center;justify-content:center;border-radius:50%;background:var(--blue);color:#fff}
+.icon-circle.green{background:var(--green)}.icon-circle svg{width:5.2mm;height:5.2mm;fill:none;stroke:currentColor;stroke-width:1.8}
+.number-list{counter-reset:item;list-style:none}
+.number-list li{position:relative;min-height:12mm;margin-bottom:2mm;padding:2.8mm 3mm 2.8mm 13mm;border-bottom:1px solid var(--line-soft);color:#4d5a6e}
+.number-list li:last-child{border-bottom:0}.number-list li::before{counter-increment:item;content:counter(item,decimal-leading-zero);position:absolute;top:2.4mm;left:0;color:var(--blue);font-size:9pt;font-weight:800}
+.number-list b{display:block;margin-bottom:.5mm;color:var(--ink);font-size:9.5pt}
+.flow{display:flex;align-items:stretch;margin:3mm 0}.step{position:relative;flex:1;padding:2.6mm 2mm;border-top:2px solid var(--blue);background:#f8faff;text-align:center}.step+.step{margin-left:2mm}
+.step .n{color:#9ba6b6;font-size:6.8pt;font-weight:800;letter-spacing:.08em}.step .t{margin:.8mm 0;color:var(--ink);font-size:8.5pt;font-weight:800}.step .d{color:#68758a;font-size:7.3pt;line-height:1.4}
+table{width:100%;margin:2mm 0 3.5mm;border-collapse:collapse;font-size:8.5pt}th{padding:2.1mm 2.4mm;border-bottom:1.5px solid var(--line);background:#f7f9fc;color:var(--ink);text-align:left;font-size:7.8pt;font-weight:800}
+td{padding:2.1mm 2.4mm;border-bottom:1px solid var(--line-soft);vertical-align:top}tr:last-child td{border-bottom:0}td.k{width:31mm;color:var(--ink);font-weight:800;white-space:nowrap}
+.quote{margin:3mm 0;padding:4mm 5mm;border-left:4px solid var(--blue);background:linear-gradient(90deg,#f2f6ff,#fbfcff);color:var(--ink);font-size:12pt;font-weight:800;line-height:1.55}
+.quote small{display:block;margin-top:2mm;color:var(--muted);font-size:8.2pt;font-weight:500}
+.toc{margin-top:5mm;list-style:none}.toc li{display:grid;grid-template-columns:12mm 1fr auto;gap:3mm;align-items:start;padding:3.4mm 0;border-bottom:1px solid var(--line-soft)}
+.toc .n{color:var(--blue);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:9pt;font-weight:700}.toc b{display:block;color:var(--ink);font-size:10.3pt}.toc small{display:block;margin-top:.6mm;color:var(--muted);font-size:8.2pt}.toc .p{color:#a0a9b7;font-size:8pt}
+.cover{display:flex;flex-direction:column;padding:0;background:linear-gradient(155deg,rgba(39,100,231,.08),transparent 42%),linear-gradient(335deg,rgba(31,157,181,.12),transparent 40%),#fbfdff}
+.cover::after{content:'';position:absolute;top:0;right:17mm;width:1px;height:100%;background:rgba(39,100,231,.12)}
+.cover-top{padding:24mm 20mm 0}.brand-lockup{display:flex;align-items:center;gap:4mm}.brand-mark{width:17mm;height:17mm;filter:drop-shadow(0 4px 8px rgba(39,100,231,.16))}.brand-word{color:var(--ink);font-size:13pt;font-weight:900}
+.cover-copy{margin-top:23mm}.cover-copy h1{font-size:40pt;line-height:1.02}.cover-copy h1 span{color:var(--blue)}
+.cover-tagline{max-width:145mm;margin-top:7mm;color:#344158;font-size:14pt;font-weight:700;line-height:1.55}.cover-tagline b{color:var(--blue)}
+.cover-desc{max-width:135mm;margin-top:5mm;color:#657187;font-size:10pt;line-height:1.65}
+.cover-stack{display:flex;flex-wrap:wrap;gap:2.8mm 5mm;margin-top:13mm;padding-top:5mm;border-top:1px solid rgba(39,100,231,.18)}
+.cover-stack span{display:flex;align-items:center;gap:1.6mm;color:#506078;font-size:8.2pt;font-weight:700}.cover-stack img{width:5.5mm;height:5.5mm;object-fit:contain}
+.cover-team{margin-top:auto;padding:0 20mm 22mm}
+.team-meta{width:100mm;padding-top:4mm;border-top:2px solid var(--ink)}
+.team-meta-row{display:grid;grid-template-columns:20mm minmax(0,1fr);gap:4mm;padding:2mm 0;border-bottom:1px solid rgba(23,32,51,.1)}
+.team-meta-row:last-child{border-bottom:0}
+.team-meta-row span{color:#8a96a8;font-size:7.4pt;font-weight:800;letter-spacing:.06em}
+.team-meta-row strong{color:#344158;font-size:9.2pt;font-weight:700}
+.arch{margin:3mm 0 2mm;padding:2mm;border:1px solid var(--line);background:#fff}.arch img{display:block;width:100%;height:auto;max-height:154mm;object-fit:contain}.arch-cap{color:#8b96a7;text-align:center;font-size:7.4pt}
+.stack-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:3mm}.stack-item{min-height:39mm;padding:4mm 3.5mm;border-bottom:2px solid var(--line);background:#fbfcfe}
+.stack-item img{width:10mm;height:10mm;margin-bottom:3mm;object-fit:contain}.stack-item .cloud-logo{display:flex;width:10mm;height:10mm;margin-bottom:3mm;align-items:center;justify-content:center;border-radius:4px;background:#ff9900;color:#232f3e;font-size:7pt;font-weight:900}
+.stack-item h4{margin-bottom:1mm}.stack-item p{color:var(--muted);font-size:7.8pt;line-height:1.45}
+.search-compare{display:grid;grid-template-columns:1fr 12mm 1fr;align-items:stretch;margin:4mm 0}.search-box{padding:4mm;border:1px solid var(--line);background:#fbfcfe}.search-box.semantic{border-top:3px solid var(--blue)}.search-box.lexical{border-top:3px solid var(--green)}
+.search-box h4{margin-bottom:2mm}.search-box p{margin:0;color:#58667a;font-size:8.5pt}.plus{display:flex;align-items:center;justify-content:center;color:var(--blue);font-size:18pt;font-weight:800}
+.formula{margin:4mm 0;padding:4mm;border:1px solid #cbdafc;background:var(--blue-soft);color:var(--ink);text-align:center;font-size:10.4pt;font-weight:800}
+.guard-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3mm}.guard{padding:3.2mm 3.5mm;border-left:3px solid var(--blue);background:#f9fbfe}.guard.green{border-left-color:var(--green)}.guard.amber{border-left-color:var(--amber)}.guard.rose{border-left-color:var(--rose)}
+.guard h4{margin-bottom:1mm}.guard p{margin:0;color:#657187;font-size:8.3pt}
+.kpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin:3mm 0 5mm;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.kpi>div{padding:4mm 3mm;border-right:1px solid var(--line);text-align:center}.kpi>div:last-child{border-right:0}.kpi b{display:block;margin-bottom:1mm;color:var(--blue);font-size:15pt}.kpi span{color:var(--muted);font-size:7.7pt}
+@page{size:A4 portrait;margin:0}
+@media print{html{background:#fff}.page{width:210mm;height:297mm;margin:0;break-after:page;page-break-after:always;box-shadow:none}.page:last-child{break-after:auto;page-break-after:auto}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+@media(max-width:720px){.page{width:calc(100% - 12px);height:auto;min-height:297mm;margin:8px auto;padding:12mm 8mm 17mm}.cover{min-height:297mm;padding:0}.cover-top{padding:18mm 10mm 0}.cover-team{padding:0 10mm 18mm}.cover-copy h1{font-size:34pt}.g3,.g4,.stack-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pf{right:8mm;left:8mm}}
+</style>
+</head>
+<body>
+
+<section class="page cover">
+  <div class="cover-top">
+    <div class="brand-lockup">
+      <svg class="brand-mark" viewBox="0 0 96 96" role="img" aria-label="WhyYou 로고">
+        <rect width="96" height="96" rx="22" fill="#2764E7"/>
+        <path d="M18 25h13l8 36 10-24h10l9 24 8-36h12L76 73H63L54 51 44 73H31L18 25Z" fill="#fff"/>
+        <circle cx="76" cy="76" r="7" fill="#55D6C2"/>
+      </svg>
+      <span class="brand-word">WhyYou</span>
+    </div>
+    <div class="cover-copy">
+      <div class="eyebrow">Project Report</div>
+      <h1><span>Why</span>You</h1>
+      <div class="cover-tagline"><b>RAG 기반 AI 구조화 면접</b>으로<br>지원자의 경험을 검증하고 채용 판단 근거를 만듭니다.</div>
+      <p class="cover-desc">
+        기업의 평가 기준과 지원자의 이력서·포트폴리오·공개 코드를 연결해
+        개인 맞춤형 질문과 꼬리질문을 생성하고, 실제 답변을 영상·자막과 함께
+        검토 가능한 근거로 정리하는 IT 직군 특화 면접 플랫폼입니다.
+      </p>
+    </div>
+    <div class="cover-stack" aria-label="주요 기술 스택">
+      <span><img src="assets/tech-logos/react.svg" alt="">React</span>
+      <span><img src="assets/tech-logos/typescript.svg" alt="">TypeScript</span>
+      <span><img src="assets/tech-logos/fastapi.svg" alt="">FastAPI</span>
+      <span><img src="assets/tech-logos/python.svg" alt="">Python 3.12</span>
+      <span><i style="color:#ff9900;font-size:13pt;font-style:normal">●</i>Amazon Bedrock</span>
+      <span><img src="assets/tech-logos/postgresql.svg" alt="">Aurora PostgreSQL</span>
+      <span><img src="assets/tech-logos/docker.svg" alt="">ECS Fargate</span>
+      <span><img src="assets/tech-logos/terraform.svg" alt="">Terraform</span>
+    </div>
+  </div>
+  <div class="cover-team">
+    <div class="team-meta" aria-label="프로젝트 팀 정보">
+      <div class="team-meta-row"><span>팀명</span><strong>WhyYou</strong></div>
+      <div class="team-meta-row"><span>팀장</span><strong>김정환</strong></div>
+      <div class="team-meta-row"><span>팀원</span><strong>서준혁 · 이보성 · 박윤수</strong></div>
+      <div class="team-meta-row"><span>작성일</span><strong>2026.08.18</strong></div>
+    </div>
+  </div>
+</section>
+
+<section class="page">
+  <div class="rh"><span><b>Contents</b> WhyYou</span><span>RAG 기반 AI 구조화 면접</span></div>
+  <div class="eyebrow">Document Map</div>
+  <h1 style="font-size:21pt">개발 기획서 구성</h1>
+  <p class="sec-intro" style="margin-top:3mm">구현 세부 목록보다 <strong>문제, 핵심 기능, RAG 질문 흐름, 주요 기술 선택</strong>을 중심으로 정리했습니다.</p>
+  <ol class="toc">
+    <li><span class="n">01</span><span><b>서비스 개요</b><small>핵심 가치, 사용자, 서비스 여정과 범위</small></span><span class="p">p.3</span></li>
+    <li><span class="n">02</span><span><b>문제 정의와 타깃</b><small>왜 면접인가, 왜 지금인가, 왜 IT 직군인가</small></span><span class="p">p.4</span></li>
+    <li><span class="n">03</span><span><b>핵심 제품 설계</b><small>RAG 기반 질문 생성과 답변 근거 리포트</small></span><span class="p">p.5</span></li>
+    <li><span class="n">04</span><span><b>AWS 아키텍처</b><small>전체 구성과 주요 설계 원칙</small></span><span class="p">p.6</span></li>
+    <li><span class="n">05</span><span><b>기술 스택</b><small>주요 프레임워크와 클라우드 구성</small></span><span class="p">p.7</span></li>
+    <li><span class="n">06</span><span><b>RAG 검색 설계</b><small>의미 검색과 키워드 검색을 나눈 이유</small></span><span class="p">p.8</span></li>
+    <li><span class="n">07</span><span><b>신뢰성과 보안</b><small>복구, 격리, 동의, 삭제, 사람의 최종 판단</small></span><span class="p">p.9</span></li>
+    <li><span class="n">08</span><span><b>기대효과</b><small>기업과 지원자에게 제공하는 가치</small></span><span class="p">p.10</span></li>
+  </ol>
+  <div class="pf"><span>WhyYou Project Report</span><span>2</span></div>
+</section>
+
+<section class="page">
+  <div class="rh"><span><b>01</b> 서비스 개요</span><span>WhyYou</span></div>
+  <h2><span class="num">01</span>서비스 개요</h2>
+  <p class="lead">
+    WhyYou는 기업의 평가 기준과 지원자의 제출 자료를 연결하는
+    <strong>RAG 기반 AI 구조화 면접 플랫폼</strong>입니다.
+    개인 맞춤형 질문으로 경험의 깊이를 확인하고, 실제 답변을 채용 검토 근거로 남깁니다.
+  </p>
+  <h3>핵심 가치</h3>
+  <ol class="number-list">
+    <li><b>기업 기준 중심</b>질문과 리포트는 기업이 정한 직무 역량과 평가 기준에서 출발합니다.</li>
+    <li><b>지원자 자료 기반 질문</b>이력서·포트폴리오·공개 코드를 검색해 개인 맞춤형 질문과 꼬리질문을 생성합니다.</li>
+    <li><b>실제 답변 중심 근거</b>제출 자료는 질문의 배경이며, 평가는 지원자가 면접에서 직접 답한 내용에 연결됩니다.</li>
+    <li><b>검토 가능한 결과</b>질문·답변·자막·영상 구간과 판단 이유를 한 화면에서 확인합니다.</li>
+    <li><b>사람의 최종 판단</b>AI는 면접과 정리를 돕고, 최종 채용 결정은 기업 담당자가 수행합니다.</li>
+  </ol>
+  <h3>사용자</h3>
+  <div class="grid g2">
+    <div class="panel blue">
+      <div class="icon-title"><span class="icon-circle"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18M6 21V5l6-3 6 3v16M9 9h.01M9 13h.01M9 17h.01M15 9h.01M15 13h.01M15 17h.01"/></svg></span><h4>기업 · 채용 담당자</h4></div>
+      <p>포지션과 평가 기준을 설정하고 지원자를 초대합니다. 면접 후에는 답변 근거와 리포트를 검토하고 최종 상태를 직접 기록합니다.</p>
+    </div>
+    <div class="panel green">
+      <div class="icon-title"><span class="icon-circle green"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span><h4>지원자</h4></div>
+      <p>개인 링크로 접속해 자료를 제출하고 AI 면접에 참여합니다. 본인의 경험과 문제 해결 과정을 질문에 따라 직접 설명합니다.</p>
+    </div>
+  </div>
+  <h3>서비스 여정</h3>
+  <div class="flow">
+    <div class="step"><div class="n">01</div><div class="t">기준 설정</div><div class="d">직무·평가축 정의</div></div>
+    <div class="step"><div class="n">02</div><div class="t">지원자 초대</div><div class="d">개인 링크 발급</div></div>
+    <div class="step"><div class="n">03</div><div class="t">자료 분석</div><div class="d">검증 포인트 추출</div></div>
+    <div class="step"><div class="n">04</div><div class="t">AI 면접</div><div class="d">질문·꼬리질문</div></div>
+    <div class="step"><div class="n">05</div><div class="t">근거 정리</div><div class="d">영상·자막 연결</div></div>
+    <div class="step"><div class="n">06</div><div class="t">사람 검토</div><div class="d">최종 판단</div></div>
+  </div>
+  <h3>범위</h3>
+  <table>
+    <tr><td class="k">대상</td><td>한국어 기반 IT·개발 직군 채용</td></tr>
+    <tr><td class="k">분석 자료</td><td>이력서, 자기소개서, PDF 포트폴리오, 공개 코드 저장소</td></tr>
+    <tr><td class="k">핵심 경험</td><td>자료 분석 → 실시간 AI 면접 → 근거 기반 리포트 → 사람 검토</td></tr>
+    <tr><td class="k">제외 범위</td><td>비IT 직군, 다국어, 비공개 저장소 인증, 자동 합격·불합격 결정</td></tr>
+  </table>
+  <div class="pf"><span>01 서비스 개요</span><span>3</span></div>
+</section>
+
+<section class="page">
+  <div class="rh"><span><b>02</b> 문제 정의와 타깃</span><span>WhyYou</span></div>
+  <h2><span class="num">02</span>문제 정의와 타깃</h2>
+  <div class="quote">
+    사람을 파악하는 데 면접만큼 직접적인 방법은 없습니다.<br>
+    하지만 모든 지원자를 사람이 직접 면접하기에는 너무 많은 시간과 비용이 듭니다.
+    <small>WhyYou는 이 검증의 깊이와 운영 비용 사이의 간극을 해결합니다.</small>
+  </div>
+  <h3>왜 지금 필요한가</h3>
+  <p>
+    생성형 AI로 이력서, 포트폴리오, 코드 작성의 진입 장벽이 낮아지면서
+    <strong>산출물의 완성도만으로 실제 역량을 판단하기 어려워졌습니다.</strong>
+    기업은 더 많은 자료를 받지만, 그 경험을 지원자가 실제로 이해하고 주도했는지는
+    결국 질문하고 되물어야 확인할 수 있습니다.
+  </p>
+  <div class="grid g3">
+    <div class="panel amber"><h4>서류 검토의 한계</h4><p>잘 정리된 문서가 실제 이해도와 본인 기여를 보장하지 않습니다.</p></div>
+    <div class="panel amber"><h4>사람 면접의 비용</h4><p>시니어 실무자의 일정과 검토 시간이 반복적인 사전 면접에 소모됩니다.</p></div>
+    <div class="panel amber"><h4>평가의 불일치</h4><p>면접관마다 질문의 깊이와 기록 방식이 달라 비교 가능한 근거가 부족합니다.</p></div>
+  </div>
+  <h3>기존 대안만으로 부족한 이유</h3>
+  <table>
+    <tr><th style="width:42mm">대안</th><th>한계</th></tr>
+    <tr><td class="k">코딩 테스트</td><td>정답과 구현 능력은 확인할 수 있지만, 실제 프로젝트에서 내린 선택과 협업·운영 경험까지 설명하기 어렵습니다.</td></tr>
+    <tr><td class="k">과제형 전형</td><td>깊은 검증이 가능하지만 지원자와 평가자 모두에게 시간이 많이 들고, 생성형 AI 활용 범위를 분리하기 어렵습니다.</td></tr>
+    <tr><td class="k">서류 요약 AI</td><td>문서를 더 빠르게 읽어줄 뿐, 지원자가 그 내용을 실제로 이해하는지 되물을 수 없습니다.</td></tr>
+    <tr><td class="k">고정 질문 면접</td><td>비교는 쉽지만 지원자의 실제 경험을 파고드는 질문과 꼬리질문이 부족합니다.</td></tr>
+  </table>
+  <h3>왜 IT·개발 직군인가</h3>
+  <div class="grid g3">
+    <div class="panel blue"><h4>검증할 산출물</h4><p>코드, 설계 문서, 운영 기록처럼 RAG가 검색할 수 있는 실무 자료가 존재합니다.</p></div>
+    <div class="panel blue"><h4>깊이 있는 질문</h4><p>기술 선택, 트레이드오프, 장애 대응, 본인 기여를 구체적으로 되물을 수 있습니다.</p></div>
+    <div class="panel blue"><h4>높은 면접 비용</h4><p>시니어 개발자의 반복 사전 면접 시간을 줄일 때 기업이 얻는 가치가 큽니다.</p></div>
+  </div>
+  <h3>RAG 기반 개인 맞춤형 질문</h3>
+  <p class="sec-intro">개인화는 평가 기준을 바꾸는 것이 아니라, <strong>같은 평가축을 어떤 경험으로 깊게 확인할지</strong>를 정하는 방식입니다.</p>
+  <div class="panel green"><h4>예시 · 장애 대응 역량</h4><p>이력서에 Kafka 장애 대응 경험이 있다면 해당 자료를 근거로 원인 추적과 복구 판단을 묻고, 답변이 모호하면 당시 지표·대안·본인 역할을 꼬리질문으로 확인합니다. 다른 지원자는 배포 장애 사례로 질문하더라도 평가 기준은 동일합니다.</p></div>
+  <div class="pf"><span>02 문제 정의와 타깃</span><span>4</span></div>
+</section>
+
+<section class="page">
+  <div class="rh"><span><b>03</b> 핵심 제품 설계</span><span>WhyYou</span></div>
+  <h2><span class="num">03</span>핵심 제품 설계</h2>
+  <p class="lead">WhyYou의 핵심은 지원자 자료를 점수화하는 것이 아니라, <strong>기업 기준에 맞는 질문을 만들고 실제 답변에서 검토 가능한 근거를 찾는 것</strong>입니다.</p>
+  <h3>RAG 면접 흐름</h3>
+  <div class="flow">
+    <div class="step"><div class="n">INPUT</div><div class="t">기업 평가 기준</div><div class="d">고정된 검증 축</div></div>
+    <div class="step"><div class="n">SOURCE</div><div class="t">지원자 자료</div><div class="d">문서·공개 코드</div></div>
+    <div class="step"><div class="n">RETRIEVE</div><div class="t">관련 근거 검색</div><div class="d">의미+키워드 검색</div></div>
+    <div class="step"><div class="n">GENERATE</div><div class="t">질문 생성</div><div class="d">개인 질문·꼬리질문</div></div>
+    <div class="step"><div class="n">INTERVIEW</div><div class="t">실제 답변</div><div class="d">음성·자막·영상</div></div>
+    <div class="step"><div class="n">REPORT</div><div class="t">근거 리포트</div><div class="d">사람이 재검토</div></div>
+  </div>
+  <h3>핵심 기능</h3>
+  <div class="grid g2">
+    <div class="panel blue"><h4>1. 기업 평가 기준 설계</h4><p>직무 요건, 관찰할 역량, 공통 질문과 금지 주제를 면접 기준으로 설정합니다.</p></div>
+    <div class="panel cyan"><h4>2. 제출 자료 분석</h4><p>경험, 기술 선택, 성과, 충돌, 본인 기여가 불명확한 지점을 검증 포인트로 정리합니다.</p></div>
+    <div class="panel green"><h4>3. 실시간 AI 면접</h4><p>한 번에 하나의 질문을 제시하고, 답변 내용에 따라 같은 평가축 안에서 꼬리질문을 생성합니다.</p></div>
+    <div class="panel amber"><h4>4. 근거 기반 리포트</h4><p>평가 항목마다 실제 답변, 자막, 영상 구간, 판단 이유와 추가 확인 질문을 연결합니다.</p></div>
+  </div>
+  <h3>질문의 근거와 평가의 근거를 분리</h3>
+  <table>
+    <tr><th style="width:40mm">구분</th><th>역할</th><th>사용 방식</th></tr>
+    <tr><td class="k">질문의 근거</td><td>이력서·포트폴리오·코드의 관련 구간</td><td>왜 이 질문을 했는지 설명하며, 그 자체로 역량 평가가 되지는 않습니다.</td></tr>
+    <tr><td class="k">평가의 근거</td><td>지원자의 최종 답변과 연결된 자막·영상 구간</td><td>관찰 내용과 판단 이유를 뒷받침하며, 검토자가 원본 구간을 다시 확인합니다.</td></tr>
+  </table>
+  <h3>기업이 받는 결과</h3>
+  <ol class="number-list" style="display:grid;grid-template-columns:1fr 1fr;gap:0 5mm">
+    <li><b>평가 항목별 확인 상태</b>확인됨, 부분 확인, 근거 부족, 추가 확인 필요</li>
+    <li><b>답변 타임라인</b>질문·답변·자막·영상의 같은 시점 연결</li>
+    <li><b>불확실성 표시</b>AI가 확인하지 못한 내용을 명확하게 분리</li>
+    <li><b>후속 면접 질문</b>사람 면접에서 추가로 검증할 항목 제안</li>
+  </ol>
+  <div class="pf"><span>03 핵심 제품 설계</span><span>5</span></div>
+</section>
+
+<section class="page wide">
+  <div class="rh"><span><b>04</b> AWS 아키텍처</span><span>WhyYou</span></div>
+  <h2><span class="num">04</span>AWS 아키텍처</h2>
+  <p class="sec-intro">실시간 면접과 시간이 오래 걸리는 분석 작업을 분리하고, 데이터 성격에 맞는 저장소를 사용합니다.</p>
+  <figure class="arch"><img src="assets/aws-architecture-dev.png" alt="WhyYou AWS 아키텍처 구성도"></figure>
+  <div class="arch-cap">WhyYou AWS 기반 전체 구성</div>
+  <div class="grid g4" style="margin-top:4mm">
+    <div class="panel blue"><h4>화면 분리</h4><p>기업 콘솔과 지원자 면접룸을 별도 React 앱으로 구성해 인증과 사용 흐름을 단순화합니다.</p></div>
+    <div class="panel cyan"><h4>실시간·비동기 분리</h4><p>면접은 WebSocket, 자료 분석과 리포트 생성은 큐 기반 워커로 처리합니다.</p></div>
+    <div class="panel green"><h4>데이터 역할 분리</h4><p>Aurora는 세션·Turn·체크포인트의 영구 원본입니다. DynamoDB는 복구 속도를 위한 재구성 가능한 최근 상태 Hot View이며, 운영 로그와 지표는 CloudWatch에 남깁니다.</p></div>
+    <div class="panel amber"><h4>관리형 AI</h4><p>Bedrock, Transcribe, Polly, Textract를 사용해 팀은 질문 품질과 근거 연결에 집중합니다.</p></div>
+  </div>
+  <div class="pf"><span>04 AWS 아키텍처</span><span>6</span></div>
+</section>
+
+<section class="page">
+  <div class="rh"><span><b>05</b> 기술 스택</span><span>WhyYou</span></div>
+  <h2><span class="num">05</span>기술 스택</h2>
+  <p class="lead">핵심 흐름을 빠르게 구현하되, 실시간 면접·RAG 검색·근거 리포트가 서로 독립적으로 확장될 수 있는 구성을 선택했습니다.</p>
+  <div class="stack-grid">
+    <div class="stack-item"><img src="assets/tech-logos/react.svg" alt="React 로고"><h4>React</h4><p>기업 콘솔과 지원자 면접룸의 인터랙티브 UI</p></div>
+    <div class="stack-item"><img src="assets/tech-logos/typescript.svg" alt="TypeScript 로고"><h4>TypeScript</h4><p>프론트엔드 계약과 상태 흐름의 타입 안정성</p></div>
+    <div class="stack-item"><img src="assets/tech-logos/python.svg" alt="Python 로고"><h4>Python 3.12</h4><p>AI·분석 워커와 백엔드 비즈니스 로직</p></div>
+    <div class="stack-item"><img src="assets/tech-logos/fastapi.svg" alt="FastAPI 로고"><h4>FastAPI</h4><p>REST API와 실시간 WebSocket 엔드포인트</p></div>
+    <div class="stack-item"><span class="cloud-logo">AWS</span><h4>Amazon Bedrock</h4><p>RAG 질문, 꼬리질문, 요약과 리포트 생성</p></div>
+    <div class="stack-item"><img src="assets/tech-logos/postgresql.svg" alt="PostgreSQL 로고"><h4>Aurora PostgreSQL</h4><p>업무 데이터와 pgvector·전문검색을 한곳에서 관리</p></div>
+    <div class="stack-item"><img src="assets/tech-logos/docker.svg" alt="Docker 로고"><h4>ECS Fargate</h4><p>API와 워커 컨테이너를 독립적으로 실행·확장</p></div>
+    <div class="stack-item"><img src="assets/tech-logos/terraform.svg" alt="Terraform 로고"><h4>Terraform</h4><p>AWS 인프라와 보안 설정을 코드로 재현</p></div>
+  </div>
+  <h3>주요 선택 이유</h3>
+  <table>
+    <tr><td class="k">모듈형 모놀리스</td><td>초기 운영 복잡도를 낮추면서 기업 관리, 자료 분석, 면접, 리포트의 코드 경계를 유지합니다.</td></tr>
+    <tr><td class="k">Aurora 기반 검색</td><td>업무 데이터와 검색 데이터의 기업 범위를 같은 SQL 조건으로 강제해 격리 누락 위험을 줄입니다.</td></tr>
+    <tr><td class="k">관리형 AI 서비스</td><td>GPU와 모델 서버 운영 대신 기업 기준·지원자 자료·질문 정책을 연결하는 제품 로직에 집중합니다.</td></tr>
+    <tr><td class="k">컨테이너·IaC</td><td>로컬과 운영의 실행 방식을 맞추고, 배포 환경을 반복 가능하게 구성합니다.</td></tr>
+  </table>
+  <h3>추가 AWS 구성</h3>
+  <div class="grid g3">
+    <div class="panel"><h4>음성·문서</h4><p>Transcribe · Polly · Textract</p></div>
+    <div class="panel"><h4>저장·메시징</h4><p>S3 · DynamoDB · SQS</p></div>
+    <div class="panel"><h4>운영·보안</h4><p>CloudWatch · KMS · Secrets Manager</p></div>
+  </div>
+  <div class="pf"><span>05 기술 스택</span><span>7</span></div>
+</section>
+
+<section class="page">
+  <div class="rh"><span><b>06</b> RAG 검색 설계</span><span>WhyYou</span></div>
+  <h2><span class="num">06</span>RAG 검색 설계</h2>
+  <p class="lead">의미 검색과 키워드 검색을 나눈 이유는 두 방식이 <strong>서로 다른 실패를 하기 때문</strong>입니다. WhyYou는 두 결과를 결합해 질문에 필요한 자료를 찾습니다.</p>
+  <div class="search-compare">
+    <div class="search-box semantic"><h4>의미 검색 · pgvector</h4><p>표현이 달라도 의미가 같은 경험을 찾습니다. 기업 기준의 “장애 대응”과 지원자 자료의 “인시던트 회고”처럼 단어가 겹치지 않는 문장을 연결합니다.</p></div>
+    <div class="plus">+</div>
+    <div class="search-box lexical"><h4>키워드 검색 · PostgreSQL FTS</h4><p>기술명, 라이브러리, 함수, 오류 코드처럼 정확한 문자열을 찾습니다. Kafka와 Kinesis처럼 의미가 비슷하지만 구분해야 하는 항목에 필요합니다.</p></div>
+  </div>
+  <div class="formula">의미가 가까운 자료 + 정확히 일치하는 자료 + 기업·지원자 범위 = 질문에 사용할 근거</div>
+  <h3>왜 한 가지 검색만 쓰지 않는가</h3>
+  <table>
+    <tr><th style="width:39mm">한 가지만 사용</th><th>발생하는 문제</th><th>보완 방식</th></tr>
+    <tr><td class="k">의미 검색만 사용</td><td>비슷한 기술이나 개념을 혼동하고 정확한 식별자를 놓칠 수 있습니다.</td><td>키워드·심볼 일치 결과를 함께 반영합니다.</td></tr>
+    <tr><td class="k">키워드 검색만 사용</td><td>같은 경험을 다른 표현으로 작성하면 관련 자료를 찾지 못합니다.</td><td>임베딩 유사도로 의미가 가까운 구간을 찾습니다.</td></tr>
+  </table>
+  <h3>질문 생성 원칙</h3>
+  <ol class="number-list">
+    <li><b>평가 기준은 고정</b>RAG 결과가 새로운 평가축을 만들거나 기업 기준을 변경하지 않습니다.</li>
+    <li><b>검색 결과는 질문 재료</b>자료에서 발견한 주장은 사실로 단정하지 않고 지원자에게 확인합니다.</li>
+    <li><b>출처를 함께 저장</b>질문에 사용한 문서·코드 위치와 검색 버전을 남겨 질문 이유를 설명합니다.</li>
+    <li><b>검색 실패 시 안전하게 진행</b>자료를 꾸며내지 않고 공통 평가 기준과 최근 답변만으로 면접을 이어갑니다.</li>
+  </ol>
+  <h3>꼬리질문 생성</h3>
+  <p>첫 답변에서 역할, 판단 근거, 대안, 결과가 충분하지 않으면 같은 평가 기준 안에서 하나의 짧은 질문을 추가합니다. 질문의 목적은 답을 유도하는 것이 아니라 <strong>지원자의 이해도와 실제 기여 범위를 명확히 확인하는 것</strong>입니다.</p>
+  <div class="pf"><span>06 RAG 검색 설계</span><span>8</span></div>
+</section>
+
+<section class="page">
+  <div class="rh"><span><b>07</b> 신뢰성과 보안</span><span>WhyYou</span></div>
+  <h2><span class="num">07</span>신뢰성과 보안</h2>
+  <p class="lead">채용 면접은 다시 만들기 어려운 기록입니다. 기술 장애가 지원자 평가로 이어지지 않고, 기업과 지원자의 데이터가 섞이지 않도록 제품 규칙과 저장 구조를 함께 설계했습니다.</p>
+  <div class="guard-list">
+    <div class="guard"><h4>동의 후 처리</h4><p>유효한 동의가 없으면 자료 분석, 녹화, AI 평가를 시작하지 않습니다.</p></div>
+    <div class="guard green"><h4>기업별 데이터 격리</h4><p>API, 검색, 파일, 작업 메시지마다 기업 범위를 확인합니다.</p></div>
+    <div class="guard amber"><h4>중단 후 재개</h4><p>마지막 확정 답변과 녹화 지점부터 중복 질문 없이 면접을 이어갑니다.</p></div>
+    <div class="guard rose"><h4>기술 장애와 평가 분리</h4><p>네트워크·음성 인식 문제는 역량 근거가 아닌 진행 이벤트로 기록합니다.</p></div>
+    <div class="guard"><h4>근거 없는 평가 차단</h4><p>실제 답변과 연결되지 않은 항목은 확인됨으로 저장하지 않습니다.</p></div>
+    <div class="guard green"><h4>사람의 최종 판단</h4><p>AI와 자동 작업은 합격·불합격 등 최종 채용 상태를 변경할 수 없습니다.</p></div>
+    <div class="guard amber"><h4>검증되는 삭제</h4><p>원본과 파생 자료를 저장소별로 삭제하고 실제 부재까지 확인합니다.</p></div>
+    <div class="guard rose"><h4>민감 정보 로그 제외</h4><p>지원자 원문, 답변, 자격 증명, 토큰과 임시 URL을 운영 로그에 남기지 않습니다.</p></div>
+  </div>
+  <h3>복구 가능한 면접 상태</h3>
+  <div class="flow">
+    <div class="step"><div class="n">01</div><div class="t">답변 녹음</div><div class="d">로컬 조각 보관</div></div>
+    <div class="step"><div class="n">02</div><div class="t">답변 완료</div><div class="d">사용자가 확정</div></div>
+    <div class="step"><div class="n">03</div><div class="t">체크포인트</div><div class="d">순서·상태 저장</div></div>
+    <div class="step"><div class="n">04</div><div class="t">질문 생성</div><div class="d">RAG·정책 검사</div></div>
+    <div class="step"><div class="n">05</div><div class="t">재접속</div><div class="d">마지막 확정점 복구</div></div>
+  </div>
+  <h3>제한 모드</h3>
+  <table>
+    <tr><td class="k">검색 실패</td><td>지원자 자료를 지어내지 않고 공통 평가 기준과 최근 답변으로 진행합니다.</td></tr>
+    <tr><td class="k">음성 합성 실패</td><td>질문을 텍스트로 표시해 면접을 계속합니다.</td></tr>
+    <tr><td class="k">연결 중단</td><td>확정된 답변과 업로드된 녹화 조각을 기준으로 안전한 지점부터 재개합니다.</td></tr>
+    <tr><td class="k">자료 일부 실패</td><td>성공한 자료와 공통 기준으로 진행하고, 실패 영향 범위를 리포트에 표시합니다.</td></tr>
+  </table>
+  <div class="pf"><span>07 신뢰성과 보안</span><span>9</span></div>
+</section>
+
+<section class="page">
+  <div class="rh"><span><b>08</b> 기대효과</span><span>WhyYou</span></div>
+  <h2><span class="num">08</span>기대효과</h2>
+  <p class="lead">WhyYou는 사람 면접을 없애는 서비스가 아니라, <strong>사람이 더 적은 시간으로 더 많은 지원자를 깊이 검토하도록 돕는 서비스</strong>입니다.</p>
+  <div class="kpi">
+    <div><b>RAG</b><span>지원자 경험에 맞는 질문</span></div><div><b>Live</b><span>답변에 따른 꼬리질문</span></div><div><b>Evidence</b><span>영상·자막 기반 근거</span></div><div><b>Human</b><span>사람의 최종 채용 판단</span></div>
+  </div>
+  <div class="grid g3">
+    <div class="panel blue"><h4>기업에게</h4><p>반복적인 서류 검토와 사전 면접 부담을 줄이고, 실무자 시간을 유력 지원자의 심층 검토에 집중합니다.</p></div>
+    <div class="panel green"><h4>지원자에게</h4><p>문서만으로 전달하기 어려운 문제 해결 과정과 실제 기여를 본인의 언어로 설명할 기회를 제공합니다.</p></div>
+    <div class="panel amber"><h4>채용 과정에</h4><p>기억과 인상 중심의 기록을 질문·답변·영상 근거가 연결된 일관된 검토 방식으로 바꿉니다.</p></div>
+  </div>
+  <h3>기존 방식과의 차이</h3>
+  <table>
+    <tr><th style="width:39mm">기존 방식</th><th>WhyYou</th></tr>
+    <tr><td class="k">서류 중심 선별</td><td>서류의 주장을 면접 질문으로 바꾸고 실제 이해도를 확인합니다.</td></tr>
+    <tr><td class="k">고정 질문 녹화 면접</td><td>지원자 자료와 직전 답변에 따라 개인 맞춤형 꼬리질문을 생성합니다.</td></tr>
+    <tr><td class="k">전체 영상 재시청</td><td>평가 항목에서 관련 답변과 영상 시점으로 바로 이동합니다.</td></tr>
+    <tr><td class="k">면접관의 메모 의존</td><td>관찰 내용, 판단 이유, 자막·영상 구간을 함께 보존합니다.</td></tr>
+    <tr><td class="k">AI 자동 판단</td><td>AI는 근거를 정리하고 최종 판단은 사람이 수행합니다.</td></tr>
+  </table>
+  <h3>프로젝트의 한 문장</h3>
+  <div class="quote" style="margin-top:2mm">WhyYou는 “왜 이 지원자를 더 만나야 하는가?”에 답할 수 있도록,<br>지원자의 실제 답변을 채용 판단의 근거로 만드는 플랫폼입니다.</div>
+  <h3>팀 WhyYou</h3>
+  <div class="grid g4">
+    <div class="panel"><h4>김정환</h4><p>팀장</p></div><div class="panel"><h4>서준혁</h4><p>팀원</p></div><div class="panel"><h4>이보성</h4><p>팀원</p></div><div class="panel"><h4>박윤수</h4><p>팀원</p></div>
+  </div>
+  <div class="pf"><span>08 기대효과</span><span>10</span></div>
+</section>
+
+</body>
+</html>

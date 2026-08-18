@@ -119,8 +119,12 @@ class LocalDemoAnswer:
 class LocalDemoInterviewSession:
     interview_session_id: UUID
     answers: tuple[LocalDemoAnswer, ...]
+    #: The chunk the applicant's recorder would have uploaded. Evidence cites this, so the
+    #: caller has to put the same bytes here that it hashed to fill the two fields below.
     recording_object_key: str
     recording_duration_ms: int
+    recording_byte_size: int
+    recording_content_hash: str
 
 
 #: One criterion asked three ways, the shape a junior interview actually takes: an opening
@@ -370,6 +374,7 @@ def ensure_local_demo_interview_session(
     competency_model_version_id: UUID,
     criterion_id: UUID,
     interview_strategy_id: UUID,
+    recording: bytes,
     now: datetime,
 ) -> LocalDemoInterviewSession:
     """Seed one local-only finished interview session for the demo invitation.
@@ -380,6 +385,11 @@ def ensure_local_demo_interview_session(
     submitted-material references behind each question, and one verified recording chunk
     -- and returns the ranges Lane D needs to project them, which is why the answer ranges
     are returned rather than recomputed on the other side.
+
+    ``recording`` is the chunk's bytes. The chunk row records their real length and digest
+    so an upload of the same bytes passes ``verify_uploaded_object``; the caller owns the
+    upload itself, because a lane helper writing to a bucket would put storage credentials
+    behind a database seed.
     """
     context = TenantContext(
         company_id=company_id,
@@ -401,12 +411,20 @@ def ensure_local_demo_interview_session(
         )
         for index, (question, answer, start_ms) in enumerate(_DEMO_EXCHANGES, start=1)
     )
-    chunk_object_key = f"tenants/{company_id}/interviews/{session_id}/recording-0.webm"
+    # The layout `RecordingService` composes for a live upload: the namespace it builds
+    # plus the object id the storage adapter appends. A seed with its own layout hides the
+    # production key from every local run, so a change here is only found after deploying.
+    chunk_object_key = (
+        f"tenants/{company_id}/sessions/{session_id}/recording/chunks/{0:06d}/"
+        f"{uuid5(NAMESPACE_URL, f'{session_id}:chunk-object:0')}"
+    )
     demo = LocalDemoInterviewSession(
         interview_session_id=session_id,
         answers=answers,
         recording_object_key=chunk_object_key,
         recording_duration_ms=answers[-1].session_end_ms,
+        recording_byte_size=len(recording),
+        recording_content_hash=sha256(recording).hexdigest(),
     )
 
     try:
@@ -524,8 +542,11 @@ def _save_local_demo_session(
             interview_session_id=session_id,
             sequence=0,
             object_key=demo.recording_object_key,
-            content_hash=sha256(f"local-demo-recording:{session_id}".encode()).hexdigest(),
-            byte_size=2_400_000,
+            # The digest and length of the bytes the caller uploads, not a stand-in. A
+            # made-up pair makes `verify_uploaded_object` reject the very object the seed
+            # just wrote, which is indistinguishable from a corrupted upload.
+            content_hash=demo.recording_content_hash,
+            byte_size=demo.recording_byte_size,
             session_start_ms=0,
             session_end_ms=demo.recording_duration_ms,
             upload_status=RecordingUploadStatus.VERIFIED,

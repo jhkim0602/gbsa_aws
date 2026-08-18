@@ -837,13 +837,11 @@ paths:
       tags: [Reporting]
       security:
         - CompanyBearer: []
+      # Intentionally has no free-text `query` parameter. Filtering a timeline means matching
+      # applicant answer text, and a query string is written verbatim into the load balancer's
+      # access log, where answer text must never appear. The console filters in the browser.
       parameters:
         - $ref: "#/components/parameters/SessionId"
-        - name: query
-          in: query
-          schema:
-            type: string
-            maxLength: 200
       responses:
         "200":
           description: Timeline entries and signed playback locator

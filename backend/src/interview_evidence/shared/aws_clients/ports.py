@@ -198,6 +198,10 @@ class EmailSender(Protocol):
 class InMemoryObjectStorage:
     def __init__(self) -> None:
         self.intents: list[UploadIntent] = []
+        #: Bytes written through `write_object`, keyed the same way S3 keys them. The
+        #: recording assembler reads its chunks back out of the bucket, so a store that
+        #: only records intents cannot stand in for one in the local runtime.
+        self.objects: dict[str, bytes] = {}
         self._ids = _DeterministicIds()
 
     def create_upload_intent(
@@ -225,6 +229,44 @@ class InMemoryObjectStorage:
         self.intents.append(intent)
         return intent
 
+    def read_object(self, context: TenantContext, object_key: str) -> bytes:
+        self._assert_scope(context, object_key)
+        return self.objects[object_key]
+
+    def write_object(
+        self,
+        context: TenantContext,
+        *,
+        object_key: str,
+        body: bytes,
+        content_type: str,
+    ) -> None:
+        self._assert_scope(context, object_key)
+        self.objects[object_key] = body
+
+    def create_playback_url(
+        self,
+        context: TenantContext,
+        *,
+        object_key: str,
+        expires_in_seconds: int,
+    ) -> str:
+        """No server signs this, so it names the object rather than pretending to be S3.
+
+        The in-memory runtime has no HTTP endpoint that could serve the bytes. A URL for a
+        host nobody serves would fail in the reviewer's browser instead of at the boundary,
+        so this stays an explicit local scheme that a caller can recognise.
+        """
+        self._assert_scope(context, object_key)
+        if expires_in_seconds < 1:
+            raise ValueError("playback URL lifetime must be positive")
+        return f"memory://recordings/{object_key}"
+
+    def _assert_scope(self, context: TenantContext, object_key: str) -> None:
+        tenant = require_tenant_context(context)
+        if not object_key.startswith(f"tenants/{tenant.company_id}/"):
+            raise PermissionError("object key is outside the tenant scope")
+
     def verify_uploaded_object(
         self,
         context: TenantContext,
@@ -235,8 +277,9 @@ class InMemoryObjectStorage:
     ) -> bool:
         """Match the S3 adapter: an object is verified when an intent declared it.
 
-        Nothing is actually stored here, so the intent is the only record that the upload
-        was authorized with this size and digest.
+        The intent, not the stored bytes, is the record that the upload was authorized with
+        this size and digest -- the applicant uploads straight to S3, so an object can exist
+        here without this process ever having seen it.
         """
         tenant = require_tenant_context(context)
         if not object_key.startswith(f"tenants/{tenant.company_id}/"):
@@ -253,10 +296,9 @@ class InMemoryObjectStorage:
         context: TenantContext,
         object_key: str,
     ) -> bool:
-        tenant = require_tenant_context(context)
-        if not object_key.startswith(f"tenants/{tenant.company_id}/"):
-            raise PermissionError("object key is outside the tenant scope")
+        self._assert_scope(context, object_key)
         self.intents = [intent for intent in self.intents if intent.object_key != object_key]
+        self.objects.pop(object_key, None)
         return all(intent.object_key != object_key for intent in self.intents)
 
     def healthcheck(self) -> None:

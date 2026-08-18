@@ -8,7 +8,6 @@ from fastapi import (
     FastAPI,
     Header,
     HTTPException,
-    Query,
     Request,
     Response,
     status,
@@ -236,12 +235,13 @@ def create_company_router(
         "/interview-sessions/{session_id}/timeline",
         operation_id="getInterviewTimeline",
     )
+    # No query parameter: see `TimelineService.project`. A free-text filter over answer text
+    # here would be recorded verbatim in the load balancer's access log.
     def get_timeline(
         session_id: UUID,
         scope: Scope,
-        query: Annotated[str | None, Query(max_length=200)] = None,
     ) -> dict[str, object]:
-        entries = timeline.project(scope.context, session_id=session_id, query=query)
+        entries = timeline.project(scope.context, session_id=session_id)
         assets = repository.list_recording_assets(scope.context, session_id)
         locator = playback.create(
             scope.context,
@@ -254,7 +254,7 @@ def create_company_router(
             resource_type="interview_session",
             resource_id=session_id,
             result="allowed",
-            metadata={"query_present": query is not None, "entry_count": len(entries)},
+            metadata={"entry_count": len(entries)},
         )
         return {
             "entries": [

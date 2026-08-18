@@ -64,5 +64,14 @@ infra-security-check:
 
 infra-plan-check:
 	terraform -chdir=infra/environments/prod test -filter=local-plan.tftest.hcl
+	terraform -chdir=infra/environments/dev/foundation init -backend=false -input=false >/dev/null
+	terraform -chdir=infra/environments/dev/foundation test -filter=domainless-plan.tftest.hcl
 	terraform -chdir=infra/modules/compute init -backend=false -input=false >/dev/null
 	terraform -chdir=infra/modules/compute test -filter=task-definition.tftest.hcl
+	terraform -chdir=infra/modules/compute test -filter=observability.tftest.hcl
+	terraform -chdir=infra/modules/edge init -backend=false -input=false >/dev/null
+	terraform -chdir=infra/modules/edge test -filter=domainless.tftest.hcl
+	terraform -chdir=infra/modules/identity init -backend=false -input=false >/dev/null
+	terraform -chdir=infra/modules/identity test -filter=tenant-claims.tftest.hcl
+	terraform -chdir=infra/modules/observability init -backend=false -input=false >/dev/null
+	terraform -chdir=infra/modules/observability test -filter=access-logs.tftest.hcl

@@ -33,11 +33,6 @@
     - CompanyBearer: []
     parameters:
     - $ref: ../../root.yaml#/components/parameters/SessionId
-    - name: query
-      in: query
-      schema:
-        type: string
-        maxLength: 200
     responses:
       '200':
         description: Timeline entries and signed playback locator

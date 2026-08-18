@@ -287,6 +287,21 @@ def _required(environment: Mapping[str, str], name: str) -> str:
     return value.strip()
 
 
+def create_media_object_storage(environment: Mapping[str, str]) -> AwsS3ObjectStorage:
+    """The media bucket adapter on its own, for a caller that only needs the recording.
+
+    The local seed uploads the demo recording without building the rest of the runtime;
+    routing it through here keeps the bucket and key settings in one place. No presign
+    client: this writes objects, and the URLs a reviewer follows are signed by the API.
+    """
+    factory = _client_factory(environment)
+    return AwsS3ObjectStorage(
+        cast(S3Client, factory("s3")),
+        bucket=_required(environment, "MEDIA_BUCKET"),
+        kms_key_id=_required(environment, "KMS_KEY_ARN"),
+    )
+
+
 def _client_factory(environment: Mapping[str, str]) -> ClientFactory:
     region = _required(environment, "AWS_REGION")
 

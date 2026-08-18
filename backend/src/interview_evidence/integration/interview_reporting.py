@@ -7,7 +7,11 @@ from uuid import UUID
 from interview_evidence.interview_engine.application.public import InterviewEnginePublic
 from interview_evidence.reporting.application.transcript_service import TranscriptService
 from interview_evidence.shared.tenant import TenantContext
-from interview_evidence.workers.reporting.media import MediaPostProcessor
+from interview_evidence.workers.reporting.media import (
+    MediaPostProcessor,
+    RecordingAssembler,
+    RecordingChunkObject,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,10 +68,12 @@ class InterviewReportingBoundary:
         interview: InterviewEnginePublic,
         transcript_service: TranscriptService,
         media_processor: MediaPostProcessor,
+        assembler: RecordingAssembler,
     ) -> None:
         self._interview = interview
         self._transcript_service = transcript_service
         self._media_processor = media_processor
+        self._assembler = assembler
 
     def project_completed_session(
         self,
@@ -75,7 +81,6 @@ class InterviewReportingBoundary:
         *,
         session_id: UUID,
         turn_ranges: tuple[FinalTurnRange, ...],
-        output_object_key: str,
         occurred_at: datetime,
     ) -> CompletedSessionProjection:
         snapshot = self._interview.get_session_snapshot(context, session_id=session_id)
@@ -94,6 +99,16 @@ class InterviewReportingBoundary:
         if not chunks:
             raise ValueError("completed session has no verified recording chunks")
 
+        # The asset must describe an object that exists, so the key comes from the write
+        # rather than from the caller. Only verified chunks contribute bytes.
+        output_object_key = self._assembler.assemble(
+            context,
+            session_id=session_id,
+            chunks=tuple(
+                RecordingChunkObject(sequence=chunk.sequence, object_key=chunk.object_key)
+                for chunk in chunks
+            ),
+        )
         recording = self._media_processor.build_manifest(
             context,
             session_id=session_id,

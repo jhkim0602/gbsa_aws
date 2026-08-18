@@ -82,3 +82,11 @@ and cannot be planned before `dev/foundation` is applied.
   `environment` and `secrets` stay Terraform-owned, so the pipeline replaces only `.image`.
 - A lane task never edits another lane's Terraform or application path.
 - Secrets, state files, credentials and generated plans are never committed.
+
+## Known Grant Without a Consumer
+
+`aws_iam_role.media_convert` in `modules/compute` is provisioned and its ARN passed to the task, but
+no application code starts a MediaConvert job: recording playback concatenates the applicant's
+`MediaRecorder` chunks in the worker and needs no transcode. The role is a real grant with nothing
+behind it, which is why it is recorded as T311 rather than left unremarked. Removing it means removing
+the adapter, the port and the wiring in the same change; it is not this tree's decision alone.

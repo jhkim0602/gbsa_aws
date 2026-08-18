@@ -33,6 +33,35 @@ variable "dlq_arns" {
   default = {}
 }
 
+/**
+ * The database this environment's alarms watch.
+ *
+ * Optional so that an environment can be applied before the cluster exists; absent, the two
+ * Aurora alarms are simply not created, which a plan shows -- unlike an alarm whose dimension
+ * names a cluster that is not there, which sits in INSUFFICIENT_DATA looking calm.
+ *
+ * The load balancer and the services are alarmed in the compute module instead, not here. This
+ * module is applied from the dev `data-ai` root, which runs before the `application` root that
+ * creates them and whose state it cannot read without a cycle -- and an alarm belongs with the
+ * resource it watches in any case.
+ */
+variable "aurora_cluster_identifier" {
+  type    = string
+  default = null
+}
+
+variable "aurora_max_connections" {
+  description = <<-EOT
+    The connection ceiling the alarm is a fraction of.
+
+    Aurora Serverless v2 derives `max_connections` from the current ACU, so there is no single
+    true number to read at plan time; this is the floor the cluster is scaled to, and the
+    alarm fires at 80% of it. A wrong value here makes the alarm early or late, never absent.
+  EOT
+  type        = number
+  default     = 189
+}
+
 variable "tags" {
   type    = map(string)
   default = {}
@@ -46,6 +75,10 @@ locals {
   tags = merge(var.tags, {
     Component = "observability"
   })
+  # Fixed rather than a variable: the bucket policy grants writes to exactly this prefix, so
+  # the balancer and the grant have to agree, and one string they both read is the only way
+  # that agreement cannot drift.
+  access_log_prefix = "alb"
 }
 
 resource "aws_cloudwatch_log_group" "application" {
@@ -60,6 +93,88 @@ resource "aws_sns_topic" "alarms" {
   name              = "${var.name}-alarms"
   kms_master_key_id = "alias/aws/sns"
   tags              = local.tags
+}
+
+/**
+ * Where the load balancer writes one line per request.
+ *
+ * This is the only record of what a browser actually asked for and what it got back. Without
+ * it, a report of "the console showed an error" has nothing behind it: the application log
+ * says what the API decided, not which requests never reached it, were rejected by WAF, or
+ * timed out at the balancer. Latency percentiles and 4xx-by-path also live only here.
+ *
+ * Created in this module rather than beside the load balancer because the bucket must exist
+ * before the balancer that logs into it, and the two are in different roots. The bucket name
+ * is what the application root passes to `aws_lb.access_logs`.
+ *
+ * A request line contains the query string, so what the API accepts as a query parameter is
+ * part of this bucket's threat model -- see the note on the timeline endpoint in
+ * `reporting/api/company_routes.py`, whose free-text search over answer transcripts was
+ * removed rather than logged.
+ */
+resource "aws_s3_bucket" "access_logs" {
+  bucket        = "${var.name}-alb-logs-${data.aws_caller_identity.current.account_id}-${data.aws_region.current.name}"
+  force_destroy = false
+  tags          = local.tags
+}
+
+resource "aws_s3_bucket_public_access_block" "access_logs" {
+  bucket                  = aws_s3_bucket.access_logs.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+# AES256, not the customer key used for applicant data. Elastic Load Balancing writes these
+# objects itself and supports only SSE-S3 for them; pointed at a KMS key the balancer silently
+# stops delivering logs, and the only symptom is an empty bucket.
+resource "aws_s3_bucket_server_side_encryption_configuration" "access_logs" {
+  bucket = aws_s3_bucket.access_logs.id
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+# Request lines are an operational record, not evidence, and they are the one place an
+# applicant's opaque session id appears next to an IP address. Thirty days is long enough to
+# investigate an incident and short enough that the set does not accumulate indefinitely.
+resource "aws_s3_bucket_lifecycle_configuration" "access_logs" {
+  bucket = aws_s3_bucket.access_logs.id
+
+  rule {
+    id     = "expire-request-logs"
+    status = "Enabled"
+
+    filter {}
+
+    expiration {
+      days = 30
+    }
+  }
+}
+
+# The regional Elastic Load Balancing account, not a service principal. Seoul predates the
+# August 2022 region cutover after which ALB delivery switched to
+# `logdelivery.elasticloadbalancing.amazonaws.com`; in an older region only the account
+# principal is authorised, and a policy naming the wrong one is accepted at apply and then
+# rejects every delivery. The data source resolves whichever is correct for the region.
+data "aws_elb_service_account" "current" {}
+
+resource "aws_s3_bucket_policy" "access_logs" {
+  bucket = aws_s3_bucket.access_logs.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "AlbAccessLogDelivery"
+      Effect    = "Allow"
+      Principal = { AWS = data.aws_elb_service_account.current.arn }
+      Action    = "s3:PutObject"
+      Resource  = "${aws_s3_bucket.access_logs.arn}/${local.access_log_prefix}/AWSLogs/${data.aws_caller_identity.current.account_id}/*"
+    }]
+  })
 }
 
 resource "aws_sns_topic_subscription" "email" {
@@ -104,6 +219,46 @@ resource "aws_cloudwatch_metric_alarm" "queue_age" {
   treat_missing_data  = "notBreaching"
   dimensions = {
     QueueName = element(reverse(split(":", each.value)), 0)
+  }
+  tags = local.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "aurora_connections" {
+  count = var.aurora_cluster_identifier == null ? 0 : 1
+
+  alarm_name          = "${var.name}-aurora-connections"
+  alarm_description   = "Aurora is near its connection ceiling."
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "DatabaseConnections"
+  namespace           = "AWS/RDS"
+  period              = 300
+  statistic           = "Maximum"
+  threshold           = floor(var.aurora_max_connections * 0.8)
+  alarm_actions       = [aws_sns_topic.alarms.arn]
+  treat_missing_data  = "notBreaching"
+  dimensions = {
+    DBClusterIdentifier = var.aurora_cluster_identifier
+  }
+  tags = local.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "aurora_cpu" {
+  count = var.aurora_cluster_identifier == null ? 0 : 1
+
+  alarm_name          = "${var.name}-aurora-cpu"
+  alarm_description   = "Aurora is CPU-saturated; queries will be slow before they fail."
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 3
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/RDS"
+  period              = 300
+  statistic           = "Average"
+  threshold           = 85
+  alarm_actions       = [aws_sns_topic.alarms.arn]
+  treat_missing_data  = "notBreaching"
+  dimensions = {
+    DBClusterIdentifier = var.aurora_cluster_identifier
   }
   tags = local.tags
 }
@@ -242,4 +397,14 @@ output "audit_trail_arn" {
 
 output "application_log_group_names" {
   value = { for name, group in aws_cloudwatch_log_group.application : name => group.name }
+}
+
+# Both halves, because `aws_lb.access_logs` needs the bucket and the prefix and the prefix is
+# not free to choose -- the bucket policy above grants writes to this one path.
+output "access_log_bucket" {
+  value = aws_s3_bucket.access_logs.id
+}
+
+output "access_log_prefix" {
+  value = local.access_log_prefix
 }

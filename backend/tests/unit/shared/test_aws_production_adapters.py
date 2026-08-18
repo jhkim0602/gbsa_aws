@@ -162,6 +162,41 @@ def test_s3_deletion_is_verified_with_a_follow_up_head_request() -> None:
         )
 
 
+def test_playback_url_is_signed_for_the_requested_object_only() -> None:
+    s3 = RecordingClient({"generate_presigned_url": "https://s3.invalid/playback?sig=x"})
+    storage = AwsS3ObjectStorage(s3, bucket="media-bucket", kms_key_id="kms-key")
+    object_key = f"tenants/{COMPANY_ID}/interviews/session-1/recording.webm"
+
+    url = storage.create_playback_url(
+        _context(),
+        object_key=object_key,
+        expires_in_seconds=300,
+    )
+
+    assert url == "https://s3.invalid/playback?sig=x"
+    method, params = s3.calls[0]
+    assert method == "generate_presigned_url"
+    assert params["ClientMethod"] == "get_object"
+    assert params["Params"] == {"Bucket": "media-bucket", "Key": object_key}
+    assert params["ExpiresIn"] == 300
+
+
+def test_playback_url_refuses_a_key_from_another_tenant() -> None:
+    """The asset row is already tenant-scoped, but a signature is bearer authority: once
+    it exists the bucket honours it regardless of which company asked."""
+    s3 = RecordingClient({"generate_presigned_url": "https://s3.invalid/playback"})
+    storage = AwsS3ObjectStorage(s3, bucket="media-bucket", kms_key_id="kms-key")
+
+    with pytest.raises(PermissionError, match="tenant"):
+        storage.create_playback_url(
+            _context(),
+            object_key="tenants/00000000-0000-7000-8000-000000000099/interviews/s/r.webm",
+            expires_in_seconds=300,
+        )
+
+    assert s3.calls == []
+
+
 def test_sqs_long_poll_delivery_can_be_acknowledged_or_retried() -> None:
     event_id = UUID("00000000-0000-7000-8000-000000000010")
     aggregate_id = UUID("00000000-0000-7000-8000-000000000011")

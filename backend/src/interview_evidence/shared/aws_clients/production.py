@@ -51,6 +51,8 @@ class S3Client(Protocol):
 
     def put_object(self, **kwargs: object) -> Mapping[str, object]: ...
 
+    def get_object(self, **kwargs: object) -> Mapping[str, object]: ...
+
     def delete_object(self, **kwargs: object) -> Mapping[str, object]: ...
 
     def head_object(self, **kwargs: object) -> Mapping[str, object]: ...
@@ -116,6 +118,22 @@ class AwsS3ObjectStorage(ObjectStorage):
         self._kms_key_id = kms_key_id
         self._expires_in_seconds = expires_in_seconds
 
+    def _assert_tenant_key(
+        self,
+        context: TenantContext,
+        object_key: str,
+    ) -> TenantContext:
+        """Both prefixes are in use: chunks are written under `tenants/`, and the media
+        pipeline's own outputs under `companies/`."""
+        tenant = require_tenant_context(context)
+        allowed_prefixes = (
+            f"tenants/{tenant.company_id}/",
+            f"companies/{tenant.company_id}/",
+        )
+        if not object_key.startswith(allowed_prefixes):
+            raise PermissionError("object key is outside the tenant scope")
+        return tenant
+
     def create_upload_intent(
         self,
         context: TenantContext,
@@ -164,6 +182,60 @@ class AwsS3ObjectStorage(ObjectStorage):
             },
         )
 
+    def read_object(self, context: TenantContext, object_key: str) -> bytes:
+        self._assert_tenant_key(context, object_key)
+        try:
+            response = self._client.get_object(Bucket=self._bucket, Key=object_key)
+            return cast(ResponseBody, response["Body"]).read()
+        except Exception as error:
+            raise AwsAdapterError("object read unavailable") from error
+
+    def write_object(
+        self,
+        context: TenantContext,
+        *,
+        object_key: str,
+        body: bytes,
+        content_type: str,
+    ) -> None:
+        tenant = self._assert_tenant_key(context, object_key)
+        try:
+            self._client.put_object(
+                Bucket=self._bucket,
+                Key=object_key,
+                Body=body,
+                ContentType=content_type,
+                ServerSideEncryption="aws:kms",
+                SSEKMSKeyId=self._kms_key_id,
+                Metadata={"company-id": str(tenant.company_id)},
+            )
+        except Exception as error:
+            raise AwsAdapterError("object write unavailable") from error
+
+    def create_playback_url(
+        self,
+        context: TenantContext,
+        *,
+        object_key: str,
+        expires_in_seconds: int,
+    ) -> str:
+        """A short-lived read of one recording object, for a reviewer's `<video src>`.
+
+        Signed through the presign client rather than the internal one, because the
+        browser resolves this host and the container's endpoint is not reachable from it.
+        """
+        self._assert_tenant_key(context, object_key)
+        if expires_in_seconds < 1:
+            raise ValueError("playback URL lifetime must be positive")
+        try:
+            return self._presign_client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": self._bucket, "Key": object_key},
+                ExpiresIn=expires_in_seconds,
+            )
+        except Exception as error:
+            raise AwsAdapterError("recording playback unavailable") from error
+
     def verify_uploaded_object(
         self,
         context: TenantContext,
@@ -204,13 +276,7 @@ class AwsS3ObjectStorage(ObjectStorage):
         context: TenantContext,
         object_key: str,
     ) -> bool:
-        tenant = require_tenant_context(context)
-        allowed_prefixes = (
-            f"tenants/{tenant.company_id}/",
-            f"companies/{tenant.company_id}/",
-        )
-        if not object_key.startswith(allowed_prefixes):
-            raise PermissionError("object key is outside the tenant scope")
+        self._assert_tenant_key(context, object_key)
         try:
             self._client.delete_object(Bucket=self._bucket, Key=object_key)
             self._client.head_object(Bucket=self._bucket, Key=object_key)

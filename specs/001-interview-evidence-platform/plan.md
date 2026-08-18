@@ -314,7 +314,10 @@ progress indicators and full-width primary actions instead of copying that defec
 - **AI regression**: fixed Korean and Korean/English-code datasets; structured-output validation;
   low relevance, prompt injection and unsupported claim cases.
 - **Browser**: position setup and direct invitation, applicant upload/device flow, reconnect,
-  Evidence seek and human edit.
+  Evidence seek and human edit. An endpoint that returns a URL is covered only by a test that follows
+  it: the recording playback path passed every layer's own tests while `<video src>` pointed at a
+  404, so the browser suite fetches the signed URL and reads `readyState` back out of the element
+  rather than mocking the response.
 - **Visual reference**: reproducible Figma Make captures, implementation comparison screenshots,
   1440px/390px layout assertions and no-mock-data checks.
 - **Infrastructure**: static validation, policy/security scan, plan review and environment smoke tests.
@@ -337,6 +340,12 @@ be observed failing against the previous implementation.
   audited application actions.
 - Model, prompt, chunking, embedding and retrieval settings are versioned deployment artifacts with
   regression evidence.
+- Recording playback needs no transcode. The applicant's recorder emits `MediaRecorder` output in
+  timeslices, so the verified chunks concatenated in sequence order are the original stream; the
+  reporting worker writes that single object beside the chunks and the timeline signs a short-lived
+  GET for it. One session therefore has two kinds of media key — the chunks that Evidence and
+  transcripts cite, and the one assembled object the reviewer plays — and their layout has exactly
+  one definition, because two copies of it are what let the asset name an object nothing had written.
 
 ## Complexity Tracking
 

@@ -70,7 +70,10 @@ from interview_evidence.interview_engine.application.idempotency import (
 )
 from interview_evidence.interview_engine.application.public import InterviewEnginePublic
 from interview_evidence.main import LocalRuntime, create_app
-from interview_evidence.reporting.adapters.playback import ScopedPlaybackLocator
+from interview_evidence.reporting.adapters.playback import (
+    RecordingPresigner,
+    ScopedPlaybackLocator,
+)
 from interview_evidence.reporting.api import (
     create_lane_d_runtime,
 )
@@ -137,7 +140,11 @@ from interview_evidence.submission_analysis.application.retrieval import (
     HybridRetrievalConfig,
     HybridRetriever,
 )
-from interview_evidence.workers.reporting.media import MediaPostProcessor
+from interview_evidence.workers.reporting.media import (
+    MediaObjectStore,
+    MediaPostProcessor,
+    RecordingAssembler,
+)
 from interview_evidence.workers.reporting.report import ReportGenerator
 
 
@@ -335,6 +342,7 @@ def create_production_runtime(
         interview=interview_public,
         transcript_service=TranscriptService(lane_d.repository),
         media_processor=media_processor,
+        assembler=RecordingAssembler(cast(MediaObjectStore, media_storage)),
     )
     reporting_public = ReportingPublic(
         repository=lane_d.repository,
@@ -401,7 +409,10 @@ def create_production_runtime(
                 audit=audit,
                 clock=clock,
                 deletion_service=lane_d.deletion_service,
-                playback=ScopedPlaybackLocator(),
+                # The presigner comes from the media bucket's own storage adapter, so the
+                # URL the console puts in `<video src>` is a signed read of the assembled
+                # recording rather than a placeholder host that resolves nowhere.
+                playback=ScopedPlaybackLocator(presigner=cast(RecordingPresigner, media_storage)),
                 # This router, not `lane_d.app`, is what serves the timeline. Without the
                 # provider here the response carries no question rationale, so the console
                 # shows each question with nothing behind it -- as if the AI made it up.

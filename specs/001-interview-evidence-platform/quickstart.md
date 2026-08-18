@@ -127,7 +127,9 @@ Expected journey:
 1. use a completed-session fixture with final Turns, transcript and media ranges;
 2. generate a report with confirmed, partial, insufficient and follow-up states;
 3. reject a confirmed item with no valid applicant-answer Evidence;
-4. seek from Evidence to the linked transcript and video range;
+4. seek from Evidence to the linked transcript and video range, following the signed playback URL to
+   the assembled recording rather than trusting the asset status — a `ready` asset naming an object
+   that was never written reads identically to a playable one until the URL is fetched;
 5. append a human override and preserve the AI original;
 6. reject a final decision request without a human company principal;
 7. run deletion and leave it incomplete until every store verifies absence.

@@ -655,30 +655,67 @@ def create_company_router(
             result="success",
             metadata={"accepted_count": len(issuances), "rejected_count": 0},
         )
+        undeliverable: set[UUID] = set()
         if invitation_email is not None:
             position = company_service.get_position(scope.context, position_id)
             template = template_service.resolve_for_sending(scope.context, position_id)
             company_name = template_service.company_name(scope.context)
             for issuance in issuances:
-                invitation_email.handle(
-                    scope.context,
-                    InvitationEmailCommand(
-                        invitation_id=issuance.invitation.invitation_id,
-                        applicant_ref=issuance.invitation.applicant_id,
-                        company_name=company_name,
-                        position_title=position.title,
-                        deadline_text=format_deadline(issuance.invitation.expires_at),
-                        template=template,
-                        recipient_address=issuance.invitation.applicant_email,
-                        invitation_url=(
-                            f"{applicant_access_base_url}?token={issuance.token.raw_token}"
+                try:
+                    invitation_email.handle(
+                        scope.context,
+                        InvitationEmailCommand(
+                            invitation_id=issuance.invitation.invitation_id,
+                            applicant_ref=issuance.invitation.applicant_id,
+                            company_name=company_name,
+                            position_title=position.title,
+                            deadline_text=format_deadline(issuance.invitation.expires_at),
+                            template=template,
+                            recipient_address=issuance.invitation.applicant_email,
+                            invitation_url=(
+                                f"{applicant_access_base_url}?token={issuance.token.raw_token}"
+                            ),
+                            applicant_display_name=issuance.invitation.applicant_display_name,
                         ),
-                        applicant_display_name=issuance.invitation.applicant_display_name,
-                    ),
-                )
+                    )
+                except Exception:  # noqa: BLE001 -- see below
+                    # One recipient's rejection is not the batch's failure.
+                    #
+                    # This send is synchronous and inside the request, and the HTTP
+                    # transaction middleware rolls back on any status >= 500. So an
+                    # exception escaping here discarded every invitation in the batch --
+                    # including the ones whose mail had already left. The applicant holds a
+                    # link, and the row the token resolves against no longer exists.
+                    #
+                    # SES makes that the ordinary case rather than a rare one: in sandbox it
+                    # rejects any unverified recipient, so one address nobody confirmed took
+                    # down the whole batch. The exception type cannot be narrowed usefully --
+                    # `AwsSesEmailSender` wraps everything botocore raises in
+                    # `AwsAdapterError`, but `InMemoryEmailSender` and any future adapter
+                    # raise their own, and the decision here is the same for all of them.
+                    #
+                    # The invitation is kept. Its token is valid, the reviewer can see who
+                    # was not reached, and resending is a second call to this endpoint --
+                    # whereas a dropped invitation cannot be recovered from anywhere.
+                    undeliverable.add(issuance.invitation.invitation_id)
+                    audit.append(
+                        scope.context,
+                        action="invitation.email_failed",
+                        resource_type="invitation",
+                        resource_id=issuance.invitation.invitation_id,
+                        result="failure",
+                        # No address and no token: this record is written on a path that
+                        # exists because a delivery was refused, and the refused address is
+                        # exactly what must not be copied into an audit row.
+                        metadata={},
+                    )
         return InvitationBatchResult(
-            accepted_count=len(issuances),
-            rejected_count=0,
+            # What the reviewer is told. `accepted_count` counts invitations that exist and
+            # can be used; `rejected_count` counts those whose mail did not go out, which is
+            # the number the console already renders and which was hardcoded to 0 -- so a
+            # partly-delivered batch used to report as a complete success.
+            accepted_count=len(issuances) - len(undeliverable),
+            rejected_count=len(undeliverable),
             invitations=[
                 _invitation_view(
                     issuance.invitation,

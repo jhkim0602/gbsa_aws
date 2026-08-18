@@ -28,7 +28,10 @@ from interview_evidence.interview_engine.repositories.postgres import (
 from interview_evidence.reporting.application.transcript_service import TranscriptService
 from interview_evidence.reporting.repositories.postgres import InMemoryReportingRepository
 from interview_evidence.shared.tenant import ActorType, TenantContext, TenantScopeError
-from interview_evidence.workers.reporting.media import MediaPostProcessor
+from interview_evidence.workers.reporting.media import (
+    MediaPostProcessor,
+    RecordingAssembler,
+)
 
 NOW = datetime(2026, 8, 15, 9, 0, tzinfo=UTC)
 COMPANY_ID = UUID("00000000-0000-7000-8000-000000000001")
@@ -48,10 +51,33 @@ def context(company_id: UUID = COMPANY_ID) -> TenantContext:
     )
 
 
+class MediaObjects:
+    """The media bucket. Each chunk holds its own sequence so a concatenation in the
+    wrong order is visible in the assembled bytes rather than merely plausible."""
+
+    def __init__(self) -> None:
+        self.objects: dict[str, bytes] = {}
+
+    def read_object(self, context: TenantContext, object_key: str) -> bytes:
+        context.assert_company(COMPANY_ID)
+        return self.objects[object_key]
+
+    def write_object(
+        self,
+        context: TenantContext,
+        *,
+        object_key: str,
+        body: bytes,
+        content_type: str,
+    ) -> None:
+        context.assert_company(COMPANY_ID)
+        self.objects[object_key] = body
+
+
 def build_boundary(
     *,
     state: InterviewSessionState = InterviewSessionState.COMPLETED,
-) -> tuple[InterviewReportingBoundary, InMemoryReportingRepository]:
+) -> tuple[InterviewReportingBoundary, InMemoryReportingRepository, MediaObjects]:
     interview_repository = InMemoryInterviewRepository()
     interview_repository.save_session(
         context(),
@@ -107,11 +133,14 @@ def build_boundary(
     ):
         interview_repository.save_turn(context(), turn)
 
+    media = MediaObjects()
     for sequence, status, start_ms, end_ms, digest in (
         (1, RecordingUploadStatus.VERIFIED, 0, 2000, "a" * 64),
         (2, RecordingUploadStatus.FAILED, 2000, 2500, "b" * 64),
         (3, RecordingUploadStatus.VERIFIED, 2500, 5000, "c" * 64),
     ):
+        chunk_key = f"companies/{COMPANY_ID}/sessions/{SESSION_ID}/recording/chunks/{sequence:06d}"
+        media.objects[chunk_key] = f"chunk-{sequence:06d}".encode()
         interview_repository.save_recording_chunk(
             context(),
             RecordingChunk(
@@ -119,9 +148,7 @@ def build_boundary(
                 company_id=COMPANY_ID,
                 interview_session_id=SESSION_ID,
                 sequence=sequence,
-                object_key=(
-                    f"companies/{COMPANY_ID}/sessions/{SESSION_ID}/recording/chunks/{sequence:06d}"
-                ),
+                object_key=chunk_key,
                 content_hash=digest,
                 byte_size=1024,
                 session_start_ms=start_ms,
@@ -143,13 +170,15 @@ def build_boundary(
             interview=interview_public,
             transcript_service=TranscriptService(reporting_repository),
             media_processor=MediaPostProcessor(reporting_repository),
+            assembler=RecordingAssembler(media),
         ),
         reporting_repository,
+        media,
     )
 
 
 def test_lane_d_uses_real_final_turns_and_verified_media_boundary() -> None:
-    boundary, reporting_repository = build_boundary()
+    boundary, reporting_repository, media = build_boundary()
 
     projected = boundary.project_completed_session(
         context(),
@@ -168,7 +197,6 @@ def test_lane_d_uses_real_final_turns_and_verified_media_boundary() -> None:
                 confidence=0.94,
             ),
         ),
-        output_object_key=f"companies/{COMPANY_ID}/sessions/{SESSION_ID}/recording/final/v1",
         occurred_at=NOW,
     )
 
@@ -182,24 +210,37 @@ def test_lane_d_uses_real_final_turns_and_verified_media_boundary() -> None:
     assert all("000002" not in segment.source_audio_key for segment in transcripts)
     assert projected.competency_model_version_id == UUID("00000000-0000-7000-8000-000000000011")
 
+    # The asset has to name an object assembly actually wrote. The caller used to pass
+    # this key in, which is how every asset ended up describing a file nothing produced.
+    assets = reporting_repository.list_recording_assets(context(), SESSION_ID)
+    assert len(assets) == 1
+    asset = assets[0]
+    assert asset.object_key in media.objects
+    # Only the two verified chunks, in sequence order. The FAILED chunk 000002 supplies
+    # the missing range above and must not contribute bytes to the recording.
+    assert media.objects[asset.object_key] == b"chunk-000001chunk-000003"
+
 
 def test_lane_d_boundary_rejects_unfinished_or_cross_tenant_session() -> None:
-    unfinished, _ = build_boundary(state=InterviewSessionState.IN_PROGRESS)
+    unfinished, _, unfinished_media = build_boundary(state=InterviewSessionState.IN_PROGRESS)
     with pytest.raises(ValueError, match="completed"):
         unfinished.project_completed_session(
             context(),
             session_id=SESSION_ID,
             turn_ranges=(),
-            output_object_key="opaque/final",
             occurred_at=NOW,
         )
 
-    completed, _ = build_boundary()
+    completed, _, completed_media = build_boundary()
     with pytest.raises((LookupError, TenantScopeError)):
         completed.project_completed_session(
             context(OTHER_COMPANY_ID),
             session_id=SESSION_ID,
             turn_ranges=(),
-            output_object_key="opaque/final",
             occurred_at=NOW,
         )
+
+    # A rejected projection must not leave an assembled recording behind: the object
+    # would outlive the refusal and still be reachable through a later asset row.
+    for media in (unfinished_media, completed_media):
+        assert not any("recording.webm" in key for key in media.objects)

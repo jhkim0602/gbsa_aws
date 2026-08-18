@@ -34,6 +34,7 @@ from interview_evidence.shared.messaging.worker import (
 from interview_evidence.shared.operations import MetricRecorder, NullMetricRecorder
 from interview_evidence.shared.persistence import SQLProcessedMessageStore
 from interview_evidence.shared.tenant import TenantContext
+from interview_evidence.shared.tracing import configure_worker_tracing
 from interview_evidence.submission_analysis.adapters.search import SearchIndex
 from interview_evidence.submission_analysis.api import LaneBRuntime
 from interview_evidence.workers.analysis.document_extract import DocumentExtractionAdapter
@@ -136,10 +137,6 @@ class MediaRequestedEventHandler:
             context,
             session_id=session_id,
             turn_ranges=ranges,
-            output_object_key=(
-                f"companies/{context.company_id}/sessions/{session_id}/"
-                "recording/final/v1/manifest.m3u8"
-            ),
             occurred_at=self._clock.now(),
         )
         occurred_at = self._clock.now()
@@ -521,6 +518,10 @@ def create_environment_worker_runtime(
         "APP_ENVIRONMENT",
         active_environment.get("APP_ENV", "local"),
     )
+    # A no-op unless the task definition set an OTLP endpoint, which it does only when the ADOT
+    # sidecar is running. Installed here rather than in `worker.main` so that every entry point
+    # into a worker runtime gets it.
+    configure_worker_tracing(active_environment)
     if application_environment == "local":
         return create_local_worker_runtime()
     return create_production_worker_runtime(active_environment)

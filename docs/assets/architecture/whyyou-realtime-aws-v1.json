@@ -1,0 +1,207 @@
+{
+  "title": "WhyYou AWS 아키텍처",
+  "subtitle": "실시간 WebSocket 경로(보라색)와 RAG 데이터 흐름",
+  "theme": "light",
+  "size": "standard",
+  "nodes": [
+    {
+      "id": "company",
+      "service": "users",
+      "label": "Company",
+      "sublabel": "Recruiter console",
+      "x": 0,
+      "y": 0
+    },
+    {
+      "id": "applicant",
+      "service": "users",
+      "label": "Applicant",
+      "sublabel": "Interview browser",
+      "x": 0,
+      "y": 2
+    },
+    {
+      "id": "cloudfront",
+      "service": "cloudfront",
+      "label": "Amazon CloudFront",
+      "sublabel": "2 React SPAs",
+      "x": 1,
+      "y": 1
+    },
+    {
+      "id": "alb",
+      "service": "elb",
+      "label": "Application Load",
+      "sublabel": "Balancer",
+      "x": 2,
+      "y": 1
+    },
+    {
+      "id": "api",
+      "service": "fargate",
+      "label": "ECS Fargate API",
+      "sublabel": "REST + WebSocket /stream",
+      "x": 3,
+      "y": 1
+    },
+    {
+      "id": "dynamodb",
+      "service": "dynamodb",
+      "label": "Amazon DynamoDB",
+      "sublabel": "Recent context + checkpoints",
+      "x": 2,
+      "y": 0
+    },
+    {
+      "id": "sqs",
+      "service": "sqs",
+      "label": "Amazon SQS",
+      "sublabel": "Analysis + report jobs",
+      "x": 3,
+      "y": 2
+    },
+    {
+      "id": "ai",
+      "service": "bedrock",
+      "label": "AWS AI Services",
+      "sublabel": "Bedrock · STT · TTS",
+      "x": 4,
+      "y": 1
+    },
+    {
+      "id": "worker",
+      "service": "ecs",
+      "label": "ECS Worker",
+      "sublabel": "Analysis + reporting",
+      "x": 4,
+      "y": 2
+    },
+    {
+      "id": "aurora",
+      "service": "aurora",
+      "label": "Amazon Aurora",
+      "sublabel": "Durable truth + hybrid RAG",
+      "x": 5,
+      "y": 0
+    },
+    {
+      "id": "s3",
+      "service": "s3",
+      "label": "Amazon S3",
+      "sublabel": "Documents + recordings",
+      "x": 5,
+      "y": 2
+    },
+    {
+      "id": "cloudwatch",
+      "service": "cloudwatch",
+      "label": "Amazon CloudWatch",
+      "sublabel": "Operational logs + metrics",
+      "x": 5,
+      "y": 3
+    }
+  ],
+  "connections": [
+    {
+      "source": "company",
+      "target": "cloudfront",
+      "label": "HTTPS / REST",
+      "style": "solid",
+      "source_port": "right",
+      "target_port": "top"
+    },
+    {
+      "source": "applicant",
+      "target": "cloudfront",
+      "label": "HTTPS + WebSocket",
+      "style": "bidirectional",
+      "color": "#8C4FFF",
+      "source_port": "right",
+      "target_port": "bottom",
+      "step_number": 1
+    },
+    {
+      "source": "cloudfront",
+      "target": "alb",
+      "label": "WebSocket",
+      "style": "bidirectional",
+      "color": "#8C4FFF",
+      "source_port": "right",
+      "target_port": "left",
+      "step_number": 2
+    },
+    {
+      "source": "alb",
+      "target": "api",
+      "label": "/v1/.../stream",
+      "style": "bidirectional",
+      "color": "#8C4FFF",
+      "source_port": "right",
+      "target_port": "left",
+      "step_number": 3
+    },
+    {
+      "source": "api",
+      "target": "ai",
+      "label": "STT · question · TTS",
+      "style": "bidirectional",
+      "color": "#01A88D",
+      "source_port": "right",
+      "target_port": "left"
+    },
+    {
+      "source": "api",
+      "target": "dynamodb",
+      "label": "Recent context / checkpoint",
+      "style": "bidirectional",
+      "color": "#C925D1",
+      "source_port": "top",
+      "target_port": "right"
+    },
+    {
+      "source": "api",
+      "target": "sqs",
+      "label": "Async jobs",
+      "style": "dashed",
+      "color": "#E7157B",
+      "source_port": "bottom",
+      "target_port": "top"
+    },
+    {
+      "source": "sqs",
+      "target": "worker",
+      "label": "Consume",
+      "style": "solid",
+      "source_port": "right",
+      "target_port": "left"
+    },
+    {
+      "source": "worker",
+      "target": "aurora",
+      "label": "Evidence + search",
+      "style": "solid",
+      "color": "#C925D1",
+      "source_port": "top",
+      "target_port": "left"
+    },
+    {
+      "source": "worker",
+      "target": "s3",
+      "label": "Files + media",
+      "style": "solid",
+      "color": "#7AA116",
+      "source_port": "right",
+      "target_port": "left"
+    },
+    {
+      "source": "worker",
+      "target": "cloudwatch",
+      "label": "Logs + metrics",
+      "style": "dashed",
+      "color": "#E7157B",
+      "source_port": "bottom",
+      "target_port": "left"
+    }
+  ],
+  "containers": []
+}

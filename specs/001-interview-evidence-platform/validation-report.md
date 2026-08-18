@@ -248,3 +248,45 @@ a rendered container definition, which the configuration's shape does not constr
   to start with a `ResourceNotFoundException`.
 - No REST, WebSocket, event schema or migration changed. `COGNITO_USER_POOL_ID` and `EVENT_BUS_ARN`
   remain supplied to tasks and read by no code, recorded as T301 rather than removed.
+
+## Addendum: Phase 32 Playable Recording
+
+**Executed**: 2026-08-18, Asia/Seoul
+
+FR-037 and FR-038 were recorded as covered above, and the reviewer could not play a single second of
+video. Three defects on one path, none of them visible to a passing suite:
+
+| Layer | What shipped | What the tests saw |
+|---|---|---|
+| Playback locator | `https://media.local/playback`, then `url: null` once the presigner became optional and every root omitted it | Locator unit tests passed — they asserted the shape of the response, not that the URL resolved |
+| Media worker | A recording asset naming a `.m3u8` manifest no code produced | Manifest tests passed — `build_manifest` was handed the key as a parameter |
+| Local seed | An asset with `status: ready` and no bytes uploaded anywhere | `test_local_review_seed.py` asserted `ready` for a bucket-less seed, so the test encoded the defect |
+
+- The root cause is uniform: **no test followed the URL the endpoint returned.** Each layer was
+  covered in isolation, and the contract between them — that a `ready` asset names bytes a presigner
+  can sign — was asserted nowhere. `head-object` on the key the console put in `<video src>` returned
+  404 the entire time.
+- `assembled_recording_key()` is now the one definition of the assembled object's layout. The second
+  copy of that f-string is what let the worker and the review screen disagree about where the
+  recording lives, so it is a function rather than a repeated literal.
+- Two keys per session are intentional and documented: transcripts and Evidence cite the chunk they
+  were transcribed from, while the reviewer plays the assembled object. Deletion enumerates them
+  separately.
+- Verified live against the compose stack on a clean volume, not inferred: `head-object` 200 with
+  `ContentType: video/webm`, `ContentLength 73596` and `ServerSideEncryption: aws:kms`; the timeline
+  endpoint returning `status: ready` with a 5-minute expiry; `curl` on the signed URL returning 200
+  and bytes beginning `1a45 dfa3`; `ffprobe` reporting `vp9`, `320x180`, `duration=160.000000`.
+- Both new tests are mutation-verified. Reverting the presigner wiring fails the HTTP test with
+  `assert 'unavailable' == 'ready'`; repointing `<video src>` at a nonexistent key fails the browser
+  test with the element's own `error` event. A test that cannot fail is what produced this phase.
+- Local-stack caveat: a database seeded before this change cannot be repaired by re-seeding. Both
+  seed helpers return early once a session exists, and Lane D's report projections are deliberately
+  write-once (`save_report` raises `"AI original report is immutable"`), so a stale asset row keeps
+  pointing at the old key while S3 holds the new object. `docker compose down -v` is the reset path.
+- Gates after the change: backend 313 passed; frontend 93 passed (23 applicant + 70 company);
+  company e2e 13 passed, applicant e2e 2 passed; `ruff format --check`, `ruff check`, `mypy` (157
+  files), eslint, tsc, `make contracts-check`, `make boundaries-check`, `make migration-check`,
+  `make infra-format-check`, `make infra-validate` and `make infra-security-check` all clean.
+- No REST, WebSocket, event schema, migration or Terraform resource changed. The MediaConvert
+  adapter, port and IAM role now have no consumer at all — assembly needs no transcode — and are
+  recorded as T311 rather than removed.

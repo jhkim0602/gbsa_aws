@@ -240,6 +240,13 @@ output "aurora_cluster_arn" {
   value = aws_rds_cluster.this.arn
 }
 
+# The `DBClusterIdentifier` dimension every AWS/RDS alarm keys on. Not derivable from the ARN
+# without string surgery, and not the endpoint either -- an alarm pointed at the wrong
+# dimension name reports INSUFFICIENT_DATA forever, which looks the same as healthy.
+output "aurora_cluster_identifier" {
+  value = aws_rds_cluster.this.cluster_identifier
+}
+
 output "aurora_database_name" {
   value = aws_rds_cluster.this.database_name
 }

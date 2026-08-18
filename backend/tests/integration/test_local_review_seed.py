@@ -32,6 +32,7 @@ from interview_evidence.reporting.repositories.postgres import (
     TranscriptSegmentRow,
 )
 from interview_evidence.runtime.local_seed import seed_local_company
+from interview_evidence.shared.aws_clients.ports import InMemoryObjectStorage
 from sqlalchemy import create_engine, delete, func, select
 from sqlalchemy.orm import Session
 
@@ -52,9 +53,12 @@ def test_local_demo_seed_leaves_one_reviewable_applicant(tmp_path: Path) -> None
         "LOCAL_DEMO_DATA_ENABLED": "true",
     }
 
+    # With a bucket, because the assertions below expect a ready asset -- and an asset is
+    # only ready once the recording it names has actually been uploaded.
+    media = InMemoryObjectStorage()
     # Twice, because the local stack re-runs the seed on every boot.
-    seed_local_company(environment)
-    seed_local_company(environment)
+    seed_local_company(environment, media_storage=media)
+    seed_local_company(environment, media_storage=media)
 
     with Session(engine) as session:
         demo = ensure_local_demo_recruiting(
@@ -86,6 +90,9 @@ def test_local_demo_seed_leaves_one_reviewable_applicant(tmp_path: Path) -> None
         # Playback only offers a URL for a ready or partial asset.
         assert [asset.status for asset in assets] == ["ready"]
         assert assets[0].duration_ms >= chunks[0].session_end_ms
+        # And a ready asset has to name bytes. Both keys, because the reviewer plays the
+        # assembled recording while each citation traces back to the chunk it came from.
+        assert {assets[0].object_key, chunks[0].object_key} <= set(media.objects)
 
         reports = session.scalars(
             select(ReportRow).where(ReportRow.interview_session_id == session_id)

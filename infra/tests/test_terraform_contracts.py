@@ -68,10 +68,18 @@ def read(path: Path) -> str:
 
 
 def container_commands(compute: str) -> list[list[str]]:
-    """Every `command = [...]` in the module, as the words the container would exec."""
+    """The application containers' `command`, as the words the container would exec.
+
+    Scoped to the `aws_ecs_task_definition` resources rather than the whole module. The
+    collector sidecar is built in `locals` and its command is a config flag, not a Python
+    launcher, so a module-wide scrape reported it as a container running bare `python`.
+    """
     return [
         re.findall(r'"([^"]+)"', body)
-        for body in re.findall(r"command\s*=\s*\[(.*?)\]", compute, re.DOTALL)
+        for block in re.findall(
+            r'^resource "aws_ecs_task_definition".*?^}$', compute, re.DOTALL | re.MULTILINE
+        )
+        for body in re.findall(r"command\s*=\s*\[(.*?)\]", block, re.DOTALL)
     ]
 
 
@@ -106,9 +114,15 @@ def test_dev_and_prod_have_independent_state_and_production_protection() -> None
     dev_data = read(ROOT / "environments" / "dev" / "data-ai" / "main.tf")
     prod = read(ROOT / "environments" / "prod" / "main.tf")
     assert 'key          = "prod/terraform.tfstate"' in prod
-    assert "deletion_protection = true" in prod
-    assert "deletion_protection   = false" in dev_foundation
-    assert "deletion_protection        = false" in dev_data
+    # Matched with flexible whitespace rather than a literal, because `terraform fmt` aligns
+    # `=` to the longest argument name in the block: adding one longer argument silently
+    # rewrites the spacing of every other line and broke this assertion once, reporting a
+    # missing protection that had never been removed.
+    # Anchored to the line start so `enable_deletion_protection` -- the ALB's separate
+    # setting, asserted below -- cannot satisfy a check about the pool and the database.
+    assert re.search(r"^\s*deletion_protection\s*=\s*true", prod, re.MULTILINE)
+    assert re.search(r"^\s*deletion_protection\s*=\s*false", dev_foundation, re.MULTILINE)
+    assert re.search(r"^\s*deletion_protection\s*=\s*false", dev_data, re.MULTILINE)
     assert re.search(r"force_destroy\s*=\s*false", prod)
     assert re.search(r"nat_gateway_per_az\s*=\s*true", prod)
     assert re.search(r"enable_deletion_protection\s*=\s*true", prod)
@@ -225,11 +239,22 @@ def test_every_task_command_runs_python_through_the_image_virtualenv() -> None:
     of ours runs -- the ECS worker shipped that way, crash-looping while the api beside it
     was fine. Asserting the module name is right is not enough; the launcher has to be.
     """
-    commands = container_commands(read(ROOT / "modules" / "compute" / "main.tf"))
+    compute = read(ROOT / "modules" / "compute" / "main.tf")
+    commands = container_commands(compute)
     assert commands, "the compute module defines container commands"
     for command in commands:
         assert command[:3] == ["uv", "run", "--no-sync"], command
         assert any(word.startswith("interview_evidence") for word in command), command
+
+    # The sidecar is not one of the above -- it is a prebuilt AWS image with no virtualenv of
+    # ours -- but it must stay non-essential. Marked essential, a collector that fails to start
+    # takes the task down with it and turns a missing trace into an outage.
+    #
+    # Anchored to the line start, because a plain substring check was satisfied by the doc
+    # comment above the block that explains why the field is false: flipping the actual field
+    # to `true` left the test passing.
+    assert re.search(r"^\s*image\s*=\s*var\.otel_image", compute, re.MULTILINE)
+    assert re.search(r"^\s*essential\s*=\s*false", compute, re.MULTILINE)
 
 
 def test_application_roots_deliver_the_github_credential_by_reference_only() -> None:

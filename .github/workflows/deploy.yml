@@ -1,6 +1,14 @@
 name: Deploy
 
 on:
+  # Every merge to main lands in dev, so the environment under test is the commit that was
+  # just reviewed. Only dev: prod is never reached without someone choosing it below.
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "specs/**"
   workflow_dispatch:
     inputs:
       environment:
@@ -26,7 +34,11 @@ permissions:
   id-token: write
 
 concurrency:
-  group: deploy-${{ inputs.environment }}
+  # Workflow-level concurrency cannot read `needs`, so the fallback is repeated here rather
+  # than taken from the settings job. Two deploys to one environment would race on the
+  # Terraform state lock and on the ECS service; queueing is the whole point, so nothing is
+  # cancelled in flight -- a half-applied environment is worse than a slow queue.
+  group: deploy-${{ inputs.environment || 'dev' }}
   cancel-in-progress: false
 
 env:
@@ -34,9 +46,58 @@ env:
   TERRAFORM_VERSION: 1.13.3
 
 jobs:
-  quality:
+  # One place decides what this run is. `inputs.*` is empty on a push, so every job that
+  # read it directly would silently resolve the wrong root, skip its own `if:` and address a
+  # cluster named `iep-`. Resolving once and passing the answer down means a push and a
+  # dispatch differ in exactly this job.
+  settings:
     runs-on: ubuntu-latest
-    environment: ${{ format('{0}-plan', inputs.environment) }}
+    outputs:
+      environment: ${{ steps.resolve.outputs.environment }}
+      dev_root: ${{ steps.resolve.outputs.dev_root }}
+      apply_infrastructure: ${{ steps.resolve.outputs.apply_infrastructure }}
+      approval_environment: ${{ steps.resolve.outputs.approval_environment }}
+    steps:
+      - id: resolve
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_ENVIRONMENT: ${{ inputs.environment }}
+          INPUT_DEV_ROOT: ${{ inputs.dev_root }}
+          INPUT_APPLY: ${{ inputs.apply_infrastructure }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" == "push" ]]; then
+            # A merge deploys the application root of dev and applies its plan. The
+            # foundation and data-ai roots hold the VPC, the database and the keys; they
+            # change rarely and are applied deliberately, by dispatch.
+            ENVIRONMENT=dev
+            DEV_ROOT=application
+            APPLY=true
+          else
+            ENVIRONMENT="$INPUT_ENVIRONMENT"
+            DEV_ROOT="$INPUT_DEV_ROOT"
+            APPLY="$INPUT_APPLY"
+          fi
+          # The gate follows the environment, not how the run started. Prod always waits for
+          # a reviewer; dev never does -- on a merge the pull request review was the gate, and
+          # on a dispatch the person who pressed the button is the reviewer. Pointing dev at
+          # `dev-deploy` rather than a `dev-approval` of its own means there is no fourth
+          # environment to create whose only purpose is to approve nothing.
+          if [[ "$ENVIRONMENT" == "prod" ]]; then
+            APPROVAL_ENVIRONMENT=prod-approval
+          else
+            APPROVAL_ENVIRONMENT=dev-deploy
+          fi
+          echo "environment=$ENVIRONMENT" >> "$GITHUB_OUTPUT"
+          echo "dev_root=$DEV_ROOT" >> "$GITHUB_OUTPUT"
+          echo "apply_infrastructure=$APPLY" >> "$GITHUB_OUTPUT"
+          echo "approval_environment=$APPROVAL_ENVIRONMENT" >> "$GITHUB_OUTPUT"
+          echo "Deploying $ENVIRONMENT ($DEV_ROOT), apply=$APPLY" >> "$GITHUB_STEP_SUMMARY"
+
+  quality:
+    needs: [settings]
+    runs-on: ubuntu-latest
+    environment: ${{ format('{0}-plan', needs.settings.outputs.environment) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -53,24 +114,19 @@ jobs:
       - run: npm ci
       - run: uv sync --frozen --no-editable
       - run: npm run test:workspace
-      - name: Build browser applications
-        env:
-          VITE_API_BASE_URL: ${{ vars.PUBLIC_API_BASE_URL }}
-        run: npm run build
 
-      - name: Save browser artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: browser-apps-${{ github.run_id }}
-          path: |
-            apps/company-console/dist
-            apps/applicant-interview/dist
-          if-no-files-found: error
-          retention-days: 1
+      # No browser build here, deliberately. Vite inlines `import.meta.env` at build time and
+      # the console's Cognito configuration -- login domain, client id, and the CloudFront
+      # origin it redirects back to -- does not exist until the infrastructure has been
+      # applied. A bundle built at this point compiles cleanly with those values absent,
+      # `readCompanyAuthConfig` returns null, and the console falls back to a demo token the
+      # deployed API rejects. The build therefore lives in `deploy_frontends`, after apply,
+      # where it can read them from state.
 
   terraform_plan:
+    needs: [settings]
     runs-on: ubuntu-latest
-    environment: ${{ format('{0}-plan', inputs.environment) }}
+    environment: ${{ format('{0}-plan', needs.settings.outputs.environment) }}
     outputs:
       root: ${{ steps.target.outputs.root }}
       resource_name: ${{ steps.target.outputs.resource_name }}
@@ -90,8 +146,8 @@ jobs:
       - name: Select immutable Terraform root
         id: target
         env:
-          ENVIRONMENT: ${{ inputs.environment }}
-          DEV_ROOT: ${{ inputs.dev_root }}
+          ENVIRONMENT: ${{ needs.settings.outputs.environment }}
+          DEV_ROOT: ${{ needs.settings.outputs.dev_root }}
           RESOURCE_PREFIX: ${{ vars.RESOURCE_PREFIX }}
         run: |
           set -euo pipefail
@@ -141,18 +197,21 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # A gate on dispatch, a pass-through on a merge. The environment name is what makes the
+  # difference: `prod-approval` carries required reviewers, `dev-deploy` does not, so the
+  # same job blocks or does not according to how the run started.
   approval:
-    needs: [terraform_plan]
+    needs: [settings, terraform_plan]
     runs-on: ubuntu-latest
     environment:
-      name: ${{ format('{0}-approval', inputs.environment) }}
+      name: ${{ needs.settings.outputs.approval_environment }}
     steps:
-      - run: echo "Reviewed Terraform plan approved for ${{ inputs.environment }}"
+      - run: echo "Plan accepted for ${{ needs.settings.outputs.environment }} via ${{ github.event_name }}"
 
   terraform_apply:
-    needs: [terraform_plan, approval]
+    needs: [settings, terraform_plan, approval]
     runs-on: ubuntu-latest
-    environment: ${{ format('{0}-deploy', inputs.environment) }}
+    environment: ${{ format('{0}-deploy', needs.settings.outputs.environment) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -180,17 +239,20 @@ jobs:
           path: .deploy-plan
 
       - name: Apply exact saved plan
-        if: ${{ inputs.apply_infrastructure }}
+        if: ${{ needs.settings.outputs.apply_infrastructure == 'true' }}
         working-directory: ${{ needs.terraform_plan.outputs.root }}
         run: |
           cp "$GITHUB_WORKSPACE/.deploy-plan/tfplan" tfplan
           terraform apply -input=false tfplan
 
   build_images:
-    needs: [terraform_plan, terraform_apply]
-    if: ${{ inputs.environment != 'dev' || inputs.dev_root == 'application' }}
+    needs: [settings, terraform_plan, terraform_apply]
+    # The foundation and data-ai roots contain no ECS service, so there is nothing to
+    # deploy an image onto and the jobs below would fail describing a service that the
+    # root never creates.
+    if: ${{ needs.settings.outputs.environment != 'dev' || needs.settings.outputs.dev_root == 'application' }}
     runs-on: ubuntu-latest
-    environment: ${{ format('{0}-deploy', inputs.environment) }}
+    environment: ${{ format('{0}-deploy', needs.settings.outputs.environment) }}
     outputs:
       api_image: ${{ steps.images.outputs.api_image }}
       worker_image: ${{ steps.images.outputs.worker_image }}
@@ -222,9 +284,9 @@ jobs:
           echo "worker_image=$WORKER_IMAGE" >> "$GITHUB_OUTPUT"
 
   render_task_definitions:
-    needs: [terraform_plan, build_images]
+    needs: [settings, terraform_plan, build_images]
     runs-on: ubuntu-latest
-    environment: ${{ format('{0}-deploy', inputs.environment) }}
+    environment: ${{ format('{0}-deploy', needs.settings.outputs.environment) }}
     outputs:
       api_task_definition: ${{ steps.register.outputs.api_task_definition }}
       worker_task_definition: ${{ steps.register.outputs.worker_task_definition }}
@@ -276,9 +338,9 @@ jobs:
           echo "worker_task_definition=$WORKER_TASK_DEFINITION" >> "$GITHUB_OUTPUT"
 
   migrate_database:
-    needs: [render_task_definitions]
+    needs: [settings, render_task_definitions]
     runs-on: ubuntu-latest
-    environment: ${{ format('{0}-deploy', inputs.environment) }}
+    environment: ${{ format('{0}-deploy', needs.settings.outputs.environment) }}
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -325,9 +387,9 @@ jobs:
           test "$EXIT_CODE" = "0"
 
   deploy_ecs:
-    needs: [render_task_definitions, migrate_database]
+    needs: [settings, render_task_definitions, migrate_database]
     runs-on: ubuntu-latest
-    environment: ${{ format('{0}-deploy', inputs.environment) }}
+    environment: ${{ format('{0}-deploy', needs.settings.outputs.environment) }}
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -355,34 +417,149 @@ jobs:
             --cluster "$RESOURCE_NAME" \
             --services "$RESOURCE_NAME-api" "$RESOURCE_NAME-worker"
 
+  # Build and publish in one job, after apply, because the bundle depends on what the apply
+  # created. Every target below is read from Terraform state rather than kept as a repository
+  # variable: a bucket name, a distribution id and the console's own origin cannot be filled
+  # in before the apply that creates them, and once held by hand they go stale silently -- a
+  # replaced distribution keeps publishing to the old id, invalidating a cache nobody reads.
   deploy_frontends:
-    needs: [quality, deploy_ecs]
+    needs: [settings, quality, terraform_plan, deploy_ecs]
     runs-on: ubuntu-latest
-    environment: ${{ format('{0}-deploy', inputs.environment) }}
+    environment: ${{ format('{0}-deploy', needs.settings.outputs.environment) }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
         with:
-          name: browser-apps-${{ github.run_id }}
-          path: browser-apps
+          node-version: 22
+          cache: npm
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Publish private SPA origins and invalidate edge caches
-        env:
-          COMPANY_SPA_BUCKET: ${{ vars.COMPANY_SPA_BUCKET }}
-          APPLICANT_SPA_BUCKET: ${{ vars.APPLICANT_SPA_BUCKET }}
-          COMPANY_DISTRIBUTION_ID: ${{ vars.COMPANY_DISTRIBUTION_ID }}
-          APPLICANT_DISTRIBUTION_ID: ${{ vars.APPLICANT_DISTRIBUTION_ID }}
+      - name: Read publish targets from state
+        id: targets
+        working-directory: ${{ needs.terraform_plan.outputs.root }}
         run: |
           set -euo pipefail
-          aws s3 sync browser-apps/apps/company-console/dist \
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.TERRAFORM_STATE_BUCKET }}" \
+            -backend-config="region=$AWS_REGION"
+          FRONTEND="$(terraform output -json frontend)"
+          # One `jq -e` per value: it exits non-zero on null, so a missing output stops here
+          # with the name of what was missing instead of an `s3 sync` to "s3://null".
+          for KEY in company applicant; do
+            for FIELD in bucket distribution_id url; do
+              VALUE="$(jq -er --arg k "$KEY" --arg f "$FIELD" '.sites[$k][$f]' <<<"$FRONTEND")"
+              echo "${KEY}_${FIELD}=$VALUE" >> "$GITHUB_OUTPUT"
+            done
+          done
+          echo "api_base_url=$(jq -r '.api_base_url' <<<"$FRONTEND")" >> "$GITHUB_OUTPUT"
+          # The Cognito trio is allowed to be absent -- a foundation root with no
+          # `cognito_domain_prefix` has no hosted login UI yet -- but it is all or nothing.
+          # `readCompanyAuthConfig` needs all three and silently falls back to a demo token
+          # when any one is missing, so a partial set is refused here rather than shipped.
+          LOGIN_DOMAIN="$(jq -r '.cognito.login_domain // ""' <<<"$FRONTEND")"
+          CLIENT_ID="$(jq -r '.cognito.client_id // ""' <<<"$FRONTEND")"
+          REDIRECT_URI="$(jq -r '.cognito.redirect_uri // ""' <<<"$FRONTEND")"
+          PRESENT=0
+          for VALUE in "$LOGIN_DOMAIN" "$CLIENT_ID" "$REDIRECT_URI"; do
+            test -n "$VALUE" && PRESENT=$((PRESENT + 1))
+          done
+          if [[ "$PRESENT" -eq 3 ]]; then
+            echo "cognito_domain=$LOGIN_DOMAIN" >> "$GITHUB_OUTPUT"
+            echo "cognito_client_id=$CLIENT_ID" >> "$GITHUB_OUTPUT"
+            echo "cognito_redirect_uri=$REDIRECT_URI" >> "$GITHUB_OUTPUT"
+          elif [[ "$PRESENT" -eq 0 ]]; then
+            echo "::warning::No Cognito login domain in state; the console will build without browser login."
+          else
+            echo "::error::Cognito configuration is incomplete ($PRESENT of 3); the console would build a login that cannot work."
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - name: Build browser applications against the deployed environment
+        env:
+          # Empty, and correct: each distribution routes `/v1/*` to the ALB beside its own SPA
+          # origin, so the browser reaches the API on the origin it was served from. Both
+          # applications already default to that.
+          VITE_API_BASE_URL: ${{ steps.targets.outputs.api_base_url }}
+          VITE_APPLICANT_APP_URL: ${{ steps.targets.outputs.applicant_url }}/access
+          VITE_COGNITO_DOMAIN: ${{ steps.targets.outputs.cognito_domain }}
+          VITE_COGNITO_CLIENT_ID: ${{ steps.targets.outputs.cognito_client_id }}
+          VITE_COGNITO_REDIRECT_URI: ${{ steps.targets.outputs.cognito_redirect_uri }}
+        run: npm run build
+
+      - name: Publish private SPA origins and invalidate edge caches
+        env:
+          COMPANY_SPA_BUCKET: ${{ steps.targets.outputs.company_bucket }}
+          APPLICANT_SPA_BUCKET: ${{ steps.targets.outputs.applicant_bucket }}
+          COMPANY_DISTRIBUTION_ID: ${{ steps.targets.outputs.company_distribution_id }}
+          APPLICANT_DISTRIBUTION_ID: ${{ steps.targets.outputs.applicant_distribution_id }}
+        run: |
+          set -euo pipefail
+          aws s3 sync apps/company-console/dist \
             "s3://$COMPANY_SPA_BUCKET" --delete
-          aws s3 sync browser-apps/apps/applicant-interview/dist \
+          aws s3 sync apps/applicant-interview/dist \
             "s3://$APPLICANT_SPA_BUCKET" --delete
           aws cloudfront create-invalidation \
             --distribution-id "$COMPANY_DISTRIBUTION_ID" --paths '/*'
           aws cloudfront create-invalidation \
             --distribution-id "$APPLICANT_DISTRIBUTION_ID" --paths '/*'
+
+      # What the local suite structurally cannot check, run against the thing that was just
+      # published. The browser suite stays on the local stack -- nginx, Mailpit and the fake
+      # principal provider make a deterministic seed possible there, and make CloudFront, SES
+      # and Cognito behaviour unobservable. These checks are the other half, and they assert
+      # no application data, so there is nothing to seed and nothing to clean up.
+      #
+      # After the publish, not before: every check reads the bundle and the edge behaviour
+      # that this job's `s3 sync` and invalidation produce.
+      - name: Smoke the deployed environment
+        env:
+          COMPANY_URL: ${{ steps.targets.outputs.company_url }}
+          APPLICANT_URL: ${{ steps.targets.outputs.applicant_url }}
+        run: |
+          set -euo pipefail
+          # A distribution serves the previous object until the invalidation it was just
+          # handed completes, so a check that ran immediately would grade the last deploy.
+          sleep 60
+          # `tee` keeps the output on the job log while also collecting it for the summary,
+          # and the exit status has to be the script's, not tee's -- hence PIPESTATUS rather
+          # than a plain pipeline, which would report success for a failed check.
+          set +e
+          scripts/smoke_deployed.sh 2>&1 | tee "$RUNNER_TEMP/smoke.txt"
+          STATUS="${PIPESTATUS[0]}"
+          set -e
+          {
+            echo "### Deployed smoke"
+            echo '```'
+            cat "$RUNNER_TEMP/smoke.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$STATUS"
+
+      # The URLs to open, printed on the run rather than looked up in the console. Without a
+      # domain these are CloudFront hostnames nobody can guess. `always()` so they are
+      # reported even when the smoke check above failed -- that is exactly when someone wants
+      # to open them by hand.
+      - name: Report reachable URLs
+        if: always()
+        env:
+          COMPANY_URL: ${{ steps.targets.outputs.company_url }}
+          APPLICANT_URL: ${{ steps.targets.outputs.applicant_url }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### Deployed"
+            echo "- Company console: $COMPANY_URL"
+            echo "- Applicant interview: $APPLICANT_URL/access"
+          } >> "$GITHUB_STEP_SUMMARY"

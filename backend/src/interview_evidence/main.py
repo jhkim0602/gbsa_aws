@@ -18,6 +18,7 @@ from interview_evidence.shared.observability import (
 )
 from interview_evidence.shared.operations import ReadinessChecker
 from interview_evidence.shared.security.principals import PrincipalProvider
+from interview_evidence.shared.tracing import configure_tracing, current_trace_id
 
 
 def create_app(
@@ -32,6 +33,10 @@ def create_app(
         docs_url="/docs",
         redoc_url=None,
     )
+    # No-op unless the task definition set an OTLP endpoint, which it does only when the ADOT
+    # sidecar is running. Called before the middleware below so that `current_trace_id` has a
+    # span to read from on the first request.
+    configure_tracing(application)
 
     @application.middleware("http")
     async def trace_request(
@@ -39,7 +44,10 @@ def create_app(
         call_next: RequestResponseEndpoint,
     ) -> Response:
         request_id = _request_id(request.headers.get("x-request-id"))
-        trace_id = request.headers.get("x-trace-id") or request_id
+        # The sampled X-Ray trace id when there is one, so a log line and the trace of the same
+        # request can be found from each other. Falls back to the header, then to the request
+        # id, which is what the local runtime uses -- there is no collector there.
+        trace_id = current_trace_id() or request.headers.get("x-trace-id") or request_id
         tokens = bind_trace_context(request_id=request_id, trace_id=trace_id)
         try:
             response = await call_next(request)
@@ -177,7 +185,10 @@ def create_local_runtime(
         AnalysisResult,
         JobStatus,
     )
-    from interview_evidence.workers.reporting.media import MediaPostProcessor
+    from interview_evidence.workers.reporting.media import (
+        MediaPostProcessor,
+        RecordingAssembler,
+    )
     from interview_evidence.workers.reporting.report import ReportGenerator
 
     clock = SystemClock()
@@ -288,6 +299,7 @@ def create_local_runtime(
         interview=interview_public,
         transcript_service=TranscriptService(lane_d.repository),
         media_processor=media_processor,
+        assembler=RecordingAssembler(object_storage),
     )
     reporting_public = ReportingPublic(
         repository=lane_d.repository,
@@ -346,7 +358,7 @@ def create_local_runtime(
                 audit=audit,
                 clock=clock,
                 deletion_service=lane_d.deletion_service,
-                playback=ScopedPlaybackLocator(),
+                playback=ScopedPlaybackLocator(presigner=object_storage),
                 rationale_provider=interview_public,
             ),
         ]

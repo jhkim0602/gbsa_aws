@@ -78,12 +78,18 @@ class TimelineService:
         self._repository = repository
         self._rationale_provider = rationale_provider
 
+    # There is deliberately no free-text filter here. It used to take a `query` that
+    # substring-matched the transcript, the question objective and every source excerpt --
+    # applicant answer text -- and the console passed it as a URL query parameter. The
+    # load balancer records one line per request including the query string, so the filter
+    # made answer text land in an S3 access-log object, which the platform forbids. The
+    # console filters the returned entries in the browser instead; a timeline is one
+    # session, so there is nothing to page through.
     def project(
         self,
         context: TenantContext,
         *,
         session_id: UUID,
-        query: str | None = None,
     ) -> tuple[TimelineEntry, ...]:
         rationales = cast(
             Sequence[QuestionRationaleSnapshot],
@@ -102,12 +108,6 @@ class TimelineService:
         entries: list[TimelineEntry] = []
         for segment in self._repository.list_transcripts(context, session_id):
             rationale = rationale_by_turn.get(segment.turn_id)
-            if query is not None and not _timeline_entry_matches(
-                query,
-                text=segment.text,
-                rationale=rationale,
-            ):
-                continue
             entries.append(
                 TimelineEntry(
                     entry_id=segment.transcript_segment_id,
@@ -154,21 +154,3 @@ def _project_rationale(
             for source in rationale.source_references
         ),
     )
-
-
-def _timeline_entry_matches(
-    query: str,
-    *,
-    text: str,
-    rationale: QuestionRationaleProjection | None,
-) -> bool:
-    normalized = query.casefold()
-    values = [text]
-    if rationale is not None:
-        values.extend(
-            (
-                rationale.objective,
-                *(source.excerpt for source in rationale.source_references),
-            )
-        )
-    return any(normalized in value.casefold() for value in values)

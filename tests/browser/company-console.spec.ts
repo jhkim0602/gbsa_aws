@@ -532,6 +532,104 @@ test("the seeded review screen shows what the applicant submitted behind each qu
   });
 });
 
+/**
+ * The reviewer's video has to actually play. Three defects made it impossible while every
+ * suite stayed green: the playback locator returned a hardcoded `https://media.local/...`
+ * that resolves nowhere, the media worker wrote a recording asset naming an HLS manifest
+ * nothing had produced, and the local seed marked that asset `ready` without ever
+ * uploading bytes. Each layer passed its own tests -- and `head-object` on the key the
+ * console put in `<video src>` returned 404.
+ *
+ * Nothing is mocked here. The URL is signed by the running API, fetched from the running
+ * bucket, and decoded by the browser's own demuxer: `readyState > 0` and a non-zero
+ * `videoWidth` are only reachable if real WebM bytes arrived over that URL.
+ */
+test("the seeded review screen plays the recording it cites", async ({
+  page,
+}) => {
+  await page.goto("/positions");
+  await page
+    .getByRole("link", { name: "로컬 데모 백엔드 엔지니어 운영 보기" })
+    .click();
+  await page.getByRole("tab", { name: "지원자 목록" }).click();
+  await page.getByRole("link", { name: /강민재/ }).click();
+  await page.getByRole("link", { name: "검토 시작" }).click();
+  await expect(page).toHaveURL(/\/review\//);
+
+  // A `ready` badge beside a placeholder is exactly the state that shipped, so the badge
+  // alone proves nothing -- the element below has to be a `<video>`, not the fallback.
+  await expect(page.locator(".media-badge--ready")).toBeVisible();
+  const video = page.locator(".timeline-media video");
+  await expect(video).toHaveCount(1);
+
+  const src = await video.getAttribute("src");
+  expect(src).toBeTruthy();
+  // Signed, and pointing at the assembled recording rather than at a placeholder host.
+  expect(src).toContain("/recording/recording.webm");
+  expect(src).toMatch(/Signature=|X-Amz-Signature=/);
+
+  // The same URL the browser was handed, fetched independently: a 404 here is the original
+  // defect, and it is invisible from the DOM because `<video>` fails silently.
+  const response = await page.request.get(src!);
+  expect(response.status()).toBe(200);
+  expect(response.headers()["content-type"]).toBe("video/webm");
+  const body = await response.body();
+  expect(body.length).toBeGreaterThan(1024);
+  // EBML magic. A text or truncated placeholder of the right length fails this.
+  expect([...body.subarray(0, 4)]).toEqual([0x1a, 0x45, 0xdf, 0xa3]);
+
+  // And the browser's own demuxer agrees it is playable. `preload="metadata"` is enough to
+  // reach HAVE_METADATA; a URL that 404s or serves the wrong container stays at 0.
+  const metadata = await video.evaluate(async (element) => {
+    const media = element as HTMLVideoElement;
+    if (media.readyState === 0) {
+      await new Promise<void>((resolve, reject) => {
+        media.addEventListener("loadedmetadata", () => resolve(), {
+          once: true,
+        });
+        media.addEventListener(
+          "error",
+          () => reject(new Error("video failed to load")),
+          { once: true },
+        );
+        setTimeout(() => reject(new Error("video metadata timed out")), 15_000);
+      });
+    }
+    return {
+      readyState: media.readyState,
+      duration: media.duration,
+      videoWidth: media.videoWidth,
+    };
+  });
+  expect(metadata.readyState).toBeGreaterThan(0);
+  expect(metadata.videoWidth).toBeGreaterThan(0);
+  // The seeded timeline's last citation ends at 160s, so a shorter recording cannot show
+  // the evidence the report points at.
+  expect(metadata.duration).toBeGreaterThanOrEqual(160);
+
+  // Seeking to a cited range is what the reviewer does from the report, and a container
+  // the browser cannot seek leaves them on the first frame.
+  await video.evaluate(async (element) => {
+    const media = element as HTMLVideoElement;
+    media.currentTime = 120;
+    await new Promise<void>((resolve) => {
+      media.addEventListener("seeked", () => resolve(), { once: true });
+      setTimeout(() => resolve(), 10_000);
+    });
+  });
+  expect(
+    await video.evaluate(
+      (element) => (element as HTMLVideoElement).currentTime,
+    ),
+  ).toBeGreaterThan(0);
+
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: path.join(SCREENSHOT_DIR, "company-review-video-playback.png"),
+    fullPage: true,
+  });
+});
+
 test("applicant management uses a readable cross-position operations layout", async ({
   page,
 }) => {

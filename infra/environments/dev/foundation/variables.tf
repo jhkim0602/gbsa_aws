@@ -10,8 +10,16 @@ variable "environment_name" {
 }
 
 variable "pilot_company_id" {
-  description = "UUID for the isolated development tenant seeded by the deployment pipeline."
+  description = <<-EOT
+    UUID of the development tenant, carried as a `PilotTenant` tag on everything this root
+    creates so a resource can be traced back to the tenant it was stood up for.
+
+    It defaults to the same UUID `local_production.LOCAL_COMPANY_ID` seeds, so the tenant a
+    developer works against locally and the one dev is tagged for are the same row rather
+    than two that have to be kept in step by hand.
+  EOT
   type        = string
+  default     = "00000000-0000-7000-8000-000000000001"
 
   validation {
     condition     = can(regex("^[0-9a-fA-F-]{36}$", var.pilot_company_id))
@@ -31,11 +39,21 @@ variable "pilot_company_name" {
 }
 
 variable "company_identity_provider_issuer" {
-  description = "OIDC issuer accepted for company-user authentication."
+  description = <<-EOT
+    An external OIDC issuer to accept company-user tokens from, instead of the pool this
+    root creates.
+
+    Nothing reads it yet, and it is optional rather than required for a concrete reason: this
+    root *is* the identity provider, so the issuer is a value it produces
+    (`https://cognito-idp.<region>.amazonaws.com/<user_pool_id>`) and not one a caller can
+    know before the first apply. Left required, a plan could only be made by inventing a URL
+    that no code consults.
+  EOT
   type        = string
+  default     = null
 
   validation {
-    condition     = can(regex("^https://", var.company_identity_provider_issuer))
+    condition     = var.company_identity_provider_issuer == null || can(regex("^https://", var.company_identity_provider_issuer))
     error_message = "company_identity_provider_issuer must be an HTTPS URL."
   }
 }
