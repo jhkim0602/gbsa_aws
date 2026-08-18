@@ -207,6 +207,49 @@ def test_compute_and_data_define_durable_private_runtime_boundaries() -> None:
     assert "deletion_protection             = var.deletion_protection" in data
 
 
+def test_the_task_role_can_run_every_readiness_probe() -> None:
+    """A probe the task role cannot execute reports `unavailable` and never recovers.
+
+    `DependencyReadiness.check` catches every exception and records the name, so an IAM denial
+    is indistinguishable from a dependency being down -- and `/health/ready` then answers 503
+    forever. The ALB marks the targets unhealthy, the deployment circuit breaker opens and the
+    deploy reports failure, all while the API serves requests correctly: nothing in the request
+    path touches these calls. That is exactly what happened with `dynamodb:DescribeTable`.
+
+    The probe calls are read out of the adapters rather than listed here, so an adapter that
+    starts probing with a new call fails this test instead of failing readiness in the deployed
+    environment.
+    """
+    backend = ROOT.parent / "backend" / "src" / "interview_evidence"
+    # `client.<call>(` inside a `healthcheck` body, per adapter that has one.
+    probes: dict[str, str] = {}
+    for source_path, action_prefix in (
+        (backend / "interview_engine" / "adapters" / "recent_context.py", "dynamodb"),
+        (backend / "shared" / "aws_clients" / "production.py", None),
+    ):
+        source = read(source_path)
+        for body in re.findall(
+            r"def healthcheck\(self\)[^\n]*\n(.*?)(?=\n    def |\Z)", source, re.S
+        ):
+            for call in re.findall(r"self\._client\.(\w+)\(", body):
+                probes[call] = action_prefix or ""
+    # The two the adapters actually probe with, spelled as the IAM actions they authorise.
+    # `_attributes` is the SQS probe's helper, so its call is found in that method, not in
+    # `healthcheck` -- named here because the grant matters just as much.
+    required = {
+        "describe_table": "dynamodb:DescribeTable",
+        "head_bucket": "s3:ListBucket",
+        "get_queue_attributes": "sqs:GetQueueAttributes",
+    }
+    assert "describe_table" in probes, probes
+    assert "head_bucket" in probes, probes
+
+    compute = read(ROOT / "modules" / "compute" / "main.tf")
+    task_policy = compute.split('name = "application-boundaries"')[1].split("resource ")[0]
+    for call, action in required.items():
+        assert f'"{action}"' in task_policy, f"{call} needs {action}"
+
+
 def test_application_roots_pass_secret_identifiers_without_secret_values() -> None:
     roots = (
         ROOT / "environments" / "dev" / "application" / "main.tf",
