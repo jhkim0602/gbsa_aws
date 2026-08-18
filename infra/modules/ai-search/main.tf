@@ -31,9 +31,15 @@ resource "aws_bedrock_guardrail" "interview" {
   blocked_outputs_messaging = "질문을 안전하게 생성할 수 없습니다."
 
   content_policy_config {
+    # A prompt attack is something a caller writes, so Bedrock scores it on the way in only
+    # and rejects CreateGuardrail outright unless the response strength is NONE. This is not
+    # a weaker setting than the line above it: there is no such thing as a model response
+    # that attacks its own prompt, and `HIGH` here fails the apply rather than filtering
+    # anything. An applicant's answer reaches the model as input, which is the direction that
+    # matters -- it is the one place in this pipeline where untrusted text becomes a prompt.
     filters_config {
       input_strength  = "HIGH"
-      output_strength = "HIGH"
+      output_strength = "NONE"
       type            = "PROMPT_ATTACK"
     }
     filters_config {

@@ -228,6 +228,16 @@ resource "aws_cloudfront_cache_policy" "spa" {
   }
 }
 
+# Every TTL zero, which CloudFront treats as caching disabled outright -- and a disabled
+# policy accepts no cache-key parameters at all. Naming headers, cookies or query strings here
+# is rejected at apply with `HeaderBehavior is invalid for policy with caching disabled`,
+# because there is no cache key to vary when nothing is stored.
+#
+# Nothing is lost by their absence: a cache key decides which responses are shared, while what
+# reaches the origin is decided by the origin request policy below, which forwards `allViewer`
+# -- every header the browser sent, Authorization included. The `none` behaviours are
+# therefore the only accepted spelling of "share nothing", not a narrowing of what the API
+# receives.
 resource "aws_cloudfront_cache_policy" "api" {
   name        = "${var.name}-api-disabled"
   default_ttl = 0
@@ -235,19 +245,16 @@ resource "aws_cloudfront_cache_policy" "api" {
   min_ttl     = 0
 
   parameters_in_cache_key_and_forwarded_to_origin {
-    enable_accept_encoding_brotli = true
-    enable_accept_encoding_gzip   = true
+    enable_accept_encoding_brotli = false
+    enable_accept_encoding_gzip   = false
     cookies_config {
-      cookie_behavior = "all"
+      cookie_behavior = "none"
     }
     headers_config {
-      header_behavior = "whitelist"
-      headers {
-        items = ["Authorization", "Content-Type", "Idempotency-Key", "Origin"]
-      }
+      header_behavior = "none"
     }
     query_strings_config {
-      query_string_behavior = "all"
+      query_string_behavior = "none"
     }
   }
 }

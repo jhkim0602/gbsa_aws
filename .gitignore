@@ -32,6 +32,11 @@ tests/browser/artifacts/
 *.tfstate.*
 crash.log
 *.tfplan
+# `-out=tfplan` with no extension is what the deploy workflow and the apply commands in
+# infra/README.md both write, so the pattern above never matched the file anyone actually
+# produces. A saved plan embeds resource attributes read back from state -- for these roots
+# that includes subnet and security group ids -- and it is worthless once applied.
+tfplan
 
 # Editors and operating systems
 .DS_Store

@@ -157,6 +157,30 @@ def test_network_and_edge_keep_application_origins_private() -> None:
     assert 'scope = "CLOUDFRONT"' in edge
 
 
+def test_the_api_cache_policy_names_no_cache_key_parameters() -> None:
+    """A zero-TTL CloudFront cache policy accepts no cache-key parameters.
+
+    All three TTLs at zero means caching disabled, and CloudFront then rejects
+    CreateCachePolicy for any named header, cookie, query string or accept-encoding flag:
+    with nothing stored there is no key to vary. The rejection happens at apply, after the
+    load balancer and its listener are already up.
+
+    The tempting version of this resource whitelists `Authorization` and reads as the careful
+    choice. It is inert -- what reaches the origin is the origin request policy's `allViewer`,
+    asserted above -- so the two must not drift back together.
+    """
+    edge = read(ROOT / "modules" / "edge" / "main.tf")
+
+    policy = edge.split('resource "aws_cloudfront_cache_policy" "api"')[1]
+    policy = policy.split("resource ")[0]
+    assert 'cookie_behavior = "none"' in policy
+    assert 'header_behavior = "none"' in policy
+    assert 'query_string_behavior = "none"' in policy
+    assert "headers {" not in policy
+    assert "enable_accept_encoding_brotli = false" in policy
+    assert "enable_accept_encoding_gzip   = false" in policy
+
+
 def test_compute_and_data_define_durable_private_runtime_boundaries() -> None:
     compute = read(ROOT / "modules" / "compute" / "main.tf")
     data = read(ROOT / "modules" / "data" / "main.tf")
@@ -301,3 +325,24 @@ def test_async_ai_identity_and_audit_resources_enforce_safety_controls() -> None
     assert "is_multi_region_trail         = true" in observability
     assert "block_public_policy     = true" in observability
     assert "aws_budgets_budget" in observability
+
+
+def test_the_prompt_attack_filter_scores_input_only() -> None:
+    """Bedrock refuses any response strength but NONE for PROMPT_ATTACK.
+
+    A symmetrical `HIGH`/`HIGH` block reads like the strictest possible setting and passes
+    plan, validate and every check in this file. It fails at apply, with a
+    ValidationException naming a field rather than the resource -- and it failed there after
+    Aurora had already taken ten minutes to come up, which is the expensive place to find out.
+
+    Pinned as a contract because the mistake is invisible: `HATE` beside it is legitimately
+    bidirectional, so the two lines differ for a reason that is not apparent from the shape.
+    """
+    ai_search = read(ROOT / "modules" / "ai-search" / "main.tf")
+
+    prompt_attack = ai_search.split('type            = "PROMPT_ATTACK"')[0]
+    block = prompt_attack.rsplit("filters_config {", 1)[1]
+    assert 'output_strength = "NONE"' in block
+    # Input is still scored: the applicant's answer becomes a prompt, and NONE on both sides
+    # would satisfy the assertion above while filtering nothing at all.
+    assert 'input_strength  = "HIGH"' in block
