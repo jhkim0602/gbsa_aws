@@ -327,6 +327,38 @@ def test_async_ai_identity_and_audit_resources_enforce_safety_controls() -> None
     assert "aws_budgets_budget" in observability
 
 
+def test_the_deploy_role_trusts_the_numeric_repository_subject() -> None:
+    """GitHub signs OIDC subjects naming the repository by numeric id, and it cannot decline.
+
+    `repo:owner/name:environment:dev-plan` is the documented form and the only one this
+    trust policy listed. The deploy run failed with `Not authorized to perform
+    sts:AssumeRoleWithWebIdentity` and nothing more: the subject AWS rejected is in no
+    workflow log, and the repository reported `use_default: true` -- so the configuration
+    looked correct from both sides. It took a CloudTrail lookup to read
+    `userIdentity.userName` and see `repo:jhkim0602@104820436/gbsa_aws@1337672097`.
+
+    Pinned because deleting the numeric entry is a one-line tidy that reads like removing a
+    duplicate, and the whole pipeline stops the next time a job assumes the role.
+    """
+    bootstrap = read(ROOT / "environments" / "bootstrap" / "main.tf")
+    tfvars = read(ROOT / "environments" / "bootstrap" / "terraform.tfvars")
+
+    trust = bootstrap.split('data "aws_iam_policy_document" "deploy_trust"')[1]
+    trust = trust.split("\nresource ")[0]
+    # Both spellings, built from one list so a new environment cannot be trusted under one
+    # form and not the other -- which would fail only for whichever form GitHub signs next.
+    assert "var.github_immutable_repository" in trust
+    assert "compact([var.github_repository, var.github_immutable_repository])" in trust
+    assert "repo:${repository}:environment:${name}" in trust
+    assert "repo:${var.github_repository}:environment:" not in trust
+    # The variable defaults to null, so the value is what actually reaches the policy.
+    assert re.search(
+        r"^github_immutable_repository\s*=\s*\"[^/\"]+@[0-9]+/[^/\"]+@[0-9]+\"",
+        tfvars,
+        re.MULTILINE,
+    )
+
+
 def test_the_prompt_attack_filter_scores_input_only() -> None:
     """Bedrock refuses any response strength but NONE for PROMPT_ATTACK.
 

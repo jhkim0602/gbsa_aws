@@ -70,7 +70,15 @@ def seed_local_company(
                 "LOCAL_COMPANY_NAME",
                 "Local Interview Evidence Company",
             ),
-            identity_subject="local-production-company-user",
+            # Whoever the token will actually carry. The local principal provider maps a
+            # fixed string, so the default keeps compose unchanged; against Cognito the
+            # subject is the pool's `sub` for the user, and a row written under any other
+            # value authenticates a login and then answers every request with 401 --
+            # `get_company_principal` looks the caller up by exactly this column.
+            identity_subject=values.get(
+                "LOCAL_COMPANY_IDENTITY_SUBJECT",
+                "local-production-company-user",
+            ),
             email_normalized=values.get(
                 "LOCAL_COMPANY_EMAIL",
                 "local-company@example.test",

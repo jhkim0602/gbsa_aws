@@ -68,6 +68,32 @@ variable "deploy_environments" {
   default     = ["dev-plan", "dev-deploy", "prod-plan", "prod-deploy"]
 }
 
+variable "github_immutable_repository" {
+  description = <<-EOT
+    The same repository written the way GitHub's newer OIDC tokens name it —
+    `owner@ownerid/name@repoid` — or null for an account still issuing the older form.
+
+    GitHub has started signing subjects that identify the account and repository by numeric
+    id rather than by name, and it is not something the repository can decline: `PUT
+    /repos/OWNER/NAME/actions/oidc/customization/sub` with `use_default=true` answers 200
+    and leaves `sub_claim_prefix` at the numeric value. The first deploy run failed here
+    with `Not authorized to perform sts:AssumeRoleWithWebIdentity` and nothing else — the
+    subject AWS rejected appears in no workflow log, only in the CloudTrail event's
+    `userIdentity.userName`, which is where this value came from.
+
+    Read the ids with `gh api repos/OWNER/NAME --jq '{owner: .owner.id, repo: .id}'`.
+  EOT
+  type        = string
+  default     = null
+
+  validation {
+    condition = var.github_immutable_repository == null || can(regex(
+      "^[^/]+@[0-9]+/[^/]+@[0-9]+$", coalesce(var.github_immutable_repository, "")
+    ))
+    error_message = "github_immutable_repository must be owner@ownerid/name@repoid."
+  }
+}
+
 provider "aws" {
   region = var.aws_region
 
@@ -216,13 +242,23 @@ data "aws_iam_policy_document" "deploy_trust" {
     # Scoped by both branch and GitHub Environment. `repo:owner/name:*` would let any
     # branch in the repository — including one opened by a fork's pull request — assume a
     # role that can apply Terraform.
+    #
+    # Both spellings of the repository are listed when `github_immutable_repository` is set,
+    # because which one GitHub signs is GitHub's choice and it can change under a role that
+    # is already deployed. Listing both is not a widening: every entry still names one
+    # repository, one branch or one environment, and the numeric ids identify the same
+    # repository more strictly than its name does — a name can be transferred to another
+    # account, an id cannot.
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values = concat(
-        ["repo:${var.github_repository}:ref:refs/heads/${var.deploy_branch}"],
-        [for name in var.deploy_environments : "repo:${var.github_repository}:environment:${name}"],
-      )
+      values = flatten([
+        for repository in compact([var.github_repository, var.github_immutable_repository]) :
+        concat(
+          ["repo:${repository}:ref:refs/heads/${var.deploy_branch}"],
+          [for name in var.deploy_environments : "repo:${repository}:environment:${name}"],
+        )
+      ])
     }
   }
 }
