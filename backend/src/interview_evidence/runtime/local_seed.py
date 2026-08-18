@@ -202,11 +202,22 @@ def _enabled(value: str | None) -> bool:
 
 
 def main() -> None:
-    from interview_evidence.runtime.aws import create_media_object_storage
+    from interview_evidence.runtime.aws import (
+        create_media_object_storage,
+        resolve_database_url,
+    )
 
+    # `DATABASE_URL` when compose supplies one, and otherwise the same Aurora credentials the
+    # api and the worker resolve for themselves, read from Secrets Manager inside the
+    # container. Requiring the plaintext URL here would mean passing a database password
+    # through an `ecs run-task` override, which is recorded in the task description and in the
+    # CloudTrail event -- readable long after the seed has finished.
+    #
     # The compose seed runs against LocalStack, so the recording is uploaded for real and
     # the demo review screen plays the same object a finished live interview would.
-    seed_local_company(media_storage=create_media_object_storage(os.environ))
+    environment = dict(os.environ)
+    environment["DATABASE_URL"] = resolve_database_url(environment)
+    seed_local_company(environment, media_storage=create_media_object_storage(environment))
 
 
 if __name__ == "__main__":

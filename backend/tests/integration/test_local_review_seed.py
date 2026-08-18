@@ -13,6 +13,10 @@ from uuid import UUID
 
 from interview_evidence.company_management.api import ensure_local_demo_recruiting
 from interview_evidence.company_management.repositories.postgres import Base as CompanyBase
+from interview_evidence.company_management.repositories.postgres import (
+    CompanyRow,
+    CompanyUserRow,
+)
 from interview_evidence.interview_engine.repositories.postgres import (
     Base as InterviewBase,
 )
@@ -271,3 +275,36 @@ def _count(session: Session, row_type: type, session_id: UUID) -> int:
         )
         or 0
     )
+
+
+def test_the_seeded_principal_carries_the_identity_the_token_will_present(
+    tmp_path: Path,
+) -> None:
+    """`get_company_principal` looks the caller up by `identity_subject` and nothing else.
+
+    Against Cognito that value is the pool's `sub` for the user, which is not knowable until
+    the user exists -- so it has to be settable. A row written under the compose default
+    instead authenticates a login and then answers every request with 401, which reads as a
+    broken token rather than as a seed that named the wrong subject.
+    """
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'seed.db'}"
+    engine = create_engine(database_url)
+    for metadata in (CompanyBase.metadata, InterviewBase.metadata, ReportingBase.metadata):
+        metadata.create_all(engine)
+    subject = "5d6b1f6e-0000-4000-8000-000000000abc"
+    environment = {
+        "DATABASE_URL": database_url,
+        "LOCAL_COMPANY_ID": str(COMPANY_ID),
+        "LOCAL_COMPANY_USER_ID": str(COMPANY_USER_ID),
+        "LOCAL_COMPANY_IDENTITY_SUBJECT": subject,
+        "LOCAL_COMPANY_EMAIL": "operator@example.test",
+        "LOCAL_COMPANY_NAME": "배포 검증 회사",
+    }
+
+    seed_local_company(environment)
+
+    with Session(engine) as session:
+        user = session.scalars(select(CompanyUserRow)).one()
+        assert user.identity_subject == subject
+        assert user.email_normalized == "operator@example.test"
+        assert session.scalars(select(CompanyRow)).one().name == "배포 검증 회사"

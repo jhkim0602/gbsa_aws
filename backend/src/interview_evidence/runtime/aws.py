@@ -242,6 +242,28 @@ def create_aws_runtime_dependencies(
     )
 
 
+def resolve_database_url(
+    environment: Mapping[str, str],
+    *,
+    client_factory: ClientFactory | None = None,
+) -> str:
+    """The database URL a task would connect with, without building the whole runtime.
+
+    For one-off tasks that need the database and nothing else -- the seed does -- so that the
+    credential is read from Secrets Manager inside the container rather than passed in as a
+    plaintext override, which `ecs run-task` records in the task description and in CloudTrail.
+
+    An explicit `DATABASE_URL` short-circuits before any client is built, because compose sets
+    one and has no Secrets Manager to reach: constructing the client first would make this
+    fail locally on credentials it never needed to read.
+    """
+    explicit = environment.get("DATABASE_URL", "").strip()
+    if explicit:
+        return explicit
+    factory = client_factory or _client_factory(environment)
+    return _database_url(environment, cast(SecretsManagerClient, factory("secretsmanager")))
+
+
 def _database_url(
     environment: Mapping[str, str],
     secrets: SecretsManagerClient,
