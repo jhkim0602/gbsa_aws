@@ -153,3 +153,61 @@ export function invitationTone(tone: string) {
 export const RECIPIENT_AVATAR =
   "grid size-[38px] place-items-center rounded-[7px] border border-border" +
   " bg-surface-muted text-[13px] font-bold text-ink-secondary mw-680:size-9";
+
+/**
+ * `.invitation-table` — the roster table in `PositionInvitations` and the list in
+ * `ApplicantManagement`. Below 680px it stops being a table and becomes a stack of cards:
+ * the head is visually hidden, each row is a bordered box, and each cell prints its own
+ * `data-label` through `::before`. Cells that carry their own label in the copy suppress it.
+ *
+ * The `td`/`th` rules are declared twice (components.css then hiring.css); only the winning
+ * half is reproduced. The cell rules are per-position, so they live on the `td`, not here.
+ */
+export const INVITATION_TABLE_WRAP = "overflow-x-auto mw-680:overflow-visible";
+export const INVITATION_TABLE =
+  "w-full min-w-[760px] border-collapse mw-680:block mw-680:w-full mw-680:min-w-0";
+export const INVITATION_TABLE_HEAD = "mw-680:sr-only";
+export const INVITATION_TABLE_BODY = "mw-680:grid mw-680:gap-2.5 mw-680:p-3";
+export const INVITATION_TABLE_ROW =
+  "not-first:border-t not-first:border-t-border-muted hover:bg-surface-muted" +
+  " mw-680:grid mw-680:grid-cols-[minmax(0,1fr)_auto] mw-680:gap-3" +
+  " mw-680:rounded-[3px] mw-680:border mw-680:border-border mw-680:bg-surface" +
+  " mw-680:p-[14px] mw-680:not-first:border-t-border mw-680:hover:bg-surface";
+/** Every `td`: the desktop box, plus the card row and its `data-label` prefix. */
+export const INVITATION_TABLE_CELL =
+  "h-[62px] px-3.5 py-3 text-[12px] text-muted mw-680:flex mw-680:min-w-0" +
+  " mw-680:items-center mw-680:justify-between mw-680:gap-2 mw-680:p-0" +
+  " mw-680:before:flex-none mw-680:before:font-mono mw-680:before:text-[8px]" +
+  " mw-680:before:text-subtle mw-680:before:content-[attr(data-label)]";
+/** `th`, which the hidden head keeps only for screen readers. */
+export const INVITATION_TABLE_HEAD_CELL =
+  "h-10 border-b border-border px-3.5 py-2.5 text-left font-mono text-[11px]" +
+  " font-medium text-muted";
+/**
+ * `td:first-child` — the avatar-and-identity cell. It stays a grid below 680px, because
+ * `td:first-child` (0,2,1) outranks the `td` rule (0,1,1) that turns the others into flex
+ * rows, and its 11px gap has to be restated at the breakpoint to outrank `mw-680:gap-2`.
+ */
+export const INVITATION_TABLE_IDENTITY =
+  `${INVITATION_TABLE_CELL} grid min-w-[230px] grid-cols-[38px_minmax(0,1fr)]` +
+  " items-center gap-[11px] mw-680:col-[1/-1] mw-680:grid" +
+  " mw-680:grid-cols-[36px_minmax(0,1fr)] mw-680:gap-[11px] mw-680:border-b" +
+  " mw-680:border-b-border-muted mw-680:pb-3 mw-680:before:hidden";
+export const INVITATION_TABLE_IDENTITY_TEXT = "grid min-w-0 gap-0.5";
+export const INVITATION_TABLE_NAME = "truncate text-[13px] mw-680:max-w-full";
+export const INVITATION_TABLE_EMAIL = "mt-0.5 text-[11px] text-muted";
+/**
+ * `td:nth-child(N)` — how the card stacks below 680px. Both tables are five columns wide and
+ * share the layout, so this is indexed by column rather than duplicated per table. Cells
+ * whose copy already reads as its own label suppress the `data-label` prefix.
+ */
+export const INVITATION_TABLE_CELL_AT = [
+  INVITATION_TABLE_IDENTITY,
+  `${INVITATION_TABLE_CELL} mw-680:justify-start mw-680:before:hidden`,
+  `${INVITATION_TABLE_CELL} mw-680:col-[1/-1] mw-680:flex-col mw-680:items-stretch`,
+  `${INVITATION_TABLE_CELL} mw-680:col-[1]`,
+  `${INVITATION_TABLE_CELL} mw-680:col-[2] mw-680:justify-end mw-680:before:hidden`,
+] as const;
+/** `.invitation-applicant-link` */
+export const INVITATION_APPLICANT_LINK =
+  "hover:text-brand hover:underline hover:underline-offset-[3px]";
