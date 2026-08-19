@@ -22,11 +22,7 @@ const FORM_ALERT_BASE =
  * - `workspace` — `.position-workspace__notice` → `14px 32px 0`, `12px 16px 0` at 720px.
  */
 export type FormAlertPlacement =
-  | "panel"
-  | "modalBody"
-  | "modalForm"
-  | "flush"
-  | "workspace";
+  "panel" | "modalBody" | "modalForm" | "flush" | "workspace";
 
 const FORM_ALERT_MARGIN: Record<FormAlertPlacement, string> = {
   panel: "mx-6 mt-[14px]",
@@ -135,9 +131,25 @@ export const BUTTON_QUIET =
 /** `.invitation-status` — hiring.css redefines the company.css version wholesale. */
 export const INVITATION_STATUS =
   "inline-flex min-h-[26px] items-center rounded-md px-[9px] text-[11px] font-semibold";
-export const INVITATION_STATUS_TONE = {
+/** `.is-muted` only replaces the text colour, so it keeps the base background. */
+const INVITATION_STATUS_TONE = {
   neutral: "bg-surface-strong text-muted",
   progress: "bg-brand-soft text-brand",
   ready: "bg-brand-soft text-brand",
+  completed: "bg-success-soft text-success",
   attention: "bg-warning-soft text-warning",
+  muted: "bg-surface-strong text-subtle",
 } as const;
+
+/**
+ * Both projection tables type `tone` as `string`, so the lookup is widened here rather than
+ * at every call site. Neither table holds a tone outside this set.
+ */
+export function invitationTone(tone: string) {
+  return INVITATION_STATUS_TONE[tone as keyof typeof INVITATION_STATUS_TONE];
+}
+
+/** `.recipient-avatar` — hiring.css enlarges the components.css box on top of it. */
+export const RECIPIENT_AVATAR =
+  "grid size-[38px] place-items-center rounded-[7px] border border-border" +
+  " bg-surface-muted text-[13px] font-bold text-ink-secondary mw-680:size-9";
