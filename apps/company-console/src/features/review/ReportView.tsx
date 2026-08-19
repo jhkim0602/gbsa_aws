@@ -54,8 +54,7 @@ const PANEL_HEADER =
   "flex min-h-[58px] items-center justify-between gap-3 border-b border-border-muted" +
   " px-[14px] py-3 mw-520:items-start print:hidden";
 
-const PANEL_EYEBROW =
-  "font-mono text-[8px] font-semibold uppercase text-muted";
+const PANEL_EYEBROW = "font-mono text-[8px] font-semibold uppercase text-muted";
 
 const TAB_BUTTON =
   "relative flex-[0_0_auto] px-0.5 text-[10px] font-[650] text-muted" +
@@ -94,8 +93,7 @@ const AXIS_LABEL =
   "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[10px] font-[650]" +
   " text-ink-secondary";
 
-const AXIS_META =
-  "col-[2/-1] text-[8px] text-subtle mw-520:col-span-full";
+const AXIS_META = "col-[2/-1] text-[8px] text-subtle mw-520:col-span-full";
 
 const AXIS_RATIONALE =
   "col-[2/-1] text-[9px] leading-[1.65] text-muted mw-520:col-span-full";
@@ -710,9 +708,7 @@ function QuestionSources({ sources }: { sources: ReviewQuestionSource[] }) {
           {sources.length}개
         </span>
       </summary>
-      <p
-        className={`${REPORT_EMPTY} border-t border-border-muted pt-2`}
-      >
+      <p className={`${REPORT_EMPTY} border-t border-border-muted pt-2`}>
         지원자 답변이 아니라 AI가 질문을 만들 때 참고한 제출 자료입니다.
       </p>
       <ul className="grid gap-1.5">
@@ -815,10 +811,7 @@ function ScoreValue({ score }: { score: number | null }) {
 
 function ScoreBar({ score }: { score: number | null }) {
   return (
-    <span
-      className="mw-520:col-span-full"
-      aria-hidden="true"
-    >
+    <span className="mw-520:col-span-full" aria-hidden="true">
       <i className={AXIS_BAR_TRACK}>
         <b
           className={`block h-full rounded-[3px] ${toneBar[toneOf(score)]}`}

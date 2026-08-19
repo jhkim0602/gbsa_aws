@@ -59,14 +59,12 @@ const ROW =
   " mw-780:grid-cols-[22px_40px_minmax(0,1fr)_24px]" +
   " mw-620:grid-cols-[22px_36px_minmax(0,1fr)_22px] mw-620:px-1";
 
-const ROW_ICON =
-  "grid size-10 place-items-center rounded-md border bg-white";
+const ROW_ICON = "grid size-10 place-items-center rounded-md border bg-white";
 const ROW_CHECK = "grid size-5 place-items-center rounded-[50%] border";
 
 // `.material-row__ai` shares `.material-row__identity`'s box (both are in the same rule) and
 // moves to columns 3–5 below 780px, alongside `__output`, which then hides at 620px.
-const ROW_SPAN =
-  "grid min-w-0 gap-[3px] mw-780:col-[3/5] mw-620:col-[3/5]";
+const ROW_SPAN = "grid min-w-0 gap-[3px] mw-780:col-[3/5] mw-620:col-[3/5]";
 
 export function ApplicantMaterials({
   draft,

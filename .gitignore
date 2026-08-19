@@ -38,6 +38,11 @@ crash.log
 # that includes subnet and security group ids -- and it is worthless once applied.
 tfplan
 
+# Tailwind conversion scratch: compiles candidate utilities against theme.css to check what
+# a class actually emits. Local investigation aid, not part of the build.
+.twprobe/
+tw-probe-refute.mjs
+
 # Editors and operating systems
 .DS_Store
 .idea/

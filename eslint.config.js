@@ -13,6 +13,7 @@ export default tseslint.config(
       "**/.venv/**",
       "**/.uv-cache/**",
       "packages/contracts/generated/**",
+      "tw-probe-refute.mjs",
     ],
   },
   eslint.configs.recommended,
