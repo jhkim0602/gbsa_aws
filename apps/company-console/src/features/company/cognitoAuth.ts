@@ -16,16 +16,34 @@ export async function beginCompanyLogin(
     navigate(location: string): void;
   },
 ): Promise<string> {
+  return beginCompanyAuthorization(config, "/oauth2/authorize", dependencies);
+}
+
+export async function beginCompanySignup(
+  config: CompanyAuthConfig,
+  dependencies: {
+    sessionStorage: Storage;
+    navigate(location: string): void;
+  },
+): Promise<string> {
+  return beginCompanyAuthorization(config, "/signup", dependencies);
+}
+
+async function beginCompanyAuthorization(
+  config: CompanyAuthConfig,
+  path: "/oauth2/authorize" | "/signup",
+  dependencies: {
+    sessionStorage: Storage;
+    navigate(location: string): void;
+  },
+): Promise<string> {
   const verifier = randomBase64Url(48);
   const state = randomBase64Url(32);
   const challenge = await sha256Base64Url(verifier);
   dependencies.sessionStorage.setItem(VERIFIER_KEY, verifier);
   dependencies.sessionStorage.setItem(STATE_KEY, state);
 
-  const authorize = new URL(
-    "/oauth2/authorize",
-    normalizedDomain(config.domain),
-  );
+  const authorize = new URL(path, normalizedDomain(config.domain));
   authorize.search = new URLSearchParams({
     response_type: "code",
     client_id: config.clientId,

@@ -51,7 +51,10 @@ def current_trace_id() -> str | None:
     each other. Returned in X-Ray's own `1-<8 hex>-<24 hex>` form rather than the raw 32 hex
     digits, because that is what the console searches by; the raw id finds nothing.
     """
-    from opentelemetry import trace
+    try:
+        from opentelemetry import trace
+    except ModuleNotFoundError:
+        return None
 
     context = trace.get_current_span().get_span_context()
     if not context.is_valid:

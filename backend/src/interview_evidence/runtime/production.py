@@ -130,6 +130,9 @@ from interview_evidence.submission_analysis.api import (
 from interview_evidence.submission_analysis.api.applicant_routes import (
     create_applicant_submission_router,
 )
+from interview_evidence.submission_analysis.api.company_routes import (
+    create_company_submission_router,
+)
 from interview_evidence.submission_analysis.application.deletion_targets import (
     SubmissionDeletionTargets,
 )
@@ -392,6 +395,11 @@ def create_production_runtime(
                 authorization=company_submission,
                 service=lane_b.service,
                 audit=audit,
+            ),
+            create_company_submission_router(
+                principal_provider=principals,
+                repository=lane_b.repository,
+                presigner=cast(RecordingPresigner, object_storage),
             ),
             create_applicant_interview_router(
                 principal_provider=principals,

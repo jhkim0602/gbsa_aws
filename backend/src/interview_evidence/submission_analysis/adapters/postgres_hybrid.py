@@ -47,7 +47,10 @@ class PostgresHybridSearchIndex:
                 path=document.path,
                 symbol=document.symbol,
                 ownership_confidence=document.ownership_confidence,
-                metadata_json={"symbols": list(document.symbols)},
+                metadata_json={
+                    "symbols": list(document.symbols),
+                    "material_type": document.material_type,
+                },
                 deleted_at=None,
             )
         )

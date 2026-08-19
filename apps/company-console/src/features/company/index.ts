@@ -1,5 +1,3 @@
-import "./company.css";
-
 export { CompanyOverview } from "./CompanyOverview";
 export { CompanyPositions } from "./CompanyPositions";
 export { PositionOperations } from "./PositionOperations";

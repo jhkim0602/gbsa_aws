@@ -1,3 +1,5 @@
-@import "./tokens.css";
-@import "./base.css";
+@import "tailwindcss";
+@import "@iep/design-system/theme.css";
 @import "./shell.css";
+@import "../../features/access/access.css";
+@import "../../features/interview/interview.css";

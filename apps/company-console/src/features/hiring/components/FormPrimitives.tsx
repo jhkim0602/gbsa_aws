@@ -1,4 +1,4 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import type { ReactNode } from "react";
 
 export function Field({
@@ -27,15 +27,19 @@ export function FormSection({
   eyebrow,
   title,
   description,
+  className,
   children,
 }: {
   eyebrow: string;
   title: string;
   description: string;
+  className?: string;
   children: ReactNode;
 }) {
   return (
-    <section className="form-section">
+    <section
+      className={className ? `form-section ${className}` : "form-section"}
+    >
       <header>
         <span>{eyebrow}</span>
         <h3>{title}</h3>
@@ -50,22 +54,37 @@ export function FormActions({
   submitting,
   label,
   disabled = false,
+  onBack,
 }: {
   submitting: boolean;
   label: string;
   disabled?: boolean;
+  onBack?: () => void;
 }) {
   return (
     <footer className="form-actions">
-      <span>입력한 값은 게시 전 서버에서 다시 검증됩니다.</span>
-      <button
-        className="button-primary"
-        type="submit"
-        disabled={submitting || disabled}
-      >
-        {submitting ? "처리 중" : label}
-        {submitting ? null : <ArrowRight size={14} aria-hidden="true" />}
-      </button>
+      <span>입력 내용은 채용 draft에 자동 저장됩니다.</span>
+      <div className="form-actions__buttons">
+        {onBack ? (
+          <button
+            className="button-secondary"
+            type="button"
+            disabled={submitting}
+            onClick={onBack}
+          >
+            <ArrowLeft size={14} aria-hidden="true" />
+            이전
+          </button>
+        ) : null}
+        <button
+          className="button-primary"
+          type="submit"
+          disabled={submitting || disabled}
+        >
+          {submitting ? "처리 중" : label}
+          {submitting ? null : <ArrowRight size={14} aria-hidden="true" />}
+        </button>
+      </div>
     </footer>
   );
 }

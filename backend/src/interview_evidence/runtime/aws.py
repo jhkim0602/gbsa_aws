@@ -48,6 +48,7 @@ from interview_evidence.shared.operations import (
     CloudWatchClient,
     CloudWatchMetricRecorder,
     MetricRecorder,
+    NullMetricRecorder,
 )
 from interview_evidence.shared.security.principals import PrincipalProvider
 from interview_evidence.shared.tenant import TenantContext
@@ -216,13 +217,17 @@ def create_aws_runtime_dependencies(
         role_arn=_required(environment, "MEDIACONVERT_ROLE_ARN"),
         output_bucket=media_bucket,
     )
-    metrics = CloudWatchMetricRecorder(
-        cast(CloudWatchClient, factory("cloudwatch")),
-        namespace=environment.get(
-            "METRIC_NAMESPACE",
-            "InterviewEvidencePlatform",
-        ),
-    )
+    metrics: MetricRecorder
+    if environment.get("AWS_ENDPOINT_URL"):
+        metrics = NullMetricRecorder()
+    else:
+        metrics = CloudWatchMetricRecorder(
+            cast(CloudWatchClient, factory("cloudwatch")),
+            namespace=environment.get(
+                "METRIC_NAMESPACE",
+                "InterviewEvidencePlatform",
+            ),
+        )
     return AwsRuntimeDependencies(
         database_url=database_url,
         principal_provider=principal_provider,

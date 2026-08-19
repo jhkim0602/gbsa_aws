@@ -9,26 +9,74 @@ import {
 import {
   initialHiringDraft,
   type CriteriaConfiguration,
+  type CriteriaHiringStep,
   type HiringDraft,
   type HiringResourceIds,
   type HiringStep,
   type HiringWorkspaceApi,
+  type PositionHiringStep,
 } from "./types";
 
 const stepCopy = {
   position: {
-    eyebrow: "새 채용 포지션",
-    title: "포지션 만들기",
-    description:
-      "역할 정보를 입력하면 면접에서 확인할 기준 설정으로 이어집니다.",
+    eyebrow: "1 / 4 · 포지션 정보",
+    title: "어떤 포지션을 채용하나요?",
+    description: "직무, 역할, 채용 목표와 모집 일정을 설정합니다.",
   },
-  criteria: {
-    eyebrow: "채용 기준",
-    title: "면접 기준 설정",
-    description:
-      "직무 요구사항과 확인할 내용을 연결해 게시 가능한 기준으로 만듭니다.",
+  application: {
+    eyebrow: "2 / 4 · 지원자 제출",
+    title: "지원자에게 무엇을 요청할까요?",
+    description: "면접 준비에 필요한 필수 제출 자료를 선택합니다.",
+  },
+  evaluation: {
+    eyebrow: "3 / 4 · 평가 설계",
+    title: "어떤 기준으로 평가할까요?",
+    description: "직무 요구사항을 면접에서 확인할 평가 기준과 연결합니다.",
+  },
+  interview: {
+    eyebrow: "4 / 4 · 면접 운영",
+    title: "면접은 어떻게 진행할까요?",
+    description: "시간과 난이도를 확인한 뒤 포지션을 게시합니다.",
   },
 } as const;
+
+const positionSteps: PositionHiringStep[] = ["position", "application"];
+const criteriaSteps: CriteriaHiringStep[] = ["evaluation", "interview"];
+const hiringDraftStorageKey = "iep.company-console.hiring-draft.v1";
+const hiringDraftStorageVersion = 1;
+
+function readStoredDraft(): HiringDraft {
+  if (typeof window === "undefined" || import.meta.env.MODE === "test") {
+    return initialHiringDraft;
+  }
+
+  try {
+    const stored = window.localStorage.getItem(hiringDraftStorageKey);
+    if (!stored) return initialHiringDraft;
+
+    const parsed = JSON.parse(stored) as {
+      version?: number;
+      draft?: Partial<HiringDraft>;
+    };
+    if (parsed.version !== hiringDraftStorageVersion || !parsed.draft) {
+      return initialHiringDraft;
+    }
+
+    return {
+      ...initialHiringDraft,
+      ...parsed.draft,
+      techStack: Array.isArray(parsed.draft.techStack)
+        ? parsed.draft.techStack.filter(
+            (technology): technology is string =>
+              typeof technology === "string",
+          )
+        : [],
+      descriptionCompleted: parsed.draft.descriptionCompleted === true,
+    };
+  } catch {
+    return initialHiringDraft;
+  }
+}
 
 export function HiringWorkspace({
   api,
@@ -38,7 +86,7 @@ export function HiringWorkspace({
   onOpenPosition?: (positionId: string) => void;
 }) {
   const [step, setStep] = useState<HiringStep>("position");
-  const [draft, setDraft] = useState<HiringDraft>(initialHiringDraft);
+  const [draft, setDraft] = useState<HiringDraft>(readStoredDraft);
   const [ids, setIds] = useState<HiringResourceIds>({
     positionId: "",
     versionId: "",
@@ -50,6 +98,24 @@ export function HiringWorkspace({
   useEffect(() => {
     headingRef.current?.focus({ preventScroll: true });
   }, [step]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || import.meta.env.MODE === "test") {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(
+        hiringDraftStorageKey,
+        JSON.stringify({
+          version: hiringDraftStorageVersion,
+          draft,
+        }),
+      );
+    } catch {
+      // The form remains usable when storage is blocked or full.
+    }
+  }, [draft]);
 
   const activeStep =
     step === "complete"
@@ -77,6 +143,15 @@ export function HiringWorkspace({
     submitting,
     update,
   };
+
+  function move(offset: -1 | 1) {
+    const currentIndex = workflowSteps.findIndex((item) => item.id === step);
+    const target = workflowSteps[currentIndex + offset];
+    if (target) {
+      setError("");
+      setStep(target.id);
+    }
+  }
 
   return (
     <div className="hiring-workspace">
@@ -107,43 +182,69 @@ export function HiringWorkspace({
               {error}
             </p>
           ) : null}
-          {step === "position" ? (
+          {positionSteps.includes(step as PositionHiringStep) ? (
             <PositionStep
               {...commonStepProps}
+              stage={step as PositionHiringStep}
+              onBack={step === "position" ? undefined : () => move(-1)}
               onSubmit={(event) => {
                 event.preventDefault();
-                void execute(async () => {
-                  const created = await api.createPosition({
-                    title: draft.title,
-                    description: draft.description,
-                    roleType: draft.roleType,
-                    headcount: draft.headcount,
-                    recruitmentStartAt: draft.recruitmentStartAt || undefined,
-                    recruitmentEndAt: draft.recruitmentEndAt || undefined,
-                  });
-                  setIds((current) => ({
-                    ...current,
-                    positionId: created.positionId,
-                  }));
-                  setStep("criteria");
-                });
+                move(1);
               }}
             />
           ) : null}
-          {step === "criteria" ? (
+          {criteriaSteps.includes(step as CriteriaHiringStep) ? (
             <CriteriaStep
               {...commonStepProps}
+              stage={step as CriteriaHiringStep}
+              onBack={() => move(-1)}
               onSubmit={(event) => {
                 event.preventDefault();
+                if (step !== "interview") {
+                  move(1);
+                  return;
+                }
                 void execute(async () => {
+                  let positionId = ids.positionId;
+                  if (!positionId) {
+                    const created = await api.createPosition({
+                      title: draft.title,
+                      description: draft.description,
+                      roleType: draft.roleType,
+                      headcount: draft.headcount,
+                      interviewCapacity: draft.interviewCapacity,
+                      interviewAt: draft.interviewAt || undefined,
+                      recruitmentStartAt: draft.recruitmentStartAt || undefined,
+                      recruitmentEndAt: draft.recruitmentEndAt || undefined,
+                      submissionRequirements: draft.submissionRequirements.map(
+                        (requirement) => ({
+                          materialType: requirement.materialType,
+                          required: requirement.required,
+                          enabled: true,
+                        }),
+                      ),
+                    });
+                    positionId = created.positionId;
+                    setIds((current) => ({
+                      ...current,
+                      positionId,
+                    }));
+                  }
                   const published = await api.publishCriteria(
-                    ids.positionId,
+                    positionId,
                     toCriteriaConfiguration(draft),
                   );
                   setIds((current) => ({
                     ...current,
                     versionId: published.versionId,
                   }));
+                  if (typeof window !== "undefined") {
+                    try {
+                      window.localStorage.removeItem(hiringDraftStorageKey);
+                    } catch {
+                      // Publishing must not fail because local storage is unavailable.
+                    }
+                  }
                   setStep("complete");
                 });
               }}

@@ -1,0 +1,192 @@
+@theme static {
+  --font-sans:
+    Inter, Pretendard, "Noto Sans KR", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  --font-mono: Inter, Pretendard, -apple-system, BlinkMacSystemFont, sans-serif;
+
+  --color-canvas: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f8f9fb;
+  --color-surface-strong: #eef0f4;
+  --color-border: #e2e2e2;
+  --color-border-muted: #edeff3;
+  --color-border-strong: #cfd2db;
+  --color-ink: #1a1f36;
+  --color-ink-secondary: #414051;
+  --color-muted: #75788b;
+  --color-subtle: #b3b5bf;
+  --color-brand: #5966ce;
+  --color-brand-strong: #4653bd;
+  --color-brand-soft: #f2f3ff;
+  --color-success: #1e9e63;
+  --color-success-soft: #e7f6ef;
+  --color-warning: #c77d11;
+  --color-warning-soft: #fff4e5;
+  --color-danger: #d64545;
+  --color-danger-soft: #fdecec;
+
+  --radius-control: 0.5rem;
+  --radius-panel: 0.625rem;
+  --shadow-soft:
+    0 0.2px 1px rgb(0 0 0 / 1%), 0 0.8px 3px rgb(0 0 0 / 2%),
+    0 3px 10px rgb(0 0 0 / 3%);
+  --shadow-float: 0 1px 3px rgb(0 0 0 / 3%), 0 8px 24px rgb(0 0 0 / 6%);
+}
+
+@layer theme {
+  :root {
+    color: var(--color-ink);
+    background: var(--color-canvas);
+    font-family: var(--font-sans);
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+
+    --color-text: var(--color-ink);
+    --color-text-secondary: var(--color-ink-secondary);
+    --color-link: var(--color-brand);
+    --color-link-strong: var(--color-brand-strong);
+    --color-purple: var(--color-brand);
+    --color-purple-soft: var(--color-brand-soft);
+    --color-product-bar: var(--color-surface);
+
+    --applicant-bg: var(--color-canvas);
+    --applicant-surface: var(--color-surface);
+    --applicant-surface-strong: var(--color-surface-strong);
+    --applicant-border: var(--color-border);
+    --applicant-border-strong: var(--color-border-strong);
+    --applicant-text: var(--color-ink);
+    --applicant-muted: var(--color-muted);
+    --applicant-subtle: var(--color-subtle);
+    --applicant-dark: var(--color-ink);
+    --applicant-blue: var(--color-brand);
+    --applicant-blue-active: var(--color-brand-strong);
+    --applicant-blue-soft: var(--color-brand-soft);
+    --applicant-green: var(--color-success);
+    --applicant-green-strong: var(--color-brand);
+    --applicant-green-soft: var(--color-success-soft);
+    --applicant-orange: var(--color-warning);
+    --applicant-danger: var(--color-danger);
+    --applicant-radius: var(--radius-panel);
+    --applicant-control-height: 44px;
+    --applicant-content-width: 960px;
+    --applicant-shadow: var(--shadow-soft);
+  }
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    min-width: 320px;
+    min-height: 100%;
+    margin: 0;
+    background: var(--color-canvas);
+  }
+
+  body {
+    min-height: 100vh;
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    color: inherit;
+    font: inherit;
+    letter-spacing: 0;
+  }
+
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+
+  h1,
+  h2,
+  h3,
+  p {
+    overflow-wrap: anywhere;
+  }
+
+  ::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border-radius: 4px;
+    background: var(--color-border);
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  @media print {
+    html,
+    body,
+    #root {
+      background: var(--color-surface);
+    }
+  }
+}
+
+@layer utilities {
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .skip-link {
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    z-index: 200;
+    padding: 7px 11px;
+    border-radius: 6px;
+    color: var(--color-surface);
+    background: var(--color-brand-strong);
+    transform: translateY(-160%);
+  }
+
+  .skip-link:focus-visible {
+    transform: translateY(0);
+  }
+}

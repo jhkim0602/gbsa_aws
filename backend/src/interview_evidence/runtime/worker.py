@@ -420,6 +420,7 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
             "submission.analysis_requested": AnalysisRequestedEventHandler(
                 lane_b,
                 analysis_handler,
+                company,
             ),
             "interview.completed": InterviewCompletedEventHandler(
                 outbox,

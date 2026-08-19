@@ -7,6 +7,11 @@ from interview_evidence.shared.idempotency import ResourceIdempotencyStore
 from interview_evidence.shared.ids import Clock, new_uuid7
 from interview_evidence.shared.messaging.outbox import Outbox, OutboxEvent
 from interview_evidence.shared.security.principals import ApplicantPrincipal
+from interview_evidence.shared.submission_materials import (
+    DEFAULT_SUBMISSION_REQUIREMENTS,
+    SubmissionMaterialType,
+    SubmissionRequirement,
+)
 from interview_evidence.shared.tenant import TenantContext
 from interview_evidence.submission_analysis.adapters.object_storage import (
     ScopedSubmissionStorage,
@@ -90,6 +95,8 @@ class SubmissionService:
         *,
         source_type: SourceType,
         upload_id: UUID,
+        material_type: SubmissionMaterialType | None = None,
+        requirements: tuple[SubmissionRequirement, ...] = DEFAULT_SUBMISSION_REQUIREMENTS,
         idempotency_key: str,
     ) -> Submission:
         existing = self._idempotency.get(
@@ -106,11 +113,14 @@ class SubmissionService:
         )
         if intent.source_type != source_type.value:
             raise ValueError("upload source type mismatch")
+        resolved_material_type = _resolve_material_type(material_type, source_type)
+        _validate_material_request(resolved_material_type, source_type, requirements)
         submission = Submission(
             submission_id=new_uuid7(self._clock.now()),
             company_id=context.company_id,
             invitation_id=principal.invitation_id,
             applicant_id=principal.applicant_id,
+            material_type=resolved_material_type,
             source_type=source_type,
             source_uri=intent.object_key,
             original_filename=intent.original_filename,
@@ -129,6 +139,8 @@ class SubmissionService:
         source_type: SourceType,
         public_url: str,
         candidate_identity_inputs: dict[str, object] | None,
+        material_type: SubmissionMaterialType | None = None,
+        requirements: tuple[SubmissionRequirement, ...] = DEFAULT_SUBMISSION_REQUIREMENTS,
         idempotency_key: str,
     ) -> Submission:
         existing = self._idempotency.get(
@@ -142,6 +154,8 @@ class SubmissionService:
             source_type=source_type,
             public_url=public_url,
         )
+        resolved_material_type = _resolve_material_type(material_type, source_type)
+        _validate_material_request(resolved_material_type, source_type, requirements)
         if source_type is SourceType.PUBLIC_GIT:
             existing_projects = tuple(
                 submission
@@ -150,7 +164,7 @@ class SubmissionService:
                     principal.applicant_id,
                 )
                 if submission.invitation_id == principal.invitation_id
-                and submission.source_type is SourceType.PUBLIC_GIT
+                and submission.material_type is SubmissionMaterialType.PROJECTS
                 and submission.status is not SubmissionStatus.DELETED
             )
             if len(existing_projects) >= MAX_PUBLIC_GIT_PROJECTS:
@@ -160,6 +174,7 @@ class SubmissionService:
             company_id=context.company_id,
             invitation_id=principal.invitation_id,
             applicant_id=principal.applicant_id,
+            material_type=resolved_material_type,
             source_type=source_type,
             source_uri=validated_url,
             candidate_identity_inputs=_normalize_candidate_identity_inputs(
@@ -176,10 +191,33 @@ class SubmissionService:
     ) -> tuple[Submission, ...]:
         return self._repository.list_submissions(context, applicant_id)
 
+    def required_materials_submitted(
+        self,
+        context: TenantContext,
+        principal: ApplicantPrincipal,
+        requirements: tuple[SubmissionRequirement, ...],
+    ) -> bool:
+        required_materials = {
+            requirement.material_type
+            for requirement in requirements
+            if requirement.enabled and requirement.required
+        }
+        submitted_materials = {
+            submission.material_type
+            for submission in self._repository.list_submissions(
+                context,
+                principal.applicant_id,
+            )
+            if submission.invitation_id == principal.invitation_id
+            and submission.status is not SubmissionStatus.DELETED
+        }
+        return required_materials.issubset(submitted_materials)
+
     def readiness(
         self,
         context: TenantContext,
         principal: ApplicantPrincipal,
+        requirements: tuple[SubmissionRequirement, ...] = DEFAULT_SUBMISSION_REQUIREMENTS,
     ) -> AnalysisReadiness:
         submissions = self.list_submissions(context, principal.applicant_id)
         strategy = self._repository.latest_strategy(context, principal.invitation_id)
@@ -196,10 +234,24 @@ class SubmissionService:
         else:
             overall = "waiting"
         impacts = [item.impact_summary for item in submissions if item.impact_summary]
+        required_materials = {
+            requirement.material_type
+            for requirement in requirements
+            if requirement.enabled and requirement.required
+        }
+        ready_materials = {
+            submission.material_type
+            for submission in submissions
+            if submission.status in {SubmissionStatus.READY, SubmissionStatus.PARTIAL}
+        }
         return AnalysisReadiness(
             overall_status=overall,
             submissions=submissions,
-            interview_ready=strategy is not None and strategy.status.value in {"ready", "partial"},
+            interview_ready=(
+                required_materials.issubset(ready_materials)
+                and strategy is not None
+                and strategy.status.value in {"ready", "partial"}
+            ),
             strategy_id=(strategy.interview_strategy_id if strategy is not None else None),
             strategy_version=(strategy.strategy_version if strategy is not None else None),
             impact_summary="; ".join(impacts) or None,
@@ -236,6 +288,7 @@ class SubmissionService:
                     "submission_id": str(submission.submission_id),
                     "analysis_version": 1,
                     "source_type": submission.source_type.value,
+                    "material_type": submission.material_type.value,
                     "source_object_id": str(submission.submission_id),
                     "limits_config_version": "analysis-limits-v1",
                 },
@@ -260,3 +313,39 @@ def _normalize_candidate_identity_inputs(
             raise ValueError("candidate identity inputs must be string arrays")
         normalized[key] = tuple(value.strip() for value in raw_values)
     return normalized
+
+
+def _validate_material_request(
+    material_type: SubmissionMaterialType,
+    source_type: SourceType,
+    requirements: tuple[SubmissionRequirement, ...],
+) -> None:
+    requirement = next(
+        (
+            item
+            for item in requirements
+            if item.material_type is material_type and item.enabled
+        ),
+        None,
+    )
+    if requirement is None:
+        raise ValueError("this submission material was not requested for the position")
+    if material_type is SubmissionMaterialType.PROJECTS:
+        if source_type is not SourceType.PUBLIC_GIT:
+            raise ValueError("project submissions require a public Git source")
+        return
+    if source_type not in {SourceType.COVER_LETTER, SourceType.RESUME, SourceType.PDF}:
+        raise ValueError("document submission materials require a PDF upload")
+
+
+def _resolve_material_type(
+    material_type: SubmissionMaterialType | None,
+    source_type: SourceType,
+) -> SubmissionMaterialType:
+    if material_type is not None:
+        return material_type
+    if source_type is SourceType.PUBLIC_GIT:
+        return SubmissionMaterialType.PROJECTS
+    if source_type is SourceType.COVER_LETTER:
+        return SubmissionMaterialType.COVER_LETTER
+    return SubmissionMaterialType.RESUME

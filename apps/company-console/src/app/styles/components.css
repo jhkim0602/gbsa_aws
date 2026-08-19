@@ -1,3 +1,4 @@
+@layer components {
 .button-primary,
 .button-secondary,
 .button-danger,
@@ -169,12 +170,26 @@
   line-height: 1.6;
 }
 
-.auth-panel button {
+.auth-panel .auth-primary-action {
   min-height: 38px;
   border: 1px solid var(--color-link);
-  border-radius: 999px;
+  border-radius: 8px;
   color: #ffffff;
   background: var(--color-link);
+  font-weight: 650;
+}
+
+.auth-panel .auth-primary-action:hover {
+  background: var(--color-link-strong);
+}
+
+.auth-panel .auth-switch {
+  color: var(--color-muted);
+  text-align: center;
+}
+
+.auth-switch a {
+  color: var(--color-link);
   font-weight: 650;
 }
 
@@ -244,4 +259,5 @@
   .page-content {
     padding: 16px;
   }
+}
 }

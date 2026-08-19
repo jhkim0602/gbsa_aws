@@ -48,7 +48,7 @@ class HiringService:
         applicants: tuple[ApplicantInvitationInput, ...],
         expires_at: datetime,
     ) -> tuple[InvitationIssuance, ...]:
-        self._repository.get_position(context, position_id)
+        position = self._repository.get_position(context, position_id)
         versions = self._repository.list_criterion_versions(context, position_id)
         published = [version for version in versions if version.status == "published"]
         if not published:
@@ -72,6 +72,7 @@ class HiringService:
                 applicant_id=applicant_id,
                 applicant_email=applicant.email,
                 applicant_display_name=applicant.display_name,
+                submission_requirements=position.submission_requirements,
                 token_hash=token.token_hash,
                 expires_at=expires_at,
             )

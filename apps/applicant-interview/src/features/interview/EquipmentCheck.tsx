@@ -1,7 +1,5 @@
 import { useState } from "react";
 
-import "./interview.css";
-
 export type EquipmentStatus = "ready" | "warning" | "failed";
 
 export type EquipmentComponentResult = Readonly<{

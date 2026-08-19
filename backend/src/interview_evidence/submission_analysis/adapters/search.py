@@ -30,6 +30,7 @@ class SearchDocument:
     embedding_version: str = "unknown"
     path: str | None = None
     symbol: str | None = None
+    material_type: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -7,6 +7,7 @@ import {
   type MutableRefObject,
 } from "react";
 
+import type { InterviewerLevel } from "./Avatar";
 import { InterviewRoom } from "./InterviewRoom";
 import {
   ChunkedRecorder,
@@ -62,6 +63,7 @@ export function InterviewSession({
   equipmentCheckId,
   websocketUrl,
   recordingApi,
+  interviewerLevel,
   dependencies,
   onComplete,
 }: {
@@ -69,6 +71,7 @@ export function InterviewSession({
   equipmentCheckId: string;
   websocketUrl: string;
   recordingApi: RecordingUploadApi;
+  interviewerLevel?: InterviewerLevel;
   dependencies?: Partial<InterviewSessionDependencies>;
   onComplete?: () => void;
 }) {
@@ -237,6 +240,7 @@ export function InterviewSession({
       state={snapshot.state}
       connectionState={snapshot.connectionState}
       textOnly={snapshot.degradedModes.includes("text_only")}
+      interviewerLevel={interviewerLevel}
       onStartAnswer={() => void startAnswer()}
       onCompleteAnswer={() => void completeAnswer()}
       onReconnect={reconnect}

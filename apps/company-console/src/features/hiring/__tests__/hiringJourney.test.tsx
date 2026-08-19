@@ -10,13 +10,10 @@ function createApi(): HiringWorkspaceApi {
   };
 }
 
-async function advanceToCriteria(api: HiringWorkspaceApi) {
+async function advanceToEvaluation(api: HiringWorkspaceApi) {
   render(<HiringWorkspace api={api} />);
   fireEvent.change(screen.getByLabelText("포지션명"), {
     target: { value: "백엔드 플랫폼 엔지니어" },
-  });
-  fireEvent.change(screen.getByLabelText("채용 인원"), {
-    target: { value: "2" },
   });
   fireEvent.change(screen.getByLabelText("모집 시작일"), {
     target: { value: "2026-09-01" },
@@ -27,14 +24,53 @@ async function advanceToCriteria(api: HiringWorkspaceApi) {
   fireEvent.change(screen.getByLabelText("포지션 설명"), {
     target: { value: "ECS 기반 서비스의 안정성과 운영 품질을 개선합니다." },
   });
-  fireEvent.click(screen.getByRole("button", { name: "포지션 만들기" }));
-  await screen.findByText("면접 기준 설정");
+  fireEvent.click(
+    screen.getByRole("button", { name: "포지션 상세 작성 완료" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "다음" }));
+  await screen.findByText("지원자에게 무엇을 요청할까요?");
+  fireEvent.click(screen.getByRole("button", { name: "다음" }));
+  await screen.findByText("어떤 기준으로 평가할까요?");
 }
 
 describe("HiringWorkspace", () => {
+  it("can insert the long-form position description example", () => {
+    const api = createApi();
+    render(<HiringWorkspace api={api} />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "포지션 상세 예시 적용" }),
+    );
+
+    const description = screen.getByLabelText(
+      "포지션 설명",
+    ) as HTMLTextAreaElement;
+    expect(description.maxLength).toBe(2000);
+    expect(description.value).toContain("## Build the Next Version");
+    expect(description.value).toContain("주요업무");
+    expect(description.value).toContain("Junior Product Engineer");
+
+    const completeButton = screen.getByRole("button", {
+      name: "포지션 상세 작성 완료",
+    });
+    const characterCount = screen.getByText(
+      `${description.value.length} / 2000`,
+    );
+    expect(
+      characterCount.compareDocumentPosition(completeButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    fireEvent.click(completeButton);
+    expect(completeButton.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.change(description, { target: { value: "수정된 내용" } });
+    expect(completeButton.getAttribute("aria-pressed")).toBe("false");
+  });
+
   it("publishes linked requirements and verification guides without interviewer controls", async () => {
     const api = createApi();
-    await advanceToCriteria(api);
+    await advanceToEvaluation(api);
 
     expect(screen.queryByText("AI 면접관")).toBeNull();
     expect(screen.queryByLabelText("음성")).toBeNull();
@@ -65,12 +101,32 @@ describe("HiringWorkspace", () => {
     fireEvent.change(screen.getByLabelText("공통 질문 1"), {
       target: { value: "운영 장애를 해결한 경험을 설명해 주세요." },
     });
+    fireEvent.click(screen.getByRole("button", { name: "다음" }));
+    await screen.findByText("면접은 어떻게 진행할까요?");
+    fireEvent.change(screen.getByLabelText("채용 인원"), {
+      target: { value: "2" },
+    });
+    fireEvent.change(screen.getByLabelText("면접 정원"), {
+      target: { value: "4" },
+    });
+    fireEvent.change(screen.getByLabelText("면접 시각"), {
+      target: { value: "2026-09-15T14:00" },
+    });
     fireEvent.change(screen.getByLabelText("면접 난이도"), {
       target: { value: "senior" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "평가기준 게시" }));
+    fireEvent.click(screen.getByRole("button", { name: "포지션 게시" }));
 
     expect(await screen.findByText("채용 기준 게시 완료")).toBeTruthy();
+    expect(api.createPosition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        headcount: 2,
+        interviewCapacity: 4,
+        interviewAt: "2026-09-15T14:00",
+        recruitmentStartAt: "2026-09-01",
+        recruitmentEndAt: "2026-09-30",
+      }),
+    );
     expect(api.publishCriteria).toHaveBeenCalledWith("position-1", {
       jobRequirements: [
         {
@@ -103,11 +159,14 @@ describe("HiringWorkspace", () => {
       interviewDurationMinutes: 30,
       interviewLevel: "senior",
     });
+    expect(
+      vi.mocked(api.createPosition).mock.invocationCallOrder[0],
+    ).toBeLessThan(vi.mocked(api.publishCriteria).mock.invocationCallOrder[0]);
   });
 
   it("adds multiple criteria and keeps requirement links selectable", async () => {
     const api = createApi();
-    await advanceToCriteria(api);
+    await advanceToEvaluation(api);
 
     fireEvent.click(screen.getByRole("button", { name: "평가기준 추가" }));
     expect(screen.getByLabelText("평가기준 이름 2")).toBeTruthy();
@@ -123,6 +182,33 @@ describe("HiringWorkspace", () => {
     expect(
       (screen.getByLabelText("연결 평가기준 2") as HTMLSelectElement).value,
     ).toBe("CRITERION_2");
-    expect(screen.getByText("2개 평가기준")).toBeTruthy();
+    expect(screen.getByText("합계 40")).toBeTruthy();
+  });
+
+  it("uses inline plus controls and keeps criterion weights editable", async () => {
+    const api = createApi();
+    await advanceToEvaluation(api);
+
+    const addRequirement = screen.getByRole("button", {
+      name: "요구사항 추가",
+    });
+    const addCriterion = screen.getByRole("button", {
+      name: "평가기준 추가",
+    });
+
+    expect(addRequirement.textContent).toBe("");
+    expect(addCriterion.textContent).toBe("");
+
+    fireEvent.change(screen.getByLabelText("평가기준 이름 1"), {
+      target: { value: "태도와 문화" },
+    });
+    fireEvent.change(screen.getByLabelText("가중치 1 직접 입력"), {
+      target: { value: "35" },
+    });
+
+    expect(screen.getByText("합계 35")).toBeTruthy();
+    expect((screen.getByLabelText("가중치 1") as HTMLInputElement).value).toBe(
+      "35",
+    );
   });
 });

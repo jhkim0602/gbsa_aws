@@ -61,6 +61,10 @@ from interview_evidence.company_management.domain.hiring import (
 )
 from interview_evidence.shared.email_templates import InvitationEmailTemplate
 from interview_evidence.shared.interview_level import InterviewLevel
+from interview_evidence.shared.submission_materials import (
+    submission_requirements_from_json,
+    submission_requirements_to_json,
+)
 from interview_evidence.shared.tenant import TenantContext, require_tenant_context
 
 
@@ -146,8 +150,11 @@ class PositionRow(Base):
     description: Mapped[str] = mapped_column(String(20_000))
     role_type: Mapped[str | None] = mapped_column(String(100))
     headcount: Mapped[int | None] = mapped_column(Integer)
+    interview_capacity: Mapped[int | None] = mapped_column(Integer)
+    interview_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     recruitment_start_at: Mapped[date | None] = mapped_column(Date)
     recruitment_end_at: Mapped[date | None] = mapped_column(Date)
+    submission_requirements: Mapped[list[dict[str, object]]] = mapped_column(JSON)
     created_by: Mapped[UUID] = mapped_column(Uuid)
     status: Mapped[str] = mapped_column(String(30))
     invitation_email_template: Mapped[dict[str, Any] | None] = mapped_column(JSON)
@@ -292,6 +299,7 @@ class InvitationRow(Base):
     applicant_id: Mapped[UUID] = mapped_column(Uuid)
     applicant_email_normalized: Mapped[str] = mapped_column(String(320))
     applicant_display_name: Mapped[str] = mapped_column(String(200))
+    submission_requirements: Mapped[list[dict[str, object]]] = mapped_column(JSON)
     token_hash: Mapped[str] = mapped_column(String(64))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(40))
@@ -590,8 +598,13 @@ class SqlAlchemyCompanyRepository:
                 description=position.description,
                 role_type=position.role_type,
                 headcount=position.headcount,
+                interview_capacity=position.interview_capacity,
+                interview_at=position.interview_at,
                 recruitment_start_at=position.recruitment_start_at,
                 recruitment_end_at=position.recruitment_end_at,
+                submission_requirements=submission_requirements_to_json(
+                    position.submission_requirements
+                ),
                 created_by=position.created_by,
                 status=position.status.value,
                 invitation_email_template=_template_to_row(position.invitation_email_template),
@@ -836,6 +849,9 @@ class SqlAlchemyCompanyRepository:
                 applicant_id=invitation.applicant_id,
                 applicant_email_normalized=invitation.applicant_email_normalized,
                 applicant_display_name=invitation.applicant_display_name,
+                submission_requirements=submission_requirements_to_json(
+                    invitation.submission_requirements
+                ),
                 token_hash=invitation.token_hash,
                 expires_at=invitation.expires_at,
                 status=invitation.status.value,
@@ -1006,8 +1022,11 @@ class SqlAlchemyCompanyRepository:
             description=row.description,
             role_type=row.role_type,
             headcount=row.headcount,
+            interview_capacity=row.interview_capacity,
+            interview_at=row.interview_at,
             recruitment_start_at=row.recruitment_start_at,
             recruitment_end_at=row.recruitment_end_at,
+            submission_requirements=submission_requirements_from_json(row.submission_requirements),
             created_by=row.created_by,
             status=PositionStatus(row.status),
             invitation_email_template=_template_from_row(row.invitation_email_template),
@@ -1037,6 +1056,7 @@ class SqlAlchemyCompanyRepository:
             applicant_id=row.applicant_id,
             applicant_email_normalized=row.applicant_email_normalized,
             applicant_display_name=row.applicant_display_name,
+            submission_requirements=submission_requirements_from_json(row.submission_requirements),
             token_hash=row.token_hash,
             expires_at=row.expires_at,
             status=InvitationStatus(row.status),

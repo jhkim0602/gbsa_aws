@@ -1,10 +1,12 @@
-import { BriefcaseBusiness, Check, Settings2 } from "lucide-react";
+import { Check } from "lucide-react";
 
 import type { HiringStep } from "../types";
 
 export const workflowSteps = [
-  { id: "position", label: "직무 설정", icon: BriefcaseBusiness },
-  { id: "criteria", label: "면접 기준", icon: Settings2 },
+  { id: "position", label: "포지션 정보" },
+  { id: "application", label: "지원자 제출" },
+  { id: "evaluation", label: "평가 설계" },
+  { id: "interview", label: "면접 운영" },
 ] as const;
 
 export function HiringProgress({ step }: { step: HiringStep }) {
@@ -14,39 +16,30 @@ export function HiringProgress({ step }: { step: HiringStep }) {
       : workflowSteps.findIndex((item) => item.id === step);
 
   return (
-    <aside className="hiring-progress">
-      <header>
-        <span>설정 진행률</span>
-        <strong>{Math.min(activeStep + 1, 2)} / 2</strong>
-      </header>
-      <div className="progress-track" aria-hidden="true">
-        <span
-          style={{
-            width: `${Math.min(((activeStep + 1) / 2) * 100, 100)}%`,
-          }}
-        />
-      </div>
+    <nav className="hiring-progress" aria-label="채용 설정 진행 단계">
       <ol aria-label="채용 관리 진행 단계">
         {workflowSteps.map((item, index) => {
-          const Icon = item.icon;
           const completed = index < activeStep || step === "complete";
           const current = index === activeStep;
           return (
             <li
               key={item.id}
-              className={`${completed ? "is-complete" : ""} ${
-                current ? "is-current" : ""
-              }`}
+              className={current ? "is-current" : undefined}
               aria-current={current ? "step" : undefined}
             >
-              <span aria-hidden="true">
-                {completed ? <Check size={12} /> : <Icon size={13} />}
+              <span
+                className={`${completed ? "is-complete" : ""} ${
+                  current ? "is-current" : ""
+                }`}
+                aria-hidden="true"
+              >
+                {completed ? <Check size={11} /> : index + 1}
               </span>
-              <strong>{item.label}</strong>
+              <small>{item.label}</small>
             </li>
           );
         })}
       </ol>
-    </aside>
+    </nav>
   );
 }

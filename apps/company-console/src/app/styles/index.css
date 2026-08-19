@@ -1,4 +1,13 @@
-@import "./tokens.css";
-@import "./base.css";
+@import "tailwindcss";
+@import "@iep/design-system/theme.css";
 @import "./components.css";
 @import "./shell.css";
+@import "../../features/company/company.css";
+@import "../../features/hiring/hiring.css";
+@import "../../features/review/review.css";
+
+@layer components {
+  .tailwind-apply-compatibility-check {
+    @apply ![width:38px] [display:grid] [grid-template-columns:minmax(0,1fr)];
+  }
+}

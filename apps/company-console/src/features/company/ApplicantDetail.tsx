@@ -13,7 +13,7 @@ import {
   UserRound,
   Video,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 import {
@@ -21,7 +21,11 @@ import {
   invitationStatusMeta,
   recruiterPhaseCount,
 } from "../hiring/PositionInvitations";
-import type { CompanyInvitation, CompanyOperationsApi } from "./types";
+import type {
+  CompanyInvitation,
+  CompanyOperationsApi,
+  CompanySubmission,
+} from "./types";
 import { useRecruitingOperations } from "./useRecruitingOperations";
 
 type PositionedInvitation = CompanyInvitation & { positionTitle: string };
@@ -59,10 +63,33 @@ export function ApplicantDetail({
   );
   const [selectedTab, setSelectedTab] =
     useState<ApplicantReportTab>("overview");
+  const [submissions, setSubmissions] = useState<
+    readonly CompanySubmission[]
+  >([]);
+  const [submissionsLoading, setSubmissionsLoading] = useState(true);
   const invitation = invitations.find(
     (item) =>
       item.positionId === positionId && item.invitationId === invitationId,
   );
+
+  useEffect(() => {
+    let active = true;
+    setSubmissionsLoading(true);
+    api
+      .listSubmissions(invitationId)
+      .then((items) => {
+        if (active) setSubmissions(items);
+      })
+      .catch(() => {
+        if (active) setSubmissions([]);
+      })
+      .finally(() => {
+        if (active) setSubmissionsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [api, invitationId]);
 
   if (loading) {
     return (
@@ -211,7 +238,11 @@ export function ApplicantDetail({
             />
           ) : null}
           {selectedTab === "materials" ? (
-            <MaterialsPanel invitation={invitation} />
+            <MaterialsPanel
+              invitation={invitation}
+              submissions={submissions}
+              loading={submissionsLoading}
+            />
           ) : null}
           {selectedTab === "interview" ? (
             <InterviewPanel invitation={invitation} reviewPath={reviewPath} />
@@ -341,7 +372,15 @@ function OverviewPanel({
   );
 }
 
-function MaterialsPanel({ invitation }: { invitation: PositionedInvitation }) {
+function MaterialsPanel({
+  invitation,
+  submissions,
+  loading,
+}: {
+  invitation: PositionedInvitation;
+  submissions: readonly CompanySubmission[];
+  loading: boolean;
+}) {
   const ready = invitation.analysisStatus === "ready";
 
   return (
@@ -358,6 +397,62 @@ function MaterialsPanel({ invitation }: { invitation: PositionedInvitation }) {
         description={materialStateDescription(invitation.analysisStatus)}
         trailing={formatProcessingState(invitation.analysisStatus)}
       />
+      <section className="applicant-report__section">
+        <header className="applicant-report__section-heading">
+          <div>
+            <span className="applicant-report__section-icon" aria-hidden="true">
+              <FileText size={18} />
+            </span>
+            <div>
+              <h2>제출된 원본 자료</h2>
+              <p>지원자가 제출한 자료와 워커 처리 상태를 확인합니다.</p>
+            </div>
+          </div>
+          <strong>{submissions.length}건</strong>
+        </header>
+        {loading ? (
+          <p className="report-empty" role="status">
+            제출 자료를 불러오는 중입니다.
+          </p>
+        ) : submissions.length > 0 ? (
+          <div className="divide-y divide-border border-y border-border">
+            {submissions.map((submission) => (
+              <article
+                className="flex items-center justify-between gap-4 py-3"
+                key={submission.submissionId}
+              >
+                <div className="min-w-0">
+                  <strong className="block text-sm text-ink">
+                    {materialLabel(submission.materialType)}
+                  </strong>
+                  <span className="mt-1 block truncate text-xs text-muted">
+                    {submission.originalFilename ??
+                      submission.sourceUrl ??
+                      "제출 자료"}
+                  </span>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <span className="text-xs font-semibold text-muted">
+                    {submissionStatusLabel(submission.status)}
+                  </span>
+                  {submission.sourceUrl ? (
+                    <a
+                      className="button-secondary"
+                      href={submission.sourceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      원본 열기
+                    </a>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="report-empty">아직 제출된 자료가 없습니다.</p>
+        )}
+      </section>
       <dl className="applicant-report__detail-list">
         <div>
           <dt>분석 상태</dt>
@@ -370,6 +465,24 @@ function MaterialsPanel({ invitation }: { invitation: PositionedInvitation }) {
       </dl>
     </div>
   );
+}
+
+function materialLabel(materialType: CompanySubmission["materialType"]) {
+  return {
+    resume: "이력서",
+    cover_letter: "자기소개서",
+    career_description: "경력기술서",
+    projects: "대표 프로젝트",
+    portfolio: "포트폴리오",
+  }[materialType];
+}
+
+function submissionStatusLabel(status: string) {
+  if (status === "ready") return "분석 완료";
+  if (status === "partial") return "일부 완료";
+  if (status === "failed") return "처리 실패";
+  if (status === "analyzing" || status === "validating") return "분석 중";
+  return "접수 완료";
 }
 
 function InterviewPanel({

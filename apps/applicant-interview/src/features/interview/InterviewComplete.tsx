@@ -1,5 +1,3 @@
-import "./interview.css";
-
 export function InterviewComplete() {
   return (
     <main className="interview-shell interview-complete">

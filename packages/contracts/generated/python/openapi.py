@@ -69,6 +69,8 @@ class PositionCreate(BaseModel):
     description: constr(min_length=1, max_length=20000)
     role_type: constr(max_length=100) | None = None
     headcount: conint(ge=1, le=10000) | None = None
+    interview_capacity: conint(ge=1, le=10000) | None = None
+    interview_at: AwareDatetime | None = None
     recruitment_start_at: date | None = None
     recruitment_end_at: date | None = None
 
@@ -87,6 +89,8 @@ class PositionUpdate(BaseModel):
     description: constr(min_length=1, max_length=20000)
     role_type: constr(max_length=100) | None = None
     headcount: conint(ge=1, le=10000) | None = None
+    interview_capacity: conint(ge=1, le=10000) | None = None
+    interview_at: AwareDatetime | None = None
     recruitment_start_at: date | None = None
     recruitment_end_at: date | None = None
     status: Status1

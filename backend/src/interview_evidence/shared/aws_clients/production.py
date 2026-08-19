@@ -494,9 +494,20 @@ class AwsCognitoPrincipalProvider:
             if not isinstance(subject, str):
                 raise KeyError("subject")
             return CompanyPrincipal(
-                company_id=UUID(attributes["custom:company_id"]),
-                company_user_id=UUID(attributes["custom:company_user_id"]),
+                company_id=_cognito_principal_id(
+                    attributes,
+                    attribute="custom:company_id",
+                    subject=subject,
+                    kind="company",
+                ),
+                company_user_id=_cognito_principal_id(
+                    attributes,
+                    attribute="custom:company_user_id",
+                    subject=subject,
+                    kind="company-user",
+                ),
                 identity_subject=subject,
+                email=attributes.get("email"),
             )
         except Exception as error:
             raise PrincipalNotFoundError("company principal not found") from error
@@ -504,6 +515,19 @@ class AwsCognitoPrincipalProvider:
     def get_applicant_principal(self, credential: str) -> ApplicantPrincipal:
         del credential
         raise PrincipalNotFoundError("applicant principal not found")
+
+
+def _cognito_principal_id(
+    attributes: Mapping[str, str],
+    *,
+    attribute: str,
+    subject: str,
+    kind: str,
+) -> UUID:
+    existing = attributes.get(attribute)
+    if existing is not None:
+        return UUID(existing)
+    return uuid5(NAMESPACE_URL, f"interview-evidence:{kind}:{subject}")
 
 
 def _tenant_scoped_body(

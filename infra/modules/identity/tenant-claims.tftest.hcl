@@ -1,11 +1,10 @@
-# The two attributes the API resolves a tenant from, and the domainless sender shape.
+# The optional explicit tenant attributes and the domainless sender shape.
 #
 # `AwsCognitoPrincipalProvider.get_company_principal` reads `custom:company_id` and
-# `custom:company_user_id` out of a GetUser response and raises PrincipalNotFoundError if
-# either is missing. A pool declared without them therefore logs a user in and then rejects
-# every authenticated request -- and Cognito allows no custom attribute to be added to a
-# live pool, so the only remedy after an apply is to replace the pool and its users. That
-# makes this worth a test rather than a review comment.
+# `custom:company_user_id` out of a GetUser response for administrator-provisioned users.
+# Self-signup users intentionally omit them and receive identifiers derived from their
+# immutable Cognito subject. Cognito allows no custom attribute to be added to a live pool,
+# so the explicit-assignment path remains worth pinning with a test.
 
 mock_provider "aws" {}
 
@@ -62,6 +61,11 @@ run "pool_carries_the_tenant_claims_the_api_resolves_a_principal_from" {
       !contains(aws_cognito_user_pool_client.company.write_attributes, name)
     ])
     error_message = "no client may write a tenant attribute"
+  }
+
+  assert {
+    condition     = aws_cognito_user_pool.company.admin_create_user_config[0].allow_admin_create_user_only == false
+    error_message = "the demo company pool must allow self-registration"
   }
 
   # An address identity has no zone, so Easy DKIM cannot be requested for it -- SES rejects

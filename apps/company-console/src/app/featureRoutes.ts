@@ -7,6 +7,7 @@ import {
   CompanyHomeRoute,
   CompanyLoginRoute,
   CompanyPositionsRoute,
+  CompanySignupRoute,
   HiringRoute,
   InvitationEmailSettingsRoute,
   PositionOperationsRoute,
@@ -16,6 +17,7 @@ import { CompanyShell } from "./layouts/CompanyShell";
 
 export const companyRouteObjects: RouteObject[] = [
   { path: "/auth/login", Component: CompanyLoginRoute },
+  { path: "/auth/signup", Component: CompanySignupRoute },
   { path: "/auth/callback", Component: CompanyAuthCallbackRoute },
   {
     Component: CompanyShell,

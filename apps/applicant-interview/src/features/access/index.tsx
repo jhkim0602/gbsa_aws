@@ -1,7 +1,5 @@
 import { type FormEvent, useState } from "react";
 
-import "./access.css";
-
 export type ConsentPurpose =
   "document_analysis" | "recording" | "ai_assessment";
 

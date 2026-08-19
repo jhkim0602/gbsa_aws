@@ -887,6 +887,9 @@ export interface components {
         readonly PositionCreate: {
             readonly description: string;
             readonly headcount?: number | null;
+            /** Format: date-time */
+            readonly interview_at?: string | null;
+            readonly interview_capacity?: number | null;
             /** Format: date */
             readonly recruitment_end_at?: string | null;
             /** Format: date */
@@ -901,6 +904,9 @@ export interface components {
         readonly PositionUpdate: {
             readonly description: string;
             readonly headcount?: number | null;
+            /** Format: date-time */
+            readonly interview_at?: string | null;
+            readonly interview_capacity?: number | null;
             /** Format: date */
             readonly recruitment_end_at?: string | null;
             /** Format: date */

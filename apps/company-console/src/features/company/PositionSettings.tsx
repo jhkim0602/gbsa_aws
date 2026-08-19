@@ -69,8 +69,11 @@ export function PositionQuickEditModal({
         description: form.description.trim(),
         roleType: form.roleType || null,
         headcount: form.headcount || null,
+        interviewCapacity: form.interviewCapacity || null,
+        interviewAt: form.interviewAt || null,
         recruitmentStartAt: form.recruitmentStartAt || null,
         recruitmentEndAt: form.recruitmentEndAt || null,
+        submissionRequirements: position.submissionRequirements,
         status,
         rowVersion: position.rowVersion,
       });
@@ -151,6 +154,34 @@ export function PositionQuickEditModal({
                   setForm((current) => ({
                     ...current,
                     headcount: Number(event.target.value),
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>면접 정원</span>
+              <input
+                type="number"
+                min={1}
+                max={10000}
+                value={form.interviewCapacity}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    interviewCapacity: Number(event.target.value),
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>면접 시각</span>
+              <input
+                type="datetime-local"
+                value={form.interviewAt}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    interviewAt: event.target.value,
                   }))
                 }
               />
@@ -437,9 +468,29 @@ function positionForm(position: CompanyPosition) {
     description: position.description,
     roleType: position.roleType ?? "개발",
     headcount: position.headcount ?? 1,
+    interviewCapacity: position.interviewCapacity ?? 1,
+    interviewAt: toDateTimeLocalValue(position.interviewAt),
     recruitmentStartAt: position.recruitmentStartAt ?? "",
     recruitmentEndAt: position.recruitmentEndAt ?? "",
+    submissionRequirements: position.submissionRequirements.map(
+      (requirement) => ({
+        materialType: requirement.materialType,
+        label: requirement.materialType,
+        description: "",
+        required: requirement.required,
+      }),
+    ),
   };
+}
+
+function toDateTimeLocalValue(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const localTime = new Date(
+    date.getTime() - date.getTimezoneOffset() * 60_000,
+  );
+  return localTime.toISOString().slice(0, 16);
 }
 
 function criterionDraft(
@@ -484,9 +535,11 @@ function criterionDraft(
           priority: 1,
           criterionCode: criterionRows[0]?.code ?? "CRITERION_1",
         },
-      ];
+  ];
   return {
+    ...initialHiringDraft,
     ...positionForm(position),
+    descriptionCompleted: true,
     jobRequirements,
     criteria: criterionRows,
     prohibitedTopics: criteria.prohibitedTopics.join(", "),

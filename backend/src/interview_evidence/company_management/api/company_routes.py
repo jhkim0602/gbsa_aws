@@ -54,6 +54,10 @@ from interview_evidence.shared.security.principals import (
     CompanyPrincipal,
     PrincipalNotFoundError,
 )
+from interview_evidence.shared.submission_materials import (
+    DEFAULT_SUBMISSION_REQUIREMENTS,
+    SubmissionRequirement,
+)
 from interview_evidence.shared.tenant import TenantContext
 
 
@@ -73,8 +77,11 @@ class PositionCreate(BaseModel):
     description: str = Field(min_length=1, max_length=20_000)
     role_type: str | None = Field(default=None, max_length=100)
     headcount: int | None = Field(default=None, ge=1, le=10_000)
+    interview_capacity: int | None = Field(default=None, ge=1, le=10_000)
+    interview_at: datetime | None = None
     recruitment_start_at: date | None = None
     recruitment_end_at: date | None = None
+    submission_requirements: tuple[SubmissionRequirement, ...] = DEFAULT_SUBMISSION_REQUIREMENTS
 
 
 class PositionView(PositionCreate):
@@ -338,6 +345,7 @@ def create_company_router(
             )
         except PrincipalNotFoundError as error:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED) from error
+        company_service.get_current_user(context, principal)
         return CompanyRequestScope(principal=principal, context=context)
 
     Scope = Annotated[CompanyRequestScope, Depends(company_scope)]
@@ -387,8 +395,11 @@ def create_company_router(
             description=body.description,
             role_type=body.role_type,
             headcount=body.headcount,
+            interview_capacity=body.interview_capacity,
+            interview_at=body.interview_at,
             recruitment_start_at=body.recruitment_start_at,
             recruitment_end_at=body.recruitment_end_at,
+            submission_requirements=body.submission_requirements,
             idempotency_key=idempotency_key,
         )
         audit.append(
@@ -433,8 +444,11 @@ def create_company_router(
                 description=body.description,
                 role_type=body.role_type,
                 headcount=body.headcount,
+                interview_capacity=body.interview_capacity,
+                interview_at=body.interview_at,
                 recruitment_start_at=body.recruitment_start_at,
                 recruitment_end_at=body.recruitment_end_at,
+                submission_requirements=body.submission_requirements,
                 status=body.status,
             )
         except TenantScopedResourceNotFound as error:
@@ -994,8 +1008,11 @@ def _position_view(position: Position) -> PositionView:
         description=position.description,
         role_type=position.role_type,
         headcount=position.headcount,
+        interview_capacity=position.interview_capacity,
+        interview_at=position.interview_at,
         recruitment_start_at=position.recruitment_start_at,
         recruitment_end_at=position.recruitment_end_at,
+        submission_requirements=position.submission_requirements,
         status=position.status.value,
         row_version=position.row_version,
         created_at=position.created_at,

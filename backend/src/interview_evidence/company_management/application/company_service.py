@@ -11,16 +11,28 @@ from interview_evidence.company_management.application.deletion_targets import (
     CompanyDeletionTargets,
     CompanyTargetDeleter,
 )
-from interview_evidence.company_management.domain.company import Position, PositionStatus
+from interview_evidence.company_management.domain.company import (
+    Company,
+    CompanyUser,
+    Position,
+    PositionStatus,
+)
 from interview_evidence.company_management.domain.criteria import CompetencyModelStatus
 from interview_evidence.company_management.domain.hiring import (
     InvitationStateChange,
 )
-from interview_evidence.company_management.repositories.postgres import CompanyRepository
+from interview_evidence.company_management.repositories.postgres import (
+    CompanyRepository,
+    TenantScopedResourceNotFound,
+)
 from interview_evidence.shared.idempotency import ResourceIdempotencyStore
 from interview_evidence.shared.ids import Clock, CommandMeta, new_uuid7
 from interview_evidence.shared.interview_level import InterviewLevel
 from interview_evidence.shared.security.principals import CompanyPrincipal
+from interview_evidence.shared.submission_materials import (
+    DEFAULT_SUBMISSION_REQUIREMENTS,
+    SubmissionRequirement,
+)
 from interview_evidence.shared.tenant import TenantContext
 
 
@@ -94,7 +106,18 @@ class InvitationAuthorization(BaseModel):
     competency_model_version_id: UUID
     state: str
     expires_at: datetime
+    row_version: int
     authorized: bool
+
+
+class SubmissionRequirementsSnapshot(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    company_id: UUID
+    invitation_id: UUID
+    position_id: UUID
+    position_title: str
+    requirements: tuple[SubmissionRequirement, ...]
 
 
 class ConsentAuthorizationSnapshot(BaseModel):
@@ -136,12 +159,47 @@ class CompanyService:
         principal: CompanyPrincipal,
     ) -> CompanyUserSnapshot:
         context.assert_company(principal.company_id)
+        email = principal.email or f"{principal.company_user_id}@tenant.local"
+        try:
+            company_user = self._repository.get_company_user(
+                context,
+                principal.company_user_id,
+            )
+        except TenantScopedResourceNotFound:
+            self._ensure_company(context, email)
+            now = self._clock.now()
+            company_user = self._repository.save_company_user(
+                context,
+                CompanyUser(
+                    company_user_id=principal.company_user_id,
+                    company_id=principal.company_id,
+                    identity_subject=principal.identity_subject,
+                    email_normalized=email,
+                    created_at=now,
+                    last_seen_at=now,
+                ),
+            )
         return CompanyUserSnapshot(
-            company_user_id=principal.company_user_id,
-            company_id=principal.company_id,
-            email=f"{principal.company_user_id}@tenant.local",
-            status="active",
+            company_user_id=company_user.company_user_id,
+            company_id=company_user.company_id,
+            email=company_user.email_normalized,
+            status=company_user.status.value,
         )
+
+    def _ensure_company(self, context: TenantContext, email: str) -> None:
+        try:
+            self._repository.get_company(context)
+        except TenantScopedResourceNotFound:
+            now = self._clock.now()
+            self._repository.save_company(
+                context,
+                Company(
+                    company_id=context.company_id,
+                    name=_default_company_name(email),
+                    created_at=now,
+                    updated_at=now,
+                ),
+            )
 
     def create_position(
         self,
@@ -153,8 +211,13 @@ class CompanyService:
         idempotency_key: str,
         role_type: str | None = None,
         headcount: int | None = None,
+        interview_capacity: int | None = None,
+        interview_at: datetime | None = None,
         recruitment_start_at: date | None = None,
         recruitment_end_at: date | None = None,
+        submission_requirements: tuple[SubmissionRequirement, ...] = (
+            DEFAULT_SUBMISSION_REQUIREMENTS
+        ),
     ) -> Position:
         context.assert_company(principal.company_id)
         existing_id = self._idempotency.get(
@@ -171,8 +234,11 @@ class CompanyService:
             description=description,
             role_type=role_type,
             headcount=headcount,
+            interview_capacity=interview_capacity,
+            interview_at=interview_at,
             recruitment_start_at=recruitment_start_at,
             recruitment_end_at=recruitment_end_at,
+            submission_requirements=submission_requirements,
             created_by=principal.company_user_id,
             created_at=self._clock.now(),
         )
@@ -201,8 +267,11 @@ class CompanyService:
         description: str,
         role_type: str | None,
         headcount: int | None,
+        interview_capacity: int | None,
+        interview_at: datetime | None,
         recruitment_start_at: date | None,
         recruitment_end_at: date | None,
+        submission_requirements: tuple[SubmissionRequirement, ...],
         status: PositionStatus,
     ) -> Position:
         current = self._repository.get_position(context, position_id)
@@ -216,8 +285,11 @@ class CompanyService:
             description=description,
             role_type=role_type,
             headcount=headcount,
+            interview_capacity=interview_capacity,
+            interview_at=interview_at,
             recruitment_start_at=recruitment_start_at,
             recruitment_end_at=recruitment_end_at,
+            submission_requirements=submission_requirements,
             status=status,
         )
         return self._repository.save_position(context, updated)
@@ -291,9 +363,12 @@ class CompanyManagementPublic:
         context: TenantContext,
         invitation_id: UUID,
         *,
-        required_state: str,
+        required_state: str | frozenset[str],
     ) -> InvitationAuthorization:
         invitation = self._repository.get_invitation(context, invitation_id)
+        required_states = (
+            frozenset({required_state}) if isinstance(required_state, str) else required_state
+        )
         return InvitationAuthorization(
             company_id=context.company_id,
             invitation_id=invitation.invitation_id,
@@ -302,8 +377,9 @@ class CompanyManagementPublic:
             competency_model_version_id=invitation.competency_model_version_id,
             state=invitation.status.value,
             expires_at=invitation.expires_at,
+            row_version=invitation.row_version,
             authorized=(
-                invitation.status.value == required_state
+                invitation.status.value in required_states
                 and self._clock.now() < invitation.expires_at
             ),
         )
@@ -339,6 +415,21 @@ class CompanyManagementPublic:
                 consent.withdrawn_at is None
                 and required_purposes.issubset(purpose.value for purpose in consent.purposes)
             ),
+        )
+
+    def get_submission_requirements(
+        self,
+        context: TenantContext,
+        invitation_id: UUID,
+    ) -> SubmissionRequirementsSnapshot:
+        invitation = self._repository.get_invitation(context, invitation_id)
+        position = self._repository.get_position(context, invitation.position_id)
+        return SubmissionRequirementsSnapshot(
+            company_id=context.company_id,
+            invitation_id=invitation.invitation_id,
+            position_id=position.position_id,
+            position_title=position.title,
+            requirements=invitation.submission_requirements,
         )
 
     def advance_invitation_state(
@@ -406,3 +497,12 @@ class CompanyManagementPublic:
         if self._target_deleter is None:
             raise RuntimeError("company deletion executor is not configured")
         return self._target_deleter.delete_and_verify(context, target)
+
+
+def _default_company_name(email: str) -> str:
+    _, separator, domain = email.partition("@")
+    if separator:
+        candidate = domain.split(".", maxsplit=1)[0].strip()
+        if candidate:
+            return candidate[:200]
+    return "새 기업"
