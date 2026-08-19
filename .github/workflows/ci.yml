@@ -18,7 +18,15 @@ jobs:
           node-version: 22
           cache: npm
 
+      # `format:check`, `lint` and `typecheck` each run a Python half (ruff, ruff, mypy)
+      # through `uv`, so all three exit 127 without this.
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.9.28"
+          enable-cache: true
+
       - run: npm ci
+      - run: uv sync --frozen --no-editable
       - run: npm run format:check
       - run: npm run lint
       - run: npm run typecheck
