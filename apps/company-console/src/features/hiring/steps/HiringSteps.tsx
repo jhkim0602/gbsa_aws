@@ -1,7 +1,13 @@
 import { Check, CheckCircle2, FileText } from "lucide-react";
 import { useRef, type FormEvent } from "react";
 
-import { Field, FormActions, FormSection } from "../components/FormPrimitives";
+import { formAlertClass } from "../../../app/styles/primitives";
+import {
+  Field,
+  formInputClass,
+  FormActions,
+  FormSection,
+} from "../components/FormPrimitives";
 import { RoleCategoryField } from "../role-selector/RoleCategoryField";
 import { TechStackCombobox } from "../tech-stack-combobox";
 import type {
@@ -57,6 +63,44 @@ Frontend 영역까지 경험을 확장하는 역할
 
 (기술 환경은 공고 하단 SW 개발팀 주요 기술 스택 참고)`;
 
+// `.hiring-panel .position-config-section > header` outranks `.form-section > header`'s
+// `display:none`, so these sections keep their headers — see FormPrimitives.
+const POSITION_BASICS_GRID =
+  "grid items-end gap-6" +
+  " grid-cols-[minmax(260px,1.5fr)_minmax(150px,0.75fr)_minmax(150px,0.75fr)]" +
+  " mw-780:grid-cols-[minmax(0,1fr)]";
+
+const TECH_STACK =
+  "mt-3 w-full max-w-[860px] [justify-self:start] border-t border-border-muted pt-7" +
+  " mw-780:max-w-none";
+
+const DESCRIPTION_EDITOR =
+  "overflow-hidden rounded-md border border-border bg-surface" +
+  " focus-within:border-brand focus-within:shadow-[0_0_0_3px_#5966ce1a]";
+
+// `border: 0` and `border-radius: 0` come free from Preflight, and `font-family: inherit`
+// from its `textarea { font: inherit }`.
+const DESCRIPTION_TEXTAREA =
+  "block min-h-[390px] w-full resize-y bg-surface p-6 text-[13px] leading-[1.85]" +
+  " whitespace-pre-wrap text-ink outline-0 placeholder:text-subtle" +
+  " mw-620:min-h-[330px] mw-620:px-[14px] mw-620:py-[18px] mw-620:text-[12px]";
+
+const EDITOR_ACTION =
+  "inline-flex min-h-[30px] items-center gap-1.5 rounded-sm border border-border" +
+  " bg-surface px-2.5 text-[10px] font-semibold text-ink-secondary" +
+  " hover:border-brand hover:bg-brand-soft hover:text-brand";
+
+// `:hover:not(:disabled)` only sets border and text, so a completed button keeps its green
+// fill on hover; `.is-complete` is declared after the hover rule at lower specificity, so
+// the hover border/text still win over it.
+const EDITOR_DONE =
+  "inline-flex min-h-7 items-center gap-[5px] rounded-sm border px-[9px] text-[9px]" +
+  " font-semibold hover:not-disabled:border-brand hover:not-disabled:text-brand" +
+  " disabled:cursor-not-allowed disabled:opacity-45";
+
+const COMPLETION =
+  "grid min-h-[470px] content-center justify-items-center px-7 py-[50px] text-center";
+
 export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
   const { draft, stage, submitting, update, onSubmit, onBack } = props;
   const periodValid =
@@ -79,19 +123,19 @@ export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
   };
 
   return (
-    <form className="workspace-form" onSubmit={onSubmit}>
+    <form className="grid" onSubmit={onSubmit}>
       {stage === "position" ? (
         <>
           <FormSection
-            className="position-config-section"
             eyebrow="01 · 기본 정보"
             title="포지션명과 모집 기간"
             description="지원자에게 보이는 포지션 이름과 공고 운영 기간을 설정합니다."
           >
-            <div className="position-basics-grid">
+            <div className={POSITION_BASICS_GRID}>
               <Field label="포지션명">
                 <input
                   autoFocus
+                  className={formInputClass()}
                   required
                   maxLength={200}
                   value={draft.title}
@@ -101,6 +145,7 @@ export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
               </Field>
               <Field label="모집 시작일">
                 <input
+                  className={formInputClass()}
                   required
                   type="date"
                   value={draft.recruitmentStartAt}
@@ -111,6 +156,7 @@ export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
               </Field>
               <Field label="모집 종료일">
                 <input
+                  className={formInputClass()}
                   required
                   type="date"
                   min={draft.recruitmentStartAt || undefined}
@@ -122,14 +168,13 @@ export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
               </Field>
             </div>
             {!periodValid ? (
-              <p className="form-alert" role="alert">
+              <p className={formAlertClass()} role="alert">
                 모집 종료일은 시작일 이후로 선택해 주세요.
               </p>
             ) : null}
           </FormSection>
 
           <FormSection
-            className="position-config-section"
             eyebrow="02 · 직무와 기술"
             title="직무와 주요 기술 스택"
             description="직무와 기술 환경을 함께 설정해 면접 질문과 평가 기준의 방향을 정합니다."
@@ -141,9 +186,10 @@ export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
                 if (suggestedTitle) update("title", suggestedTitle);
               }}
             />
-            <div className="position-tech-stack">
+            <div className={TECH_STACK}>
               <Field
                 label="주요 기술 스택"
+                variant="prominent"
                 hint="검색하거나 목록에 없는 기술을 직접 입력할 수 있습니다."
               >
                 <TechStackCombobox
@@ -157,7 +203,6 @@ export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
           </FormSection>
 
           <FormSection
-            className="position-config-section"
             eyebrow="03 · 공고 본문"
             title="포지션 상세"
             description="회사 소개, 포지션 배경과 주요 업무를 하나의 본문으로 구성합니다."
@@ -237,14 +282,15 @@ function PositionDescriptionEditor({
   }
 
   return (
-    <div className="position-description-editor">
-      <header>
-        <div>
-          <strong>포지션 상세</strong>
-          <span>지원자 공개</span>
+    <div className={DESCRIPTION_EDITOR}>
+      <header className="flex min-h-12 items-center justify-between gap-4 border-b border-border bg-surface-muted px-[14px]">
+        <div className="flex items-center gap-[9px]">
+          <strong className="text-[11px] font-[650]">포지션 상세</strong>
+          <span className="text-[9px] text-success">지원자 공개</span>
         </div>
         <button
           aria-label="포지션 상세 예시 적용"
+          className={EDITOR_ACTION}
           type="button"
           onClick={insertExample}
         >
@@ -255,6 +301,7 @@ function PositionDescriptionEditor({
       <textarea
         ref={textareaRef}
         aria-label="포지션 설명"
+        className={DESCRIPTION_TEXTAREA}
         required
         maxLength={positionDescriptionMaxLength}
         value={value}
@@ -265,14 +312,18 @@ function PositionDescriptionEditor({
           onChange(event.target.value);
         }}
       />
-      <footer>
-        <output aria-live="polite">
+      <footer className="flex min-h-10 items-center justify-between border-t border-border-muted bg-surface-muted px-[14px] text-[9px] text-subtle">
+        <output className="font-mono" aria-live="polite">
           {value.length} / {positionDescriptionMaxLength}
         </output>
         <button
           aria-label="포지션 상세 작성 완료"
           aria-pressed={completed}
-          className={completed ? "is-complete" : ""}
+          className={`${EDITOR_DONE} ${
+            completed
+              ? "border-[#1e9e634d] bg-success-soft text-success"
+              : "border-border bg-surface text-muted"
+          }`}
           disabled={!value.trim()}
           type="button"
           onClick={() => onCompletedChange(true)}
@@ -320,7 +371,7 @@ export function CriteriaStep(
         Boolean(draft.prohibitedTopics.trim());
 
   return (
-    <form className="workspace-form" onSubmit={onSubmit}>
+    <form className="grid" onSubmit={onSubmit}>
       {!stage || stage === "evaluation" ? (
         <EvaluationDesigner draft={draft} update={update} />
       ) : null}
@@ -343,16 +394,21 @@ export function CompletionState({
   onOpenPosition?: () => void;
 }) {
   return (
-    <div className="completion-state">
-      <span aria-hidden="true">
+    <div className={COMPLETION}>
+      <span
+        className="grid size-14 place-items-center rounded-[50%] bg-success-soft text-success"
+        aria-hidden="true"
+      >
         <CheckCircle2 size={25} />
       </span>
-      <p>Criteria published</p>
-      <h2>채용 기준을 게시했습니다.</h2>
-      <small>
+      <p className="mt-[18px] mb-1 font-mono text-[9px] uppercase text-success">
+        Criteria published
+      </p>
+      <h2 className="text-[20px]">채용 기준을 게시했습니다.</h2>
+      <small className="mt-2 text-[10px] text-muted">
         게시된 기준은 이 포지션의 지원자 면접에 동일하게 적용됩니다.
       </small>
-      <div>
+      <div className="mt-[22px] flex flex-wrap justify-center gap-2 [&>span]:inline-flex [&>span]:items-center [&>span]:gap-[5px] [&>span]:rounded-full [&>span]:bg-success-soft [&>span]:px-2 [&>span]:py-[5px] [&>span]:text-[9px] [&>span]:text-success">
         <span>
           <Check size={13} aria-hidden="true" />
           필수·우대 요구사항 연결
@@ -368,7 +424,7 @@ export function CompletionState({
       </div>
       {onOpenPosition ? (
         <button
-          className="button-primary"
+          className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-brand bg-brand px-[18px] text-[14px] font-semibold text-white shadow-soft hover:not-disabled:bg-brand-strong"
           type="button"
           onClick={onOpenPosition}
         >

@@ -49,6 +49,25 @@ const materialMetadata: Record<
   },
 };
 
+// `.material-row.is-selected` is declared after `.material-row:hover` at equal specificity,
+// so a selected row keeps its brand tint on hover. A `hover:` utility would outrank the plain
+// one, so the hover background is only emitted when the row is not selected.
+const ROW =
+  "grid min-h-[78px] cursor-pointer items-center gap-3 border-b px-3 py-2.5" +
+  " grid-cols-[24px_44px_minmax(130px,0.8fr)_minmax(240px,1.6fr)_auto_24px]" +
+  " transition-[background,border-color] duration-[140ms]" +
+  " mw-780:grid-cols-[22px_40px_minmax(0,1fr)_24px]" +
+  " mw-620:grid-cols-[22px_36px_minmax(0,1fr)_22px] mw-620:px-1";
+
+const ROW_ICON =
+  "grid size-10 place-items-center rounded-md border bg-white";
+const ROW_CHECK = "grid size-5 place-items-center rounded-[50%] border";
+
+// `.material-row__ai` shares `.material-row__identity`'s box (both are in the same rule) and
+// moves to columns 3–5 below 780px, alongside `__output`, which then hides at 620px.
+const ROW_SPAN =
+  "grid min-w-0 gap-[3px] mw-780:col-[3/5] mw-620:col-[3/5]";
+
 export function ApplicantMaterials({
   draft,
   update,
@@ -57,21 +76,24 @@ export function ApplicantMaterials({
   update: HiringDraftUpdater;
 }) {
   return (
-    <div className="applicant-materials">
+    <div className="grid gap-11 mw-620:gap-8">
       <fieldset>
         <legend className="sr-only">필수 제출 자료</legend>
-        <div className="material-list">
+        <div className="border-t border-border">
           {draft.submissionRequirements.map((requirement) => {
             const metadata = materialMetadata[requirement.materialType];
             const Icon = metadata.icon;
             return (
               <label
-                className={`material-row ${
-                  requirement.required ? "is-selected" : ""
+                className={`${ROW} ${
+                  requirement.required
+                    ? "border-b-[#5966ce4d] bg-[#5966ce0a]"
+                    : "border-b-border-muted hover:bg-surface-muted"
                 }`}
                 key={requirement.materialType}
               >
                 <input
+                  className="size-[17px] accent-brand"
                   type="checkbox"
                   checked={requirement.required}
                   onChange={(event) =>
@@ -85,19 +107,40 @@ export function ApplicantMaterials({
                     )
                   }
                 />
-                <span className="material-row__icon">
+                <span
+                  className={`${ROW_ICON} ${
+                    requirement.required
+                      ? "border-[#5966ce40] text-brand"
+                      : "border-border text-ink-secondary"
+                  }`}
+                >
                   <Icon aria-hidden="true" size={19} />
                 </span>
-                <span className="material-row__identity">
-                  <strong>{requirement.label}</strong>
-                  <small>{requirement.description}</small>
+                <span className="grid min-w-0 gap-[3px]">
+                  <strong className="text-[13px] text-ink">
+                    {requirement.label}
+                  </strong>
+                  <small className="text-[10px] text-muted">
+                    {requirement.description}
+                  </small>
                 </span>
-                <span className="material-row__ai">
-                  <small>AI 처리</small>
-                  <span>{metadata.aiUse}</span>
+                <span className={ROW_SPAN}>
+                  <small className="text-[10px] text-muted">AI 처리</small>
+                  <span className="text-[11px] leading-[1.45] text-ink-secondary">
+                    {metadata.aiUse}
+                  </span>
                 </span>
-                <span className="material-row__output">{metadata.output}</span>
-                <span className="material-row__check" aria-hidden="true">
+                <span className="rounded-[3px] border border-border bg-white px-[7px] py-1 text-[9px] whitespace-nowrap text-muted mw-780:col-[3/5] mw-620:hidden">
+                  {metadata.output}
+                </span>
+                <span
+                  className={`${ROW_CHECK} ${
+                    requirement.required
+                      ? "border-brand bg-brand text-white"
+                      : "border-border text-transparent"
+                  }`}
+                  aria-hidden="true"
+                >
                   <Check size={13} />
                 </span>
               </label>
