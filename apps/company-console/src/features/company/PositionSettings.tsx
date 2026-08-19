@@ -421,6 +421,7 @@ export function CriteriaEditModal({
         draft={draft}
         submitting={saving}
         submitLabel="변경 저장"
+        variant="modal"
         update={update}
         onSubmit={(event) => void saveCriteria(event)}
       />

@@ -7,6 +7,7 @@ import {
   formInputClass,
   FormActions,
   FormSection,
+  type FormVariant,
 } from "../components/FormPrimitives";
 import { RoleCategoryField } from "../role-selector/RoleCategoryField";
 import { TechStackCombobox } from "../tech-stack-combobox";
@@ -336,11 +337,27 @@ function PositionDescriptionEditor({
   );
 }
 
+/*
+ * `CriteriaStep` is the one step the criteria-edit modal renders too, and the modal has no
+ * `.hiring-panel` ancestor — so the form controls and the action bar keep their unscoped boxes
+ * there. A descendant selector picked that up implicitly; as utilities the caller declares it.
+ */
 export function CriteriaStep(
-  props: StepProps & { stage?: CriteriaHiringStep },
+  props: StepProps & {
+    stage?: CriteriaHiringStep;
+    variant?: Extract<FormVariant, "wizard" | "modal">;
+  },
 ) {
-  const { draft, stage, submitting, submitLabel, update, onSubmit, onBack } =
-    props;
+  const {
+    draft,
+    stage,
+    submitting,
+    submitLabel,
+    variant = "wizard",
+    update,
+    onSubmit,
+    onBack,
+  } = props;
   const requirementsReady =
     draft.jobRequirements.length > 0 &&
     draft.jobRequirements.every(
@@ -373,7 +390,7 @@ export function CriteriaStep(
   return (
     <form className="grid" onSubmit={onSubmit}>
       {!stage || stage === "evaluation" ? (
-        <EvaluationDesigner draft={draft} update={update} />
+        <EvaluationDesigner draft={draft} update={update} variant={variant} />
       ) : null}
       {!stage || stage === "interview" ? (
         <InterviewDesigner draft={draft} update={update} />
@@ -382,6 +399,7 @@ export function CriteriaStep(
         submitting={submitting}
         disabled={!ready}
         label={submitLabel ?? (stage === "interview" ? "포지션 게시" : "다음")}
+        variant={variant}
         onBack={onBack}
       />
     </form>

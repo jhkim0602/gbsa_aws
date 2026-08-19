@@ -55,7 +55,7 @@ EXEMPT: tuple[tuple[str, range | None], ...] = (
     ("features/hiring/steps/EvaluationDesigner.tsx", None),
     ("features/hiring/steps/ApplicantMaterials.tsx", None),
     ("features/hiring/components/HiringAiFlow.tsx", None),
-    ("features/company/ApplicantDetail.tsx", range(400, 470)),
+    ("features/company/ApplicantDetail.tsx", range(595, 660)),
 )
 
 

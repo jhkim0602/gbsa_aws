@@ -2,6 +2,14 @@ import { Check, ImageUp, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  ASYNC_STATE,
+  BUTTON_PRIMARY,
+  BUTTON_QUIET,
+  BUTTON_SECONDARY,
+  formAlertClass,
+} from "../../app/styles/primitives";
+import { formInputClass, formTextareaClass } from "./components/FormPrimitives";
+import {
   BRAND_COLOR_PRESETS,
   describeLogoRejection,
   fromGuideLines,
@@ -20,19 +28,115 @@ type EditorScope =
   | { kind: "company" }
   | { kind: "position"; positionId: string; positionName?: string };
 
+/**
+ * Both panes cap their height so the editor fits a page, but the drawer already constrains
+ * them, and `.template-drawer .template-editor__*` released the cap there.
+ */
+type EditorLayout = "panel" | "drawer";
+
 /** Guides are edited as one textarea and split into lines only on submit. */
 type Draft = Omit<InvitationEmailTemplate, "guides"> & { guidesText: string };
 
 const PREVIEW_DEBOUNCE_MS = 350;
 
+const EDITOR =
+  "grid min-h-0 grid-cols-[minmax(0,380px)_minmax(0,1fr)]" +
+  " mw-1080:grid-cols-[minmax(0,1fr)]";
+const FORM =
+  "grid gap-[14px] overflow-y-auto border-r border-r-border-muted p-4" +
+  " mw-1080:border-r-0 mw-1080:border-b mw-1080:border-b-border-muted" +
+  " mw-1080:max-h-none";
+const PREVIEW =
+  "grid min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] bg-surface-muted" +
+  " mw-1080:max-h-none";
+const PANE_HEIGHT: Record<EditorLayout, string> = {
+  panel: "max-h-[78vh]",
+  drawer: "min-h-0 max-h-none",
+};
+
+const SCOPE_NOTE =
+  "rounded-md bg-warning-soft p-[9px_11px] text-[9.5px] leading-[1.6] text-warning";
+const GROUP = "grid gap-[11px]";
+const GROUP_TITLE = "flex items-center gap-[7px] text-[11px] text-ink";
+const SCOPE_TAG = "rounded-[3px] px-1.5 py-0.5 text-[8px] font-semibold";
+const SCOPE_TAG_TONE = {
+  global: "bg-brand-soft text-brand",
+  position: "bg-warning-soft text-warning",
+} as const;
+
+const FIELD = "grid min-w-0 gap-1.5";
+const LABEL = "flex items-baseline gap-[7px]";
+// Inside `.form-field__control` the label's gap comes from the wider `> span` rule instead.
+const LABEL_IN_CONTROL = "flex min-w-0 items-baseline gap-2";
+const LABEL_TITLE = "text-[10px] font-semibold text-ink-secondary";
+const LABEL_NOTE = "text-[8px] text-subtle";
+const HINT = "-mt-0.5 text-[8px] leading-[1.45] text-subtle";
+
+const LOGO =
+  "flex items-center gap-2.5 rounded-md border border-border bg-surface-muted p-2.5";
+const LOGO_EMPTY = "text-[9px] text-subtle";
+const LOGO_ACTIONS = "ml-auto flex gap-1.5";
+
+const SWATCHES = "flex flex-wrap gap-1.5";
+const SWATCH =
+  "grid size-[26px] place-items-center rounded-[5px] border border-[#0000001f] text-white";
+const SWATCH_ACTIVE = `${SWATCH} shadow-[0_0_0_2px_var(--color-surface),0_0_0_4px_var(--color-link)]`;
+const COLOR_ADD = "flex items-center gap-1.5";
+/*
+ * `.template-color-add input[type=…]` outranks `.form-field input`, but only for the boxes it
+ * restates — the colour, the inset highlight and the focus ring still come from the field.
+ */
+const COLOR_PICKER =
+  "h-[30px] min-h-[34px] w-8 rounded-[5px] border border-border bg-surface p-0.5" +
+  " text-[11px] text-ink shadow-[inset_0_1px_#d0d7de33] focus:border-brand" +
+  " focus:shadow-[0_0_0_3px_#5966ce1f]";
+const COLOR_INPUT =
+  "min-h-[30px] w-23 rounded-[5px] border border-border bg-white px-2 font-mono" +
+  " text-[10px] text-ink shadow-[inset_0_1px_#d0d7de33] placeholder:text-subtle" +
+  " focus:border-brand focus:shadow-[0_0_0_3px_#5966ce1f]";
+
+const VARIABLES = "flex flex-wrap gap-[5px]";
+const VARIABLE =
+  "rounded-[3px] border border-border bg-brand-soft px-[7px] py-[3px]" +
+  " font-mono text-[8.5px] text-brand";
+
+const TOGGLE =
+  "flex items-start gap-3 rounded-md border border-border-muted" +
+  " bg-surface-muted p-[10px_11px]";
+const TOGGLE_TEXT = "grid gap-[3px]";
+const TOGGLE_TITLE = "text-[10px] text-ink-secondary";
+const TOGGLE_NOTE = "text-[8.5px] leading-[1.55] text-muted";
+const TOGGLE_INPUT = "ml-auto shrink-0";
+
+const PREVIEW_BAR =
+  "flex items-center gap-2.5 border-b border-b-border-muted bg-surface p-[11px_14px]";
+const PREVIEW_BAR_TITLE = "text-[10.5px]";
+const PREVIEW_BAR_SUBJECT =
+  "block max-w-[360px] truncate text-[8.5px] text-muted";
+const SEGMENTED = "ml-auto flex flex-wrap gap-1";
+// The later `.segmented-control button` override rounds and enlarges the base pill.
+const SEGMENT =
+  "min-h-[34px] min-w-12 rounded-md border border-border bg-surface px-2.5" +
+  " text-[11px] text-muted";
+const SEGMENT_ACTIVE = `${SEGMENT} border-brand bg-brand-soft font-[650] text-brand`;
+const PREVIEW_STAGE = "overflow-y-auto p-[14px]";
+const PREVIEW_FRAME =
+  "mx-auto block h-[1180px] w-full rounded-lg border border-border bg-white";
+const PREVIEW_FOOT =
+  "flex flex-wrap items-center gap-2 border-t border-t-border-muted" +
+  " bg-surface p-[11px_14px]";
+const PREVIEW_FOOT_TEXT = "mr-auto text-[9px] text-muted";
+
 export function InvitationEmailEditor({
   api,
   scope,
+  layout = "panel",
   onSaved,
   onClose,
 }: {
   api: InvitationEmailTemplateApi;
   scope: EditorScope;
+  layout?: EditorLayout;
   onSaved?: (state: InvitationEmailTemplateState) => void;
   onClose?: () => void;
 }) {
@@ -217,35 +321,37 @@ export function InvitationEmailEditor({
 
   if (loading || !draft || !saved) {
     return (
-      <div className="async-state" role={error ? "alert" : "status"}>
+      <div className={ASYNC_STATE} role={error ? "alert" : "status"}>
         {error || "초대 메일 템플릿을 불러오는 중입니다."}
       </div>
     );
   }
 
   const scopeTag = positionScope ? (
-    <span className="template-scope is-position">이 포지션만</span>
+    <span className={`${SCOPE_TAG} ${SCOPE_TAG_TONE.position}`}>
+      이 포지션만
+    </span>
   ) : (
-    <span className="template-scope is-global">전사 공통</span>
+    <span className={`${SCOPE_TAG} ${SCOPE_TAG_TONE.global}`}>전사 공통</span>
   );
   const swatches = [...BRAND_COLOR_PRESETS, ...customColors];
 
   return (
-    <div className="template-editor">
-      <div className="template-editor__form">
+    <div className={EDITOR}>
+      <div className={`${FORM} ${PANE_HEIGHT[layout]}`}>
         {notice ? (
-          <p className="form-alert is-success" role="status">
+          <p className={formAlertClass("panel", "success")} role="status">
             {notice}
           </p>
         ) : null}
         {error ? (
-          <p className="form-alert" role="alert">
+          <p className={formAlertClass()} role="alert">
             {error}
           </p>
         ) : null}
 
         {positionScope ? (
-          <p className="template-editor__scope-note">
+          <p className={SCOPE_NOTE}>
             변경한 문구는 <strong>이 포지션에만</strong> 적용됩니다. 전사
             기본값은 설정 › 초대 메일 템플릿에서 바꿉니다.
             {saved.isPositionOverride
@@ -254,22 +360,24 @@ export function InvitationEmailEditor({
           </p>
         ) : null}
 
-        <section className="template-group">
-          <h3>브랜딩 {scopeTag}</h3>
-          <div className="form-field">
-            <span className="template-label">
-              <strong>기업 로고</strong>
-              <small>PNG / SVG / JPG / WebP · 최대 512KB</small>
+        <section className={GROUP}>
+          <h3 className={GROUP_TITLE}>브랜딩 {scopeTag}</h3>
+          <div className={FIELD}>
+            <span className={LABEL}>
+              <strong className={LABEL_TITLE}>기업 로고</strong>
+              <small className={LABEL_NOTE}>
+                PNG / SVG / JPG / WebP · 최대 512KB
+              </small>
             </span>
-            <div className="template-logo">
+            <div className={LOGO}>
               {saved.logoUrl ? (
                 <img src={saved.logoUrl} alt="등록된 기업 로고" height={30} />
               ) : (
-                <span className="template-logo__empty">로고 없음</span>
+                <span className={LOGO_EMPTY}>로고 없음</span>
               )}
-              <div className="template-logo__actions">
+              <div className={LOGO_ACTIONS}>
                 <button
-                  className="button-secondary"
+                  className={BUTTON_SECONDARY}
                   type="button"
                   onClick={() => fileInput.current?.click()}
                 >
@@ -278,7 +386,7 @@ export function InvitationEmailEditor({
                 </button>
                 {saved.logoUrl ? (
                   <button
-                    className="button-quiet"
+                    className={BUTTON_QUIET}
                     type="button"
                     onClick={() => void removeLogo()}
                   >
@@ -299,28 +407,26 @@ export function InvitationEmailEditor({
                 }}
               />
             </div>
-            <small className="form-field__hint">
+            <small className={HINT}>
               로고는 전사 공통이며, 메일 앱이 인증 없이 불러갈 수 있도록 공개
               주소로 제공됩니다.
             </small>
           </div>
 
-          <div className="form-field">
-            <span className="template-label">
-              <strong>브랜드 색상</strong>
-              <small>상단 바 · 포지션 라벨 · 안내 제목 · CTA 버튼에 적용</small>
+          <div className={FIELD}>
+            <span className={LABEL}>
+              <strong className={LABEL_TITLE}>브랜드 색상</strong>
+              <small className={LABEL_NOTE}>
+                상단 바 · 포지션 라벨 · 안내 제목 · CTA 버튼에 적용
+              </small>
             </span>
-            <div
-              className="template-swatches"
-              role="group"
-              aria-label="브랜드 색상"
-            >
+            <div className={SWATCHES} role="group" aria-label="브랜드 색상">
               {swatches.map((color) => (
                 <button
                   key={color}
-                  className={`template-swatch ${
-                    draft.brandColor === color ? "is-active" : ""
-                  }`}
+                  className={
+                    draft.brandColor === color ? SWATCH_ACTIVE : SWATCH
+                  }
                   type="button"
                   style={{ background: color }}
                   aria-label={`브랜드 색상 ${color}`}
@@ -333,14 +439,16 @@ export function InvitationEmailEditor({
                 </button>
               ))}
             </div>
-            <div className="template-color-add">
+            <div className={COLOR_ADD}>
               <input
+                className={COLOR_PICKER}
                 type="color"
                 aria-label="색상 선택기"
                 value={isBrandColor(colorInput) ? colorInput : draft.brandColor}
                 onChange={(event) => setColorInput(event.target.value)}
               />
               <input
+                className={COLOR_INPUT}
                 type="text"
                 aria-label="브랜드 색상 직접 입력"
                 placeholder="#5966ce"
@@ -349,7 +457,7 @@ export function InvitationEmailEditor({
                 onChange={(event) => setColorInput(event.target.value)}
               />
               <button
-                className="button-secondary"
+                className={BUTTON_SECONDARY}
                 type="button"
                 onClick={addCustomColor}
               >
@@ -360,8 +468,8 @@ export function InvitationEmailEditor({
           </div>
         </section>
 
-        <section className="template-group">
-          <h3>문구 {scopeTag}</h3>
+        <section className={GROUP}>
+          <h3 className={GROUP_TITLE}>문구 {scopeTag}</h3>
           <TemplateField
             label="메일 제목"
             value={draft.subject}
@@ -416,8 +524,8 @@ export function InvitationEmailEditor({
           />
         </section>
 
-        <section className="template-group">
-          <h3>옵션 {scopeTag}</h3>
+        <section className={GROUP}>
+          <h3 className={GROUP_TITLE}>옵션 {scopeTag}</h3>
           <TemplateToggle
             label="지원자 실명 사용"
             description="끄면 “지원자님”으로 대체되어, 실명이 메일 본문에 들어가지 않습니다."
@@ -439,13 +547,15 @@ export function InvitationEmailEditor({
         </section>
       </div>
 
-      <div className="template-editor__preview">
-        <header className="template-preview__bar">
+      <div className={`${PREVIEW} ${PANE_HEIGHT[layout]}`}>
+        <header className={PREVIEW_BAR}>
           <div>
-            <strong>미리보기</strong>
-            <small>{previewSubject || "샘플 지원자 데이터로 렌더링"}</small>
+            <strong className={PREVIEW_BAR_TITLE}>미리보기</strong>
+            <small className={PREVIEW_BAR_SUBJECT}>
+              {previewSubject || "샘플 지원자 데이터로 렌더링"}
+            </small>
           </div>
-          <div className="segmented-control template-preview__device">
+          <div className={SEGMENTED}>
             {(
               [
                 ["desktop", "데스크톱"],
@@ -455,7 +565,7 @@ export function InvitationEmailEditor({
               <button
                 key={value}
                 type="button"
-                className={device === value ? "is-active" : ""}
+                className={device === value ? SEGMENT_ACTIVE : SEGMENT}
                 aria-pressed={device === value}
                 onClick={() => setDevice(value)}
               >
@@ -464,9 +574,9 @@ export function InvitationEmailEditor({
             ))}
           </div>
         </header>
-        <div className="template-preview__stage">
+        <div className={PREVIEW_STAGE}>
           <iframe
-            className={`template-preview__frame is-${device}`}
+            className={`${PREVIEW_FRAME}${device === "mobile" ? " max-w-[400px]" : ""}`}
             title="초대 메일 미리보기"
             // The preview is company-authored copy rendered by our own server; the
             // sandbox keeps it from running scripts or navigating the console.
@@ -474,14 +584,14 @@ export function InvitationEmailEditor({
             srcDoc={previewHtml}
           />
         </div>
-        <footer className="template-preview__foot">
-          <span aria-live="polite">
+        <footer className={PREVIEW_FOOT}>
+          <span className={PREVIEW_FOOT_TEXT} aria-live="polite">
             {dirty
               ? "저장하지 않은 변경이 있습니다."
               : "변경 사항은 저장 전까지 발송되지 않습니다."}
           </span>
           <button
-            className="button-quiet"
+            className={BUTTON_QUIET}
             type="button"
             disabled={saving}
             onClick={() => void revert()}
@@ -491,7 +601,7 @@ export function InvitationEmailEditor({
           </button>
           {onClose ? (
             <button
-              className="button-secondary"
+              className={BUTTON_SECONDARY}
               type="button"
               onClick={onClose}
             >
@@ -499,7 +609,7 @@ export function InvitationEmailEditor({
             </button>
           ) : null}
           <button
-            className="button-primary"
+            className={BUTTON_PRIMARY}
             type="button"
             disabled={saving || !dirty}
             onClick={() => void save()}
@@ -534,14 +644,15 @@ function TemplateField({
   onInsert?(variable: string): void;
 }) {
   return (
-    <div className="form-field template-field">
-      <label className="form-field__control">
-        <span className="template-label">
-          <strong>{label}</strong>
-          {note ? <small>{note}</small> : null}
+    <div className={FIELD}>
+      <label className={FIELD}>
+        <span className={LABEL_IN_CONTROL}>
+          <strong className={LABEL_TITLE}>{label}</strong>
+          {note ? <small className={LABEL_NOTE}>{note}</small> : null}
         </span>
         {rows ? (
           <textarea
+            className={formTextareaClass("modal")}
             rows={rows}
             value={value}
             maxLength={maxLength}
@@ -549,6 +660,7 @@ function TemplateField({
           />
         ) : (
           <input
+            className={formInputClass("modal")}
             type="text"
             value={value}
             maxLength={maxLength}
@@ -556,13 +668,13 @@ function TemplateField({
           />
         )}
       </label>
-      {hint ? <small className="form-field__hint">{hint}</small> : null}
+      {hint ? <small className={HINT}>{hint}</small> : null}
       {variables && onInsert ? (
-        <div className="template-variables">
+        <div className={VARIABLES}>
           {variables.map((variable) => (
             <button
               key={variable}
-              className="template-variable"
+              className={VARIABLE}
               type="button"
               aria-label={`${label}에 ${variable} 넣기`}
               onClick={() => onInsert(variable)}
@@ -588,12 +700,13 @@ function TemplateToggle({
   onChange(value: boolean): void;
 }) {
   return (
-    <label className="template-toggle">
-      <span>
-        <strong>{label}</strong>
-        <small>{description}</small>
+    <label className={TOGGLE}>
+      <span className={TOGGLE_TEXT}>
+        <strong className={TOGGLE_TITLE}>{label}</strong>
+        <small className={TOGGLE_NOTE}>{description}</small>
       </span>
       <input
+        className={TOGGLE_INPUT}
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}

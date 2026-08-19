@@ -16,6 +16,32 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
+import {
+  ASYNC_STATE,
+  BUTTON_PRIMARY,
+  BUTTON_QUIET,
+  formAlertClass,
+  ICON_BUTTON,
+  INVITATION_APPLICANT_LINK,
+  INVITATION_STATUS,
+  INVITATION_TABLE,
+  INVITATION_TABLE_BODY,
+  INVITATION_TABLE_CELL_AT,
+  INVITATION_TABLE_EMAIL,
+  INVITATION_TABLE_HEAD,
+  INVITATION_TABLE_HEAD_CELL,
+  INVITATION_TABLE_IDENTITY_TEXT,
+  INVITATION_TABLE_NAME,
+  INVITATION_TABLE_ROW,
+  INVITATION_TABLE_WRAP,
+  invitationTone,
+  PAGE_EYEBROW_IN_HEADER,
+  PAGE_HEADER,
+  PAGE_HEADER_TEXT,
+  PAGE_HEADER_TITLE,
+  RECIPIENT_AVATAR,
+  SEARCH_FIELD,
+} from "../../app/styles/primitives";
 import { InvitationEmailEditor } from "./InvitationEmailEditor";
 import type {
   InvitationEmailTemplateApi,
@@ -134,6 +160,223 @@ const completedStatuses = new Set<InvitationStatus>(["completed", "reviewed"]);
 const attentionStatuses = new Set<InvitationStatus>(["expired", "revoked"]);
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 let draftRowSequence = 0;
+
+/**
+ * `.position-invitations__content` — its padding replaces `.page-content`'s outright, and
+ * below 720px the narrower inset wins at every width the 680px `.page-content` rule covers.
+ * The declared `gap` never applied: the container is a block, so it is not carried over.
+ */
+const CONTENT = "p-[18px_32px_0] mw-720:p-[14px_16px_0]";
+/** `.position-invitations__layout` — the roster and the composer lay themselves out. */
+const LAYOUT = "contents";
+const WORKSPACE = "grid items-start gap-4";
+const WORKSPACE_COLUMNS =
+  "grid-cols-[minmax(0,1fr)_minmax(340px,410px)]" +
+  " mw-1080:grid-cols-[minmax(0,1fr)_minmax(320px,360px)]" +
+  " mw-900:grid-cols-[minmax(0,1fr)]";
+const WORKSPACE_COLUMNS_COLLAPSED =
+  "grid-cols-[minmax(0,1fr)_44px] mw-900:grid-cols-[minmax(0,1fr)]";
+const ASIDE = "sticky top-[78px] min-w-0 mw-900:static";
+const EXPAND =
+  "grid min-h-[148px] place-items-center gap-[9px] rounded-[7px] border" +
+  " border-border bg-surface p-[12px_8px] text-brand mw-900:min-h-[42px]" +
+  " mw-900:grid-flow-col mw-900:justify-center";
+const EXPAND_LABEL =
+  "[writing-mode:vertical-rl] text-[11px] font-bold" +
+  " mw-900:[writing-mode:horizontal-tb]";
+/** `.invitation-roster` / `.invitation-composer` — a `.panel` flattened to a plain box. */
+const CARD = "overflow-hidden rounded-lg border border-border bg-surface";
+const CARD_HEADER =
+  "flex min-h-18 items-center justify-between gap-[14px] border-b border-border" +
+  " p-[14px_18px] mw-680:flex-col mw-680:items-stretch";
+/** The aside narrows the composer, so its header stacks at every width. */
+const CARD_HEADER_ASIDE =
+  "flex min-h-18 flex-col items-start justify-between gap-[14px] border-b" +
+  " border-border p-4";
+const CARD_TITLE = "text-[15px]";
+const CARD_TEXT = "mt-1 text-[11px] leading-[1.45] text-muted";
+const ROSTER_ACTIONS = "flex flex-wrap items-center gap-[7px]";
+const ROSTER_SEARCH_ICON = "absolute left-2.5 text-subtle";
+const ROSTER_SEARCH_INPUT =
+  "h-[38px] w-full rounded-[7px] border border-border bg-surface pr-2.5 pl-8" +
+  " text-[12px]";
+/** `.button-quiet` enlarged by `.invitation-roster__actions`, which outranks its 680px box. */
+const ROSTER_REFRESH =
+  "inline-flex min-h-9 rounded-[3px] bg-transparent px-2 text-[12px] font-semibold" +
+  " text-brand hover:bg-brand-soft mw-680:border mw-680:border-border" +
+  " mw-680:bg-surface mw-680:px-2.5";
+const FILTER_TABS =
+  "flex min-h-[46px] overflow-x-auto border-b border-border px-[18px]" +
+  " mw-680:max-w-full";
+const FILTER_TAB =
+  "inline-flex flex-none items-center gap-1.5 border-b-2 border-b-transparent" +
+  " bg-transparent px-[13px] text-[12px] text-muted" +
+  " aria-pressed:border-b-brand aria-pressed:font-[650] aria-pressed:text-brand";
+const FILTER_TAB_COUNT =
+  "min-w-[19px] rounded-full bg-surface-strong px-[5px] py-px font-mono text-[9px]";
+const EMPTY_COPY = "grid justify-items-center gap-[11px]";
+const EMPTY_TEXT = "text-[12px]";
+/** `.invitation-import-actions`; the aside grid outranks the two-column 680px one. */
+const IMPORT_ACTIONS =
+  "flex flex-wrap items-center gap-[7px] mw-680:grid mw-680:grid-cols-2";
+const IMPORT_ACTIONS_ASIDE =
+  "grid w-full grid-cols-[32px_minmax(0,1fr)_auto] items-center gap-[7px]";
+/** `.button-secondary` shrunk by `.invitation-import-actions`, which outranks its base box. */
+const IMPORT_BUTTON =
+  "inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border" +
+  " border-border bg-white px-[18px] text-[12px] font-semibold text-ink shadow-soft" +
+  " hover:not-disabled:bg-surface-muted";
+const IMPORT_LIMIT = "font-mono text-[8px] whitespace-nowrap text-subtle";
+/** Alignment is per column, and `text-center` emits before `text-left`, so it stays out. */
+const ENTRY_HEAD_CELL =
+  "h-10 border-b border-b-border-muted bg-surface-muted p-[10px_14px]" +
+  " font-mono text-[11px] font-semibold text-muted";
+/** `th:nth-child(N)` — the draft table sizes its columns from the head row. */
+const ENTRY_HEAD_CELL_AT = [
+  `${ENTRY_HEAD_CELL} w-[54px] text-center text-subtle`,
+  `${ENTRY_HEAD_CELL} w-[24%] text-left`,
+  `${ENTRY_HEAD_CELL} w-[34%] text-left`,
+  `${ENTRY_HEAD_CELL} w-[230px] text-left`,
+  `${ENTRY_HEAD_CELL} w-12 text-center`,
+] as const;
+const ENTRY_INPUT =
+  "h-[38px] w-full rounded-md border border-border bg-surface px-[9px] text-[12px]" +
+  " text-ink focus:border-brand focus:outline-2 focus:outline-offset-0" +
+  " focus:outline-[#5966ce1a]";
+/**
+ * The draft table is a real table on a page and a stack of cards in the workspace aside or
+ * below 680px. `.invitation-workspace__aside` outranks the breakpoint, so the two layouts
+ * are chosen here instead of layered — a utility cannot express that precedence.
+ */
+const ENTRY = {
+  table: {
+    wrap: "overflow-x-auto mw-680:overflow-visible",
+    table:
+      "w-full min-w-[760px] table-fixed border-collapse mw-680:block" +
+      " mw-680:w-full mw-680:min-w-0",
+    head: "mw-680:sr-only",
+    body: "mw-680:grid",
+    row:
+      "mw-680:grid mw-680:grid-cols-[34px_minmax(0,1fr)_32px] mw-680:gap-[7px]" +
+      " mw-680:border-b mw-680:border-b-border mw-680:p-2.5" +
+      " mw-680:hover:bg-inherit",
+    /** A tinted row ties with `tr:hover` and is declared later, so it keeps its tint. */
+    tone: {
+      empty: "hover:bg-[#fbfcfd]",
+      valid: "hover:bg-[#fbfcfd]",
+      invalid: "bg-[#dc262605]",
+      duplicate: "bg-[#d9770608]",
+    },
+    cells: [
+      "w-[54px] border-b border-b-border-muted p-[10px_12px] text-center font-mono" +
+        " text-subtle mw-680:block mw-680:w-auto mw-680:[grid-area:1/1/3]" +
+        " mw-680:border-0 mw-680:p-0 mw-680:pt-[9px] mw-680:text-center",
+      "border-b border-b-border-muted p-[10px_12px] text-left mw-680:block" +
+        " mw-680:border-0 mw-680:p-0 mw-680:col-[2]",
+      "border-b border-b-border-muted p-[10px_12px] text-left mw-680:block" +
+        " mw-680:border-0 mw-680:p-0 mw-680:col-[2]",
+      "border-b border-b-border-muted p-[10px_12px] text-left mw-680:block" +
+        " mw-680:border-0 mw-680:p-0 mw-680:pt-0.5 mw-680:col-[2]",
+      "w-12 border-b border-b-border-muted p-[10px_12px] text-center mw-680:block" +
+        " mw-680:w-auto mw-680:[grid-area:1/3/3] mw-680:border-0 mw-680:p-0" +
+        " mw-680:pt-0.5 mw-680:text-left",
+    ],
+  },
+  card: {
+    wrap: "overflow-visible",
+    table: "block w-full min-w-0 table-fixed border-collapse",
+    head: "sr-only",
+    body: "grid",
+    row:
+      "grid grid-cols-[30px_minmax(0,1fr)_30px] gap-[7px] border-b" +
+      " border-b-border-muted p-3 hover:bg-inherit",
+    tone: {
+      empty: "",
+      valid: "",
+      invalid: "bg-[#dc262605]",
+      duplicate: "bg-[#d9770608]",
+    },
+    cells: [
+      "block border-0 p-0 pt-[9px] [grid-area:1/1/3] text-center font-mono text-subtle",
+      "block border-0 p-0 col-[2] text-left",
+      "block border-0 p-0 col-[2] text-left",
+      "block border-0 p-0 pt-0.5 col-[2] text-left",
+      "block border-0 p-0 [grid-area:1/3/3] text-left",
+    ],
+  },
+} as const;
+/** `.invitation-row-remove`'s own 28px box loses to the later `.icon-button`; its hover wins. */
+const ENTRY_REMOVE =
+  "inline-grid size-8 place-items-center rounded-md border border-border" +
+  " bg-surface font-semibold text-muted hover:border-danger hover:bg-danger-soft" +
+  " hover:text-danger disabled:cursor-not-allowed disabled:opacity-35";
+const DRAFT_VALIDATION =
+  "inline-flex items-center gap-1.5 text-[11px] leading-[1.35]";
+/** Each state replaces the base colour, so the tones are complete variants. */
+const DRAFT_VALIDATION_TONE = {
+  empty: `${DRAFT_VALIDATION} text-subtle`,
+  valid: `${DRAFT_VALIDATION} text-success`,
+  invalid: `${DRAFT_VALIDATION} text-danger`,
+  duplicate: `${DRAFT_VALIDATION} text-warning`,
+} as const;
+const MAILCARD =
+  "rounded-[7px] border border-border bg-surface m-[0_14px_12px]";
+const MAILCARD_TOP =
+  "flex items-center gap-2.5 border-b border-b-border-muted p-[10px_12px]";
+const MAILCARD_LOGO =
+  "grid min-h-[30px] w-[46px] place-items-center rounded-[5px] border" +
+  " border-dashed border-border bg-surface-muted";
+const MAILCARD_LOGO_EMPTY = "text-center text-[8px] not-italic text-subtle";
+const MAILCARD_LABEL = "block text-[8px] text-muted";
+const MAILCARD_SUBJECT = "block truncate text-[10.5px] text-ink";
+const MAILCARD_FOOT =
+  "flex items-center gap-[7px] bg-surface-muted p-[7px_12px]";
+const MAILCARD_FOOT_TEXT = "text-[9px] text-muted";
+const MAILCARD_DOT = "size-[9px] rounded-full";
+const MAILCARD_EDIT = `${BUTTON_QUIET} ml-auto`;
+const FOOTER =
+  "grid grid-cols-[minmax(0,1fr)_auto] items-end gap-4 bg-surface-muted" +
+  " p-[14px_18px_16px] mw-680:flex mw-680:flex-col mw-680:items-stretch";
+/** The aside keeps the grid at every width; only the 680px `align-items` still reaches it. */
+const FOOTER_ASIDE =
+  "grid grid-cols-[minmax(0,1fr)_auto] items-end gap-[13px] bg-surface-muted" +
+  " p-[14px_16px_16px] mw-680:items-stretch";
+const VALIDATION = "flex flex-wrap gap-[7px]";
+const VALIDATION_ASIDE = "flex flex-wrap gap-1.5";
+const VALIDATION_CHIP =
+  "rounded-[3px] border border-transparent p-[4px_7px] text-[11px]";
+/** Each tone replaces the background outright, so the base carries no colour of its own. */
+const VALIDATION_CHIP_TONE = {
+  neutral: `${VALIDATION_CHIP} bg-surface text-muted`,
+  valid: `${VALIDATION_CHIP} bg-success-soft text-success`,
+  warning: `${VALIDATION_CHIP} bg-warning-soft text-warning`,
+} as const;
+const ACTIONS =
+  "flex items-end justify-end gap-3 mw-680:flex-col mw-680:items-stretch";
+const ACTIONS_ASIDE = "flex flex-col items-stretch justify-end gap-3";
+const SEGMENTED = "flex flex-wrap gap-1";
+const SEGMENTED_LEGEND = "mb-1 w-full text-[11px] text-muted";
+const SEGMENT =
+  "min-h-[34px] min-w-12 rounded-md border border-border bg-surface px-2.5" +
+  " text-[11px] text-muted";
+const SEGMENT_ACTIVE = `${SEGMENT} border-brand bg-brand-soft font-[650] text-brand`;
+const DRAWER_SCRIM = "fixed inset-0 z-40 border-0 bg-[#0f172a52]";
+const DRAWER =
+  "fixed inset-y-0 right-0 z-41 grid w-[min(1080px,96vw)]" +
+  " grid-rows-[auto_minmax(0,1fr)] bg-surface shadow-float";
+const DRAWER_HEAD =
+  "flex items-start gap-3 border-b border-b-border-muted p-[14px_16px]";
+const DRAWER_TITLE = "text-[12px]";
+const DRAWER_TEXT = "mt-[3px] text-[9px] text-muted";
+const DRAWER_CLOSE = `${ICON_BUTTON} ml-auto`;
+const PROGRESS =
+  "flex min-w-[120px] items-center gap-2 mw-680:w-full mw-680:min-w-0";
+const PROGRESS_TRACK =
+  "h-[5px] w-[86px] overflow-hidden rounded-full bg-surface-strong" +
+  " mw-680:w-auto mw-680:flex-auto";
+const PROGRESS_FILL = "block h-full rounded-[inherit] bg-brand";
+const PROGRESS_TEXT = "font-mono text-[9px]";
+const ROW_COMPLETE = "text-[9px] text-subtle";
 
 export function PositionInvitations({
   positionId,
@@ -353,14 +596,16 @@ export function PositionInvitations({
     }
   }
 
+  const entry = workspace ? ENTRY.card : ENTRY.table;
+
   return (
-    <div className={`position-invitations ${embedded ? "is-embedded" : ""}`}>
+    <div>
       {!embedded ? (
-        <header className="page-header position-invitations__header">
+        <header className={PAGE_HEADER}>
           <div>
-            <p className="page-eyebrow">Position applicants</p>
-            <h1>지원자 관리</h1>
-            <p>
+            <p className={PAGE_EYEBROW_IN_HEADER}>Position applicants</p>
+            <h1 className={PAGE_HEADER_TITLE}>지원자 관리</h1>
+            <p className={PAGE_HEADER_TEXT}>
               {positionName ?? "선택한 포지션"}의 지원자와 면접 상태를
               관리합니다.
             </p>
@@ -368,16 +613,14 @@ export function PositionInvitations({
         </header>
       ) : null}
 
-      <div
-        className={`${embedded ? "" : "page-content"} position-invitations__content`}
-      >
+      <div className={CONTENT}>
         {notice ? (
-          <p className="form-alert is-success" role="status">
+          <p className={formAlertClass("panel", "success")} role="status">
             {notice}
           </p>
         ) : null}
         {error ? (
-          <p className="form-alert" role="alert">
+          <p className={formAlertClass("panel")} role="alert">
             {error}
           </p>
         ) : null}
@@ -385,22 +628,33 @@ export function PositionInvitations({
         <div
           className={
             workspace
-              ? `invitation-workspace ${invitePanelOpen ? "" : "is-collapsed"}`
-              : "position-invitations__layout"
+              ? `${WORKSPACE} ${
+                  invitePanelOpen
+                    ? WORKSPACE_COLUMNS
+                    : WORKSPACE_COLUMNS_COLLAPSED
+                }`
+              : LAYOUT
           }
         >
           {view !== "invite" ? (
-            <section className="panel invitation-roster">
-              <header className="section-header invitation-roster__header">
+            <section className={`${CARD} min-w-0`}>
+              <header className={CARD_HEADER}>
                 <div>
-                  <h2>지원자 목록</h2>
-                  <p>지원자별 본인 확인부터 면접 완료까지 현재 상태입니다.</p>
+                  <h2 className={CARD_TITLE}>지원자 목록</h2>
+                  <p className={CARD_TEXT}>
+                    지원자별 본인 확인부터 면접 완료까지 현재 상태입니다.
+                  </p>
                 </div>
-                <div className="invitation-roster__actions">
-                  <label className="search-field">
-                    <Search size={15} aria-hidden="true" />
+                <div className={ROSTER_ACTIONS}>
+                  <label className={SEARCH_FIELD}>
+                    <Search
+                      className={ROSTER_SEARCH_ICON}
+                      size={15}
+                      aria-hidden="true"
+                    />
                     <span className="sr-only">지원자 검색</span>
                     <input
+                      className={ROSTER_SEARCH_INPUT}
                       aria-label="지원자 검색"
                       type="search"
                       value={query}
@@ -409,7 +663,7 @@ export function PositionInvitations({
                     />
                   </label>
                   <button
-                    className="button-quiet"
+                    className={ROSTER_REFRESH}
                     type="button"
                     disabled={loading}
                     onClick={() => void loadInvitations()}
@@ -419,7 +673,7 @@ export function PositionInvitations({
                   </button>
                 </div>
               </header>
-              <div className="filter-tabs invitation-filter-tabs">
+              <div className={FILTER_TABS}>
                 {(
                   [
                     ["all", "전체", metrics.total],
@@ -432,17 +686,17 @@ export function PositionInvitations({
                   <button
                     key={value}
                     type="button"
-                    className={filter === value ? "is-active" : ""}
+                    className={FILTER_TAB}
                     aria-pressed={filter === value}
                     onClick={() => setFilter(value)}
                   >
                     {label}
-                    <span>{count}</span>
+                    <span className={FILTER_TAB_COUNT}>{count}</span>
                   </button>
                 ))}
               </div>
               {loading ? (
-                <div className="async-state" role="status">
+                <div className={ASYNC_STATE} role="status">
                   지원자 목록을 불러오는 중입니다.
                 </div>
               ) : filteredInvitations.length ? (
@@ -452,11 +706,11 @@ export function PositionInvitations({
                   onReissue={(applicant) => void createInvitations([applicant])}
                 />
               ) : (
-                <div className="empty-state">
+                <div className={ASYNC_STATE}>
                   <Users size={24} aria-hidden="true" />
-                  <div>
+                  <div className={EMPTY_COPY}>
                     <strong>아직 지원자가 없습니다.</strong>
-                    <p>
+                    <p className={EMPTY_TEXT}>
                       {view === "roster"
                         ? "지원자 초대 도구에서 첫 지원자를 등록하세요."
                         : "초대 관리 패널에서 첫 지원자를 등록하세요."}
@@ -469,33 +723,37 @@ export function PositionInvitations({
 
           {workspace && !invitePanelOpen ? (
             <button
-              className="invitation-workspace__expand"
+              className={EXPAND}
               type="button"
               aria-label="초대 패널 펼치기"
               title="초대 패널 펼치기"
               onClick={() => setInvitePanelOpen(true)}
             >
               <PanelRightOpen size={17} aria-hidden="true" />
-              <span>지원자 초대</span>
+              <span className={EXPAND_LABEL}>지원자 초대</span>
             </button>
           ) : null}
 
           {view !== "roster" && (!workspace || invitePanelOpen) ? (
-            <aside
-              className={workspace ? "invitation-workspace__aside" : undefined}
-            >
-              <section className="panel invitation-composer">
-                <header className="section-header invitation-composer__header">
+            <aside className={workspace ? ASIDE : undefined}>
+              <section className={CARD}>
+                <header className={workspace ? CARD_HEADER_ASIDE : CARD_HEADER}>
                   <div>
-                    <h2>{workspace ? "지원자 초대 관리" : "지원자 초대"}</h2>
-                    <p>
+                    <h2 className={CARD_TITLE}>
+                      {workspace ? "지원자 초대 관리" : "지원자 초대"}
+                    </h2>
+                    <p className={CARD_TEXT}>
                       이름과 이메일을 확인한 뒤 유효한 행만 일괄 발송합니다.
                     </p>
                   </div>
-                  <div className="invitation-import-actions">
+                  <div
+                    className={
+                      workspace ? IMPORT_ACTIONS_ASIDE : IMPORT_ACTIONS
+                    }
+                  >
                     {workspace ? (
                       <button
-                        className="icon-button invitation-panel-toggle"
+                        className={`${ICON_BUTTON} h-9 w-8`}
                         type="button"
                         title="초대 패널 접기"
                         aria-label="초대 패널 접기"
@@ -504,7 +762,11 @@ export function PositionInvitations({
                         <PanelRightClose size={16} aria-hidden="true" />
                       </button>
                     ) : null}
-                    <label className="button-secondary invitation-file-button">
+                    <label
+                      className={`${IMPORT_BUTTON} relative cursor-pointer ${
+                        workspace ? "w-full min-w-0" : "mw-680:w-full"
+                      }`}
+                    >
                       <FileUp size={14} aria-hidden="true" />
                       CSV/JSON 가져오기
                       <input
@@ -520,7 +782,9 @@ export function PositionInvitations({
                       />
                     </label>
                     <button
-                      className="button-secondary"
+                      className={`${IMPORT_BUTTON} ${
+                        workspace ? "w-full min-w-0" : "mw-680:w-full"
+                      }`}
                       type="button"
                       disabled={draftRows.length >= 1000}
                       aria-label="지원자 행 추가"
@@ -528,28 +792,46 @@ export function PositionInvitations({
                     >
                       <Plus size={14} aria-hidden="true" />행 추가
                     </button>
-                    <span className="invitation-limit">최대 1,000명</span>
+                    <span
+                      className={`${IMPORT_LIMIT} ${
+                        workspace ? "col-[1/-1]" : "mw-680:col-[1/-1]"
+                      }`}
+                    >
+                      최대 1,000명
+                    </span>
                   </div>
                 </header>
-                <div className="invitation-entry-table-wrap">
-                  <table className="invitation-entry-table">
-                    <thead>
+                <div className={entry.wrap}>
+                  <table className={entry.table}>
+                    <thead className={entry.head}>
                       <tr>
-                        <th scope="col">No.</th>
-                        <th scope="col">이름</th>
-                        <th scope="col">이메일</th>
-                        <th scope="col">검증 결과</th>
-                        <th scope="col">
+                        <th className={ENTRY_HEAD_CELL_AT[0]} scope="col">
+                          No.
+                        </th>
+                        <th className={ENTRY_HEAD_CELL_AT[1]} scope="col">
+                          이름
+                        </th>
+                        <th className={ENTRY_HEAD_CELL_AT[2]} scope="col">
+                          이메일
+                        </th>
+                        <th className={ENTRY_HEAD_CELL_AT[3]} scope="col">
+                          검증 결과
+                        </th>
+                        <th className={ENTRY_HEAD_CELL_AT[4]} scope="col">
                           <span className="sr-only">행 삭제</span>
                         </th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className={entry.body}>
                       {validatedDrafts.map((row, index) => (
-                        <tr key={row.id} className={`is-${row.state}`}>
-                          <td data-label="번호">{index + 1}</td>
-                          <td data-label="이름">
+                        <tr
+                          key={row.id}
+                          className={`${entry.row} ${entry.tone[row.state]}`}
+                        >
+                          <td className={entry.cells[0]}>{index + 1}</td>
+                          <td className={entry.cells[1]}>
                             <input
+                              className={ENTRY_INPUT}
                               aria-label={`지원자 ${index + 1} 이름`}
                               value={row.displayName}
                               placeholder="홍길동"
@@ -563,8 +845,9 @@ export function PositionInvitations({
                               }
                             />
                           </td>
-                          <td data-label="이메일">
+                          <td className={entry.cells[2]}>
                             <input
+                              className={ENTRY_INPUT}
                               aria-label={`지원자 ${index + 1} 이메일`}
                               value={row.email}
                               placeholder="hong@example.com"
@@ -579,12 +862,12 @@ export function PositionInvitations({
                               }
                             />
                           </td>
-                          <td data-label="검증 결과">
+                          <td className={entry.cells[3]}>
                             <DraftValidationStatus row={row} />
                           </td>
-                          <td data-label="행 삭제">
+                          <td className={entry.cells[4]}>
                             <button
-                              className="icon-button invitation-row-remove"
+                              className={ENTRY_REMOVE}
                               type="button"
                               title="행 삭제"
                               aria-label={`지원자 ${index + 1} 행 삭제`}
@@ -599,9 +882,9 @@ export function PositionInvitations({
                   </table>
                 </div>
                 {templateApi ? (
-                  <div className="invitation-mailcard">
-                    <div className="invitation-mailcard__top">
-                      <span className="invitation-mailcard__logo">
+                  <div className={MAILCARD}>
+                    <div className={MAILCARD_TOP}>
+                      <span className={MAILCARD_LOGO}>
                         {emailTemplate?.logoUrl ? (
                           <img
                             src={emailTemplate.logoUrl}
@@ -609,26 +892,26 @@ export function PositionInvitations({
                             height={22}
                           />
                         ) : (
-                          <em>로고 없음</em>
+                          <em className={MAILCARD_LOGO_EMPTY}>로고 없음</em>
                         )}
                       </span>
-                      <div>
-                        <small>발송될 메일</small>
-                        <strong>
+                      <div className="min-w-0">
+                        <small className={MAILCARD_LABEL}>발송될 메일</small>
+                        <strong className={MAILCARD_SUBJECT}>
                           {emailTemplate?.subject ??
                             "초대 메일 내용을 불러오는 중"}
                         </strong>
                       </div>
                     </div>
-                    <div className="invitation-mailcard__foot">
+                    <div className={MAILCARD_FOOT}>
                       {emailTemplate ? (
                         <>
                           <i
-                            className="invitation-mailcard__dot"
+                            className={MAILCARD_DOT}
                             style={{ background: emailTemplate.brandColor }}
                             aria-hidden="true"
                           />
-                          <small>
+                          <small className={MAILCARD_FOOT_TEXT}>
                             {emailTemplate.isPositionOverride
                               ? "이 포지션 전용 문구"
                               : "전사 기본 문구"}
@@ -636,7 +919,7 @@ export function PositionInvitations({
                         </>
                       ) : null}
                       <button
-                        className="button-quiet invitation-mailcard__edit"
+                        className={MAILCARD_EDIT}
                         type="button"
                         onClick={() => setTemplateOpen(true)}
                       >
@@ -647,16 +930,21 @@ export function PositionInvitations({
                   </div>
                 ) : null}
 
-                <div className="invitation-composer__footer">
-                  <div className="invitation-validation" aria-live="polite">
+                <div className={workspace ? FOOTER_ASIDE : FOOTER}>
+                  <div
+                    className={workspace ? VALIDATION_ASIDE : VALIDATION}
+                    aria-live="polite"
+                  >
                     {validationSummary.hasInput ? (
                       <>
-                        <span className="is-valid">
+                        <span className={VALIDATION_CHIP_TONE.valid}>
                           발송 가능 {validationSummary.valid}명
                         </span>
                         <span
                           className={
-                            validationSummary.invalid ? "is-warning" : undefined
+                            validationSummary.invalid
+                              ? VALIDATION_CHIP_TONE.warning
+                              : VALIDATION_CHIP_TONE.neutral
                           }
                         >
                           확인 필요 {validationSummary.invalid}명
@@ -664,27 +952,33 @@ export function PositionInvitations({
                         <span
                           className={
                             validationSummary.duplicate
-                              ? "is-duplicate"
-                              : undefined
+                              ? VALIDATION_CHIP_TONE.warning
+                              : VALIDATION_CHIP_TONE.neutral
                           }
                         >
                           중복 제외 {validationSummary.duplicate}명
                         </span>
                       </>
                     ) : (
-                      <span>
+                      <span className={VALIDATION_CHIP_TONE.neutral}>
                         이름과 이메일을 입력하면 검증 결과가 표시됩니다.
                       </span>
                     )}
                   </div>
-                  <div className="invitation-composer__actions">
-                    <fieldset className="segmented-control">
-                      <legend>초대 링크 유효기간</legend>
+                  <div className={workspace ? ACTIONS_ASIDE : ACTIONS}>
+                    <fieldset
+                      className={`${SEGMENTED} ${workspace ? "w-full" : ""}`}
+                    >
+                      <legend className={SEGMENTED_LEGEND}>
+                        초대 링크 유효기간
+                      </legend>
                       {[3, 7, 14].map((days) => (
                         <button
                           key={days}
                           type="button"
-                          className={expiryDays === days ? "is-active" : ""}
+                          className={
+                            expiryDays === days ? SEGMENT_ACTIVE : SEGMENT
+                          }
                           aria-pressed={expiryDays === days}
                           onClick={() => setExpiryDays(days)}
                         >
@@ -693,7 +987,9 @@ export function PositionInvitations({
                       ))}
                     </fieldset>
                     <button
-                      className="button-primary"
+                      className={`${BUTTON_PRIMARY} ${
+                        workspace ? "w-full" : "mw-680:w-full"
+                      }`}
                       type="button"
                       disabled={!validationSummary.valid || issuing}
                       onClick={() =>
@@ -720,24 +1016,26 @@ export function PositionInvitations({
       {templateApi && templateOpen ? (
         <>
           <button
-            className="template-drawer__scrim"
+            className={DRAWER_SCRIM}
             type="button"
             aria-label="초대 메일 수정 닫기"
             onClick={() => setTemplateOpen(false)}
           />
           <div
-            className="template-drawer"
+            className={DRAWER}
             role="dialog"
             aria-modal="true"
             aria-label="초대 메일 수정"
           >
-            <header className="template-drawer__head">
+            <header className={DRAWER_HEAD}>
               <div>
-                <h2>초대 메일 수정</h2>
-                <p>{positionName ?? "이 포지션"}에 보낼 초대 메일입니다.</p>
+                <h2 className={DRAWER_TITLE}>초대 메일 수정</h2>
+                <p className={DRAWER_TEXT}>
+                  {positionName ?? "이 포지션"}에 보낼 초대 메일입니다.
+                </p>
               </div>
               <button
-                className="icon-button"
+                className={DRAWER_CLOSE}
                 type="button"
                 aria-label="초대 메일 수정 닫기"
                 onClick={() => setTemplateOpen(false)}
@@ -747,6 +1045,7 @@ export function PositionInvitations({
             </header>
             <InvitationEmailEditor
               api={templateApi}
+              layout="drawer"
               scope={{ kind: "position", positionId, positionName }}
               onSaved={setEmailTemplate}
               onClose={() => setTemplateOpen(false)}
@@ -768,20 +1067,20 @@ function InvitationTable({
   onReissue(applicant: InvitationApplicant): void;
 }) {
   return (
-    <div className="invitation-table-wrap">
-      <table className="invitation-table">
-        <thead>
+    <div className={INVITATION_TABLE_WRAP}>
+      <table className={INVITATION_TABLE}>
+        <thead className={INVITATION_TABLE_HEAD}>
           <tr>
-            <th>지원자</th>
-            <th>현재 상태</th>
-            <th>진행 단계</th>
-            <th>링크 만료</th>
-            <th>
+            <th className={INVITATION_TABLE_HEAD_CELL}>지원자</th>
+            <th className={INVITATION_TABLE_HEAD_CELL}>현재 상태</th>
+            <th className={INVITATION_TABLE_HEAD_CELL}>진행 단계</th>
+            <th className={INVITATION_TABLE_HEAD_CELL}>링크 만료</th>
+            <th className={INVITATION_TABLE_HEAD_CELL}>
               <span className="sr-only">작업</span>
             </th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className={INVITATION_TABLE_BODY}>
           {invitations.map((invitation) => {
             const status = invitationStatusMeta[invitation.status];
             const recruiterPhase = invitationRecruiterPhase(invitation.status);
@@ -790,55 +1089,81 @@ function InvitationTable({
               invitation.applicantEmail.split("@")[0];
             const canReissue = attentionStatuses.has(invitation.status);
             return (
-              <tr key={invitation.invitationId}>
-                <td data-label="지원자">
-                  <span className="recipient-avatar" aria-hidden="true">
+              <tr
+                className={INVITATION_TABLE_ROW}
+                key={invitation.invitationId}
+              >
+                <td className={INVITATION_TABLE_CELL_AT[0]} data-label="지원자">
+                  <span className={RECIPIENT_AVATAR} aria-hidden="true">
                     {displayName.slice(0, 1).toLocaleUpperCase("ko-KR")}
                   </span>
-                  <span>
+                  <span className={INVITATION_TABLE_IDENTITY_TEXT}>
                     <Link
-                      className="invitation-applicant-link"
+                      className={INVITATION_APPLICANT_LINK}
                       aria-label={`${displayName} 상세 보기`}
                       to={`/positions/${invitation.positionId}/applicants/${invitation.invitationId}`}
                     >
-                      <strong>{displayName}</strong>
+                      <strong className={INVITATION_TABLE_NAME}>
+                        {displayName}
+                      </strong>
                     </Link>
-                    <small>{invitation.applicantEmail}</small>
+                    <small className={INVITATION_TABLE_EMAIL}>
+                      {invitation.applicantEmail}
+                    </small>
                   </span>
                 </td>
-                <td data-label="현재 상태">
-                  <span className={`invitation-status is-${status.tone}`}>
+                <td
+                  className={INVITATION_TABLE_CELL_AT[1]}
+                  data-label="현재 상태"
+                >
+                  <span
+                    className={`${INVITATION_STATUS} ${invitationTone(
+                      status.tone,
+                    )}`}
+                  >
                     {status.label}
                   </span>
                 </td>
-                <td data-label="진행 단계">
+                <td
+                  className={INVITATION_TABLE_CELL_AT[2]}
+                  data-label="진행 단계"
+                >
                   <div
-                    className="recipient-progress"
+                    className={PROGRESS}
                     aria-label={
                       recruiterPhase
                         ? `전체 4단계 중 ${recruiterPhase}단계`
                         : "채용 진행 단계 없음"
                     }
                   >
-                    <span>
+                    <span className={PROGRESS_TRACK}>
                       <i
+                        className={PROGRESS_FILL}
                         style={{
                           width: `${(recruiterPhase / recruiterPhaseCount) * 100}%`,
                         }}
                       />
                     </span>
-                    <small>{recruiterPhase || "-"} / 4</small>
+                    <small className={PROGRESS_TEXT}>
+                      {recruiterPhase || "-"} / 4
+                    </small>
                   </div>
                 </td>
-                <td data-label="링크 만료">
-                  <time dateTime={invitation.expiresAt}>
+                <td
+                  className={INVITATION_TABLE_CELL_AT[3]}
+                  data-label="링크 만료"
+                >
+                  <time
+                    className={PROGRESS_TEXT}
+                    dateTime={invitation.expiresAt}
+                  >
                     {formatDate(invitation.expiresAt)}
                   </time>
                 </td>
-                <td data-label="작업">
+                <td className={INVITATION_TABLE_CELL_AT[4]} data-label="작업">
                   {canReissue ? (
                     <button
-                      className="button-quiet"
+                      className={BUTTON_QUIET}
                       type="button"
                       aria-label={`${displayName} 다시 초대`}
                       disabled={issuing}
@@ -852,7 +1177,7 @@ function InvitationTable({
                       다시 초대
                     </button>
                   ) : (
-                    <span className="invitation-row-complete">정상</span>
+                    <span className={ROW_COMPLETE}>정상</span>
                   )}
                 </td>
               </tr>
@@ -867,7 +1192,7 @@ function InvitationTable({
 function DraftValidationStatus({ row }: { row: ValidatedInvitationDraft }) {
   if (row.state === "valid") {
     return (
-      <span className="draft-validation is-valid">
+      <span className={DRAFT_VALIDATION_TONE.valid}>
         <CheckCircle2 size={13} aria-hidden="true" />
         발송 가능
       </span>
@@ -875,7 +1200,7 @@ function DraftValidationStatus({ row }: { row: ValidatedInvitationDraft }) {
   }
   if (row.state === "invalid") {
     return (
-      <span className="draft-validation is-invalid">
+      <span className={DRAFT_VALIDATION_TONE.invalid}>
         <CircleAlert size={13} aria-hidden="true" />
         {row.message}
       </span>
@@ -883,13 +1208,13 @@ function DraftValidationStatus({ row }: { row: ValidatedInvitationDraft }) {
   }
   if (row.state === "duplicate") {
     return (
-      <span className="draft-validation is-duplicate">
+      <span className={DRAFT_VALIDATION_TONE.duplicate}>
         <X size={13} aria-hidden="true" />
         {row.message}
       </span>
     );
   }
-  return <span className="draft-validation is-empty">입력 대기</span>;
+  return <span className={DRAFT_VALIDATION_TONE.empty}>입력 대기</span>;
 }
 
 function createDraftRow(displayName = "", email = ""): InvitationDraftRow {
