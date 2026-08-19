@@ -173,6 +173,24 @@ def check_exclusive_breakpoints() -> list[str]:
     return problems
 
 
+def check_variant_order() -> list[str]:
+    """`@custom-variant` blocks emit in declaration order, so that order is the cascade.
+
+    Tailwind sorts its built-in `max-*` variants descending; ours it does not touch. The
+    stylesheets are desktop-first, so at 600px — where both `mw-780:` and `mw-620:` match —
+    the narrower query has to be emitted last to win. Declaring these ascending silently
+    inverts every pair of breakpoints that set the same property.
+    """
+    theme = ROOT / "packages" / "design-system" / "theme.css"
+    widths = [int(w) for w in re.findall(r"@custom-variant mw-(\d+) ", theme.read_text())]
+    return [
+        f"design-system/theme.css: mw-{widths[i]} is declared before mw-{widths[i + 1]}; "
+        f"@custom-variant order is cascade order, so these must run widest-first"
+        for i in range(len(widths) - 1)
+        if widths[i] < widths[i + 1]
+    ]
+
+
 def check_breakpoints() -> list[str]:
     """A max-width breakpoint must survive either as CSS or as a max-[Npx]: variant."""
     declared: set[str] = set()
@@ -196,6 +214,7 @@ def main() -> int:
         + check_non_utilities()
         + check_leftover_classes()
         + check_exclusive_breakpoints()
+        + check_variant_order()
     )
     soft = check_breakpoints()
 

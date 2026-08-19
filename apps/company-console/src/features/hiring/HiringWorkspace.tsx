@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 
+import {
+  formAlertClass,
+  PAGE_CONTENT,
+  PAGE_EYEBROW_IN_HEADER,
+  PAGE_HEADER,
+  PAGE_HEADER_TEXT,
+  PAGE_HEADER_TITLE,
+} from "../../app/styles/primitives";
 import { HiringProgress, workflowSteps } from "./components/HiringProgress";
 import {
   CompletionState,
@@ -39,6 +47,16 @@ const stepCopy = {
     description: "시간과 난이도를 확인한 뒤 포지션을 게시합니다.",
   },
 } as const;
+
+// `.hiring-layout` is declared three times; the merged winner is a centred single-column grid
+// capped at 920px with a 28px gap, which the 880px `minmax(0,1fr)` override cannot reach
+// because the later base declaration wins at equal specificity.
+const HIRING_LAYOUT =
+  "grid w-[min(100%,920px)] max-w-[920px] grid-cols-[minmax(0,920px)] items-start" +
+  " justify-center gap-7 mx-auto";
+
+// `.hiring-panel` cancels every visual property `.panel` sets, so only its box model remains.
+const HIRING_PANEL = "min-w-0 overflow-visible";
 
 const positionSteps: PositionHiringStep[] = ["position", "application"];
 const criteriaSteps: CriteriaHiringStep[] = ["evaluation", "interview"];
@@ -154,31 +172,35 @@ export function HiringWorkspace({
   }
 
   return (
-    <div className="hiring-workspace">
-      <header className="page-header">
+    <div className="min-w-0">
+      <header className={PAGE_HEADER}>
         <div>
-          <p className="page-eyebrow">
+          {/* `.page-eyebrow` loses colour, size and margin to `.page-header p`
+              (0,1,1 beats 0,1,0), so this renders 14px/muted, not 9px/brand. */}
+          <p className={PAGE_EYEBROW_IN_HEADER}>
             {step === "complete" ? "설정 완료" : stepCopy[step].eyebrow}
           </p>
-          <h1 ref={headingRef} tabIndex={-1}>
+          <h1 className={PAGE_HEADER_TITLE} ref={headingRef} tabIndex={-1}>
             {step === "complete" ? "채용 기준 게시 완료" : stepCopy[step].title}
           </h1>
-          <p>
+          <p className={PAGE_HEADER_TEXT}>
             {step === "complete"
               ? "이제 포지션 운영 화면에서 지원자를 초대할 수 있습니다."
               : stepCopy[step].description}
           </p>
         </div>
-        <span className="status-badge is-warning">
+        {/* `.hiring-workspace > .page-header .status-badge { display: none }` — this badge
+            has never rendered on this screen. */}
+        <span className="hidden">
           {step === "complete" ? "complete" : `step ${activeStep + 1}`}
         </span>
       </header>
 
-      <div className="page-content hiring-layout">
+      <div className={`${PAGE_CONTENT} ${HIRING_LAYOUT}`}>
         <HiringProgress step={step} />
-        <section className="panel hiring-panel">
+        <section className={HIRING_PANEL}>
           {error ? (
-            <p className="form-alert" role="alert">
+            <p className={formAlertClass()} role="alert">
               {error}
             </p>
           ) : null}

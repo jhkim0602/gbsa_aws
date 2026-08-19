@@ -48,30 +48,30 @@ The design uses 1/2/3/5/6/7/9/11/13px etc. The 4px spacing scale cannot express 
 Scale utilities are fine **only** where they resolve to the identical px. `--spacing` is
 `0.25rem`, so `<n>` = `4n` px — verified against `tailwindcss@4.3.3`:
 
-| px | utility | px | utility |
-|---|---|---|---|
-| 2 | `0.5` | 20 | `5` |
-| 4 | `1` | 24 | `6` |
-| 6 | `1.5` | 28 | `7` |
-| 8 | `2` | 32 | `8` |
-| 10 | `2.5` | 40 | `10` |
-| 12 | `3` | 48 | `12` |
-| 14 | `3.5` | | |
-| 16 | `4` | | |
+| px  | utility | px  | utility |
+| --- | ------- | --- | ------- |
+| 2   | `0.5`   | 20  | `5`     |
+| 4   | `1`     | 24  | `6`     |
+| 6   | `1.5`   | 28  | `7`     |
+| 8   | `2`     | 32  | `8`     |
+| 10  | `2.5`   | 40  | `10`    |
+| 12  | `3`     | 48  | `12`    |
+| 14  | `3.5`   |     |         |
+| 16  | `4`     |     |         |
 
 Anything not a multiple of 2 (1/3/5/7/9/11/13/18/22/26/30/34/38px…) **must** be arbitrary.
 
 Radius — verified token values:
 
-| CSS | utility |
-|---|---|
-| `border-radius: 3px` | `rounded-[3px]` |
-| `border-radius: 4px` | `rounded-sm` (0.25rem) |
-| `border-radius: 6px` | `rounded-md` (0.375rem) |
-| `border-radius: 8px` | `rounded-lg` / `rounded-control` (0.5rem) |
-| `border-radius: 10px` | `rounded-panel` (0.625rem) |
-| `border-radius: 12px` | `rounded-xl` (0.75rem) |
-| `border-radius: 999px` | `rounded-full` |
+| CSS                    | utility                                   |
+| ---------------------- | ----------------------------------------- |
+| `border-radius: 3px`   | `rounded-[3px]`                           |
+| `border-radius: 4px`   | `rounded-sm` (0.25rem)                    |
+| `border-radius: 6px`   | `rounded-md` (0.375rem)                   |
+| `border-radius: 8px`   | `rounded-lg` / `rounded-control` (0.5rem) |
+| `border-radius: 10px`  | `rounded-panel` (0.625rem)                |
+| `border-radius: 12px`  | `rounded-xl` (0.75rem)                    |
+| `border-radius: 999px` | `rounded-full`                            |
 
 Weight: `font-medium`=500, `font-semibold`=600, `font-bold`=700. The design also uses
 550/650/680/750/800 — those need `font-[650]` (verified: emits `font-weight: 650`).
@@ -107,14 +107,14 @@ Raw colors with no token go in as arbitrary values, in the form the bundle alrea
 
 Verified against `node_modules/tailwindcss/preflight.css`:
 
-| Preflight rule | So you do NOT need |
-|---|---|
-| `*,::before,::after { margin:0; padding:0; border:0 solid }` | `m-0`, `p-0`, `border-0` |
-| `h1..h6 { font-size:inherit; font-weight:inherit }` | — but you **DO** need `font-bold` on a heading whose source rule declared `font-weight:700`, because the UA bold is gone |
-| `ol,ul,menu { list-style:none }` | `list-none` |
-| `img,svg,video,canvas { display:block; vertical-align:middle }` | `block` on an icon |
-| `button,input,select,textarea { font:inherit; color:inherit; background:transparent; border-radius:0 }` | `font-inherit`, `bg-transparent` on a bare button |
-| `button { appearance:button }` | — |
+| Preflight rule                                                                                          | So you do NOT need                                                                                                       |
+| ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `*,::before,::after { margin:0; padding:0; border:0 solid }`                                            | `m-0`, `p-0`, `border-0`                                                                                                 |
+| `h1..h6 { font-size:inherit; font-weight:inherit }`                                                     | — but you **DO** need `font-bold` on a heading whose source rule declared `font-weight:700`, because the UA bold is gone |
+| `ol,ul,menu { list-style:none }`                                                                        | `list-none`                                                                                                              |
+| `img,svg,video,canvas { display:block; vertical-align:middle }`                                         | `block` on an icon                                                                                                       |
+| `button,input,select,textarea { font:inherit; color:inherit; background:transparent; border-radius:0 }` | `font-inherit`, `bg-transparent` on a bare button                                                                        |
+| `button { appearance:button }`                                                                          | —                                                                                                                        |
 
 `theme.css` adds `button { cursor:pointer }` and `button:disabled { cursor:not-allowed }`, so
 those are free too. It also sets `letter-spacing: 0` on form controls; a source rule declaring
@@ -122,13 +122,13 @@ those are free too. It also sets `letter-spacing: 0` on form controls; a source 
 
 ### 4. Selector translation
 
-| CSS | Tailwind |
-|---|---|
-| `:hover:not(:disabled)` | `hover:not-disabled:` |
-| `.x.is-active` | conditional class in the template literal |
-| `.x:focus-visible` | `focus-visible:` |
-| `.x:disabled` | `disabled:` |
-| `[data-state="current"] .y` | `data-[state=current]:` or lift to a prop |
+| CSS                         | Tailwind                                       |
+| --------------------------- | ---------------------------------------------- |
+| `:hover:not(:disabled)`     | `hover:not-disabled:`                          |
+| `.x.is-active`              | conditional class in the template literal      |
+| `.x:focus-visible`          | `focus-visible:`                               |
+| `.x:disabled`               | `disabled:`                                    |
+| `[data-state="current"] .y` | `data-[state=current]:` or lift to a prop      |
 | `@media (max-width: 720px)` | `mw-720:` (**not** `max-[720px]:` — see below) |
 
 Mobile-first inversion is NOT allowed — it changes which rule wins.
@@ -143,12 +143,28 @@ widths, so the off-by-one is visible.
 design uses, so `mw-680:p-4` → `@media (max-width: 680px)`. All 24 exist:
 
 ```
-mw-108 mw-190 mw-360 mw-400 mw-480 mw-520 mw-600 mw-620 mw-640 mw-680 mw-720 mw-760
-mw-780 mw-820 mw-860 mw-880 mw-900 mw-920 mw-960 mw-980 mw-1040 mw-1050 mw-1080 mw-1180
+mw-1180 mw-1080 mw-1050 mw-1040 mw-980 mw-960 mw-920 mw-900 mw-880 mw-860 mw-820 mw-780
+mw-760 mw-720 mw-680 mw-640 mw-620 mw-600 mw-520 mw-480 mw-400 mw-360 mw-190 mw-108
 ```
 
 They compose like any variant: `mw-620:[&>svg]:hidden`, `hover:mw-680:bg-brand`,
 `mw-680:not-last:after:hidden`. The verifier fails the build on a bare `max-[Npx]:`.
+
+**That widest-first order is load-bearing — leave it alone.** Tailwind sorts its own `max-*`
+variants descending, but `@custom-variant` blocks emit in _declaration_ order, so for `mw-N:`
+the declaration order **is** the cascade order. Two of these routinely match at once: at 600px
+both `mw-780:` and `mw-620:` apply, and media queries do not raise specificity, so the one
+emitted later wins. The stylesheets are desktop-first (`720` then `620` then …), where the
+narrower query is the more specific intent, so the narrower variant must come last.
+
+Practical consequence when converting: a property that the source overrides at two
+breakpoints just works — write both, in any order in the attribute.
+
+```
+mw-780:grid-cols-3 mw-620:grid-cols-1     ← at 600px, grid-cols-1 wins. Correct.
+```
+
+The verifier fails the build if the declarations are ever reordered ascending.
 
 ### 5. What stays in CSS
 
@@ -188,7 +204,7 @@ Winners below were read off the **built bundle** at `ba64585`, not the source or
 redefines a primitive, **the feature file wins** — the reverse of what source order suggests.
 
 > **These strings are company-console only.** The applicant app's `index.css` does not import
-> `components.css`, so a class of the same name there is a *different* rule. See
+> `components.css`, so a class of the same name there is a _different_ rule. See
 > "Applicant-app primitives" below before converting anything under `apps/applicant-interview`.
 
 ```
@@ -266,8 +282,8 @@ empty-state       (their `p` children: m-0 text-[12px])
 `shell.css`, `access.css`, `interview.css`. **No `components.css`.** So in the applicant app:
 
 - `.button-primary` / `.button-secondary` declare **color only** (interview.css 203–212). All
-  their geometry comes from the *parent* selector `.interview-actions button, .reconnect-banner
-  button`, which is where min-height/padding/radius/size/weight live. Converting a button inside
+  their geometry comes from the _parent_ selector `.interview-actions button, .reconnect-banner
+button`, which is where min-height/padding/radius/size/weight live. Converting a button inside
   those containers means emitting both halves onto the element:
 
   ```
@@ -278,6 +294,7 @@ empty-state       (their `p` children: m-0 text-[12px])
   + button-primary  →  border-brand bg-brand text-white
   + button-secondary→  bg-surface text-ink
   ```
+
   `--applicant-control-height` is `44px` → `min-h-11`. `--applicant-radius` is `--radius-panel`
   → `rounded-panel`. `font: inherit` and `cursor: pointer` are Preflight/theme freebies.
   `border-color: ... !important` on `.button-primary` only exists to beat the parent's
@@ -322,7 +339,7 @@ string:
 const badgeTone: Record<AssessmentState, string> = { confirmed: "...", ... }
 ```
 
-Before treating any class as dead, grep for its distinctive *fragment* (`assessment-badge`),
+Before treating any class as dead, grep for its distinctive _fragment_ (`assessment-badge`),
 not the whole name. If it is genuinely unreferenced, leave it out and say so in your report —
 do not silently drop styling something might reach.
 
