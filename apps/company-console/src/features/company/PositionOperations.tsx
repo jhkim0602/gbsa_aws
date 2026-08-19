@@ -24,6 +24,7 @@ import {
   type InvitationEmailTemplateApi,
   type PositionInvitationApi,
 } from "../hiring";
+import { STATUS_BADGE, STATUS_BADGE_TONE } from "../../app/styles/primitives";
 import { summarizeApplicantPipeline } from "./applicantSummary";
 import { statusLabel, statusTone } from "./companyFormatters";
 import { PositionDashboard } from "./PositionDashboard";
@@ -191,7 +192,9 @@ export function PositionOperations({
             <div>
               <div className="position-workspace__title-line">
                 <h1>{position.title}</h1>
-                <span className={`status-badge ${statusTone(position.status)}`}>
+                <span
+                  className={`${STATUS_BADGE} ${STATUS_BADGE_TONE[statusTone(position.status)]}`}
+                >
                   {statusLabel(position.status)}
                 </span>
               </div>

@@ -10,12 +10,13 @@ export function statusLabel(status: string) {
   );
 }
 
+/** Keys into `STATUS_BADGE_TONE`; these were the `.is-*` modifier classes. */
 export function statusTone(status: string) {
   return ["active", "open", "published"].includes(status)
-    ? "is-success"
+    ? "success"
     : status === "draft"
-      ? "is-warning"
-      : "is-neutral";
+      ? "warning"
+      : "neutral";
 }
 
 export function formatDate(value: string) {

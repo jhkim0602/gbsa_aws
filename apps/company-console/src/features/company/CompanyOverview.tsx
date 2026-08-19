@@ -9,6 +9,7 @@ import {
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
+import { STATUS_BADGE, STATUS_BADGE_TONE } from "../../app/styles/primitives";
 import {
   formatActivityTime,
   statusLabel,
@@ -340,7 +341,9 @@ function PositionStatusRow({
       <div className="dashboard-position-row__content">
         <div>
           <strong>{position.title}</strong>
-          <span className={`status-badge ${statusTone(position.status)}`}>
+          <span
+            className={`${STATUS_BADGE} ${STATUS_BADGE_TONE[statusTone(position.status)]}`}
+          >
             {statusLabel(position.status)}
           </span>
         </div>
