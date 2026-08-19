@@ -25,7 +25,7 @@ from interview_evidence.company_management.application.company_service import (
 )
 from interview_evidence.company_management.application.deletion_targets import (
     CompanyDeletionTargets,
-    InMemoryCompanyTargetDeleter,
+    CompanyTargetDeleter,
 )
 from interview_evidence.company_management.workers.invitation_email import (
     InvitationEmailHandler,
@@ -69,7 +69,7 @@ from interview_evidence.interview_engine.application.idempotency import (
     SqlAlchemyIdempotencyStore,
 )
 from interview_evidence.interview_engine.application.public import InterviewEnginePublic
-from interview_evidence.main import LocalRuntime, create_app
+from interview_evidence.main import Runtime, create_app
 from interview_evidence.reporting.adapters.playback import (
     RecordingPresigner,
     ScopedPlaybackLocator,
@@ -165,7 +165,7 @@ def create_production_runtime(
     embedder: TextEmbedder | None = None,
     speech_to_text: SpeechToText | None = None,
     text_to_speech: TextToSpeech | None = None,
-) -> LocalRuntime:
+) -> Runtime:
     applicant_access_base_url = _applicant_access_base_url(environment)
     logo_base_url = _logo_base_url(environment, applicant_access_base_url)
     aws = None
@@ -244,7 +244,7 @@ def create_production_runtime(
             lane_a.outbox,
             clock,
         ),
-        target_deleter=InMemoryCompanyTargetDeleter(
+        target_deleter=CompanyTargetDeleter(
             lane_a.repository,
             audit,
         ),
@@ -423,7 +423,7 @@ def create_production_runtime(
     )
     root.exception_handlers.update(lane_d.app.exception_handlers)
     database.install_http_transaction_middleware(root)
-    return LocalRuntime(
+    return Runtime(
         app=root,
         lanes={
             "company_management": lane_a,

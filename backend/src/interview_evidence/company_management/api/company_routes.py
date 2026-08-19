@@ -691,8 +691,7 @@ def create_company_router(
                     # rejects any unverified recipient, so one address nobody confirmed took
                     # down the whole batch. The exception type cannot be narrowed usefully --
                     # `AwsSesEmailSender` wraps everything botocore raises in
-                    # `AwsAdapterError`, but `InMemoryEmailSender` and any future adapter
-                    # raise their own, and the decision here is the same for all of them.
+                    # `AwsAdapterError`, but other adapter failures are handled the same way.
                     #
                     # The invitation is kept. Its token is valid, the reviewer can see who
                     # was not reached, and resending is a second call to this endpoint --

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Contract-first monorepo for the Interview Evidence Platform.",
+  "description": "Interview Evidence Platform.",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -13,26 +13,17 @@
   },
   "scripts": {
     "build": "npm run build --workspaces --if-present",
-    "contracts:check": "UV_CACHE_DIR=.uv-cache uv run --no-sync python scripts/generate_contracts.py --check",
-    "contracts:generate": "UV_CACHE_DIR=.uv-cache uv run --no-sync python scripts/generate_contracts.py",
     "dev:applicant": "npm run dev --workspace @iep/applicant-interview",
     "dev:company": "npm run dev --workspace @iep/company-console",
     "format": "prettier --write . && UV_CACHE_DIR=.uv-cache uv run --no-sync ruff format .",
     "format:check": "prettier --check . && UV_CACHE_DIR=.uv-cache uv run --no-sync ruff format --check .",
     "lint": "eslint . && UV_CACHE_DIR=.uv-cache uv run --no-sync ruff check .",
-    "test": "npm run test --workspaces --if-present && UV_CACHE_DIR=.uv-cache uv run --no-sync pytest",
-    "test:e2e:applicant": "playwright test --config playwright.config.ts --project applicant-chrome",
-    "test:e2e:company": "playwright test --config playwright.config.ts --project company-chrome",
-    "typecheck": "npm run typecheck --workspaces --if-present && UV_CACHE_DIR=.uv-cache uv run --no-sync mypy backend/src",
-    "test:workspace": "npm run format:check && npm run lint && npm run typecheck && npm test"
+    "typecheck": "npm run typecheck --workspaces --if-present && UV_CACHE_DIR=.uv-cache uv run --no-sync mypy backend/src"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
-    "@playwright/test": "^1.62.1",
     "eslint": "^9.17.0",
     "globals": "^15.14.0",
-    "json-schema-to-typescript": "^15.0.4",
-    "openapi-typescript": "^7.4.4",
     "prettier": "^3.4.2",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.0"

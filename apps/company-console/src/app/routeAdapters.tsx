@@ -679,7 +679,13 @@ export function CompanyAuthCallbackRoute() {
     void completeCompanyLogin(AUTH_CONFIG, search, {
       sessionStorage,
       localStorage,
-      fetcher: fetch,
+      // Bound, because `completeCompanyLogin` calls this as `dependencies.fetcher(...)`,
+      // which would set `this` to the dependencies object -- and `fetch` throws
+      // `TypeError: Illegal invocation` unless `this` is the window. Passing it bare made
+      // every hosted login fail at the token exchange with "로그인 응답을 확인할 수 없습니다",
+      // indistinguishable from a rejected credential. The unit suite injects a mock, which
+      // ignores `this`, so only a browser can catch it.
+      fetcher: (...args) => fetch(...args),
     })
       .then(() => navigate("/hiring", { replace: true }))
       .catch(() => setError(true));

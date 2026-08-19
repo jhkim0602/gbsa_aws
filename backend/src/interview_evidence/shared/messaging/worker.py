@@ -39,35 +39,6 @@ class ProcessedMessageStore(Protocol):
     def record(self, message: ProcessedMessage) -> None: ...
 
 
-class InMemoryProcessedMessageStore:
-    def __init__(self) -> None:
-        self._messages: dict[tuple[str, UUID, int], ProcessedMessage] = {}
-
-    def contains(
-        self,
-        *,
-        consumer_name: str,
-        event_id: UUID,
-        event_version: int,
-    ) -> bool:
-        return (consumer_name, event_id, event_version) in self._messages
-
-    def get(
-        self,
-        *,
-        consumer_name: str,
-        event_id: UUID,
-        event_version: int,
-    ) -> ProcessedMessage:
-        return self._messages[(consumer_name, event_id, event_version)]
-
-    def record(self, message: ProcessedMessage) -> None:
-        self._messages.setdefault(
-            (message.consumer_name, message.event_id, message.event_version),
-            message,
-        )
-
-
 class OutboxDispatcher:
     def __init__(
         self,

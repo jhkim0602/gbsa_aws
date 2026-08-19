@@ -15,18 +15,16 @@ from interview_evidence.integration.interview_reporting import (
     InterviewReportingBoundary,
 )
 from interview_evidence.interview_engine.application.public import InterviewEnginePublic
-from interview_evidence.main import create_local_runtime
 from interview_evidence.reporting.api import LaneDRuntime
 from interview_evidence.reporting.application.assessment_service import CriterionAssessor
 from interview_evidence.reporting.application.deletion_service import DeletionService
 from interview_evidence.reporting.application.evidence_service import EvidenceService
-from interview_evidence.shared.aws_clients.ports import ConsumableQueue, InMemoryQueue
+from interview_evidence.shared.aws_clients.ports import ConsumableQueue
 from interview_evidence.shared.database import RequestScopedDatabase
-from interview_evidence.shared.ids import Clock, SystemClock, new_uuid7
+from interview_evidence.shared.ids import Clock, new_uuid7
 from interview_evidence.shared.messaging.outbox import Outbox, OutboxEvent
 from interview_evidence.shared.messaging.worker import (
     EventHandler,
-    InMemoryProcessedMessageStore,
     MessageConsumer,
     OutboxDispatcher,
     ProcessedMessageStore,
@@ -51,7 +49,6 @@ from interview_evidence.workers.analysis.pipeline import SubmissionAnalysisPipel
 from interview_evidence.workers.reporting.report import CriterionInput, ReportGenerator
 
 EVENT_QUEUE_ROUTING = {
-    "system.parity_probe": "analysis",
     "invitation.consent_completed": "analysis",
     "submission.analysis_requested": "analysis",
     "submission.analysis_completed": "analysis",
@@ -67,15 +64,6 @@ EVENT_QUEUE_ROUTING = {
     "deletion.target_verified": "deletion",
     "retention.expired": "deletion",
 }
-
-
-class ParityProbeEventHandler:
-    def __call__(self, context: TenantContext, event: OutboxEvent) -> object:
-        context.assert_company(event.company_id)
-        probe_id = UUID(str(event.payload["probe_id"]))
-        if event.aggregate_type != "system_parity" or probe_id != event.aggregate_id:
-            raise ValueError("invalid parity probe event")
-        return {"probe_id": str(probe_id), "status": "processed"}
 
 
 @dataclass(slots=True)
@@ -361,51 +349,11 @@ def create_worker_runtime(
     )
 
 
-def create_local_worker_runtime() -> WorkerRuntime:
-    runtime = create_local_runtime()
-    outbox = cast(Outbox, runtime.resources["outbox"])
-    queues = {name: InMemoryQueue() for name in ("analysis", "media", "reporting", "deletion")}
-    lane_b = runtime.lanes["submission_analysis"]
-    analysis_handler = runtime.worker_handlers["submission_analysis"]
-    if not isinstance(lane_b, LaneBRuntime) or not isinstance(
-        analysis_handler,
-        AnalysisJobHandler,
-    ):
-        raise TypeError("local analysis worker is not configured")
-    return create_worker_runtime(
-        outbox=outbox,
-        queues=queues,
-        processed=InMemoryProcessedMessageStore(),
-        handlers={
-            "system.parity_probe": ParityProbeEventHandler(),
-            "submission.analysis_requested": AnalysisRequestedEventHandler(
-                lane_b,
-                analysis_handler,
-            ),
-        },
-        clock=SystemClock(),
-    )
-
-
 def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRuntime:
+    from interview_evidence.runtime.aws import create_aws_runtime_dependencies
     from interview_evidence.runtime.production import create_production_runtime
 
-    if (
-        environment.get(
-            "APP_ENVIRONMENT",
-            environment.get("APP_ENV"),
-        )
-        == "local-production"
-    ):
-        from interview_evidence.runtime.local_production import (
-            create_local_aws_runtime_dependencies,
-        )
-
-        aws = create_local_aws_runtime_dependencies(environment)
-    else:
-        from interview_evidence.runtime.aws import create_aws_runtime_dependencies
-
-        aws = create_aws_runtime_dependencies(environment)
+    aws = create_aws_runtime_dependencies(environment)
     database = RequestScopedDatabase(aws.database_url)
     runtime = create_production_runtime(
         environment,
@@ -469,7 +417,6 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
         queues=aws.queues,
         processed=SQLProcessedMessageStore(database.session),
         handlers={
-            "system.parity_probe": ParityProbeEventHandler(),
             "submission.analysis_requested": AnalysisRequestedEventHandler(
                 lane_b,
                 analysis_handler,
@@ -514,14 +461,8 @@ def create_environment_worker_runtime(
     environment: Mapping[str, str] | None = None,
 ) -> WorkerRuntime:
     active_environment = dict(os.environ if environment is None else environment)
-    application_environment = active_environment.get(
-        "APP_ENVIRONMENT",
-        active_environment.get("APP_ENV", "local"),
-    )
     # A no-op unless the task definition set an OTLP endpoint, which it does only when the ADOT
     # sidecar is running. Installed here rather than in `worker.main` so that every entry point
     # into a worker runtime gets it.
     configure_worker_tracing(active_environment)
-    if application_environment == "local":
-        return create_local_worker_runtime()
     return create_production_worker_runtime(active_environment)

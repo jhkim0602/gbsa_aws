@@ -10,10 +10,7 @@ from interview_evidence.company_management.adapters.applicant_session import (
 )
 from interview_evidence.company_management.domain.hiring import Invitation
 from interview_evidence.company_management.repositories.postgres import CompanyRepository
-from interview_evidence.shared.idempotency import (
-    InMemoryResourceIdempotencyStore,
-    ResourceIdempotencyStore,
-)
+from interview_evidence.shared.idempotency import ResourceIdempotencyStore
 from interview_evidence.shared.ids import Clock, new_uuid7
 from interview_evidence.shared.tenant import TenantContext
 
@@ -36,12 +33,12 @@ class HiringService:
         repository: CompanyRepository,
         sessions: ApplicantSessionAdapter,
         clock: Clock,
-        idempotency: ResourceIdempotencyStore | None = None,
+        idempotency: ResourceIdempotencyStore,
     ) -> None:
         self._repository = repository
         self._sessions = sessions
         self._clock = clock
-        self._idempotency = idempotency or InMemoryResourceIdempotencyStore()
+        self._idempotency = idempotency
 
     def issue_invitations(
         self,

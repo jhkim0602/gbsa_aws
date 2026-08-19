@@ -55,45 +55,6 @@ def _request_digest(payload: Mapping[str, Any]) -> str:
     return sha256(encoded.encode("utf-8")).hexdigest()
 
 
-class InMemoryIdempotencyStore:
-    def __init__(self) -> None:
-        self._records: dict[tuple[UUID, UUID, str, str], IdempotencyRecord] = {}
-
-    def execute(
-        self,
-        context: TenantContext,
-        *,
-        session_id: UUID,
-        operation: str,
-        idempotency_key: str,
-        request_payload: Mapping[str, Any],
-        execute: Callable[[], ResultT],
-        occurred_at: datetime,
-    ) -> ResultT:
-        tenant = require_tenant_context(context)
-        if len(idempotency_key) < 8:
-            raise ValueError("idempotency key is too short")
-        scope = (tenant.company_id, session_id, operation, idempotency_key)
-        digest = _request_digest(request_payload)
-        existing = self._records.get(scope)
-        if existing is not None:
-            if existing.request_digest != digest:
-                raise IdempotencyConflict("idempotency key was used with a different request")
-            return cast(ResultT, deepcopy(existing.result))
-
-        result = execute()
-        self._records[scope] = IdempotencyRecord(
-            company_id=tenant.company_id,
-            session_id=session_id,
-            operation=operation,
-            idempotency_key=idempotency_key,
-            request_digest=digest,
-            result=deepcopy(result),
-            occurred_at=occurred_at,
-        )
-        return result
-
-
 class InterviewCommandResultRow(Base):
     __tablename__ = "interview_command_results"
 

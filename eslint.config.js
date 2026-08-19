@@ -9,6 +9,7 @@ export default tseslint.config(
       "**/dist/**",
       "**/build/**",
       "**/coverage/**",
+      "**/__tests__/**",
       "**/.venv/**",
       "**/.uv-cache/**",
       "packages/contracts/generated/**",

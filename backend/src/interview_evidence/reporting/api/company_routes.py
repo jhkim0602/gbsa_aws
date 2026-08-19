@@ -26,7 +26,6 @@ from interview_evidence.reporting.domain.deletion import DeletionManifest
 from interview_evidence.reporting.domain.report import Report
 from interview_evidence.reporting.domain.review import Decision, HumanReview, ReviewType
 from interview_evidence.reporting.repositories.postgres import (
-    InMemoryReportingRepository,
     ReportingRepository,
     TenantScopedReportingNotFound,
 )
@@ -457,13 +456,13 @@ def create_company_router(
 def create_lane_d_runtime(
     *,
     principal_provider: PrincipalProvider,
-    repository: ReportingRepository | None = None,
+    repository: ReportingRepository,
     audit: AuditAppender,
     clock: Clock,
     deletion_service: DeletionService | None = None,
     rationale_provider: QuestionRationaleProvider | None = None,
 ) -> LaneDRuntime:
-    active_repository = repository or InMemoryReportingRepository()
+    active_repository = repository
     app = FastAPI(title="Interview Evidence Reporting")
 
     @app.exception_handler(TenantScopedReportingNotFound)
@@ -495,7 +494,7 @@ def create_lane_d_runtime(
 def create_lane_d_app(
     *,
     principal_provider: PrincipalProvider,
-    repository: ReportingRepository | None = None,
+    repository: ReportingRepository,
     audit: AuditAppender,
     clock: Clock,
     rationale_provider: QuestionRationaleProvider | None = None,

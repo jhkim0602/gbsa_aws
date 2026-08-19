@@ -5,13 +5,9 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from interview_evidence.shared.aws_clients.ports import ObjectStorage
-from interview_evidence.shared.ids import Clock, SystemClock
+from interview_evidence.shared.ids import Clock
 from interview_evidence.shared.tenant import TenantContext
-from interview_evidence.shared.uploads import (
-    InMemoryUploadIntentStore,
-    StoredUploadIntent,
-    UploadIntentStore,
-)
+from interview_evidence.shared.uploads import StoredUploadIntent, UploadIntentStore
 
 
 class UploadIntentNotFound(PermissionError):
@@ -41,14 +37,14 @@ class ScopedSubmissionStorage:
         self,
         storage: ObjectStorage,
         *,
-        clock: Clock | None = None,
+        clock: Clock,
         upload_ttl: timedelta = timedelta(minutes=15),
-        intent_store: UploadIntentStore | None = None,
+        intent_store: UploadIntentStore,
     ) -> None:
         self._storage = storage
-        self._clock = clock or SystemClock()
+        self._clock = clock
         self._upload_ttl = upload_ttl
-        self._intent_store = intent_store or InMemoryUploadIntentStore()
+        self._intent_store = intent_store
 
     def create_upload_intent(
         self,

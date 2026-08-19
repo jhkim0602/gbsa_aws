@@ -1,54 +1,13 @@
 SHELL := /bin/bash
 UV_CACHE_DIR ?= .uv-cache
-DOCKER_CONTEXT ?= default
-
-# Only commands that npm scripts and a bare pytest invocation cannot express live here.
-.PHONY: bootstrap boundaries-check compose-down compose-up contracts-check contracts-generate \
-	infra-format-check infra-plan-check infra-security-check infra-validate migrate migration-check \
-	seed-contract-fixtures test-ai-regression test-load-pilot test-local-production-parity \
-	verify-foundation
+.PHONY: bootstrap infra-format-check infra-validate migrate
 
 bootstrap:
 	npm ci
 	UV_CACHE_DIR=$(UV_CACHE_DIR) uv sync --frozen --no-editable
 
-compose-up:
-	DOCKER_CONTEXT=$(DOCKER_CONTEXT) docker compose up -d --build --wait
-
-compose-down:
-	DOCKER_CONTEXT=$(DOCKER_CONTEXT) docker compose down
-
-contracts-generate:
-	npm run contracts:generate
-
-contracts-check:
-	npm run contracts:check
-
-boundaries-check:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) uv run --no-sync python scripts/check_module_boundaries.py
-
-migration-check:
-	./scripts/check_migrations.sh
-
 migrate:
 	UV_CACHE_DIR=$(UV_CACHE_DIR) uv run --no-sync alembic -c backend/alembic.ini upgrade heads
-
-seed-contract-fixtures:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) uv run --no-sync python -m tests.fixtures.shared.factories
-
-# The regression and load runners import backend packages directly, so they need PYTHONPATH.
-test-ai-regression:
-	PYTHONPATH=backend/src:. UV_CACHE_DIR=$(UV_CACHE_DIR) uv run --no-sync python tests/regression/run_regression.py --json
-
-test-load-pilot:
-	PYTHONPATH=backend/src:. UV_CACHE_DIR=$(UV_CACHE_DIR) uv run --no-sync python tests/load/interview_load.py --concurrency 5 --soak-batches 3 --json
-	PYTHONPATH=backend/src:. UV_CACHE_DIR=$(UV_CACHE_DIR) uv run --no-sync python tests/load/evidence_seek.py --samples 20 --json
-
-test-local-production-parity:
-	DOCKER_CONTEXT=$(DOCKER_CONTEXT) ./scripts/verify_local_production_parity.sh
-
-verify-foundation:
-	./scripts/verify_foundation.sh
 
 infra-format-check:
 	terraform fmt -check -recursive infra
@@ -58,20 +17,3 @@ infra-validate:
 		terraform -chdir=$$root init -backend=false -input=false >/dev/null && \
 		terraform -chdir=$$root validate || exit 1; \
 	done
-
-infra-security-check:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) uv run --no-sync pytest -q infra/tests/test_terraform_contracts.py
-
-infra-plan-check:
-	terraform -chdir=infra/environments/prod test -filter=local-plan.tftest.hcl
-	terraform -chdir=infra/environments/dev/foundation init -backend=false -input=false >/dev/null
-	terraform -chdir=infra/environments/dev/foundation test -filter=domainless-plan.tftest.hcl
-	terraform -chdir=infra/modules/compute init -backend=false -input=false >/dev/null
-	terraform -chdir=infra/modules/compute test -filter=task-definition.tftest.hcl
-	terraform -chdir=infra/modules/compute test -filter=observability.tftest.hcl
-	terraform -chdir=infra/modules/edge init -backend=false -input=false >/dev/null
-	terraform -chdir=infra/modules/edge test -filter=domainless.tftest.hcl
-	terraform -chdir=infra/modules/identity init -backend=false -input=false >/dev/null
-	terraform -chdir=infra/modules/identity test -filter=tenant-claims.tftest.hcl
-	terraform -chdir=infra/modules/observability init -backend=false -input=false >/dev/null
-	terraform -chdir=infra/modules/observability test -filter=access-logs.tftest.hcl

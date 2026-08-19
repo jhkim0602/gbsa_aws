@@ -43,6 +43,17 @@ run "pool_carries_the_tenant_claims_the_api_resolves_a_principal_from" {
     error_message = "the app client must be allowed to read both tenant attributes"
   }
 
+  # The scope GetUser itself requires, which is one layer further down again: the response
+  # can carry both attributes and the call still fail. Without it Cognito answers
+  # `NotAuthorizedException: Access Token does not have required scopes`, so a hosted login
+  # mints a token that cannot read its own user and every request is a 401 -- indistinguishable
+  # from a wrong password from the outside. The console requests the same string; a scope
+  # allowed here but not requested there yields the identical failure.
+  assert {
+    condition     = contains(aws_cognito_user_pool_client.company.allowed_oauth_scopes, "aws.cognito.signin.user.admin")
+    error_message = "the console client must allow the scope GetUser requires"
+  }
+
   # A token holder that could rewrite its own company_id would move itself into another
   # tenant, which is the one boundary the whole platform rests on.
   assert {

@@ -73,38 +73,3 @@ class Outbox(Protocol):
     def pending(self) -> tuple[OutboxEvent, ...]: ...
 
     def mark_published(self, event_id: UUID) -> None: ...
-
-
-class InMemoryOutbox:
-    def __init__(self) -> None:
-        self._events: dict[UUID, OutboxEvent] = {}
-        self._idempotency_index: dict[str, UUID] = {}
-
-    def append(self, event: OutboxEvent) -> OutboxEvent:
-        existing_id = self._idempotency_index.get(event.idempotency_key)
-        if existing_id is not None:
-            return self._events[existing_id]
-
-        existing = self._events.get(event.outbox_event_id)
-        if existing is not None:
-            return existing
-
-        self._events[event.outbox_event_id] = event
-        self._idempotency_index[event.idempotency_key] = event.outbox_event_id
-        return event
-
-    def pending(self) -> tuple[OutboxEvent, ...]:
-        return tuple(
-            event
-            for event in self._events.values()
-            if event.publish_status is PublishStatus.PENDING
-        )
-
-    def mark_published(self, event_id: UUID) -> None:
-        event = self._events[event_id]
-        self._events[event_id] = event.model_copy(
-            update={
-                "publish_status": PublishStatus.PUBLISHED,
-                "publish_attempts": event.publish_attempts + 1,
-            }
-        )

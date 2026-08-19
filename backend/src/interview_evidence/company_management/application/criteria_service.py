@@ -8,10 +8,7 @@ from interview_evidence.company_management.domain.criteria import (
     JobRequirement,
 )
 from interview_evidence.company_management.repositories.postgres import CompanyRepository
-from interview_evidence.shared.idempotency import (
-    InMemoryResourceIdempotencyStore,
-    ResourceIdempotencyStore,
-)
+from interview_evidence.shared.idempotency import ResourceIdempotencyStore
 from interview_evidence.shared.ids import Clock, new_uuid7
 from interview_evidence.shared.interview_level import (
     DEFAULT_INTERVIEW_LEVEL,
@@ -25,11 +22,11 @@ class CriteriaService:
         self,
         repository: CompanyRepository,
         clock: Clock,
-        idempotency: ResourceIdempotencyStore | None = None,
+        idempotency: ResourceIdempotencyStore,
     ) -> None:
         self._repository = repository
         self._clock = clock
-        self._idempotency = idempotency or InMemoryResourceIdempotencyStore()
+        self._idempotency = idempotency
 
     def create_version(
         self,

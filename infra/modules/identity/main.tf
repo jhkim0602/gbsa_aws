@@ -265,10 +265,21 @@ resource "aws_cognito_user_pool_client" "company" {
   refresh_token_validity               = 1
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
-  allowed_oauth_scopes                 = ["email", "openid", "profile"]
-  callback_urls                        = [for origin in local.console_origins : "${origin}/auth/callback"]
-  logout_urls                          = [for origin in local.console_origins : "${origin}/"]
-  supported_identity_providers         = ["COGNITO"]
+
+  # `aws.cognito.signin.user.admin` is what makes the token usable, not an extra privilege.
+  # `AwsCognitoPrincipalProvider.get_company_principal` resolves the caller by calling
+  # GetUser with the access token, and GetUser requires exactly this scope -- without it
+  # Cognito answers `NotAuthorizedException: Access Token does not have required scopes`,
+  # the provider raises PrincipalNotFoundError, and every authenticated request is a 401.
+  # A hosted login therefore succeeded and produced a token that could not read its own
+  # user, which reads as a broken password rather than a missing scope.
+  #
+  # It grants the token holder GetUser and the self-service attribute writes on itself,
+  # bounded by `write_attributes` below -- so the tenant attributes stay unwritable.
+  allowed_oauth_scopes         = ["email", "openid", "profile", "aws.cognito.signin.user.admin"]
+  callback_urls                = [for origin in local.console_origins : "${origin}/auth/callback"]
+  logout_urls                  = [for origin in local.console_origins : "${origin}/"]
+  supported_identity_providers = ["COGNITO"]
 
   # GetUser returns only what the calling app client is allowed to read, so leaving this
   # implicit puts the tenant attributes one provider default away from disappearing from

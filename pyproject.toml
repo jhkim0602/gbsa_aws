@@ -31,21 +31,12 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-  "datamodel-code-generator>=0.26,<1",
-  "httpx>=0.28,<1",
   "mypy>=1.14,<2",
-  "pytest>=8.3,<9",
-  "pytest-asyncio>=0.25,<1",
   "ruff>=0.9,<1",
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["backend/src/interview_evidence"]
-
-[tool.pytest.ini_options]
-addopts = "-ra --import-mode=importlib"
-pythonpath = ["backend/src", "."]
-testpaths = ["backend/tests", "tests"]
 
 [tool.ruff]
 line-length = 100

@@ -45,29 +45,6 @@ def _validate_dimensions(dimensions: Mapping[str, str]) -> None:
         raise ValueError("metric dimension is not allowed")
 
 
-class InMemoryMetricRecorder:
-    def __init__(self) -> None:
-        self.records: list[MetricRecord] = []
-
-    def record(
-        self,
-        name: str,
-        value: float,
-        *,
-        unit: str,
-        dimensions: Mapping[str, str],
-    ) -> None:
-        _validate_dimensions(dimensions)
-        self.records.append(
-            MetricRecord(
-                name=name,
-                value=float(value),
-                unit=unit,
-                dimensions=dict(dimensions),
-            )
-        )
-
-
 class CloudWatchMetricRecorder:
     def __init__(
         self,

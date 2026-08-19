@@ -30,7 +30,12 @@ export async function beginCompanyLogin(
     response_type: "code",
     client_id: config.clientId,
     redirect_uri: config.redirectUri,
-    scope: "openid email profile",
+    // `aws.cognito.signin.user.admin` is required for the token to be usable at all: the API
+    // resolves the caller by calling GetUser with it, and GetUser rejects a token without
+    // this scope -- so omitting it produced a successful login whose every request 401'd.
+    // It must stay in step with `allowed_oauth_scopes` on the pool client; a scope requested
+    // but not allowed fails the authorize call with `invalid_scope` instead.
+    scope: "openid email profile aws.cognito.signin.user.admin",
     state,
     code_challenge: challenge,
     code_challenge_method: "S256",
@@ -64,7 +69,12 @@ export async function completeCompanyLogin(
     throw new Error("Cognito callback validation failed");
   }
 
-  const response = await dependencies.fetcher(
+  // Read off the object first: calling it as `dependencies.fetcher(...)` would pass the
+  // dependencies object as `this`, and the real `fetch` throws `Illegal invocation` for any
+  // `this` that is not the window. A local binding leaves `this` undefined, which `fetch`
+  // accepts, so a caller may hand this the bare global.
+  const { fetcher } = dependencies;
+  const response = await fetcher(
     `${normalizedDomain(config.domain)}/oauth2/token`,
     {
       method: "POST",

@@ -3,10 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
-from interview_evidence.shared.idempotency import (
-    InMemoryResourceIdempotencyStore,
-    ResourceIdempotencyStore,
-)
+from interview_evidence.shared.idempotency import ResourceIdempotencyStore
 from interview_evidence.shared.ids import Clock, new_uuid7
 from interview_evidence.shared.messaging.outbox import Outbox, OutboxEvent
 from interview_evidence.shared.security.principals import ApplicantPrincipal
@@ -48,14 +45,14 @@ class SubmissionService:
         validator: SubmissionValidator,
         outbox: Outbox,
         clock: Clock,
-        idempotency: ResourceIdempotencyStore | None = None,
+        idempotency: ResourceIdempotencyStore,
     ) -> None:
         self._repository = repository
         self._storage = storage
         self._validator = validator
         self._outbox = outbox
         self._clock = clock
-        self._idempotency = idempotency or InMemoryResourceIdempotencyStore()
+        self._idempotency = idempotency
 
     def create_upload_intent(
         self,

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
-from interview_evidence.shared.tenant import TenantContext, require_tenant_context
+from interview_evidence.shared.tenant import TenantContext
 from interview_evidence.workers.analysis.document_chunker import DocumentPage
 
 
@@ -24,21 +24,6 @@ class TextractPort(Protocol):
         context: TenantContext,
         object_id: UUID,
     ) -> tuple[TextractPage, ...]: ...
-
-
-class DeterministicTextract:
-    def __init__(self, pages: tuple[TextractPage, ...]) -> None:
-        self._pages = pages
-        self.calls: list[tuple[UUID, UUID]] = []
-
-    def extract_pages(
-        self,
-        context: TenantContext,
-        object_id: UUID,
-    ) -> tuple[TextractPage, ...]:
-        tenant = require_tenant_context(context)
-        self.calls.append((tenant.company_id, object_id))
-        return self._pages
 
 
 class DocumentExtractionAdapter:

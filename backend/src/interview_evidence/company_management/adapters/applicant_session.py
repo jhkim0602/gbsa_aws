@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from typing import Protocol
 from uuid import UUID
 
-from interview_evidence.shared.ids import Clock, SystemClock, new_uuid7
+from interview_evidence.shared.ids import Clock, new_uuid7
 from interview_evidence.shared.security.principals import (
     ApplicantPrincipal,
     PrincipalNotFoundError,
@@ -79,81 +79,19 @@ class ApplicantSessionStore(Protocol):
     def revoke_session(self, session_hash: str) -> None: ...
 
 
-class InMemoryApplicantSessionStore:
-    def __init__(self) -> None:
-        self.tokens: dict[str, ApplicantTokenRecord] = {}
-        self.sessions: dict[str, tuple[ApplicantPrincipal, datetime]] = {}
-
-    def save_token(
-        self,
-        *,
-        token_hash: str,
-        company_id: UUID,
-        invitation_id: UUID,
-        applicant_id: UUID,
-        expires_at: datetime,
-    ) -> None:
-        self.tokens[token_hash] = ApplicantTokenRecord(
-            invitation_id=invitation_id,
-            company_id=company_id,
-            applicant_id=applicant_id,
-            token_hash=token_hash,
-            expires_at=expires_at,
-        )
-
-    def get_token(self, token_hash: str) -> ApplicantTokenRecord | None:
-        return self.tokens.get(token_hash)
-
-    def consume_token(self, token_hash: str, *, consumed_at: datetime) -> None:
-        current = self.tokens[token_hash]
-        self.tokens[token_hash] = ApplicantTokenRecord(
-            invitation_id=current.invitation_id,
-            company_id=current.company_id,
-            applicant_id=current.applicant_id,
-            token_hash=current.token_hash,
-            expires_at=current.expires_at,
-            consumed_at=consumed_at,
-        )
-
-    def save_session(
-        self,
-        *,
-        session_hash: str,
-        principal: ApplicantPrincipal,
-        expires_at: datetime,
-    ) -> None:
-        self.sessions[session_hash] = (principal, expires_at)
-
-    def get_session(self, session_hash: str, *, now: datetime) -> ApplicantPrincipal | None:
-        stored = self.sessions.get(session_hash)
-        if stored is None:
-            return None
-        principal, expires_at = stored
-        return None if now >= expires_at else principal
-
-    def revoke_session(self, session_hash: str) -> None:
-        self.sessions.pop(session_hash, None)
-
-
 class ApplicantSessionAdapter:
     def __init__(
         self,
         *,
-        clock: Clock | None = None,
+        clock: Clock,
         session_ttl: timedelta = timedelta(hours=12),
         token_pepper: bytes = b"local-development-pepper",
-        store: ApplicantSessionStore | None = None,
+        store: ApplicantSessionStore,
     ) -> None:
-        self._clock = clock or SystemClock()
+        self._clock = clock
         self._session_ttl = session_ttl
         self._token_pepper = token_pepper
-        self._store = store or InMemoryApplicantSessionStore()
-
-    @property
-    def persisted_token_hashes(self) -> tuple[str, ...]:
-        if isinstance(self._store, InMemoryApplicantSessionStore):
-            return tuple(record.token_hash for record in self._store.tokens.values())
-        return ()
+        self._store = store
 
     def hash_token(self, raw_token: str) -> str:
         return hmac.new(

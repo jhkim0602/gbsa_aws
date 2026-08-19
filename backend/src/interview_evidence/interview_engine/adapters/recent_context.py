@@ -38,47 +38,6 @@ class RecentContextPort(Protocol):
     def delete(self, context: TenantContext, session_id: UUID) -> None: ...
 
 
-class InMemoryRecentContext:
-    def __init__(self, *, fail_reads: bool = False, fail_writes: bool = False) -> None:
-        self._items: dict[tuple[UUID, UUID], RecentContextSnapshot] = {}
-        self.fail_reads = fail_reads
-        self.fail_writes = fail_writes
-
-    def get(self, context: TenantContext, session_id: UUID) -> RecentContextSnapshot | None:
-        if self.fail_reads:
-            raise HotViewUnavailable("recent context read unavailable")
-        tenant = require_tenant_context(context)
-        return self._items.get((tenant.company_id, session_id))
-
-    def put(self, context: TenantContext, snapshot: RecentContextSnapshot) -> RecentContextSnapshot:
-        if self.fail_writes:
-            raise HotViewUnavailable("recent context write unavailable")
-        tenant = require_tenant_context(context)
-        tenant.assert_company(snapshot.company_id)
-        self._items[(tenant.company_id, snapshot.interview_session_id)] = snapshot
-        return snapshot
-
-    def force_sequence(
-        self,
-        context: TenantContext,
-        session_id: UUID,
-        *,
-        session_sequence: int,
-    ) -> None:
-        tenant = require_tenant_context(context)
-        key = (tenant.company_id, session_id)
-        current = self._items[key]
-        self._items[key] = current.model_copy(update={"session_sequence": session_sequence})
-
-    def delete(self, context: TenantContext, session_id: UUID) -> None:
-        tenant = require_tenant_context(context)
-        self._items.pop((tenant.company_id, session_id), None)
-
-    def healthcheck(self) -> None:
-        if self.fail_reads:
-            raise HotViewUnavailable("recent context read unavailable")
-
-
 class DynamoClient(Protocol):
     def put_item(
         self,

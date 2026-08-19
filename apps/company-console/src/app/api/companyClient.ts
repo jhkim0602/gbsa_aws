@@ -28,9 +28,7 @@ export async function companyRequest<T>(
 ): Promise<T> {
   const token = companyAuthConfig
     ? getCompanyAccessToken(localStorage)
-    : (localStorage.getItem("iep_company_token") ??
-      import.meta.env.VITE_LOCAL_DEMO_ACCESS ??
-      "");
+    : (localStorage.getItem("iep_company_token") ?? "");
   const response = await fetch(
     `${import.meta.env.VITE_API_BASE_URL ?? ""}${path}`,
     {

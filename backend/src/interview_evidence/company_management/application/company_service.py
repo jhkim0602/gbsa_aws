@@ -9,7 +9,7 @@ from interview_evidence.company_management.application.deletion_targets import (
     CompanyDeletionReceipt,
     CompanyDeletionTarget,
     CompanyDeletionTargets,
-    InMemoryCompanyTargetDeleter,
+    CompanyTargetDeleter,
 )
 from interview_evidence.company_management.domain.company import Position, PositionStatus
 from interview_evidence.company_management.domain.criteria import CompetencyModelStatus
@@ -17,10 +17,7 @@ from interview_evidence.company_management.domain.hiring import (
     InvitationStateChange,
 )
 from interview_evidence.company_management.repositories.postgres import CompanyRepository
-from interview_evidence.shared.idempotency import (
-    InMemoryResourceIdempotencyStore,
-    ResourceIdempotencyStore,
-)
+from interview_evidence.shared.idempotency import ResourceIdempotencyStore
 from interview_evidence.shared.ids import Clock, CommandMeta, new_uuid7
 from interview_evidence.shared.interview_level import InterviewLevel
 from interview_evidence.shared.security.principals import CompanyPrincipal
@@ -127,11 +124,11 @@ class CompanyService:
         self,
         repository: CompanyRepository,
         clock: Clock,
-        idempotency: ResourceIdempotencyStore | None = None,
+        idempotency: ResourceIdempotencyStore,
     ) -> None:
         self._repository = repository
         self._clock = clock
-        self._idempotency = idempotency or InMemoryResourceIdempotencyStore()
+        self._idempotency = idempotency
 
     def get_current_user(
         self,
@@ -235,7 +232,7 @@ class CompanyManagementPublic:
         clock: Clock,
         *,
         deletion_targets: CompanyDeletionTargets | None = None,
-        target_deleter: InMemoryCompanyTargetDeleter | None = None,
+        target_deleter: CompanyTargetDeleter | None = None,
     ) -> None:
         self._repository = repository
         self._clock = clock

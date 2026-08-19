@@ -5,10 +5,7 @@ from interview_evidence.company_management.domain.company import (
     InterviewerTone,
 )
 from interview_evidence.company_management.repositories.postgres import CompanyRepository
-from interview_evidence.shared.idempotency import (
-    InMemoryResourceIdempotencyStore,
-    ResourceIdempotencyStore,
-)
+from interview_evidence.shared.idempotency import ResourceIdempotencyStore
 from interview_evidence.shared.ids import Clock, new_uuid7
 from interview_evidence.shared.tenant import TenantContext
 
@@ -18,11 +15,11 @@ class InterviewerProfileService:
         self,
         repository: CompanyRepository,
         clock: Clock,
-        idempotency: ResourceIdempotencyStore | None = None,
+        idempotency: ResourceIdempotencyStore,
     ) -> None:
         self._repository = repository
         self._clock = clock
-        self._idempotency = idempotency or InMemoryResourceIdempotencyStore()
+        self._idempotency = idempotency
 
     def create(
         self,

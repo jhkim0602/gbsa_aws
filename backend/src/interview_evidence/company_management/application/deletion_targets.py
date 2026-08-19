@@ -28,7 +28,7 @@ class CompanyDeletionReceipt:
     verified_absent: bool
 
 
-class InMemoryCompanyTargetDeleter:
+class CompanyTargetDeleter:
     def __init__(
         self,
         repository: CompanyRepository,
