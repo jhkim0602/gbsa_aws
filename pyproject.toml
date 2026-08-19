@@ -79,7 +79,12 @@ addopts = """\
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-extend-exclude = ["packages/contracts/generated"]
+# `docs` is excluded because `ruff format` reformats fenced Python in markdown, and a spec
+# quotes source rather than defining it. It rewrote `invitation_url=f"..."` -- a keyword
+# argument inside a call -- into the assignment `invitation_url = f"..."`, which is a
+# different statement than the one the doc is citing. `.prettierignore` already skips `docs`
+# for the same reason; this mirrors it so `format:check` agrees with itself.
+extend-exclude = ["packages/contracts/generated", "docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
