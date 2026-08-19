@@ -23,7 +23,7 @@ export type EquipmentCheckApi = {
 // 56px-88px block wins at every width. Same string as InterviewComplete.
 const SHELL =
   "mx-auto w-[min(calc(100%-48px),920px)] bg-canvas py-[56px] pb-[88px] text-ink" +
-  " max-[680px]:w-[min(calc(100%-32px),920px)] max-[680px]:py-[38px] max-[680px]:pb-[64px]";
+  " mw-680:w-[min(calc(100%-32px),920px)] mw-680:py-[38px] mw-680:pb-[64px]";
 
 const EYEBROW =
   "mb-2 font-[ui-monospace,SFMono-Regular,Consolas,monospace] text-[11px]" +
@@ -39,7 +39,7 @@ const HEADER_COPY =
 const PREVIEW =
   "group grid min-h-[220px] place-items-center rounded-panel border border-border" +
   " bg-surface shadow-soft data-[status=ready]:border-[#82d39a]" +
-  " data-[status=ready]:bg-[#f0fff4] max-[680px]:min-h-[180px]";
+  " data-[status=ready]:bg-[#f0fff4] mw-680:min-h-[180px]";
 
 const PREVIEW_LABEL =
   "font-[ui-monospace,SFMono-Regular,Consolas,monospace] text-[11px] tracking-normal" +
@@ -69,7 +69,7 @@ const NOTICE =
 // utilities ever land on the same element.
 const ACTION_BUTTON =
   "inline-flex min-h-11 items-center justify-center rounded-panel border px-4" +
-  " text-[13px] font-[650] disabled:opacity-45 max-[680px]:flex-[1_1_0]";
+  " text-[13px] font-[650] disabled:opacity-45 mw-680:flex-[1_1_0]";
 
 const BUTTON_SECONDARY = `${ACTION_BUTTON} border-border bg-surface text-ink`;
 
@@ -116,7 +116,7 @@ export function EquipmentCheck({
     <main className={SHELL}>
       <header className="mb-6">
         <p className={EYEBROW}>STEP 2 OF 4</p>
-        <h1 className="text-[26px] leading-[1.35] tracking-normal max-[680px]:text-[22px]">
+        <h1 className="text-[26px] leading-[1.35] tracking-normal mw-680:text-[22px]">
           면접 환경 점검
         </h1>
         <p className={HEADER_COPY}>
@@ -127,7 +127,7 @@ export function EquipmentCheck({
         </p>
       </header>
 
-      <section className="grid grid-cols-[minmax(180px,0.75fr)_minmax(280px,1.25fr)] gap-3 max-[680px]:grid-cols-[1fr]">
+      <section className="grid grid-cols-[minmax(180px,0.75fr)_minmax(280px,1.25fr)] gap-3 mw-680:grid-cols-[1fr]">
         <div
           className={PREVIEW}
           data-status={result?.camera.status ?? "unknown"}
@@ -166,7 +166,7 @@ export function EquipmentCheck({
       <p className={NOTICE}>
         브라우저 권한은 장치 점검과 면접 진행에만 사용됩니다.
       </p>
-      <div className="mt-4 flex justify-end gap-2 max-[680px]:w-full">
+      <div className="mt-4 flex justify-end gap-2 mw-680:w-full">
         <button type="button" className={BUTTON_SECONDARY} onClick={check}>
           {checking ? "점검 중" : "장치 점검"}
         </button>

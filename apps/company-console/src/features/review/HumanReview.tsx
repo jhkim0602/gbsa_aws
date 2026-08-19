@@ -15,7 +15,7 @@ const PANEL = "overflow-hidden rounded-md border border-border bg-surface";
 
 const PANEL_HEADER =
   "flex min-h-[58px] items-center justify-between gap-3 border-b border-border-muted" +
-  " px-[14px] py-3 max-[520px]:items-start";
+  " px-[14px] py-3 mw-520:items-start";
 
 const PANEL_ICON =
   "grid size-[30px] flex-[0_0_30px] place-items-center rounded-md border" +
@@ -24,7 +24,7 @@ const PANEL_ICON =
 const HUMAN_ONLY_BADGE =
   "inline-flex min-h-[22px] items-center gap-[5px] rounded-full bg-brand-soft" +
   " px-[7px] text-[8px] font-[650] whitespace-nowrap text-brand" +
-  " max-[520px]:max-w-[108px] max-[520px]:whitespace-normal";
+  " mw-520:max-w-[108px] mw-520:whitespace-normal";
 
 // `.review-field input/textarea`. Preflight already gives the textarea `resize: vertical`,
 // so the source's `resize` declaration needs no utility.
@@ -101,7 +101,7 @@ export function HumanReview({
         </label>
 
         <div
-          className="grid grid-cols-3 gap-[5px] max-[520px]:grid-cols-[1fr]"
+          className="grid grid-cols-3 gap-[5px] mw-520:grid-cols-[1fr]"
           aria-label="최종 결정"
         >
           <button
@@ -133,7 +133,7 @@ export function HumanReview({
           </button>
         </div>
 
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-1.5 max-[520px]:grid-cols-[1fr]">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-1.5 mw-520:grid-cols-[1fr]">
           <label className="grid gap-1.5">
             <span className="text-[9px] font-semibold text-ink-secondary">
               검토 메모

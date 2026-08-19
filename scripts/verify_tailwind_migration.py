@@ -5,7 +5,9 @@ Catches the defects that are easy to introduce and hard to see:
   1. a named `text-*` utility, which injects a line-height the source never declared
   2. a leftover project class name in a `className`
   3. a token that looks like a utility but compiles to nothing (`bg-link`, `text-text`)
-  4. a `@media (max-width:)` breakpoint with no surviving `max-[Npx]:` counterpart
+  4. a `@media (max-width:)` breakpoint with no surviving `mw-N:` counterpart
+  5. a built-in `max-[Npx]:`, which is an EXCLUSIVE `width < Npx` query — the source
+     stylesheets use inclusive `max-width: Npx`, so use the `mw-N:` variant instead
 
 Run from the repo root. Exits non-zero when a hard defect is found.
 
@@ -152,6 +154,25 @@ def check_leftover_classes() -> list[str]:
     return problems
 
 
+def check_exclusive_breakpoints() -> list[str]:
+    """`max-[Npx]:` compiles to `@media (width < Npx)` — one pixel narrower than the source.
+
+    Verified against tailwindcss@4.3.3. Several breakpoints here are real device widths
+    (360/400/480/600/720), so the off-by-one is visible. `mw-N:` variants in
+    design-system/theme.css emit the inclusive query the stylesheets declare.
+    """
+    problems = []
+    for path in tsx_files():
+        src = path.read_text()
+        for m in re.finditer(r"max-\[(\d+)px\]:", src):
+            problems.append(
+                f"{path.relative_to(ROOT)}:{src[: m.start()].count(chr(10)) + 1}: "
+                f"'{m.group(0)}' is exclusive (width < {m.group(1)}px); "
+                f"use 'mw-{m.group(1)}:' for the inclusive max-width the source declares"
+            )
+    return problems
+
+
 def check_breakpoints() -> list[str]:
     """A max-width breakpoint must survive either as CSS or as a max-[Npx]: variant."""
     declared: set[str] = set()
@@ -160,17 +181,22 @@ def check_breakpoints() -> list[str]:
 
     used = set(declared)  # still in CSS, so still applied
     for path in tsx_files():
-        used |= set(re.findall(r"max-\[(\d+)px\]", path.read_text()))
+        used |= set(re.findall(r"\bmw-(\d+):", path.read_text()))
 
     return [
-        f"breakpoint max-width:{bp}px has no max-[{bp}px]: counterpart and no surviving "
+        f"breakpoint max-width:{bp}px has no mw-{bp}: counterpart and no surviving "
         f"media query"
         for bp in sorted(declared - used, key=int)
     ]
 
 
 def main() -> int:
-    hard = check_named_text_sizes() + check_non_utilities() + check_leftover_classes()
+    hard = (
+        check_named_text_sizes()
+        + check_non_utilities()
+        + check_leftover_classes()
+        + check_exclusive_breakpoints()
+    )
     soft = check_breakpoints()
 
     for label, items in (("DEFECT", hard), ("REVIEW", soft)):

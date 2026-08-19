@@ -52,7 +52,7 @@ const toneBar: Record<string, string> = {
 
 const PANEL_HEADER =
   "flex min-h-[58px] items-center justify-between gap-3 border-b border-border-muted" +
-  " px-[14px] py-3 max-[520px]:items-start print:hidden";
+  " px-[14px] py-3 mw-520:items-start print:hidden";
 
 const PANEL_EYEBROW =
   "font-mono text-[8px] font-semibold uppercase text-muted";
@@ -69,7 +69,7 @@ const TAB_BUTTON =
 const REPORT_PAGE =
   "grid w-full max-w-[210mm] min-h-[calc(210mm*297/210)]" +
   " grid-rows-[auto_minmax(0,1fr)_auto] border border-border bg-surface shadow-soft" +
-  " outline-none max-[1180px]:min-h-0 max-[1180px]:border-0 max-[1180px]:shadow-none" +
+  " outline-none mw-1180:min-h-0 mw-1180:border-0 mw-1180:shadow-none" +
   " print:block print:max-w-none print:min-h-0 print:border-0 print:shadow-none";
 
 const REPORT_SECTION = "grid gap-[9px]";
@@ -82,7 +82,7 @@ const REPORT_EMPTY = "text-[9px] leading-[1.6] text-muted";
 const AXIS_ROW =
   "grid grid-cols-[62px_62px_minmax(80px,1fr)] items-center gap-y-1 gap-x-2.5 py-[7px]" +
   " [&+&]:border-t [&+&]:border-border-muted break-inside-avoid" +
-  " max-[520px]:grid-cols-[minmax(0,1fr)_auto]";
+  " mw-520:grid-cols-[minmax(0,1fr)_auto]";
 
 // `.report-axis-list.is-detailed .report-axis` narrows the bar column.
 const AXIS_ROW_DETAILED = AXIS_ROW.replace(
@@ -95,10 +95,10 @@ const AXIS_LABEL =
   " text-ink-secondary";
 
 const AXIS_META =
-  "col-[2/-1] text-[8px] text-subtle max-[520px]:col-span-full";
+  "col-[2/-1] text-[8px] text-subtle mw-520:col-span-full";
 
 const AXIS_RATIONALE =
-  "col-[2/-1] text-[9px] leading-[1.65] text-muted max-[520px]:col-span-full";
+  "col-[2/-1] text-[9px] leading-[1.65] text-muted mw-520:col-span-full";
 
 // `.report-axis__bar > i` is the track and `> i > b` the fill, so the tone lands on the b.
 const AXIS_BAR_TRACK =
@@ -208,7 +208,7 @@ export function ReportView({
           </span>
         </div>
         <span
-          className={`${BADGE_BASE} bg-surface-muted text-muted max-[520px]:max-w-[108px] max-[520px]:whitespace-normal`}
+          className={`${BADGE_BASE} bg-surface-muted text-muted mw-520:max-w-[108px] mw-520:whitespace-normal`}
         >
           <LockKeyhole size={13} aria-hidden="true" />
           AI 원본 · 변경 불가
@@ -242,7 +242,7 @@ export function ReportView({
           The column is sized explicitly: `justify-content: center` makes a grid column hug
           its content, so the sheet's `width: 100%` would otherwise resolve against whatever
           that tab happens to contain and every tab would be a different width. */}
-      <div className="grid grid-cols-[minmax(0,210mm)] justify-center bg-surface-strong p-[14px] max-[1180px]:bg-surface max-[1180px]:p-0 print:block print:bg-transparent print:p-0">
+      <div className="grid grid-cols-[minmax(0,210mm)] justify-center bg-surface-strong p-[14px] mw-1180:bg-surface mw-1180:p-0 print:block print:bg-transparent print:p-0">
         <article
           id={`report-panel-${activeTab}`}
           className={REPORT_PAGE}
@@ -250,7 +250,7 @@ export function ReportView({
           aria-labelledby={`report-tab-${activeTab}`}
           tabIndex={0}
         >
-          <header className="flex items-start justify-between gap-3 border-b border-ink px-[18mm] pt-[20mm] pb-[8mm] max-[1180px]:px-4 max-[1180px]:pt-4 max-[1180px]:pb-3">
+          <header className="flex items-start justify-between gap-3 border-b border-ink px-[18mm] pt-[20mm] pb-[8mm] mw-1180:px-4 mw-1180:pt-4 mw-1180:pb-3">
             <span>
               <p className="font-mono text-[9px] font-semibold tracking-[0.06em] uppercase text-muted">
                 AI 면접 분석 리포트
@@ -269,7 +269,7 @@ export function ReportView({
             </span>
           </header>
 
-          <div className="grid content-start gap-4 px-[18mm] py-[10mm] max-[1180px]:px-4 max-[1180px]:py-3.5">
+          <div className="grid content-start gap-4 px-[18mm] py-[10mm] mw-1180:px-4 mw-1180:py-3.5">
             {activeTab === "overview" ? <OverviewPage report={report} /> : null}
             {activeTab === "criteria" ? (
               <CriteriaPage
@@ -284,7 +284,7 @@ export function ReportView({
             ) : null}
           </div>
 
-          <footer className="flex items-center justify-between gap-2.5 border-t border-border-muted px-[18mm] pt-[8mm] pb-[14mm] font-mono text-[8px] text-subtle max-[1180px]:px-4 max-[1180px]:py-3">
+          <footer className="flex items-center justify-between gap-2.5 border-t border-border-muted px-[18mm] pt-[8mm] pb-[14mm] font-mono text-[8px] text-subtle mw-1180:px-4 mw-1180:py-3">
             <span>AI 원본 · 최종 결정은 담당자가 기록합니다</span>
             {/* Labelled as a section, not "2 / 3": a section can run past one sheet, and a
                 bare fraction in a document footer reads as a page number that is wrong. */}
@@ -304,7 +304,7 @@ function OverviewPage({ report }: { report: ReviewReport }) {
 
   return (
     <div className="grid gap-4">
-      <div className="grid grid-cols-[132px_minmax(0,1fr)] items-center gap-4 max-[520px]:grid-cols-[minmax(0,1fr)]">
+      <div className="grid grid-cols-[132px_minmax(0,1fr)] items-center gap-4 mw-520:grid-cols-[minmax(0,1fr)]">
         <div className="grid justify-items-center gap-0.5 rounded-lg border border-border-muted bg-surface-muted px-2.5 py-[14px] text-center">
           <span className="text-[9px] font-[650] text-muted">종합 점수</span>
           <strong
@@ -578,7 +578,7 @@ function AxisCitations({
   return (
     // One chip per citation the axis rests on, so the number and the answer behind it are
     // one click apart rather than a count the reviewer has to take on trust.
-    <div className="col-[2/-1] flex flex-wrap items-center gap-[5px] max-[520px]:col-span-full">
+    <div className="col-[2/-1] flex flex-wrap items-center gap-[5px] mw-520:col-span-full">
       <small className="text-[8px] text-subtle">
         인용한 답변 {axis.quotedEvidenceIds.length}건
       </small>
@@ -816,7 +816,7 @@ function ScoreValue({ score }: { score: number | null }) {
 function ScoreBar({ score }: { score: number | null }) {
   return (
     <span
-      className="max-[520px]:col-span-full"
+      className="mw-520:col-span-full"
       aria-hidden="true"
     >
       <i className={AXIS_BAR_TRACK}>

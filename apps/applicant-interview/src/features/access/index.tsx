@@ -36,8 +36,8 @@ type Step = "exchange" | "identity" | "consent" | "ready";
 // shell.css's 72px/104px block padding. Kept as it renders.
 const SHELL =
   "mx-auto w-[min(calc(100%-48px),var(--applicant-content-width))] pt-[72px] pb-[104px]" +
-  " max-[600px]:w-[min(calc(100%-32px),var(--applicant-content-width))]" +
-  " max-[600px]:pt-12 max-[600px]:pb-[72px]";
+  " mw-600:w-[min(calc(100%-32px),var(--applicant-content-width))]" +
+  " mw-600:pt-12 mw-600:pb-[72px]";
 
 // `.access-primary-panel`, `.access-process`, `.access-form-panel`, `.access-ready`
 const PANEL = "rounded-panel border border-border bg-surface shadow-soft";
@@ -207,7 +207,7 @@ export function ApplicantAccess({
     <main className={SHELL}>
       <header className="mb-7">
         <p className={EYEBROW}>{copy.eyebrow}</p>
-        <h1 className="text-[26px] leading-[1.3] tracking-normal max-[600px]:text-[23px]">
+        <h1 className="text-[26px] leading-[1.3] tracking-normal mw-600:text-[23px]">
           {copy.title}
         </h1>
         <p className={`mt-2 ${BODY_COPY}`}>{copy.description}</p>
@@ -225,10 +225,10 @@ export function ApplicantAccess({
       {step === "exchange" && (
         <>
           <section
-            className={`grid grid-cols-[44px_1fr] gap-[18px] p-7 max-[600px]:grid-cols-[38px_1fr] max-[600px]:gap-[14px] max-[600px]:px-5 max-[600px]:py-[22px] ${PANEL}`}
+            className={`grid grid-cols-[44px_1fr] gap-[18px] p-7 mw-600:grid-cols-[38px_1fr] mw-600:gap-[14px] mw-600:px-5 mw-600:py-[22px] ${PANEL}`}
           >
             <div
-              className="grid size-11 place-items-center rounded-panel border border-border bg-surface font-[ui-monospace,SFMono-Regular,Consolas,monospace] text-[15px] font-bold text-brand max-[600px]:size-[38px]"
+              className="grid size-11 place-items-center rounded-panel border border-border bg-surface font-[ui-monospace,SFMono-Regular,Consolas,monospace] text-[15px] font-bold text-brand mw-600:size-[38px]"
               aria-hidden="true"
             >
               IE
@@ -255,7 +255,7 @@ export function ApplicantAccess({
           </section>
 
           <section
-            className={`mt-4 px-6 py-[22px] max-[600px]:p-5 ${PANEL}`}
+            className={`mt-4 px-6 py-[22px] mw-600:p-5 ${PANEL}`}
             aria-labelledby="process-title"
           >
             <div>
@@ -289,7 +289,7 @@ export function ApplicantAccess({
       )}
 
       {step === "identity" && (
-        <section className={`p-7 max-[600px]:p-5 ${PANEL}`}>
+        <section className={`p-7 mw-600:p-5 ${PANEL}`}>
           <div>
             <p className={EYEBROW}>STEP 1 OF 2</p>
             <h2 className="text-[16px] tracking-normal">본인 확인</h2>
@@ -330,7 +330,7 @@ export function ApplicantAccess({
       )}
 
       {step === "consent" && (
-        <section className={`p-7 max-[600px]:p-5 ${PANEL}`}>
+        <section className={`p-7 mw-600:p-5 ${PANEL}`}>
           <div>
             <p className={EYEBROW}>STEP 2 OF 2</p>
             <h2 className="text-[16px] tracking-normal">
@@ -347,13 +347,13 @@ export function ApplicantAccess({
                 {policy.recordingNotice}
               </p>
               <dl className="mt-[14px] grid gap-2">
-                <div className="grid grid-cols-[76px_1fr] gap-3 max-[600px]:grid-cols-[1fr] max-[600px]:gap-[3px]">
+                <div className="grid grid-cols-[76px_1fr] gap-3 mw-600:grid-cols-[1fr] mw-600:gap-[3px]">
                   <dt className="text-[12px] text-muted">보관기간</dt>
                   <dd className="text-[12px] leading-[1.5]">
                     {policy.retentionDays}일
                   </dd>
                 </div>
-                <div className="grid grid-cols-[76px_1fr] gap-3 max-[600px]:grid-cols-[1fr] max-[600px]:gap-[3px]">
+                <div className="grid grid-cols-[76px_1fr] gap-3 mw-600:grid-cols-[1fr] mw-600:gap-[3px]">
                   <dt className="text-[12px] text-muted">삭제 방법</dt>
                   <dd className="text-[12px] leading-[1.5]">
                     {policy.deletionMethod}
@@ -408,7 +408,7 @@ export function ApplicantAccess({
 
       {step === "ready" && (
         <section
-          className={`px-7 py-9 text-center max-[600px]:p-5 ${PANEL}`}
+          className={`px-7 py-9 text-center mw-600:p-5 ${PANEL}`}
           role="status"
         >
           <span

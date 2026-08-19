@@ -21,19 +21,19 @@ const APP = "group min-h-screen bg-canvas";
 const PRODUCT_BAR =
   "sticky top-0 z-20 flex min-h-16 items-center gap-6 overflow-hidden border-b" +
   " border-border bg-[rgb(255_255_255_/_94%)] px-7 text-ink backdrop-blur-[16px]" +
-  " group-has-[.interview-room]:hidden max-[600px]:min-h-[58px] max-[600px]:gap-3" +
-  " max-[600px]:px-4";
+  " group-has-[.interview-room]:hidden mw-600:min-h-[58px] mw-600:gap-3" +
+  " mw-600:px-4";
 
 const PRODUCT_MARK =
   "inline-grid size-7 place-items-center rounded-lg border border-ink bg-surface" +
   " text-[10px] font-bold";
 
 const PRODUCT_MODE =
-  "flex-none border-l border-border pl-4 text-[14px] text-muted max-[600px]:hidden";
+  "flex-none border-l border-border pl-4 text-[14px] text-muted mw-600:hidden";
 
 const JOURNEY =
   "ml-auto min-w-0 overflow-x-auto [scrollbar-width:none]" +
-  " [&::-webkit-scrollbar]:hidden max-[860px]:hidden";
+  " [&::-webkit-scrollbar]:hidden mw-860:hidden";
 
 // `.applicant-journey li + li::before`
 const STEP_SEPARATOR = "before:mx-0.5 before:text-subtle before:content-['›']";
@@ -47,7 +47,7 @@ const STEP_INDEX =
 
 const PROGRESS_DOT =
   "h-0.5 w-4 rounded-full bg-surface-strong data-[state=complete]:bg-brand" +
-  " data-[state=current]:bg-brand max-[600px]:w-[18px]";
+  " data-[state=current]:bg-brand mw-600:w-[18px]";
 
 function currentStepIndex(pathname: string) {
   if (pathname.startsWith("/submissions")) return 1;
@@ -136,7 +136,7 @@ export function ApplicantShell() {
           </ol>
         </nav>
         <div
-          className="flex items-center gap-[5px] max-[600px]:ml-auto"
+          className="flex items-center gap-[5px] mw-600:ml-auto"
           aria-hidden="true"
         >
           {JOURNEY_STEPS.map((step, index) => (

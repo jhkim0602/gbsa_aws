@@ -33,7 +33,7 @@ const PANEL = "overflow-hidden rounded-md border border-border bg-surface";
 
 const PANEL_HEADER =
   "flex min-h-[58px] items-center justify-between gap-3 border-b border-border-muted" +
-  " px-[14px] py-3 max-[520px]:items-start";
+  " px-[14px] py-3 mw-520:items-start";
 
 const PANEL_ICON =
   "grid size-[30px] flex-[0_0_30px] place-items-center rounded-md border" +
@@ -64,7 +64,7 @@ const SEARCH_INPUT =
 // `.timeline-list li + li` — every child of the list is an `li`, so `not-first:` is exact.
 const TIMELINE_LIST =
   "grid max-h-[calc(100vh-390px)] overflow-auto px-2.5 pb-2.5" +
-  " max-[820px]:max-h-[360px]";
+  " mw-820:max-h-[360px]";
 
 const ENTRY_SEEK =
   "grid w-full grid-cols-[26px_minmax(0,1fr)] items-start gap-2 rounded-sm px-1" +

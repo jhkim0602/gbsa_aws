@@ -19,7 +19,7 @@ import type {
 // redundant. Print: `.review-workspace .page-header` hides it.
 const PAGE_HEADER =
   "flex min-h-[65px] items-end justify-between gap-5 px-8 pt-[30px] pb-[14px]" +
-  " max-[820px]:items-start max-[680px]:px-4 max-[680px]:py-[14px] print:hidden";
+  " mw-820:items-start mw-680:px-4 mw-680:py-[14px] print:hidden";
 
 // `.page-eyebrow` loses its color/font-size/margin to `.page-header p` (0,1,1 vs 0,1,0), so
 // this renders 14px/muted, NOT 9px/brand. Only the mono family, 600 and uppercase survive.
@@ -39,11 +39,11 @@ const WORKSPACE_LAYOUT =
   // `items-start` would emit `flex-start`; the source says `start`, so keep it verbatim.
   " [grid-template-areas:'timeline_report'_'decision_report'] [align-items:start] gap-3" +
   " px-8 pt-5 pb-12" +
-  " max-[1180px]:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.15fr)]" +
-  " max-[1180px]:[grid-template-areas:'timeline_report'_'decision_decision']" +
-  " max-[820px]:grid-cols-[minmax(0,1fr)]" +
-  " max-[820px]:[grid-template-areas:'timeline'_'report'_'decision']" +
-  " max-[680px]:p-4 print:block print:p-0";
+  " mw-1180:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.15fr)]" +
+  " mw-1180:[grid-template-areas:'timeline_report'_'decision_decision']" +
+  " mw-820:grid-cols-[minmax(0,1fr)]" +
+  " mw-820:[grid-template-areas:'timeline'_'report'_'decision']" +
+  " mw-680:p-4 print:block print:p-0";
 
 export function ReviewWorkspace({
   sessionId,
@@ -90,7 +90,7 @@ export function ReviewWorkspace({
             기록합니다.
           </p>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2 max-[820px]:justify-start">
+        <div className="flex flex-wrap items-center justify-end gap-2 mw-820:justify-start">
           <span
             className={`${META_PILL} bg-success-soft font-medium whitespace-nowrap text-success`}
           >
@@ -105,7 +105,7 @@ export function ReviewWorkspace({
       </header>
 
       <div className={WORKSPACE_LAYOUT}>
-        <div className="min-w-0 [grid-area:timeline] sticky top-3 max-[820px]:static print:hidden">
+        <div className="min-w-0 [grid-area:timeline] sticky top-3 mw-820:static print:hidden">
           <TimelineView
             entries={timeline.entries}
             playbackStatus={timeline.playback.status}
@@ -122,7 +122,7 @@ export function ReviewWorkspace({
             onSelectEvidence={setSelectedStartMs}
           />
         </div>
-        <div className="min-w-0 [grid-area:decision] sticky top-3 max-[1180px]:static max-[820px]:static print:hidden">
+        <div className="min-w-0 [grid-area:decision] sticky top-3 mw-1180:static mw-820:static print:hidden">
           <HumanReview
             api={api}
             invitationId={invitationId}

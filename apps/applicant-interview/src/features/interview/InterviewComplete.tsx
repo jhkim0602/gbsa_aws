@@ -3,7 +3,7 @@
 // 0,3,0), so the panel has always rendered at 920px. Kept as it renders.
 const SHELL =
   "mx-auto w-[min(calc(100%-48px),920px)] bg-canvas py-[56px] pb-[88px] text-ink" +
-  " max-[680px]:w-[min(calc(100%-32px),920px)] max-[680px]:py-[38px] max-[680px]:pb-[64px]";
+  " mw-680:w-[min(calc(100%-32px),920px)] mw-680:py-[38px] mw-680:pb-[64px]";
 
 const EYEBROW =
   "mb-2 font-[ui-monospace,SFMono-Regular,Consolas,monospace] text-[11px]" +
@@ -17,7 +17,7 @@ export function InterviewComplete() {
   return (
     <main className={SHELL}>
       <section
-        className="rounded-panel border border-border bg-surface px-[30px] py-9 text-center shadow-soft max-[680px]:px-5 max-[680px]:py-7"
+        className="rounded-panel border border-border bg-surface px-[30px] py-9 text-center shadow-soft mw-680:px-5 mw-680:py-7"
         role="status"
       >
         <span
@@ -27,7 +27,7 @@ export function InterviewComplete() {
           ✓
         </span>
         <p className={EYEBROW}>INTERVIEW SUBMITTED</p>
-        <h1 className="text-[25px] tracking-normal max-[680px]:text-[22px]">
+        <h1 className="text-[25px] tracking-normal mw-680:text-[22px]">
           면접을 완료하셨습니다
         </h1>
         <p className="mx-auto mt-2.5 mb-[26px] text-[14px] leading-[1.65] text-muted">

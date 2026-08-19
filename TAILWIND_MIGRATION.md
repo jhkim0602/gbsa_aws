@@ -129,12 +129,26 @@ those are free too. It also sets `letter-spacing: 0` on form controls; a source 
 | `.x:focus-visible` | `focus-visible:` |
 | `.x:disabled` | `disabled:` |
 | `[data-state="current"] .y` | `data-[state=current]:` or lift to a prop |
-| `@media (max-width: 720px)` | `max-[720px]:` |
+| `@media (max-width: 720px)` | `mw-720:` (**not** `max-[720px]:` — see below) |
 
-Mobile-first inversion is NOT allowed — it changes which rule wins. Use `max-[Npx]:` to mirror
-the original `max-width` query exactly. The design uses 24 distinct max-width breakpoints:
-108 190 360 400 480 520 600 620 640 680 720 760 780 820 860 880 900 920 960 980 1040 1050
-1080 1180. `max-[680px]:p-4` is verified to compile to `@media (max-width: 680px)`.
+Mobile-first inversion is NOT allowed — it changes which rule wins.
+
+**Use `mw-N:`, never the built-in `max-[Npx]:`.** Verified against `tailwindcss@4.3.3`:
+`max-[680px]:p-4` compiles to `@media (width < 680px)`, which **excludes** 680px, while the
+source stylesheets declare `@media (max-width: 680px)`, which **includes** it. At a viewport
+exactly equal to a breakpoint the two disagree — and 360/400/480/600/720 are real device
+widths, so the off-by-one is visible.
+
+`design-system/theme.css` declares an inclusive `@custom-variant` for every breakpoint the
+design uses, so `mw-680:p-4` → `@media (max-width: 680px)`. All 24 exist:
+
+```
+mw-108 mw-190 mw-360 mw-400 mw-480 mw-520 mw-600 mw-620 mw-640 mw-680 mw-720 mw-760
+mw-780 mw-820 mw-860 mw-880 mw-900 mw-920 mw-960 mw-980 mw-1040 mw-1050 mw-1080 mw-1180
+```
+
+They compose like any variant: `mw-620:[&>svg]:hidden`, `hover:mw-680:bg-brand`,
+`mw-680:not-last:after:hidden`. The verifier fails the build on a bare `max-[Npx]:`.
 
 ### 5. What stays in CSS
 
@@ -199,8 +213,8 @@ icon-button       inline-grid size-8 place-items-center rounded-md border border
 
 button-quiet      inline-flex min-h-7 rounded-[3px] border-0 bg-transparent px-2 text-[9px]
                   font-semibold text-brand hover:bg-brand-soft
-                  max-[680px]:min-h-8 max-[680px]:border max-[680px]:border-border
-                  max-[680px]:bg-surface max-[680px]:px-2.5
+                  mw-680:min-h-8 mw-680:border mw-680:border-border
+                  mw-680:bg-surface mw-680:px-2.5
 
 invitation-status inline-flex min-h-[26px] items-center rounded-md bg-surface-strong px-[9px]
                   text-[11px] font-semibold text-muted
@@ -210,7 +224,7 @@ invitation-status inline-flex min-h-[26px] items-center rounded-md bg-surface-st
    ^ hiring.css redefines the company.css version wholesale (min-height 22→26,
      radius 3→6, padding 7→9, adds font-size 11). These are the merged winners.
 
-search-field      relative flex w-[min(280px,100%)] items-center max-[680px]:w-full
+search-field      relative flex w-[min(280px,100%)] items-center mw-680:w-full
    > svg       →  absolute left-2.5 text-subtle
 
 section-header    flex min-h-[57px] items-center justify-between gap-[14px] border-b
@@ -234,11 +248,11 @@ form-alert        mx-6 mt-[14px] rounded-md border border-[#dc262640] bg-danger-
    is-success  →  border-[#1e9e6333] bg-success-soft text-success
 
 page-header       flex min-h-[65px] items-center justify-between gap-5 px-8 pt-[30px]
-                  pb-[14px] max-[680px]:items-start max-[680px]:p-4
+                  pb-[14px] mw-680:items-start mw-680:p-4
    > h1        →  m-0 text-[28px] font-bold
    > p         →  mt-0.5 mb-0 text-[14px] leading-[1.5] text-muted
 
-page-content      px-8 pt-5 pb-12 max-[680px]:p-4
+page-content      px-8 pt-5 pb-12 mw-680:p-4
 
 async-state /     grid min-h-[260px] place-items-center p-[30px] text-center text-muted
 empty-state       (their `p` children: m-0 text-[12px])
