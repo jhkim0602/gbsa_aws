@@ -315,9 +315,7 @@ def _candidate(
             criterion_id=(
                 UUID(str(source["criterion_id"])) if source.get("criterion_id") else None
             ),
-            material_type=(
-                str(source["material_type"]) if source.get("material_type") else None
-            ),
+            material_type=(str(source["material_type"]) if source.get("material_type") else None),
         )
     except (KeyError, TypeError, ValueError):
         return None

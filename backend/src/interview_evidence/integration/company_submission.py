@@ -83,9 +83,7 @@ class CompanySubmissionAuthorization:
         snapshot = self._company.authorize_invitation(
             context,
             principal.invitation_id,
-            required_state=frozenset(
-                {"consented", "materials_submitted", "analyzing", "ready"}
-            ),
+            required_state=frozenset({"consented", "materials_submitted", "analyzing", "ready"}),
         )
         if snapshot.state != "consented":
             return

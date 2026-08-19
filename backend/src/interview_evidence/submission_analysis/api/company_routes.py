@@ -13,7 +13,7 @@ from interview_evidence.shared.security.principals import (
 )
 from interview_evidence.shared.submission_materials import SubmissionMaterialType
 from interview_evidence.shared.tenant import ActorType, TenantContext
-from interview_evidence.submission_analysis.domain.submission import SourceType
+from interview_evidence.submission_analysis.domain.submission import SourceType, Submission
 from interview_evidence.submission_analysis.repositories.postgres import (
     SubmissionRepository,
 )
@@ -117,7 +117,7 @@ def create_company_submission_router(
 
 def _source_url(
     context: TenantContext,
-    submission: object,
+    submission: Submission,
     presigner: SubmissionObjectPresigner | None,
 ) -> str | None:
     source_type = submission.source_type

@@ -216,9 +216,7 @@ function RoleRow({
       <img alt="" className="size-11 shrink-0 object-contain" src={icon} />
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-baseline gap-x-2">
-          <strong
-            className={`text-sm ${selected ? "text-brand" : "text-ink"}`}
-          >
+          <strong className={`text-sm ${selected ? "text-brand" : "text-ink"}`}>
             {label}
           </strong>
           <small className="text-xs text-muted">{description}</small>

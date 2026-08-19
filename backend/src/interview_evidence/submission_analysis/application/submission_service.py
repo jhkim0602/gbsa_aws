@@ -321,11 +321,7 @@ def _validate_material_request(
     requirements: tuple[SubmissionRequirement, ...],
 ) -> None:
     requirement = next(
-        (
-            item
-            for item in requirements
-            if item.material_type is material_type and item.enabled
-        ),
+        (item for item in requirements if item.material_type is material_type and item.enabled),
         None,
     )
     if requirement is None:

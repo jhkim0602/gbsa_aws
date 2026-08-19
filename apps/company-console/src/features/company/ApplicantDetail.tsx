@@ -63,9 +63,9 @@ export function ApplicantDetail({
   );
   const [selectedTab, setSelectedTab] =
     useState<ApplicantReportTab>("overview");
-  const [submissions, setSubmissions] = useState<
-    readonly CompanySubmission[]
-  >([]);
+  const [submissions, setSubmissions] = useState<readonly CompanySubmission[]>(
+    [],
+  );
   const [submissionsLoading, setSubmissionsLoading] = useState(true);
   const invitation = invitations.find(
     (item) =>

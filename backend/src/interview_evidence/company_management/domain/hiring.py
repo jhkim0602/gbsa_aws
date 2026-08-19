@@ -102,9 +102,7 @@ class Invitation(BaseModel):
     applicant_id: UUID
     applicant_email_normalized: str = Field(min_length=3, max_length=320)
     applicant_display_name: str = Field(min_length=1, max_length=200)
-    submission_requirements: tuple[SubmissionRequirement, ...] = (
-        DEFAULT_SUBMISSION_REQUIREMENTS
-    )
+    submission_requirements: tuple[SubmissionRequirement, ...] = DEFAULT_SUBMISSION_REQUIREMENTS
     token_hash: str = Field(min_length=64, max_length=64, pattern=r"^[a-f0-9]{64}$")
     expires_at: datetime
     status: InvitationStatus = InvitationStatus.INVITED

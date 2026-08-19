@@ -96,15 +96,15 @@ class Submission(BaseModel):
         if not isinstance(value, dict) or value.get("material_type") is not None:
             return value
         source_type = value.get("source_type")
-        try:
-            normalized_source_type = SourceType(source_type)
-        except (TypeError, ValueError):
-            normalized_source_type = source_type
-        inferred = {
-            SourceType.PUBLIC_GIT: SubmissionMaterialType.PROJECTS,
-            SourceType.COVER_LETTER: SubmissionMaterialType.COVER_LETTER,
-            SourceType.RESUME: SubmissionMaterialType.RESUME,
-        }.get(normalized_source_type, SubmissionMaterialType.RESUME)
+        inferred = SubmissionMaterialType.RESUME
+        if isinstance(source_type, str):
+            # `SourceType` is a `StrEnum`, so keying by `.value` matches a raw payload
+            # string directly; anything unrecognised falls back to `RESUME` as before.
+            inferred = {
+                SourceType.PUBLIC_GIT.value: SubmissionMaterialType.PROJECTS,
+                SourceType.COVER_LETTER.value: SubmissionMaterialType.COVER_LETTER,
+                SourceType.RESUME.value: SubmissionMaterialType.RESUME,
+            }.get(source_type, inferred)
         return {**value, "material_type": inferred}
 
     @model_validator(mode="after")
@@ -126,10 +126,7 @@ class Submission(BaseModel):
             and self.source_type is not SourceType.PUBLIC_GIT
         ):
             raise ValueError("project submissions require a public Git source")
-        if (
-            self.material_type is not SubmissionMaterialType.PROJECTS
-            and not is_file
-        ):
+        if self.material_type is not SubmissionMaterialType.PROJECTS and not is_file:
             raise ValueError("document submission materials require a file source")
         if self.candidate_identity_inputs is not None:
             if self.source_type is not SourceType.PUBLIC_GIT:

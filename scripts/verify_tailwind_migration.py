@@ -26,8 +26,19 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 # Named size utilities carry a paired line-height in Tailwind v4; this design declares 480
 # font-sizes against 83 line-heights, so a named size silently changes leading.
 NAMED_TEXT_SIZES = (
-    "xs", "sm", "base", "lg", "xl",
-    "2xl", "3xl", "4xl", "5xl", "6xl", "7xl", "8xl", "9xl",
+    "xs",
+    "sm",
+    "base",
+    "lg",
+    "xl",
+    "2xl",
+    "3xl",
+    "4xl",
+    "5xl",
+    "6xl",
+    "7xl",
+    "8xl",
+    "9xl",
 )
 
 # Written fresh on `feature/uiux-renewal` rather than ported, so their typography is a
@@ -49,16 +60,26 @@ EXEMPT: tuple[tuple[str, range | None], ...] = (
 
 
 def is_exempt(rel: str, line: int) -> bool:
-    return any(
-        frag in rel and (lines is None or line in lines) for frag, lines in EXEMPT
-    )
+    return any(frag in rel and (lines is None or line in lines) for frag, lines in EXEMPT)
+
 
 # `:root` aliases in design-system/theme.css, not `@theme` keys — these compile to nothing.
 # Verified by compiling a probe against theme.css.
 NON_UTILITIES = (
-    "text-text", "text-text-secondary", "text-link", "text-link-strong", "text-purple",
-    "bg-text", "bg-link", "bg-link-strong", "bg-purple", "bg-purple-soft", "bg-product-bar",
-    "border-link", "border-link-strong", "border-text",
+    "text-text",
+    "text-text-secondary",
+    "text-link",
+    "text-link-strong",
+    "text-purple",
+    "bg-text",
+    "bg-link",
+    "bg-link-strong",
+    "bg-purple",
+    "bg-purple-soft",
+    "bg-product-bar",
+    "border-link",
+    "border-link-strong",
+    "border-text",
 )
 
 
@@ -66,9 +87,7 @@ def tsx_files() -> list[pathlib.Path]:
     return sorted(
         p
         for p in (ROOT / "apps").rglob("*.tsx")
-        if "node_modules" not in p.parts
-        and "dist" not in p.parts
-        and "__tests__" not in p.parts
+        if "node_modules" not in p.parts and "dist" not in p.parts and "__tests__" not in p.parts
     )
 
 
@@ -133,9 +152,7 @@ def project_class_names() -> set[str]:
     """Class names the app stylesheets still define."""
     names: set[str] = set()
     for path in css_files():
-        names |= set(
-            re.findall(r"\.(-?[a-zA-Z_][a-zA-Z0-9_-]*)", strip_comments(path.read_text()))
-        )
+        names |= set(re.findall(r"\.(-?[a-zA-Z_][a-zA-Z0-9_-]*)", strip_comments(path.read_text())))
     # Provided by design-system/theme.css, or surviving on purpose.
     return names - {"sr-only", "skip-link"}
 
@@ -148,8 +165,7 @@ def check_leftover_classes() -> list[str]:
             for token in tokens(value):
                 if token in defined:
                     problems.append(
-                        f"{path.relative_to(ROOT)}:{line}: still references "
-                        f"project class '{token}'"
+                        f"{path.relative_to(ROOT)}:{line}: still references project class '{token}'"
                     )
     return problems
 
@@ -202,8 +218,7 @@ def check_breakpoints() -> list[str]:
         used |= set(re.findall(r"\bmw-(\d+):", path.read_text()))
 
     return [
-        f"breakpoint max-width:{bp}px has no mw-{bp}: counterpart and no surviving "
-        f"media query"
+        f"breakpoint max-width:{bp}px has no mw-{bp}: counterpart and no surviving media query"
         for bp in sorted(declared - used, key=int)
     ]
 
@@ -223,8 +238,7 @@ def main() -> int:
             print(f"{label}: {item}")
 
     print(
-        f"\n{len(hard)} defect(s), {len(soft)} item(s) to review "
-        f"across {len(tsx_files())} files."
+        f"\n{len(hard)} defect(s), {len(soft)} item(s) to review across {len(tsx_files())} files."
     )
     return 1 if hard else 0
 

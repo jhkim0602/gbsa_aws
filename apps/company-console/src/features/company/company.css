@@ -2934,10 +2934,9 @@
 
   .position-applicant-list article {
     display: grid;
-    grid-template-columns: 34px minmax(170px, 1fr) minmax(
-        140px,
-        0.8fr
-      ) auto 70px;
+    grid-template-columns:
+      34px minmax(170px, 1fr) minmax(140px, 0.8fr)
+      auto 70px;
     min-height: 62px;
     gap: 10px;
     align-items: center;
