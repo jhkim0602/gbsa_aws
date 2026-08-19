@@ -40,6 +40,25 @@ import {
   companyWorkspaceApi,
   idempotencyKey,
 } from "./api/companyClient";
+import {
+  ASYNC_STATE,
+  PAGE_EYEBROW_IN_HEADER,
+  PAGE_HEADER,
+  PAGE_HEADER_TEXT,
+  PAGE_HEADER_TITLE,
+} from "./styles/primitives";
+
+const AUTH_PAGE = "grid min-h-screen place-items-center bg-surface-muted p-6";
+const AUTH_PANEL =
+  "grid w-[min(100%,400px)] gap-4 rounded-lg border border-border bg-white p-7 shadow-float";
+// `.auth-panel p` — every paragraph in the panel, including the status and error lines.
+const AUTH_TEXT = "text-[13px] leading-[1.6] text-muted";
+const AUTH_PRIMARY_ACTION =
+  "min-h-[38px] rounded-lg border border-brand bg-brand font-[650] text-white" +
+  " hover:bg-brand-strong";
+const BRAND_MARK =
+  "grid size-9 flex-[0_0_36px] place-items-center rounded-panel bg-brand text-[12px]" +
+  " font-extrabold text-white";
 
 const hiringApi: HiringWorkspaceApi = {
   async createPosition(input) {
@@ -609,16 +628,19 @@ export function ReviewRoute() {
   return (
     <>
       {!report || !timeline ? (
-        <section className="review-workspace">
-          <header className="page-header">
+        <section className="min-w-0">
+          {/* `.review-workspace .page-header { display: none }` under `@media print`. */}
+          <header className={`${PAGE_HEADER} print:hidden`}>
             <div>
-              <p className="page-eyebrow">Interview evidence</p>
-              <h1>지원자 검토</h1>
-              <p>AI 분석과 실제 답변 구간을 불러오고 있습니다.</p>
+              <p className={PAGE_EYEBROW_IN_HEADER}>Interview evidence</p>
+              <h1 className={PAGE_HEADER_TITLE}>지원자 검토</h1>
+              <p className={PAGE_HEADER_TEXT}>
+                AI 분석과 실제 답변 구간을 불러오고 있습니다.
+              </p>
             </div>
           </header>
-          <div className="async-state" role={error ? "alert" : "status"}>
-            <p>
+          <div className={ASYNC_STATE} role={error ? "alert" : "status"}>
+            <p className="text-[12px]">
               {error
                 ? "리포트를 불러올 수 없습니다. 잠시 후 다시 시도해 주세요."
                 : "리포트와 영상 타임라인을 불러오는 중입니다."}
@@ -725,28 +747,39 @@ export function CompanyLoginRoute() {
   }
 
   return (
-    <main className="auth-page">
-      <section className="auth-panel">
-        <span className="company-brand__mark" aria-hidden="true">
+    <main className={AUTH_PAGE}>
+      <section className={AUTH_PANEL}>
+        <span className={BRAND_MARK} aria-hidden="true">
           G
         </span>
         <h1>기업 로그인</h1>
-        <p>기업 계정으로 로그인해 채용 포지션과 지원자 검토를 시작합니다.</p>
+        <p className={AUTH_TEXT}>
+          기업 계정으로 로그인해 채용 포지션과 지원자 검토를 시작합니다.
+        </p>
         {AUTH_CONFIG ? (
           <button
-            className="auth-primary-action"
+            className={AUTH_PRIMARY_ACTION}
             type="button"
             onClick={() => void login()}
           >
             로그인
           </button>
         ) : (
-          <p role="status">로컬 개발 인증을 사용하고 있습니다.</p>
+          <p className={AUTH_TEXT} role="status">
+            로컬 개발 인증을 사용하고 있습니다.
+          </p>
         )}
-        <p className="auth-switch">
-          처음 이용하시나요? <Link to="/auth/signup">회원가입</Link>
+        <p className={`${AUTH_TEXT} text-center`}>
+          처음 이용하시나요?{" "}
+          <Link className="font-[650] text-brand" to="/auth/signup">
+            회원가입
+          </Link>
         </p>
-        {error && <p role="alert">로그인을 시작할 수 없습니다.</p>}
+        {error && (
+          <p className={AUTH_TEXT} role="alert">
+            로그인을 시작할 수 없습니다.
+          </p>
+        )}
       </section>
     </main>
   );
@@ -768,28 +801,39 @@ export function CompanySignupRoute() {
   }
 
   return (
-    <main className="auth-page">
-      <section className="auth-panel">
-        <span className="company-brand__mark" aria-hidden="true">
+    <main className={AUTH_PAGE}>
+      <section className={AUTH_PANEL}>
+        <span className={BRAND_MARK} aria-hidden="true">
           G
         </span>
         <h1>기업 회원가입</h1>
-        <p>기업 계정을 만들고 바로 채용 운영을 시작하세요.</p>
+        <p className={AUTH_TEXT}>
+          기업 계정을 만들고 바로 채용 운영을 시작하세요.
+        </p>
         {AUTH_CONFIG ? (
           <button
-            className="auth-primary-action"
+            className={AUTH_PRIMARY_ACTION}
             type="button"
             onClick={() => void signup()}
           >
             기업 계정 만들기
           </button>
         ) : (
-          <p role="status">배포된 데모 환경에서 회원가입할 수 있습니다.</p>
+          <p className={AUTH_TEXT} role="status">
+            배포된 데모 환경에서 회원가입할 수 있습니다.
+          </p>
         )}
-        <p className="auth-switch">
-          이미 계정이 있나요? <Link to="/auth/login">로그인</Link>
+        <p className={`${AUTH_TEXT} text-center`}>
+          이미 계정이 있나요?{" "}
+          <Link className="font-[650] text-brand" to="/auth/login">
+            로그인
+          </Link>
         </p>
-        {error && <p role="alert">회원가입을 시작할 수 없습니다.</p>}
+        {error && (
+          <p className={AUTH_TEXT} role="alert">
+            회원가입을 시작할 수 없습니다.
+          </p>
+        )}
       </section>
     </main>
   );
@@ -821,13 +865,13 @@ export function CompanyAuthCallbackRoute() {
   }, [navigate, search]);
 
   return (
-    <main className="auth-page">
-      <section className="auth-panel">
-        <span className="company-brand__mark" aria-hidden="true">
+    <main className={AUTH_PAGE}>
+      <section className={AUTH_PANEL}>
+        <span className={BRAND_MARK} aria-hidden="true">
           G
         </span>
         <h1>기업 로그인 확인</h1>
-        <p role={error ? "alert" : "status"}>
+        <p className={AUTH_TEXT} role={error ? "alert" : "status"}>
           {error
             ? "로그인 응답을 확인할 수 없습니다."
             : "기업 계정 로그인을 확인하고 있습니다."}
