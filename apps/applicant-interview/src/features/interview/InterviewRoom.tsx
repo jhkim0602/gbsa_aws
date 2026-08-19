@@ -16,6 +16,70 @@ import { Avatar, INTERVIEWER_LEVELS, type InterviewerLevel } from "./Avatar";
 import { InterviewComplete } from "./InterviewComplete";
 import type { ConnectionState, InterviewState } from "./sessionStore";
 
+// `interview-room` declares nothing itself — it is a hook two ancestor selectors in
+// `app/styles/shell.css` read, so it is not convertible to a utility and stays:
+//   .applicant-app:has(.interview-room) > .applicant-product-bar { display: none }
+//   .applicant-content > main:not(.interview-room) { width; margin-inline; padding-block }
+// The first hides the journey bar for this full-bleed room; nothing on this element can reach
+// an ancestor's sibling. The second is an opt-out the class keeps this <main> excluded from.
+// `interview-shell` is gone: both rules naming it are gated on `:not(.interview-room)`, which
+// this element always matches away, so it never applied here.
+const SHELL =
+  "interview-room min-h-screen w-full max-w-none bg-[#f7f9fc] px-4 py-5" +
+  " text-slate-950 sm:px-6 lg:px-10 lg:py-8";
+
+const CANDIDATE_PANEL =
+  "relative min-h-[320px] overflow-hidden rounded-lg border border-slate-200" +
+  " bg-slate-50 shadow-sm";
+
+const STAGE_LABEL =
+  "absolute left-4 top-4 z-20 inline-flex h-10 items-center gap-2 rounded-lg" +
+  " border border-slate-200 bg-white/95 px-3 text-sm font-semibold" +
+  " text-slate-900 shadow-sm";
+
+const PANEL_MENU_TRIGGER =
+  "grid size-10 place-items-center rounded-lg border border-slate-200" +
+  " bg-white/95 text-slate-600 shadow-sm transition hover:bg-slate-100" +
+  " hover:text-slate-950";
+
+const PANEL_MENU_ITEM =
+  "flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm" +
+  " font-medium text-slate-700 hover:bg-slate-100";
+
+const HEADER_PILL =
+  "inline-flex h-10 items-center gap-2 rounded-full border border-slate-200" +
+  " bg-white px-4 shadow-sm";
+
+// No `position` here on purpose: the split-view frame is `relative` and the PiP frame is
+// `absolute`, and Tailwind emits `.relative` after `.absolute`, so sharing one would pin both
+// to `relative` and unstick the PiP overlay.
+const AVATAR_FRAME =
+  "overflow-hidden rounded-lg border-2 border-[#9fc76d] bg-slate-200";
+
+const QUESTION_OVERLAY =
+  "pointer-events-none absolute bottom-5 left-1/2 z-20" +
+  " w-[min(760px,calc(100%_-_40px))] -translate-x-1/2 rounded-lg border" +
+  " border-white/70 bg-white/90 px-5 py-4 shadow-xl backdrop-blur-md";
+
+const NOTICE = "rounded-lg border px-4 py-3 text-sm";
+const NOTICE_AMBER = "border-amber-200 bg-amber-50 text-amber-900";
+const NOTICE_BLUE = "border-blue-200 bg-blue-50 text-blue-800";
+
+const FOOTER_ACTION =
+  "inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200" +
+  " bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition" +
+  " hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40";
+
+const FOOTER_ICON_ACTION =
+  "grid size-11 place-items-center rounded-lg border border-slate-200 bg-white" +
+  " text-slate-600 shadow-sm transition hover:bg-slate-100" +
+  " disabled:cursor-not-allowed disabled:opacity-40";
+
+const FOOTER_SUBMIT =
+  "inline-flex h-11 items-center gap-2 rounded-lg bg-red-500 px-5 text-sm" +
+  " font-bold text-white shadow-sm transition hover:bg-red-600" +
+  " disabled:cursor-not-allowed disabled:opacity-40";
+
 function formatElapsedTime(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60)
     .toString()
@@ -38,11 +102,8 @@ function CandidatePanel({
   onPictureInPictureToggle(): void;
 }) {
   return (
-    <section
-      className="relative min-h-[320px] overflow-hidden rounded-lg border border-slate-200 bg-slate-50 shadow-sm"
-      aria-label="지원자 화면"
-    >
-      <div className="absolute left-4 top-4 z-20 inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white/95 px-3 text-sm font-semibold text-slate-900 shadow-sm">
+    <section className={CANDIDATE_PANEL} aria-label="지원자 화면">
+      <div className={STAGE_LABEL}>
         <span
           className={`h-2 w-2 rounded-full ${recording ? "bg-red-500" : "bg-slate-400"}`}
           aria-hidden="true"
@@ -53,7 +114,7 @@ function CandidatePanel({
       <div className="absolute right-3 top-3 z-30">
         <button
           type="button"
-          className="grid size-10 place-items-center rounded-lg border border-slate-200 bg-white/95 text-slate-600 shadow-sm transition hover:bg-slate-100 hover:text-slate-950"
+          className={PANEL_MENU_TRIGGER}
           aria-label="화면 옵션"
           aria-haspopup="menu"
           aria-expanded={menuOpen}
@@ -68,7 +129,7 @@ function CandidatePanel({
           >
             <button
               type="button"
-              className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
+              className={PANEL_MENU_ITEM}
               role="menuitem"
               onClick={onPictureInPictureToggle}
             >
@@ -97,7 +158,7 @@ function CandidatePanel({
             className="mx-auto mb-3 size-10 stroke-[1.6]"
             aria-hidden="true"
           />
-          <p className="m-0 text-sm font-medium">
+          <p className="text-sm font-medium">
             {recording ? "답변을 녹음하고 있습니다" : "카메라 꺼짐"}
           </p>
           <p className="mt-1 text-xs text-slate-400">
@@ -169,7 +230,7 @@ export function InterviewRoom({
   }
 
   return (
-    <main className="interview-shell interview-room min-h-screen w-full max-w-none bg-[#f7f9fc] px-4 py-5 text-slate-950 sm:px-6 lg:px-10 lg:py-8">
+    <main className={SHELL}>
       <div className="mx-auto flex min-h-[calc(100vh-40px)] max-w-[1720px] flex-col gap-5 lg:min-h-[calc(100vh-64px)]">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2.5">
@@ -181,7 +242,9 @@ export function InterviewRoom({
             </span>
           </div>
           <div className="flex items-center gap-2.5">
-            <span className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 shadow-sm">
+            <span
+              className={`${HEADER_PILL} text-sm font-semibold text-slate-600`}
+            >
               <span
                 className={`h-2.5 w-2.5 rounded-full ${
                   connectionState === "connected"
@@ -192,7 +255,9 @@ export function InterviewRoom({
               />
               {connectionState === "connected" ? "Connected" : "Connecting"}
             </span>
-            <span className="inline-flex h-10 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 font-mono text-sm font-bold text-slate-800 shadow-sm">
+            <span
+              className={`${HEADER_PILL} font-mono text-sm font-bold text-slate-800`}
+            >
               <Clock3 className="size-4 text-[#82ad4e]" aria-hidden="true" />
               {formatElapsedTime(elapsedSeconds)}
             </span>
@@ -201,12 +266,10 @@ export function InterviewRoom({
 
         {connectionState === "reconnecting" ? (
           <section
-            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+            className={`flex flex-wrap items-center justify-between gap-3 ${NOTICE} ${NOTICE_AMBER}`}
             role="status"
           >
-            <p className="m-0">
-              연결을 복구하고 있습니다. 녹화 조각은 이 기기에 보관됩니다.
-            </p>
+            <p>연결을 복구하고 있습니다. 녹화 조각은 이 기기에 보관됩니다.</p>
             <button
               type="button"
               className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-300 bg-white px-3 font-semibold hover:bg-amber-100"
@@ -226,17 +289,16 @@ export function InterviewRoom({
           }`}
         >
           {!pictureInPicture ? (
-            <section className="relative min-h-[360px] overflow-hidden rounded-lg border-2 border-[#9fc76d] bg-slate-200 shadow-lg">
+            <section
+              className={`relative ${AVATAR_FRAME} min-h-[360px] shadow-lg`}
+            >
               <Avatar
                 textOnly={textOnly}
                 speaking={state === "in_progress" && !textOnly}
                 speechMarkIndex={0}
                 level={interviewerLevel}
               />
-              <div
-                className="absolute left-4 top-4 z-20 inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white/95 px-3 text-sm font-semibold text-slate-900 shadow-sm"
-                title={levelInfo.description}
-              >
+              <div className={STAGE_LABEL} title={levelInfo.description}>
                 <span
                   className="h-2 w-2 rounded-full bg-[#8fbc58]"
                   aria-hidden="true"
@@ -255,7 +317,9 @@ export function InterviewRoom({
           />
 
           {pictureInPicture ? (
-            <section className="absolute bottom-5 right-5 z-20 aspect-video w-[min(42%,380px)] min-w-48 overflow-hidden rounded-lg border-2 border-[#9fc76d] bg-slate-200 shadow-2xl">
+            <section
+              className={`absolute ${AVATAR_FRAME} bottom-5 right-5 z-20 aspect-video w-[min(42%,380px)] min-w-48 shadow-2xl`}
+            >
               <Avatar
                 textOnly={textOnly}
                 speaking={state === "in_progress" && !textOnly}
@@ -272,10 +336,10 @@ export function InterviewRoom({
           ) : null}
 
           <section
-            className="pointer-events-none absolute bottom-5 left-1/2 z-20 w-[min(760px,calc(100%_-_40px))] -translate-x-1/2 rounded-lg border border-white/70 bg-white/90 px-5 py-4 shadow-xl backdrop-blur-md"
+            className={QUESTION_OVERLAY}
             aria-labelledby="current-question"
           >
-            <h1 id="current-question" className="m-0 text-sm leading-6">
+            <h1 id="current-question" className="text-sm leading-6">
               <span className="mr-2 font-bold text-[#79a943]">
                 {levelInfo.shortLabel}
               </span>
@@ -285,18 +349,12 @@ export function InterviewRoom({
         </div>
 
         {state === "preparing_question" ? (
-          <p
-            className="m-0 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800"
-            role="status"
-          >
+          <p className={`${NOTICE} ${NOTICE_BLUE}`} role="status">
             답변을 바탕으로 다음 질문을 준비하고 있습니다.
           </p>
         ) : null}
         {state === "paused" ? (
-          <p
-            className="m-0 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
-            role="status"
-          >
+          <p className={`${NOTICE} ${NOTICE_AMBER}`} role="status">
             기술적인 이유로 면접이 일시 중지되었습니다. 이 상태는 평가에
             반영되지 않습니다.
           </p>
@@ -312,7 +370,7 @@ export function InterviewRoom({
                 핵심 역량 검증
               </span>
             </div>
-            <p className="m-0 text-sm font-semibold text-slate-900">
+            <p className="text-sm font-semibold text-slate-900">
               면접 단계: introduction
             </p>
             <p className="mt-1 text-xs text-slate-400">
@@ -323,7 +381,7 @@ export function InterviewRoom({
           <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
-              className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+              className={FOOTER_ACTION}
               disabled={recording || state === "paused"}
               onClick={startAnswer}
             >
@@ -333,7 +391,7 @@ export function InterviewRoom({
             {onAddExplanation ? (
               <button
                 type="button"
-                className="grid size-11 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                className={FOOTER_ICON_ACTION}
                 aria-label="정정 또는 추가 설명"
                 title="정정 또는 추가 설명"
                 disabled={recording || state === "paused"}
@@ -352,7 +410,7 @@ export function InterviewRoom({
             </button>
             <button
               type="button"
-              className="inline-flex h-11 items-center gap-2 rounded-lg bg-red-500 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+              className={FOOTER_SUBMIT}
               disabled={!recording || state === "paused"}
               onClick={completeAnswer}
             >

@@ -28,18 +28,28 @@ NAMED_TEXT_SIZES = (
     "2xl", "3xl", "4xl", "5xl", "6xl", "7xl", "8xl", "9xl",
 )
 
-# Redesigned on `feature/uiux-renewal`; their typography is intentional.
-EXEMPT = (
-    "features/interview/InterviewRoom.tsx",
-    "features/interview/Avatar.tsx",
-    "features/submissions/index.tsx",
-    "features/hiring/tech-stack-combobox/",
-    "features/hiring/role-selector/",
-    "features/hiring/steps/InterviewDesigner.tsx",
-    "features/hiring/steps/EvaluationDesigner.tsx",
-    "features/hiring/steps/ApplicantMaterials.tsx",
-    "features/hiring/components/HiringAiFlow.tsx",
+# Written fresh on `feature/uiux-renewal` rather than ported, so their typography is a
+# deliberate choice. Anything not listed here is a conversion and must keep the source's
+# leading. `ApplicantDetail.tsx` is partly each: only its new submissions list is exempt,
+# which the line range pins down.
+EXEMPT: tuple[tuple[str, range | None], ...] = (
+    ("features/interview/InterviewRoom.tsx", None),
+    ("features/interview/Avatar.tsx", None),
+    ("features/submissions/index.tsx", None),
+    ("features/hiring/tech-stack-combobox/", None),
+    ("features/hiring/role-selector/", None),
+    ("features/hiring/steps/InterviewDesigner.tsx", None),
+    ("features/hiring/steps/EvaluationDesigner.tsx", None),
+    ("features/hiring/steps/ApplicantMaterials.tsx", None),
+    ("features/hiring/components/HiringAiFlow.tsx", None),
+    ("features/company/ApplicantDetail.tsx", range(400, 470)),
 )
+
+
+def is_exempt(rel: str, line: int) -> bool:
+    return any(
+        frag in rel and (lines is None or line in lines) for frag, lines in EXEMPT
+    )
 
 # `:root` aliases in design-system/theme.css, not `@theme` keys — these compile to nothing.
 # Verified by compiling a probe against theme.css.
@@ -91,9 +101,9 @@ def check_named_text_sizes() -> list[str]:
     named = set(NAMED_TEXT_SIZES)
     for path in tsx_files():
         rel = str(path.relative_to(ROOT))
-        if any(e in rel for e in EXEMPT):
-            continue
         for line, value in class_attrs(path.read_text()):
+            if is_exempt(rel, line):
+                continue
             for token in tokens(value):
                 bare = token.split(":")[-1]
                 if bare.startswith("text-") and bare[5:] in named:

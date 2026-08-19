@@ -173,6 +173,10 @@ Winners below were read off the **built bundle** at `ba64585`, not the source or
 `components.css` is now imported **first** (index.css line 3), so where a feature stylesheet
 redefines a primitive, **the feature file wins** — the reverse of what source order suggests.
 
+> **These strings are company-console only.** The applicant app's `index.css` does not import
+> `components.css`, so a class of the same name there is a *different* rule. See
+> "Applicant-app primitives" below before converting anything under `apps/applicant-interview`.
+
 ```
 button-primary    inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg
                   border border-brand bg-brand px-[18px] text-[14px] font-semibold text-white
@@ -241,6 +245,41 @@ empty-state       (their `p` children: m-0 text-[12px])
 ```
 
 `button-danger` is defined in components.css but unreferenced — drop it.
+
+### Applicant-app primitives — a separate, smaller set
+
+`apps/applicant-interview/src/app/styles/index.css` imports only `tailwindcss`, `theme.css`,
+`shell.css`, `access.css`, `interview.css`. **No `components.css`.** So in the applicant app:
+
+- `.button-primary` / `.button-secondary` declare **color only** (interview.css 203–212). All
+  their geometry comes from the *parent* selector `.interview-actions button, .reconnect-banner
+  button`, which is where min-height/padding/radius/size/weight live. Converting a button inside
+  those containers means emitting both halves onto the element:
+
+  ```
+  base (from the parent rule, applies to EVERY button in those containers):
+      inline-flex min-h-11 items-center justify-center rounded-panel border border-border
+      px-4 text-[13px] font-[650]
+      disabled:opacity-45                    ← .interview-actions button:disabled only
+  + button-primary  →  border-brand bg-brand text-white
+  + button-secondary→  bg-surface text-ink
+  ```
+  `--applicant-control-height` is `44px` → `min-h-11`. `--applicant-radius` is `--radius-panel`
+  → `rounded-panel`. `font: inherit` and `cursor: pointer` are Preflight/theme freebies.
+  `border-color: ... !important` on `.button-primary` only exists to beat the parent's
+  `border: 1px solid var(--applicant-border)`; as a utility, `border-brand` after
+  `border-border` needs no `!`— emit only `border-brand`.
+
+- There is **no** `min-h-10` / `px-[18px]` / `text-[14px]` / `shadow-soft` / hover state here,
+  and no `.icon-button`, `.panel`, `.status-badge`, `.page-header`, `.page-content`,
+  `.async-state`, `.empty-state`. Do not import the company strings.
+- Applicant colors are `--applicant-*` aliases of the same tokens (`--applicant-blue` →
+  `brand`, `--applicant-text` → `ink`, `--applicant-surface` → `surface`,
+  `--applicant-border` → `border`, `--applicant-muted` → `muted`, `--applicant-subtle` →
+  `subtle`, `--applicant-green` → `success`, `--applicant-orange` → `warning`,
+  `--applicant-danger` → `danger`, `--applicant-blue-soft` → `brand-soft`,
+  `--applicant-green-soft` → `success-soft`, `--applicant-bg` → `canvas`). Note
+  `--applicant-green-strong` aliases `--color-brand`, **not** a green — use `brand`.
 
 Before converting any other class that appears in the cross-file list below, check the bundle
 for its real winner the same way (`grep` the built CSS, then check whether the later offset is
