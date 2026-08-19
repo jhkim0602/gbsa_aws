@@ -60,6 +60,7 @@ jobs:
       - run: npm run format:check
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm test
 
       # No browser build here, deliberately. Vite inlines `import.meta.env` at build time and
       # the console's Cognito configuration -- login domain, client id, and the CloudFront

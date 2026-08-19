@@ -18,6 +18,7 @@
     "format": "prettier --write . && UV_CACHE_DIR=.uv-cache uv run --no-sync ruff format .",
     "format:check": "prettier --check . && UV_CACHE_DIR=.uv-cache uv run --no-sync ruff format --check .",
     "lint": "eslint . && UV_CACHE_DIR=.uv-cache uv run --no-sync ruff check .",
+    "test": "npm run test --workspaces --if-present && UV_CACHE_DIR=.uv-cache uv run --no-sync pytest",
     "typecheck": "npm run typecheck --workspaces --if-present && UV_CACHE_DIR=.uv-cache uv run --no-sync mypy backend/src"
   },
   "devDependencies": {
