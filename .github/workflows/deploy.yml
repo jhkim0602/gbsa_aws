@@ -1,42 +1,16 @@
 name: Deploy
 
 on:
-  # Every merge to main lands in dev, so the environment under test is the commit that was
-  # just reviewed. Only dev: prod is never reached without someone choosing it below.
-  push:
+  pull_request:
     branches: [main]
-    paths-ignore:
-      - "**.md"
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: Deployment environment
-        type: choice
-        options: [dev, prod]
-        default: dev
-        required: true
-      dev_root:
-        description: Terraform root used when environment is dev
-        type: choice
-        options: [foundation, data-ai, application]
-        default: application
-        required: true
-      apply_infrastructure:
-        description: Apply the reviewed Terraform plan before application deployment
-        type: boolean
-        default: true
-        required: true
+    types: [closed]
 
 permissions:
   contents: read
   id-token: write
 
 concurrency:
-  # Workflow-level concurrency cannot read `needs`, so the fallback is repeated here rather
-  # than taken from the settings job. Two deploys to one environment would race on the
-  # Terraform state lock and on the ECS service; queueing is the whole point, so nothing is
-  # cancelled in flight -- a half-applied environment is worse than a slow queue.
-  group: deploy-${{ inputs.environment || 'dev' }}
+  group: deploy-production
   cancel-in-progress: false
 
 env:
@@ -44,11 +18,8 @@ env:
   TERRAFORM_VERSION: 1.13.3
 
 jobs:
-  # One place decides what this run is. `inputs.*` is empty on a push, so every job that
-  # read it directly would silently resolve the wrong root, skip its own `if:` and address a
-  # cluster named `iep-`. Resolving once and passing the answer down means a push and a
-  # dispatch differ in exactly this job.
   settings:
+    if: ${{ github.event.pull_request.merged == true }}
     runs-on: ubuntu-latest
     outputs:
       environment: ${{ steps.resolve.outputs.environment }}
@@ -57,40 +28,13 @@ jobs:
       approval_environment: ${{ steps.resolve.outputs.approval_environment }}
     steps:
       - id: resolve
-        env:
-          EVENT: ${{ github.event_name }}
-          INPUT_ENVIRONMENT: ${{ inputs.environment }}
-          INPUT_DEV_ROOT: ${{ inputs.dev_root }}
-          INPUT_APPLY: ${{ inputs.apply_infrastructure }}
         run: |
           set -euo pipefail
-          if [[ "$EVENT" == "push" ]]; then
-            # A merge deploys the application root of dev and applies its plan. The
-            # foundation and data-ai roots hold the VPC, the database and the keys; they
-            # change rarely and are applied deliberately, by dispatch.
-            ENVIRONMENT=dev
-            DEV_ROOT=application
-            APPLY=true
-          else
-            ENVIRONMENT="$INPUT_ENVIRONMENT"
-            DEV_ROOT="$INPUT_DEV_ROOT"
-            APPLY="$INPUT_APPLY"
-          fi
-          # The gate follows the environment, not how the run started. Prod always waits for
-          # a reviewer; dev never does -- on a merge the pull request review was the gate, and
-          # on a dispatch the person who pressed the button is the reviewer. Pointing dev at
-          # `dev-deploy` rather than a `dev-approval` of its own means there is no fourth
-          # environment to create whose only purpose is to approve nothing.
-          if [[ "$ENVIRONMENT" == "prod" ]]; then
-            APPROVAL_ENVIRONMENT=prod-approval
-          else
-            APPROVAL_ENVIRONMENT=dev-deploy
-          fi
-          echo "environment=$ENVIRONMENT" >> "$GITHUB_OUTPUT"
-          echo "dev_root=$DEV_ROOT" >> "$GITHUB_OUTPUT"
-          echo "apply_infrastructure=$APPLY" >> "$GITHUB_OUTPUT"
-          echo "approval_environment=$APPROVAL_ENVIRONMENT" >> "$GITHUB_OUTPUT"
-          echo "Deploying $ENVIRONMENT ($DEV_ROOT), apply=$APPLY" >> "$GITHUB_STEP_SUMMARY"
+          echo "environment=prod" >> "$GITHUB_OUTPUT"
+          echo "dev_root=application" >> "$GITHUB_OUTPUT"
+          echo "apply_infrastructure=true" >> "$GITHUB_OUTPUT"
+          echo "approval_environment=prod-approval" >> "$GITHUB_OUTPUT"
+          echo "Deploying production from merged main PR" >> "$GITHUB_STEP_SUMMARY"
 
   quality:
     needs: [settings]
@@ -197,16 +141,13 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # A gate on dispatch, a pass-through on a merge. The environment name is what makes the
-  # difference: `prod-approval` carries required reviewers, `dev-deploy` does not, so the
-  # same job blocks or does not according to how the run started.
   approval:
     needs: [settings, terraform_plan]
     runs-on: ubuntu-latest
     environment:
       name: ${{ needs.settings.outputs.approval_environment }}
     steps:
-      - run: echo "Plan accepted for ${{ needs.settings.outputs.environment }} via ${{ github.event_name }}"
+      - run: echo "Production plan accepted for merged main PR"
 
   terraform_apply:
     needs: [settings, terraform_plan, approval]
