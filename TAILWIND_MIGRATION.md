@@ -99,8 +99,26 @@ Literal `#ffffff` stays literal → `text-white` / `bg-white`. Note `.icon-butto
 `#ffffff` in components.css but `var(--color-surface)` in hiring.css — same color, and
 hiring.css wins (see below).
 
-Raw colors with no token (`rgb(220 38 38 / 25%)`, `color-mix(...)`) go in as arbitrary
-values: `border-[rgb(220_38_38_/_25%)]`.
+Raw colors with no token go in as arbitrary values, in the form the bundle already uses:
+`border-[#dc262640]`, `shadow-[0_0_0_3px_#5966ce1f]`,
+`border-[color-mix(in_srgb,var(--color-danger)_35%,var(--color-border))]`.
+
+### 3b. What Preflight already does — do not re-declare it
+
+Verified against `node_modules/tailwindcss/preflight.css`:
+
+| Preflight rule | So you do NOT need |
+|---|---|
+| `*,::before,::after { margin:0; padding:0; border:0 solid }` | `m-0`, `p-0`, `border-0` |
+| `h1..h6 { font-size:inherit; font-weight:inherit }` | — but you **DO** need `font-bold` on a heading whose source rule declared `font-weight:700`, because the UA bold is gone |
+| `ol,ul,menu { list-style:none }` | `list-none` |
+| `img,svg,video,canvas { display:block; vertical-align:middle }` | `block` on an icon |
+| `button,input,select,textarea { font:inherit; color:inherit; background:transparent; border-radius:0 }` | `font-inherit`, `bg-transparent` on a bare button |
+| `button { appearance:button }` | — |
+
+`theme.css` adds `button { cursor:pointer }` and `button:disabled { cursor:not-allowed }`, so
+those are free too. It also sets `letter-spacing: 0` on form controls; a source rule declaring
+`letter-spacing: 0` on a heading needs `tracking-normal`.
 
 ### 4. Selector translation
 
@@ -167,16 +185,37 @@ button-secondary  inline-flex min-h-10 items-center justify-center gap-1.5 round
                   text-danger                       (company.css; replaces border+text)
 
 icon-button       inline-grid size-8 place-items-center rounded-md border border-border
-                  bg-surface p-0 font-semibold text-muted
+                  bg-surface font-semibold text-muted
+                  hover:bg-surface-muted hover:text-ink
                   disabled:cursor-not-allowed disabled:opacity-35
    ^ hiring.css version — THIS is what renders. The components.css version
      (inline-flex / rounded-lg / bg-white / hover:bg-surface-muted hover:text-ink) is
      fully overridden and dead. Its `:hover` still applies, so keep
      hover:bg-surface-muted hover:text-ink.
 
-button-quiet      min-h-7 rounded-[3px] border-0 bg-transparent px-2 text-[9px]
+button-quiet      inline-flex min-h-7 rounded-[3px] border-0 bg-transparent px-2 text-[9px]
                   font-semibold text-brand hover:bg-brand-soft
-   max-[680px]: →  min-h-8 border border-border bg-surface px-2.5
+                  max-[680px]:min-h-8 max-[680px]:border max-[680px]:border-border
+                  max-[680px]:bg-surface max-[680px]:px-2.5
+
+invitation-status inline-flex min-h-[26px] items-center rounded-md bg-surface-strong px-[9px]
+                  text-[11px] font-semibold text-muted
+   is-progress /  text-brand bg-brand-soft
+   is-ready    →
+   is-attention→  text-warning bg-warning-soft
+   ^ hiring.css redefines the company.css version wholesale (min-height 22→26,
+     radius 3→6, padding 7→9, adds font-size 11). These are the merged winners.
+
+search-field      relative flex w-[min(280px,100%)] items-center max-[680px]:w-full
+   > svg       →  absolute left-2.5 text-subtle
+
+section-header    flex min-h-[57px] items-center justify-between gap-[14px] border-b
+                  border-border px-[15px] py-[11px]
+   > p         →  mt-0.5 text-[9px] text-muted
+
+draft-validation  inline-flex items-center gap-1.5 text-[11px] leading-[1.35] text-muted
+   is-invalid  →  text-danger
+   is-empty    →  text-subtle
 
 panel             rounded-xl border border-border bg-surface shadow-soft
 
@@ -186,9 +225,9 @@ status-badge      inline-flex min-h-5 items-center rounded-full bg-surface-stron
    is-warning  →  bg-warning-soft text-warning
    is-danger   →  bg-danger-soft  text-danger
 
-form-alert        mx-6 mt-[14px] rounded-md border border-[rgb(220_38_38_/_25%)]
-                  bg-danger-soft px-[11px] py-[9px] text-[10px] text-danger
-   is-success  →  border-[rgb(30_158_99_/_20%)] bg-success-soft text-success
+form-alert        mx-6 mt-[14px] rounded-md border border-[#dc262640] bg-danger-soft
+                  px-[11px] py-[9px] text-[10px] text-danger
+   is-success  →  border-[#1e9e6333] bg-success-soft text-success
 
 page-header       flex min-h-[65px] items-center justify-between gap-5 px-8 pt-[30px]
                   pb-[14px] max-[680px]:items-start max-[680px]:p-4
