@@ -1,5 +1,6 @@
-import type { InterviewLevel } from "../hiring/types";
+import type { InterviewLevel, InterviewerTone } from "../hiring/types";
 import type { SubmissionMaterialId } from "../hiring/types";
+import type { ReviewReport, ReviewTimeline } from "../review";
 
 export type CompanySubmissionRequirement = Readonly<{
   materialType: SubmissionMaterialId;
@@ -79,6 +80,11 @@ export type CompanyCriterionVersion = Readonly<{
   prohibitedTopics: readonly string[];
   interviewDurationMinutes: number;
   interviewLevel: InterviewLevel;
+  personaDefinition?: Readonly<{
+    name: string;
+    tone: InterviewerTone;
+    voiceId: string;
+  }>;
 }>;
 
 export type CompanyWorkspaceApi = Readonly<{
@@ -131,6 +137,19 @@ export type CompanyOperationsApi = CompanyWorkspaceApi &
     listSubmissions(
       invitationId: string,
     ): Promise<readonly CompanySubmission[]>;
+    /**
+     * Read-only report summaries used for position-level competency analytics.
+     * Optional so older API adapters can still render the operational workspace.
+     */
+    listApplicantInsights?(
+      positionId: string,
+    ): Promise<readonly CompanyApplicantInsight[]>;
+    /** Loads the immutable AI report and its evidence timeline for one session. */
+    getApplicantReport?(
+      interviewSessionId: string,
+      invitationId: string,
+      competencyModelVersionId: string,
+    ): Promise<CompanyApplicantReport | null>;
   }>;
 
 export type CompanySubmission = Readonly<{
@@ -143,4 +162,30 @@ export type CompanySubmission = Readonly<{
   failureCode?: string | null;
   impactSummary?: string | null;
   createdAt: string;
+}>;
+
+export type CompanyApplicantCriterionScore = Readonly<{
+  criterionId: string;
+  criterionName: string;
+  score: number | null;
+  assessmentState: ReviewReport["items"][number]["assessmentState"];
+  evidenceCount: number;
+  weight?: number;
+}>;
+
+export type CompanyApplicantInsight = Readonly<{
+  invitationId: string;
+  interviewSessionId: string;
+  competencyModelVersionId: string;
+  overallScore: number | null;
+  unscoredCriteriaCount: number;
+  evidenceCoverage: number;
+  summary: string;
+  criteria: readonly CompanyApplicantCriterionScore[];
+}>;
+
+export type CompanyApplicantReport = Readonly<{
+  insight: CompanyApplicantInsight;
+  report: ReviewReport;
+  timeline: ReviewTimeline;
 }>;

@@ -81,7 +81,7 @@ def _criterion_input(code: str, name: str) -> dict[str, object]:
         "code": code,
         "name": name,
         "description": "장애 원인을 분석하고 복구를 주도한다.",
-        "weight": 1.0,
+        "weight": 50.0,
         "verification_guide": {
             "observable_dimensions": ("상황", "원인 분석", "복구"),
             "strong_answer_signals": ("본인 판단 근거가 구체적이다.",),

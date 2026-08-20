@@ -4,9 +4,14 @@ export { PositionOperations } from "./PositionOperations";
 export { ApplicantManagement } from "./ApplicantManagement";
 export { ApplicantDetail } from "./ApplicantDetail";
 export type {
+  CompanyCriterionVersion,
+  CompanyApplicantCriterionScore,
+  CompanyApplicantInsight,
+  CompanyApplicantReport,
   CompanyInvitation,
   CompanyOperationsApi,
   CompanyPosition,
+  CompanySubmission,
   CompanyUser,
   CompanyWorkspaceApi,
 } from "./types";

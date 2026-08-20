@@ -20,6 +20,7 @@ from interview_evidence.shared.security.principals import (
     ApplicantPrincipal,
     PrincipalNotFoundError,
 )
+from interview_evidence.shared.submission_materials import SubmissionRequirement
 from interview_evidence.shared.tenant import ActorType, TenantContext
 
 
@@ -27,6 +28,20 @@ class ApplicantTokenExchange(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     invitation_token: str = Field(min_length=32, max_length=4096)
+
+
+class ApplicantInvitationPreview(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    company_name: str
+    position_title: str
+    position_description: str
+    role_type: str | None
+    interview_at: datetime | None
+    interview_duration_minutes: int = Field(ge=10, le=120)
+    interview_level: str
+    interviewer_name: str | None
+    submission_requirements: list[SubmissionRequirement]
 
 
 class ApplicantIdentityVerification(BaseModel):
@@ -120,6 +135,52 @@ def create_applicant_router(
         str,
         Header(alias="Idempotency-Key", min_length=16, max_length=128),
     ]
+
+    @router.post(
+        "/applicant/access/preview",
+        response_model=ApplicantInvitationPreview,
+        operation_id="previewApplicantInvitation",
+    )
+    def preview_applicant_invitation(
+        body: ApplicantTokenExchange,
+        request: Request,
+    ) -> ApplicantInvitationPreview:
+        try:
+            token = sessions.inspect_token(body.invitation_token)
+        except (
+            InvitationTokenNotFoundError,
+            InvitationTokenExpiredError,
+            InvitationTokenAlreadyUsedError,
+        ) as error:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED) from error
+        request_id = _optional_uuid(request.headers.get("x-request-id"))
+        effective_request_id = request_id or token.invitation_id
+        context = TenantContext(
+            company_id=token.company_id,
+            actor_type=ActorType.APPLICANT,
+            actor_id=token.applicant_id,
+            request_id=effective_request_id,
+            trace_id=request.headers.get("x-trace-id") or str(effective_request_id),
+        )
+        try:
+            preview = access_service.get_invitation_preview(
+                context,
+                invitation_id=token.invitation_id,
+                applicant_id=token.applicant_id,
+            )
+        except (KeyError, PermissionError) as error:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED) from error
+        return ApplicantInvitationPreview(
+            company_name=preview.company_name,
+            position_title=preview.position_title,
+            position_description=preview.position_description,
+            role_type=preview.role_type,
+            interview_at=preview.interview_at,
+            interview_duration_minutes=preview.interview_duration_minutes,
+            interview_level=preview.interview_level,
+            interviewer_name=preview.interviewer_name,
+            submission_requirements=list(preview.submission_requirements),
+        )
 
     @router.post(
         "/applicant/access/exchange",

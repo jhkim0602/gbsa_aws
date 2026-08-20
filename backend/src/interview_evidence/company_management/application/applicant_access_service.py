@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime
+from uuid import UUID
+
 from interview_evidence.company_management.domain.applicant_access import (
     DEFAULT_CONSENT_POLICY,
     ApplicantProfile,
@@ -15,7 +19,21 @@ from interview_evidence.company_management.repositories.postgres import CompanyR
 from interview_evidence.shared.ids import Clock, new_uuid7
 from interview_evidence.shared.messaging.outbox import Outbox, OutboxEvent
 from interview_evidence.shared.security.principals import ApplicantPrincipal
+from interview_evidence.shared.submission_materials import SubmissionRequirement
 from interview_evidence.shared.tenant import TenantContext
+
+
+@dataclass(frozen=True, slots=True)
+class ApplicantInvitationPreviewSnapshot:
+    company_name: str
+    position_title: str
+    position_description: str
+    role_type: str | None
+    interview_at: datetime | None
+    interview_duration_minutes: int
+    interview_level: str
+    interviewer_name: str | None
+    submission_requirements: tuple[SubmissionRequirement, ...]
 
 
 class ApplicantAccessService:
@@ -34,6 +52,36 @@ class ApplicantAccessService:
 
     def get_consent_policy(self) -> ConsentPolicy:
         return self._consent_policy
+
+    def get_invitation_preview(
+        self,
+        context: TenantContext,
+        *,
+        invitation_id: UUID,
+        applicant_id: UUID,
+    ) -> ApplicantInvitationPreviewSnapshot:
+        invitation = self._repository.get_invitation(context, invitation_id)
+        if invitation.applicant_id != applicant_id:
+            raise PermissionError("invitation preview is outside the applicant scope")
+        position = self._repository.get_position(context, invitation.position_id)
+        criteria = self._repository.get_criterion_version(
+            context,
+            invitation.competency_model_version_id,
+        )
+        company = self._repository.get_company(context)
+        raw_name = criteria.persona_definition.get("name")
+        interviewer_name = raw_name.strip() if isinstance(raw_name, str) else None
+        return ApplicantInvitationPreviewSnapshot(
+            company_name=company.name,
+            position_title=position.title,
+            position_description=position.description,
+            role_type=position.role_type,
+            interview_at=position.interview_at,
+            interview_duration_minutes=criteria.interview_duration_minutes,
+            interview_level=criteria.interview_level.value,
+            interviewer_name=interviewer_name or None,
+            submission_requirements=invitation.submission_requirements,
+        )
 
     def verify_identity(
         self,

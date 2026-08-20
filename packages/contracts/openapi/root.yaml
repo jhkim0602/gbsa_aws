@@ -48,6 +48,8 @@ paths:
     $ref: ./paths/company/paths.yaml#/~1public~1companies~1{company_id}~1logo
   /applicant/access/exchange:
     $ref: ./paths/company/paths.yaml#/~1applicant~1access~1exchange
+  /applicant/access/preview:
+    $ref: ./paths/company/paths.yaml#/~1applicant~1access~1preview
   /applicant/access/revoke:
     $ref: ./paths/company/paths.yaml#/~1applicant~1access~1revoke
   /applicant/identity-verifications:
@@ -460,6 +462,29 @@ components:
           type:
           - string
           - 'null'
+    InterviewerPersonaDefinition:
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - tone
+      - voice_id
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        tone:
+          type: string
+          enum:
+          - calm
+          - friendly
+          - analytical
+          - concise
+        voice_id:
+          type: string
+          minLength: 1
+          maxLength: 100
     JobRequirementInput:
       type: object
       additionalProperties: false
@@ -609,6 +634,7 @@ components:
           type: array
           minItems: 1
           maxItems: 12
+          description: Criterion weights must total exactly 100.
           items:
             $ref: '#/components/schemas/EvaluationCriterionInput'
         prohibited_topics:
@@ -622,9 +648,7 @@ components:
         interview_level:
           $ref: '#/components/schemas/InterviewLevel'
         persona_definition:
-          type: object
-          description: System-managed compatibility field; recruiter clients must
-            not set it.
+          $ref: '#/components/schemas/InterviewerPersonaDefinition'
     CompetencyModelVersion:
       type: object
       additionalProperties: false
@@ -672,8 +696,7 @@ components:
         interview_level:
           $ref: '#/components/schemas/InterviewLevel'
         persona_definition:
-          type: object
-          description: System-managed compatibility field.
+          $ref: '#/components/schemas/InterviewerPersonaDefinition'
         status:
           type: string
           enum:
@@ -982,6 +1005,50 @@ components:
           type: string
           minLength: 32
           maxLength: 4096
+    ApplicantInvitationPreview:
+      type: object
+      additionalProperties: false
+      required:
+      - company_name
+      - position_title
+      - position_description
+      - interview_duration_minutes
+      - interview_level
+      - submission_requirements
+      properties:
+        company_name:
+          type: string
+        position_title:
+          type: string
+        position_description:
+          type: string
+        role_type:
+          type:
+          - string
+          - 'null'
+        interview_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        interview_duration_minutes:
+          type: integer
+          minimum: 10
+          maximum: 120
+        interview_level:
+          type: string
+          enum:
+          - entry
+          - junior
+          - senior
+        interviewer_name:
+          type:
+          - string
+          - 'null'
+        submission_requirements:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubmissionRequirement'
     ApplicantIdentityVerification:
       type: object
       additionalProperties: false

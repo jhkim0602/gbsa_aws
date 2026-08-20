@@ -7,7 +7,11 @@ import {
   useSearchParams,
 } from "react-router-dom";
 
-import { ApplicantAccess, type ApplicantAccessApi } from "../features/access";
+import {
+  ApplicantAccess,
+  type ApplicantAccessApi,
+  type ApplicantInvitationPreview,
+} from "../features/access";
 import {
   INTERVIEWER_LEVELS,
   type InterviewerLevel,
@@ -116,6 +120,45 @@ export function createRecordingUploadApi(
 }
 
 const accessApi: ApplicantAccessApi = {
+  async getInvitationPreview(token) {
+    const preview = await applicantRequest<{
+      company_name: string;
+      position_title: string;
+      position_description: string;
+      role_type: string | null;
+      interview_at: string | null;
+      interview_duration_minutes: number;
+      interview_level: ApplicantInvitationPreview["interviewLevel"];
+      interviewer_name: string | null;
+      submission_requirements: Array<{
+        material_type: string;
+        required: boolean;
+        enabled: boolean;
+        instructions: string | null;
+      }>;
+    }>("/v1/applicant/access/preview", {
+      method: "POST",
+      body: JSON.stringify({ invitation_token: token }),
+    });
+    return {
+      companyName: preview.company_name,
+      positionTitle: preview.position_title,
+      positionDescription: preview.position_description,
+      roleType: preview.role_type,
+      interviewAt: preview.interview_at,
+      interviewDurationMinutes: preview.interview_duration_minutes,
+      interviewLevel: preview.interview_level,
+      interviewerName: preview.interviewer_name,
+      submissionRequirements: preview.submission_requirements.map(
+        (requirement) => ({
+          materialType: requirement.material_type,
+          required: requirement.required,
+          enabled: requirement.enabled,
+          instructions: requirement.instructions,
+        }),
+      ),
+    };
+  },
   async exchangeToken(token) {
     await applicantRequest("/v1/applicant/access/exchange", {
       method: "POST",

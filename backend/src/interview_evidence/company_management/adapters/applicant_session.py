@@ -124,21 +124,31 @@ class ApplicantSessionAdapter:
             raw_token=raw_token,
         )
 
-    def exchange(
-        self,
-        raw_token: str,
-    ) -> tuple[ApplicantPrincipal, ApplicantSessionCookie]:
+    def inspect_token(self, raw_token: str) -> ApplicantTokenRecord:
+        """Resolve an active invitation token without consuming it.
+
+        The applicant portal uses this narrow read path to show the public interview
+        brief before the applicant confirms the invitation.  It deliberately applies
+        the same not-found, replay and expiry checks as ``exchange`` so the preview
+        cannot turn a dead token back into a usable credential.
+        """
         token_hash = self.hash_token(raw_token)
         record = self._store.get_token(token_hash)
         if record is None:
             raise InvitationTokenNotFoundError("invitation token is invalid")
-        now = self._clock.now()
         if record.consumed_at is not None:
             raise InvitationTokenAlreadyUsedError("invitation token has already been used")
-        if now >= record.expires_at:
+        if self._clock.now() >= record.expires_at:
             raise InvitationTokenExpiredError("invitation token has expired")
+        return record
 
-        self._store.consume_token(token_hash, consumed_at=now)
+    def exchange(
+        self,
+        raw_token: str,
+    ) -> tuple[ApplicantPrincipal, ApplicantSessionCookie]:
+        record = self.inspect_token(raw_token)
+        now = self._clock.now()
+        self._store.consume_token(record.token_hash, consumed_at=now)
         session_id = new_uuid7(now)
         principal = ApplicantPrincipal(
             company_id=record.company_id,

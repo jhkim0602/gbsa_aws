@@ -295,7 +295,7 @@ def _criterion_payload(code: str) -> dict[str, object]:
         "code": code,
         "name": "문제 해결",
         "description": "문제를 구조화하는 역량",
-        "weight": 1,
+        "weight": 100,
         "abstain_guidance": "근거가 없으면 판단을 유보한다.",
         "required": True,
         "verification_guide": {
@@ -441,3 +441,67 @@ async def test_publishing_a_criterion_version_twice_reports_a_conflict() -> None
     assert stale.status_code == 409
     assert first.status_code == 200
     assert second.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_criterion_weights_and_interviewer_voice_are_validated_and_persisted() -> None:
+    app = _criteria_app()
+    auth = {"Authorization": "Bearer company-token"}
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="https://testserver",
+    ) as client:
+        created = await client.post(
+            "/v1/positions",
+            headers={**auth, "Idempotency-Key": "voice-position"},
+            json={"title": "백엔드 개발자", "description": "서비스 개발"},
+        )
+        position_id = created.json()["position_id"]
+        invalid = await client.post(
+            f"/v1/positions/{position_id}/competency-model-versions",
+            headers={**auth, "Idempotency-Key": "invalid-weight"},
+            json={
+                "criteria": [{**_criterion_payload("PROBLEM_SOLVING"), "weight": 90}],
+                "job_requirements": [
+                    {
+                        "requirement_type": "required",
+                        "statement": "장애 대응 경험",
+                        "priority": 1,
+                        "criterion_code": "PROBLEM_SOLVING",
+                    }
+                ],
+                "prohibited_topics": [],
+                "interview_duration_minutes": 30,
+            },
+        )
+        valid = await client.post(
+            f"/v1/positions/{position_id}/competency-model-versions",
+            headers={**auth, "Idempotency-Key": "valid-voice"},
+            json={
+                "criteria": [_criterion_payload("PROBLEM_SOLVING")],
+                "job_requirements": [
+                    {
+                        "requirement_type": "required",
+                        "statement": "장애 대응 경험",
+                        "priority": 1,
+                        "criterion_code": "PROBLEM_SOLVING",
+                    }
+                ],
+                "prohibited_topics": [],
+                "interview_duration_minutes": 30,
+                "persona_definition": {
+                    "name": "심층형 면접관",
+                    "tone": "concise",
+                    "voice_id": "Seoyeon",
+                },
+            },
+        )
+
+    assert invalid.status_code == 422
+    assert valid.status_code == 201
+    assert valid.json()["persona_definition"] == {
+        "name": "심층형 면접관",
+        "tone": "concise",
+        "voice_id": "Seoyeon",
+    }

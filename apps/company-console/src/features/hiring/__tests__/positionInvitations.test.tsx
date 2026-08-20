@@ -291,6 +291,42 @@ describe("PositionInvitations", () => {
     expect(await screen.findByText("이 포지션 전용 문구")).toBeTruthy();
   });
 
+  it("switches the invite modal content to the editor without opening a nested dialog", async () => {
+    const api: PositionInvitationApi = {
+      listInvitations: vi.fn().mockResolvedValue(invitations),
+      createInvitations: vi.fn(),
+    };
+    const templateApi = buildTemplateApi();
+
+    render(
+      <MemoryRouter>
+        <PositionInvitations
+          embedded
+          view="invite"
+          positionId="position-1"
+          positionName="백엔드 개발자"
+          api={api}
+          templateApi={templateApi}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "초대할 지원자" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "수정" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "초대 메일 설정" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: "초대 메일 수정" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "명단으로" }));
+    expect(
+      await screen.findByRole("heading", { name: "초대할 지원자" }),
+    ).toBeTruthy();
+  });
+
   it("keeps sending available when the mail summary cannot load", async () => {
     const api: PositionInvitationApi = {
       listInvitations: vi.fn().mockResolvedValue(invitations),
