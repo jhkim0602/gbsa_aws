@@ -16,6 +16,7 @@ from interview_evidence.interview_engine.api.applicant_routes import (
     create_applicant_interview_router,
 )
 from interview_evidence.interview_engine.api.live_handlers import LiveInterviewHandler
+from interview_evidence.interview_engine.api.streaming_speech import WebSocketSpeechRuntime
 from interview_evidence.interview_engine.api.websocket import (
     ProtocolStreamHandler,
     create_interview_websocket_router,
@@ -72,6 +73,7 @@ class LaneCRuntime:
     audit: AuditAppender
     outbox: Outbox
     stream_handler: ProtocolStreamHandler
+    websocket_speech: WebSocketSpeechRuntime
 
 
 def create_lane_c_runtime(
@@ -91,6 +93,7 @@ def create_lane_c_runtime(
     text_embedder: TextEmbedder | None = None,
     speech_to_text: SpeechToText | None = None,
     text_to_speech: TextToSpeech | None = None,
+    websocket_speech: WebSocketSpeechRuntime | None = None,
 ) -> LaneCRuntime:
     active_repository = repository
     active_storage = object_storage
@@ -99,6 +102,7 @@ def create_lane_c_runtime(
     active_idempotency = idempotency
     active_hot_view = hot_view
     active_outbox = outbox
+    active_websocket_speech = websocket_speech or WebSocketSpeechRuntime()
     checkpoints = CheckpointService(active_repository, active_outbox)
     reconciler = ContextReconciler(active_repository, active_hot_view)
     service = SessionApplicationService(
@@ -175,6 +179,7 @@ def create_lane_c_runtime(
     websocket_router = create_interview_websocket_router(
         principal_provider=principal_provider,
         handler=stream_handler,
+        speech=active_websocket_speech,
     )
     return LaneCRuntime(
         app=create_app([router, websocket_router]),
@@ -185,6 +190,7 @@ def create_lane_c_runtime(
         audit=active_audit,
         outbox=active_outbox,
         stream_handler=stream_handler,
+        websocket_speech=active_websocket_speech,
     )
 
 
@@ -205,6 +211,7 @@ def create_lane_c_app(
     text_embedder: TextEmbedder | None = None,
     speech_to_text: SpeechToText | None = None,
     text_to_speech: TextToSpeech | None = None,
+    websocket_speech: WebSocketSpeechRuntime | None = None,
 ) -> FastAPI:
     return create_lane_c_runtime(
         principal_provider=principal_provider,
@@ -222,6 +229,7 @@ def create_lane_c_app(
         text_embedder=text_embedder,
         speech_to_text=speech_to_text,
         text_to_speech=text_to_speech,
+        websocket_speech=websocket_speech,
     ).app
 
 

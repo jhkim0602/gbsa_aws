@@ -59,6 +59,7 @@ from interview_evidence.interview_engine.api import (
 from interview_evidence.interview_engine.api.applicant_routes import (
     create_applicant_interview_router,
 )
+from interview_evidence.interview_engine.api.streaming_speech import WebSocketSpeechRuntime
 from interview_evidence.interview_engine.api.websocket import (
     create_interview_websocket_router,
 )
@@ -88,6 +89,7 @@ from interview_evidence.reporting.application.deletion_service import DeletionSe
 from interview_evidence.reporting.application.evidence_service import EvidenceService
 from interview_evidence.reporting.application.public import ReportingPublic
 from interview_evidence.reporting.application.transcript_service import TranscriptService
+from interview_evidence.runtime.speech import create_speech_runtime_dependencies
 from interview_evidence.shared.aws_clients.ports import (
     AIModel,
     ConsumableQueue,
@@ -170,6 +172,7 @@ def create_production_runtime(
     speech_to_text: SpeechToText | None = None,
     text_to_speech: TextToSpeech | None = None,
 ) -> Runtime:
+    streaming_speech = create_speech_runtime_dependencies(environment)
     applicant_access_base_url = _applicant_access_base_url(environment)
     logo_base_url = _logo_base_url(environment, applicant_access_base_url)
     aws = None
@@ -299,6 +302,14 @@ def create_production_runtime(
         text_embedder=embedder,
         speech_to_text=speech_to_text,
         text_to_speech=text_to_speech,
+        websocket_speech=WebSocketSpeechRuntime(
+            speech_to_text=streaming_speech.streaming_speech_to_text,
+            recognition_language_code=environment.get("GCP_STT_LANGUAGE_CODE", "ko-KR").strip(),
+            recognition_model=environment.get("GCP_STT_MODEL", "latest_long").strip(),
+            final_result_timeout_seconds=float(
+                environment.get("GCP_STT_FINAL_TIMEOUT_SECONDS", "8")
+            ),
+        ),
     )
     interview_public = InterviewEnginePublic(
         repository=lane_c.repository,
@@ -417,6 +428,7 @@ def create_production_runtime(
                 principal_provider=principals,
                 handler=lane_c.stream_handler,
                 database=database,
+                speech=lane_c.websocket_speech,
             ),
             create_reporting_router(
                 principal_provider=principals,
