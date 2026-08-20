@@ -48,6 +48,8 @@ paths:
     $ref: ./paths/company/paths.yaml#/~1public~1companies~1{company_id}~1logo
   /applicant/access/exchange:
     $ref: ./paths/company/paths.yaml#/~1applicant~1access~1exchange
+  /applicant/access/preview:
+    $ref: ./paths/company/paths.yaml#/~1applicant~1access~1preview
   /applicant/access/revoke:
     $ref: ./paths/company/paths.yaml#/~1applicant~1access~1revoke
   /applicant/identity-verifications:
@@ -1003,6 +1005,50 @@ components:
           type: string
           minLength: 32
           maxLength: 4096
+    ApplicantInvitationPreview:
+      type: object
+      additionalProperties: false
+      required:
+      - company_name
+      - position_title
+      - position_description
+      - interview_duration_minutes
+      - interview_level
+      - submission_requirements
+      properties:
+        company_name:
+          type: string
+        position_title:
+          type: string
+        position_description:
+          type: string
+        role_type:
+          type:
+          - string
+          - 'null'
+        interview_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        interview_duration_minutes:
+          type: integer
+          minimum: 10
+          maximum: 120
+        interview_level:
+          type: string
+          enum:
+          - entry
+          - junior
+          - senior
+        interviewer_name:
+          type:
+          - string
+          - 'null'
+        submission_requirements:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubmissionRequirement'
     ApplicantIdentityVerification:
       type: object
       additionalProperties: false

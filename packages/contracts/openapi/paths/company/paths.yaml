@@ -517,6 +517,28 @@
               type: string
       default:
         $ref: ../../root.yaml#/components/responses/Error
+/applicant/access/preview:
+  post:
+    operationId: previewApplicantInvitation
+    x-owner-lane: A
+    tags:
+    - Applicant Access
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/ApplicantTokenExchange
+    responses:
+      '200':
+        description: Public interview brief for the holder of an active invitation token
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/ApplicantInvitationPreview
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
 /applicant/access/revoke:
   post:
     operationId: revokeApplicantSession
