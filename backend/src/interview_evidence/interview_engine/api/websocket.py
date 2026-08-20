@@ -398,6 +398,9 @@ def create_interview_websocket_router(
         async def publish(response: ServerEnvelope) -> None:
             await outgoing.put(response)
 
+        async def publish_output(response: ServerEnvelope | bytes) -> None:
+            await outgoing.put(response)
+
         async def send_outgoing() -> None:
             while True:
                 response = await outgoing.get()
@@ -410,8 +413,14 @@ def create_interview_websocket_router(
         streaming = StreamingSpeechConnection(
             context=context,
             runtime=speech_runtime,
-            publish=publish,
+            publish=publish_output,
         )
+
+        async def publish_handler_response(response: ServerEnvelope) -> None:
+            prepared = streaming.prepare_question_response(response)
+            await publish(prepared)
+            await streaming.start_question_audio(prepared)
+
         try:
             while True:
                 incoming = await websocket.receive()
@@ -450,7 +459,7 @@ def create_interview_websocket_router(
                     except (ValueError, SpeechProviderError):
                         responses = (_invalid_message(session_id),)
                     for response in responses:
-                        await publish(response)
+                        await publish_handler_response(response)
                     continue
                 try:
                     text = incoming.get("text")
@@ -500,7 +509,7 @@ def create_interview_websocket_router(
                     )
                 except (ValueError, TypeError, SpeechProviderError):
                     response = _invalid_message(session_id)
-                await publish(response)
+                await publish_handler_response(response)
         except WebSocketDisconnect:
             return
         finally:

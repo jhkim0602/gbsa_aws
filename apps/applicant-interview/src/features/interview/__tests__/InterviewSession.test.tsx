@@ -18,6 +18,7 @@ describe("InterviewSession", () => {
     const protocol = {
       connect: vi.fn(),
       disconnect: vi.fn(),
+      startAnswer: vi.fn(),
       completeAnswer: vi.fn(),
       sendAudioFrame: vi.fn(),
       repeatQuestion: vi.fn(),
@@ -95,6 +96,10 @@ describe("InterviewSession", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "답변 시작" }));
     await waitFor(() => expect(recorder.start).toHaveBeenCalledWith(stream));
+    expect(protocol.startAnswer).toHaveBeenCalledWith({
+      answerTurnId: expect.any(String),
+      sampleRateHz: 16000,
+    });
     expect(audioCapture.start).toHaveBeenCalledWith(
       stream,
       expect.any(Function),
@@ -131,6 +136,7 @@ describe("InterviewSession", () => {
     const protocol = {
       connect: vi.fn(),
       disconnect: vi.fn(),
+      startAnswer: vi.fn(),
       completeAnswer: vi.fn(),
       sendAudioFrame: vi.fn(),
       repeatQuestion: vi.fn(),

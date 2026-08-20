@@ -172,6 +172,8 @@ function CandidatePanel({
 
 export function InterviewRoom({
   question,
+  transcript = "",
+  interviewerSpeaking = false,
   state,
   connectionState,
   textOnly,
@@ -183,6 +185,8 @@ export function InterviewRoom({
   onAddExplanation,
 }: {
   question: string;
+  transcript?: string;
+  interviewerSpeaking?: boolean;
   state: InterviewState;
   connectionState: ConnectionState;
   textOnly: boolean;
@@ -196,6 +200,7 @@ export function InterviewRoom({
   const [recording, setRecording] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [pictureInPicture, setPictureInPicture] = useState(false);
+  const [captionsVisible, setCaptionsVisible] = useState(true);
   const [elapsedSeconds, setElapsedSeconds] = useState(initialElapsedSeconds);
   const levelInfo = INTERVIEWER_LEVELS[interviewerLevel];
 
@@ -294,7 +299,7 @@ export function InterviewRoom({
             >
               <Avatar
                 textOnly={textOnly}
-                speaking={state === "in_progress" && !textOnly}
+                speaking={interviewerSpeaking && !textOnly}
                 speechMarkIndex={0}
                 level={interviewerLevel}
               />
@@ -322,7 +327,7 @@ export function InterviewRoom({
             >
               <Avatar
                 textOnly={textOnly}
-                speaking={state === "in_progress" && !textOnly}
+                speaking={interviewerSpeaking && !textOnly}
                 speechMarkIndex={0}
                 level={interviewerLevel}
               />
@@ -346,6 +351,16 @@ export function InterviewRoom({
               <span className="font-semibold text-slate-900">{question}</span>
             </h1>
           </section>
+
+          {captionsVisible && transcript ? (
+            <section
+              className="pointer-events-none absolute bottom-28 left-1/2 z-20 w-[min(700px,calc(100%_-_48px))] -translate-x-1/2 rounded-lg bg-slate-950/80 px-5 py-3 text-center text-sm font-medium leading-6 text-white shadow-lg backdrop-blur"
+              aria-live="polite"
+              aria-label="실시간 답변 자막"
+            >
+              {transcript}
+            </section>
+          ) : null}
         </div>
 
         {state === "preparing_question" ? (
@@ -382,7 +397,7 @@ export function InterviewRoom({
             <button
               type="button"
               className={FOOTER_ACTION}
-              disabled={recording || state === "paused"}
+              disabled={recording || state === "paused" || interviewerSpeaking}
               onClick={startAnswer}
             >
               <Mic className="size-4" aria-hidden="true" />
@@ -405,6 +420,8 @@ export function InterviewRoom({
               className="grid size-11 place-items-center rounded-lg bg-[#8fbc58] text-white shadow-sm transition hover:bg-[#7da94a]"
               aria-label="자막 보기"
               title="자막 보기"
+              aria-pressed={captionsVisible}
+              onClick={() => setCaptionsVisible((current) => !current)}
             >
               <Captions className="size-5" aria-hidden="true" />
             </button>

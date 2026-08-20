@@ -15,6 +15,7 @@ from interview_evidence.interview_engine.api.websocket import (
     WebSocketEnvelope,
 )
 from interview_evidence.shared.speech.ports import (
+    SpeechAudioChunk,
     SpeechProviderError,
     SpeechRecognitionConfig,
     SpeechRecognitionSession,
@@ -191,10 +192,65 @@ async def test_streaming_connection_aborts_when_final_result_times_out() -> None
     assert connection.active is False
 
 
+class FakeStreamingTextToSpeech:
+    def synthesize_stream(
+        self,
+        context: TenantContext,
+        text: str,
+        *,
+        voice_id: str,
+    ) -> AsyncIterator[SpeechAudioChunk]:
+        assert context == _context()
+        assert text == "다음 질문입니다."
+        assert voice_id == "Seoyeon"
+        return self._chunks()
+
+    async def _chunks(self) -> AsyncIterator[SpeechAudioChunk]:
+        yield SpeechAudioChunk(content=b"one", sample_rate_hz=24000)
+        yield SpeechAudioChunk(content=b"two", sample_rate_hz=24000)
+
+
+@pytest.mark.asyncio
+async def test_streaming_connection_sends_question_audio_in_order() -> None:
+    published: list[ServerEnvelope | bytes] = []
+    connection = StreamingSpeechConnection(
+        context=_context(),
+        runtime=WebSocketSpeechRuntime(text_to_speech=FakeStreamingTextToSpeech()),
+        publish=_publisher(published),
+    )
+    response = ServerEnvelope(
+        message_type="question.ready",
+        session_id=SESSION_ID,
+        sequence=4,
+        idempotency_key="server:question-ready-0001",
+        correlation_id=UUID("00000000-0000-7000-8000-000000000007"),
+        sent_at=_envelope().sent_at,
+        payload={
+            "question_turn_id": "00000000-0000-7000-8000-000000000008",
+            "text": "다음 질문입니다.",
+            "text_only": True,
+            "voice_id": "Seoyeon",
+        },
+    )
+
+    prepared = connection.prepare_question_response(response)
+    await connection.start_question_audio(prepared)
+    await connection.wait_for_question_audio()
+
+    assert prepared.payload["text_only"] is False
+    assert prepared.payload["audio_stream"] is True
+    assert [
+        item.message_type if isinstance(item, ServerEnvelope) else item for item in published
+    ] == ["question.audio.begin", b"one", b"two", "question.audio.end"]
+    begin = published[0]
+    assert isinstance(begin, ServerEnvelope)
+    assert begin.payload["sample_rate_hz"] == 24000
+
+
 def _publisher(
-    messages: list[ServerEnvelope],
+    messages: list[ServerEnvelope | bytes],
 ):
-    async def publish(message: ServerEnvelope) -> None:
+    async def publish(message: ServerEnvelope | bytes) -> None:
         messages.append(message)
 
     return publish

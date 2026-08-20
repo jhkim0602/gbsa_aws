@@ -185,6 +185,7 @@ class LiveInterviewHandler:
             question_turn=question_turn,
             source_reference_count=0,
             speech=speech,
+            voice_id=plan.voice_id,
         )
 
     def handle_audio(
@@ -527,6 +528,7 @@ class LiveInterviewHandler:
             question_turn=result.question_turn,
             source_reference_count=len(result.source_references),
             speech=result.speech,
+            voice_id=plan.voice_id,
         )
 
     def _save_transcript_draft(
@@ -609,6 +611,7 @@ class LiveInterviewHandler:
         question_turn: InterviewTurn,
         source_reference_count: int,
         speech: SpeechOutput,
+        voice_id: str,
     ) -> ServerEnvelope:
         return cls._message(
             envelope,
@@ -623,6 +626,7 @@ class LiveInterviewHandler:
                 "speech_marks_url": speech.speech_marks_url,
                 "source_reference_count": source_reference_count,
                 "text_only": speech.text_only,
+                "voice_id": voice_id,
             },
         )
 

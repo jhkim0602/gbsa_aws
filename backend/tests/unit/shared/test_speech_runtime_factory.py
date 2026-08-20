@@ -13,6 +13,8 @@ def test_speech_runtime_keeps_legacy_providers_outside_gcp_factory() -> None:
 
     assert dependencies.streaming_speech_to_text is None
     assert dependencies.streaming_text_to_speech is None
+    assert dependencies.stt_provider == "aws_legacy"
+    assert dependencies.tts_provider == "aws_legacy"
 
 
 def test_speech_runtime_builds_selected_gcp_streaming_clients() -> None:
@@ -32,7 +34,8 @@ def test_speech_runtime_builds_selected_gcp_streaming_clients() -> None:
             "TTS_PROVIDER": "gcp_streaming",
             "GCP_TTS_VOICE_NAME": "ko-KR-Chirp3-HD-Achernar",
             "GCP_TTS_VOICE_ALIASES_JSON": '{"Seoyeon":"ko-KR-Chirp3-HD-Aoede"}',
-            "GCP_SPEECH_API_ENDPOINT": "asia-northeast3-texttospeech.googleapis.com",
+            "GCP_STT_API_ENDPOINT": "speech.example.test",
+            "GCP_TTS_API_ENDPOINT": "texttospeech.example.test",
         },
         speech_client_factory=speech_factory,
         text_to_speech_client_factory=tts_factory,
@@ -41,8 +44,8 @@ def test_speech_runtime_builds_selected_gcp_streaming_clients() -> None:
     assert dependencies.streaming_speech_to_text is not None
     assert dependencies.streaming_text_to_speech is not None
     assert [option.api_endpoint for option in options] == [
-        "asia-northeast3-texttospeech.googleapis.com",
-        "asia-northeast3-texttospeech.googleapis.com",
+        "speech.example.test",
+        "texttospeech.example.test",
     ]
 
 

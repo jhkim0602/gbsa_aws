@@ -201,8 +201,10 @@ def create_production_runtime(
         search_index = search_index or aws.search_index
         model = model or aws.model
         embedder = embedder or aws.embedder
-        speech_to_text = speech_to_text or aws.speech_to_text
-        text_to_speech = text_to_speech or aws.text_to_speech
+        if speech_to_text is None and streaming_speech.stt_provider == "aws_legacy":
+            speech_to_text = aws.speech_to_text
+        if text_to_speech is None and streaming_speech.tts_provider == "aws_legacy":
+            text_to_speech = aws.text_to_speech
         database_url = aws.database_url
     else:
         database_url = environment.get("DATABASE_URL", "").strip()
@@ -304,6 +306,7 @@ def create_production_runtime(
         text_to_speech=text_to_speech,
         websocket_speech=WebSocketSpeechRuntime(
             speech_to_text=streaming_speech.streaming_speech_to_text,
+            text_to_speech=streaming_speech.streaming_text_to_speech,
             recognition_language_code=environment.get("GCP_STT_LANGUAGE_CODE", "ko-KR").strip(),
             recognition_model=environment.get("GCP_STT_MODEL", "latest_long").strip(),
             final_result_timeout_seconds=float(

@@ -22,6 +22,8 @@ TextToSpeechClientFactory = Callable[[ClientOptions], texttospeech_v1.TextToSpee
 
 @dataclass(frozen=True, slots=True)
 class SpeechRuntimeDependencies:
+    stt_provider: str
+    tts_provider: str
     streaming_speech_to_text: StreamingSpeechToText | None
     streaming_text_to_speech: StreamingTextToSpeech | None
 
@@ -44,19 +46,23 @@ def create_speech_runtime_dependencies(
     }:
         raise RuntimeError("TTS_PROVIDER must be aws_legacy, gcp_streaming, gcp_unary or text_only")
 
-    client_options = _client_options(environment)
     streaming_stt: StreamingSpeechToText | None = None
     streaming_tts: StreamingTextToSpeech | None = None
     if stt_provider == "gcp_streaming":
         create_speech_client = speech_client_factory or _create_speech_client
-        streaming_stt = GcpStreamingSpeechToText(create_speech_client(client_options))
+        streaming_stt = GcpStreamingSpeechToText(
+            create_speech_client(_client_options(environment, "GCP_STT_API_ENDPOINT"))
+        )
     if tts_provider in {"gcp_streaming", "gcp_unary"}:
         create_text_to_speech_client = (
             text_to_speech_client_factory or _create_text_to_speech_client
         )
         streaming_tts = GcpStreamingTextToSpeech(
-            create_text_to_speech_client(client_options),
-            language_code=environment.get("GCP_SPEECH_LANGUAGE_CODE", "ko-KR").strip(),
+            create_text_to_speech_client(_client_options(environment, "GCP_TTS_API_ENDPOINT")),
+            language_code=environment.get(
+                "GCP_TTS_LANGUAGE_CODE",
+                environment.get("GCP_SPEECH_LANGUAGE_CODE", "ko-KR"),
+            ).strip(),
             default_voice_name=_required(environment, "GCP_TTS_VOICE_NAME"),
             sample_rate_hz=int(environment.get("GCP_TTS_SAMPLE_RATE_HZ", "24000")),
             voice_aliases=_voice_aliases(environment),
@@ -64,13 +70,18 @@ def create_speech_runtime_dependencies(
             unary_fallback=True,
         )
     return SpeechRuntimeDependencies(
+        stt_provider=stt_provider,
+        tts_provider=tts_provider,
         streaming_speech_to_text=streaming_stt,
         streaming_text_to_speech=streaming_tts,
     )
 
 
-def _client_options(environment: Mapping[str, str]) -> ClientOptions:
-    endpoint = environment.get("GCP_SPEECH_API_ENDPOINT", "").strip()
+def _client_options(environment: Mapping[str, str], name: str) -> ClientOptions:
+    endpoint = environment.get(
+        name,
+        environment.get("GCP_SPEECH_API_ENDPOINT", ""),
+    ).strip()
     return ClientOptions(api_endpoint=endpoint) if endpoint else ClientOptions()
 
 

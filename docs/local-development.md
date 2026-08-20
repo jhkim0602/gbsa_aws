@@ -5,7 +5,7 @@ through the same wiring the deployed environment uses (`create_production_runtim
 separate local application runtime to keep in step with production.
 
 Everything the runtime reaches through an endpoint override lands in a container. Everything else
-reaches **real AWS on your credentials, and those calls are billed** — see [What is not
+reaches **real AWS or GCP on your credentials, and those calls are billed** — see [What is not
 local](#what-is-not-local).
 
 ## First run
@@ -14,7 +14,7 @@ Docker, Node 22, and [uv](https://docs.astral.sh/uv/) are required.
 
 ```bash
 make dev-install          # npm ci + uv sync (editable)
-cp .env.example .env      # then fill in the AWS section
+cp .env.example .env      # then fill in the AWS and GCP sections
 make up                   # containers, then buckets/queues/table, then migrations
 ```
 
@@ -49,7 +49,7 @@ both and goes to the account your credentials name:
 |---|---|---|
 | **Bedrock** | real AWS | Question generation and criterion assessment are billed per call. `BEDROCK_MODEL_ID` must be enabled in `AWS_REGION` or every call fails `AccessDenied`. |
 | **Cognito** | real AWS | Production uses it; local company-console auth uses the fixed local identity below. |
-| Transcribe / Polly | real AWS | Billed. Needed only once an interview produces audio. |
+| Speech-to-Text / Text-to-Speech | real GCP | Billed. One streaming STT connection is opened per answer; question PCM is streamed back over the interview WebSocket. |
 | Textract | real AWS | Billed. Needed only for document submission analysis. |
 | MediaConvert | real AWS | The placeholder role ARN fails at job submission; a real ARN is needed to post-process a recording. |
 | SES | LocalStack | Accepted and **discarded** — nothing has a mailbox. Read an invitation link from the API response or the database. |
@@ -84,6 +84,23 @@ VITE_LOCAL_COMPANY_TOKEN=local-company-access-token
 This provider cannot activate in staging or production: any `APP_ENVIRONMENT` other than `local`
 continues to use Cognito. The ids still need to name a company user in your local Postgres; the
 provider authenticates the request but does not seed application data.
+
+## GCP speech locally
+
+Enable Speech-to-Text and Text-to-Speech in the personal GCP project, then store the service
+account JSON outside the repository. Point the ignored root `.env` at that file:
+
+```bash
+GOOGLE_APPLICATION_CREDENTIALS=$HOME/.config/whyyou/gcp-service-account.json
+STT_PROVIDER=gcp_streaming
+TTS_PROVIDER=gcp_streaming
+GCP_TTS_VOICE_NAME=ko-KR-Chirp3-HD-Achernar
+```
+
+The browser sends 16 kHz mono PCM in roughly 40 ms packets. The API keeps one GCP recognition
+stream open until `answer.complete`, persists the combined final transcript once, and sends GCP
+TTS PCM back through the same WebSocket. Set both providers to `aws_legacy` to use the previous
+AWS path without reverting code.
 
 ## No seed data
 

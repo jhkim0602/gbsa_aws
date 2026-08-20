@@ -123,16 +123,24 @@ def create_lane_c_runtime(
         clock=active_clock,
     )
     stream_handler = ProtocolStreamHandler(session_service=service)
-    live_dependencies = (
+    core_live_dependencies = (
         plan_provider,
         retrieval_provider,
         model,
-        speech_to_text,
-        text_to_speech,
     )
-    if any(dependency is not None for dependency in live_dependencies):
-        if not all(dependency is not None for dependency in live_dependencies):
-            raise ValueError("all live interview dependencies must be configured together")
+    live_requested = any(dependency is not None for dependency in core_live_dependencies) or any(
+        dependency is not None
+        for dependency in (
+            speech_to_text,
+            text_to_speech,
+            active_websocket_speech.speech_to_text,
+            active_websocket_speech.text_to_speech,
+        )
+    )
+    if live_requested:
+        if not all(dependency is not None for dependency in core_live_dependencies):
+            raise ValueError("plan, retrieval and model must be configured for live interviews")
+        speech = SpeechSynthesisAdapter(text_to_speech)
         recovery = RecoveryService(
             repository=active_repository,
             idempotency=active_idempotency,
@@ -151,7 +159,7 @@ def create_lane_c_runtime(
             ),
             generator=QuestionGenerator(cast(AIModel, model)),
             policy=QuestionPolicy(),
-            speech=SpeechSynthesisAdapter(cast(TextToSpeech, text_to_speech)),
+            speech=speech,
             outbox=active_outbox,
         )
         live_handler = LiveInterviewHandler(
@@ -159,8 +167,8 @@ def create_lane_c_runtime(
             session_service=service,
             interview_service=interview_service,
             plan_provider=cast(InterviewPlanProvider, plan_provider),
-            speech_to_text=cast(SpeechToText, speech_to_text),
-            speech=SpeechSynthesisAdapter(cast(TextToSpeech, text_to_speech)),
+            speech_to_text=speech_to_text,
+            speech=speech,
             idempotency=active_idempotency,
             checkpoints=checkpoints,
             clock=active_clock,
