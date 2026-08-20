@@ -1,186 +1,256 @@
-import { ClipboardCheck, Search, UserRoundCheck, Users } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import {
+  BarChart3,
+  BriefcaseBusiness,
+  ClipboardCheck,
+  Search,
+  UserRoundCheck,
+  Users,
+} from "lucide-react";
+import { useDeferredValue, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 import {
   ASYNC_STATE,
-  BUTTON_QUIET,
-  INVITATION_APPLICANT_LINK,
   INVITATION_STATUS,
-  INVITATION_TABLE,
-  INVITATION_TABLE_BODY,
-  INVITATION_TABLE_CELL_AT,
-  INVITATION_TABLE_EMAIL,
-  INVITATION_TABLE_HEAD,
-  INVITATION_TABLE_HEAD_CELL,
-  INVITATION_TABLE_IDENTITY_TEXT,
-  INVITATION_TABLE_NAME,
-  INVITATION_TABLE_ROW,
-  INVITATION_TABLE_WRAP,
   invitationTone,
-  RECIPIENT_AVATAR,
-  SEARCH_FIELD,
 } from "../../app/styles/primitives";
 import { invitationStatusMeta } from "../hiring/PositionInvitations";
 import { summarizeApplicantPipeline } from "./applicantSummary";
-import type { CompanyOperationsApi } from "./types";
+import type { CompanyInvitation, CompanyOperationsApi } from "./types";
 import { useRecruitingOperations } from "./useRecruitingOperations";
 
-/*
- * `.applicant-management__header--refined` replaces the shared `.page-header` box rather than
- * extending it, so `PAGE_HEADER` is not the base: it is declared after `.page-header`'s 680px
- * block, which means its own padding wins at every width and the horizontal padding moves out
- * to the page wrapper. Only the flex box, the gap and `.page-header p`'s colour survive.
- */
-const HEADER =
-  "flex min-h-28 items-end justify-between gap-5 pt-[26px] pb-4" +
-  " mw-720:pt-5 mw-720:pb-[14px] mw-620:items-stretch";
-const HEADER_TITLE = "text-[26px] font-bold";
-const HEADER_TEXT = "mt-1.5 text-[13px] leading-[1.5] text-muted";
-const HEADER_SEARCH = `${SEARCH_FIELD} w-[min(360px,100%)]`;
-const HEADER_SEARCH_INPUT =
-  "h-10 w-full rounded-[7px] border border-border bg-surface pr-2.5 pl-8" +
-  " text-[12px]";
-
-/*
- * `.operations-summary`, narrowed to four columns by `.applicant-management__summary`. That
- * modifier also flattens the margin to `0 0 16px`, but it is declared *before* the shared
- * 720px block, so below 720px the base `14px 16px 0` comes back.
- */
-const SUMMARY =
-  "mb-4 grid grid-cols-[repeat(4,minmax(140px,1fr))] overflow-hidden rounded-lg" +
-  " border border-border bg-surface mw-1050:grid-cols-2" +
-  " mw-720:mx-4 mw-720:mt-[14px] mw-720:mb-0" +
-  " mw-480:grid-cols-[minmax(0,1fr)]";
-// There are exactly four cells, so `nth-child(n+3)` is the source's 3-and-4 pair.
-const SUMMARY_CELL =
-  "grid min-h-18 grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-2.5" +
-  " px-4 py-3 not-first:border-l not-first:border-l-border-muted" +
-  " mw-1050:nth-[n+3]:border-t mw-1050:nth-[n+3]:border-t-border-muted" +
-  " mw-1050:nth-3:border-l-0 mw-720:min-h-[62px]" +
-  " mw-720:grid-cols-[24px_minmax(0,1fr)_auto] mw-720:px-3 mw-720:py-2.5" +
-  " mw-480:not-first:border-t mw-480:not-first:border-t-border-muted" +
-  " mw-480:not-first:border-l-0";
-const SUMMARY_LABEL = "text-[12px] text-muted";
-const SUMMARY_VALUE = "text-[22px] mw-720:text-[19px]";
-
-// `.applicant-management__table` drops `.panel`'s shadow and rounds to 8px.
-const TABLE_PANEL =
-  "overflow-hidden rounded-lg border border-border bg-surface";
-const TABLE_HEADER =
-  "flex min-h-17 items-center justify-between gap-[14px] border-b border-border" +
-  " px-[18px] py-[14px]";
-const TABLE_COUNT = "text-muted";
-
-const PAGINATION =
-  "flex min-h-16 items-center justify-between border-t border-border px-[18px]" +
-  " py-3 text-[12px] text-muted mw-720:flex-col mw-720:items-stretch mw-720:gap-2.5";
-const PAGINATION_CONTROLS = "flex items-center gap-2.5 mw-720:justify-between";
-/*
- * `.applicant-management__pagination .button-secondary` (0,2,0) shrinks the shared button and
- * drops its shadow. `BUTTON_SECONDARY` is not the base: Tailwind emits `px-[13px]`,
- * `text-[11px]` and `shadow-none` *before* the `px-[18px]`/`text-[14px]`/`shadow-soft` they
- * have to beat, so composing them would lose. Only the parts that survive are restated.
- */
-const PAGINATION_BUTTON =
-  "inline-flex min-h-[34px] items-center justify-center gap-1.5 rounded-lg" +
-  " border border-border bg-white px-[13px] text-[11px] font-semibold text-ink" +
-  " hover:not-disabled:bg-surface-muted";
+type StageFilter = "all" | "progress" | "review" | "completed";
+const PAGE_SIZE = 20;
 
 export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
-  const { invitations, loading, error } = useRecruitingOperations(api);
+  const { positions, invitations, loading, error } =
+    useRecruitingOperations(api);
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
+  const [positionFilter, setPositionFilter] = useState("all");
+  const [stageFilter, setStageFilter] = useState<StageFilter>("all");
   const [page, setPage] = useState(1);
   const summary = useMemo(
     () => summarizeApplicantPipeline(invitations),
     [invitations],
   );
+  const positionCounts = useMemo(
+    () =>
+      positions
+        .map((position) => ({
+          positionId: position.positionId,
+          title: position.title,
+          count: invitations.filter(
+            (item) => item.positionId === position.positionId,
+          ).length,
+        }))
+        .filter((position) => position.count > 0)
+        .sort((left, right) => right.count - left.count),
+    [invitations, positions],
+  );
   const visible = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase("ko-KR");
-    if (!normalized) return invitations;
-    return invitations.filter((item) =>
-      [
-        item.applicantDisplayName ?? "",
-        item.applicantEmail,
-        item.positionTitle,
-      ].some((value) => value.toLocaleLowerCase("ko-KR").includes(normalized)),
-    );
-  }, [invitations, query]);
-  const pageSize = 20;
-  const pageCount = Math.max(1, Math.ceil(visible.length / pageSize));
+    const normalized = deferredQuery.trim().toLocaleLowerCase("ko-KR");
+    return invitations.filter((item) => {
+      const matchesQuery =
+        !normalized ||
+        [
+          item.applicantDisplayName ?? "",
+          item.applicantEmail,
+          item.positionTitle,
+        ].some((value) =>
+          value.toLocaleLowerCase("ko-KR").includes(normalized),
+        );
+      const matchesPosition =
+        positionFilter === "all" || item.positionId === positionFilter;
+      const matchesStage =
+        stageFilter === "all" || applicantStage(item) === stageFilter;
+      return matchesQuery && matchesPosition && matchesStage;
+    });
+  }, [deferredQuery, invitations, positionFilter, stageFilter]);
+  const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   const activePage = Math.min(page, pageCount);
   const pageInvitations = visible.slice(
-    (activePage - 1) * pageSize,
-    activePage * pageSize,
+    (activePage - 1) * PAGE_SIZE,
+    activePage * PAGE_SIZE,
   );
 
+  function resetFilters() {
+    setQuery("");
+    setPositionFilter("all");
+    setStageFilter("all");
+    setPage(1);
+  }
+
   return (
-    <div className="grid gap-4 px-8 pb-12 mw-720:px-4 mw-720:pb-8">
-      <header className={HEADER}>
+    <div className="grid gap-4 px-8 pt-7 pb-12 mw-720:px-4 mw-720:pt-5 mw-720:pb-8">
+      <header className="flex items-end justify-between gap-5 mw-720:flex-col mw-720:items-stretch">
         <div>
-          <h1 className={HEADER_TITLE}>지원자 관리</h1>
-          <p className={HEADER_TEXT}>
-            전체 포지션의 지원자 진행 상태와 검토 대상을 한곳에서 확인합니다.
+          <p className="text-[9px] font-bold tracking-[0.08em] text-brand uppercase">
+            Applicant analytics
+          </p>
+          <h1 className="mt-1 text-[26px] font-bold text-ink">지원자 관리</h1>
+          <p className="mt-1.5 text-[12px] leading-[1.5] text-muted">
+            전체 지원자의 분포와 검토 대상을 확인한 뒤 지원자 리포트로
+            이동합니다.
           </p>
         </div>
-        <label className={HEADER_SEARCH}>
-          <Search
-            className="absolute left-2.5 text-subtle"
-            size={15}
-            aria-hidden="true"
-          />
-          <span className="sr-only">지원자 검색</span>
-          <input
-            className={HEADER_SEARCH_INPUT}
-            aria-label="지원자 검색"
-            type="search"
-            placeholder="이름, 이메일, 포지션"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setPage(1);
-            }}
-          />
-        </label>
       </header>
 
-      <section className={SUMMARY} aria-label="전체 지원자 요약">
+      <section
+        className="grid grid-cols-4 overflow-hidden rounded-lg border border-border bg-surface mw-720:grid-cols-2"
+        aria-label="전체 지원자 통계"
+      >
         <SummaryMetric
-          icon={<Users size={17} aria-hidden="true" />}
+          icon={<Users size={17} />}
           label="전체 지원자"
-          value={summary.total}
-          ariaLabel={`전체 지원자 ${summary.total}명`}
+          value={`${summary.total}명`}
         />
         <SummaryMetric
-          icon={<UserRoundCheck size={17} aria-hidden="true" />}
+          icon={<BriefcaseBusiness size={17} />}
+          label="지원 포지션"
+          value={`${positionCounts.length}개`}
+        />
+        <SummaryMetric
+          icon={<UserRoundCheck size={17} />}
           label="진행 중"
-          value={summary.inProgress}
-          ariaLabel={`진행 중인 지원자 ${summary.inProgress}명`}
+          value={`${summary.inProgress}명`}
         />
         <SummaryMetric
-          icon={<ClipboardCheck size={17} aria-hidden="true" />}
+          icon={<ClipboardCheck size={17} />}
           label="검토 대기"
-          value={summary.reviewPending}
-          ariaLabel={`검토 대기 지원자 ${summary.reviewPending}명`}
-        />
-        <SummaryMetric
-          icon={<ClipboardCheck size={17} aria-hidden="true" />}
-          label="검토 완료"
-          value={summary.completed}
-          ariaLabel={`완료된 지원자 ${summary.completed}명`}
+          value={`${summary.reviewPending}명`}
         />
       </section>
 
-      <section className={TABLE_PANEL}>
-        <header className={TABLE_HEADER}>
-          <div>
-            <h2 className="text-[15px]">지원자 목록</h2>
-            <p className="mt-0.5 text-[11px] text-muted">
-              이름을 선택하면 제출 자료와 면접 결과를 확인할 수 있습니다.
-            </p>
+      <section className="grid grid-cols-[minmax(0,1.2fr)_minmax(260px,0.8fr)] overflow-hidden rounded-lg border border-border bg-surface mw-900:grid-cols-[minmax(0,1fr)]">
+        <div className="border-r border-border-muted p-5 mw-900:border-r-0 mw-900:border-b">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-[14px] text-ink">포지션별 지원자 분포</h2>
+              <p className="mt-1 text-[10px] text-muted">
+                현재 명단이 연결된 포지션 기준입니다.
+              </p>
+            </div>
+            <BarChart3 size={18} className="text-brand" aria-hidden="true" />
           </div>
-          <span className={TABLE_COUNT}>{visible.length}명 표시</span>
+          <div className="mt-4 grid gap-3">
+            {positionCounts.slice(0, 5).map((position) => {
+              const maximum = positionCounts[0]?.count ?? 1;
+              return (
+                <div
+                  className="grid grid-cols-[minmax(0,1fr)_44px] items-center gap-3"
+                  key={position.positionId}
+                >
+                  <span className="grid gap-1.5">
+                    <span className="truncate text-[10px] font-semibold text-ink-secondary">
+                      {position.title}
+                    </span>
+                    <span className="h-1.5 overflow-hidden rounded-full bg-surface-strong">
+                      <i
+                        className="block h-full rounded-full bg-brand"
+                        style={{
+                          width: `${(position.count / maximum) * 100}%`,
+                        }}
+                      />
+                    </span>
+                  </span>
+                  <b className="text-right font-mono text-[11px] text-ink">
+                    {position.count}명
+                  </b>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className="grid content-center gap-3 bg-surface-muted p-5">
+          <h2 className="text-[13px] text-ink">검토 현황</h2>
+          <PipelineFact
+            label="진행 중"
+            value={summary.inProgress}
+            total={summary.total}
+            tone="bg-brand"
+          />
+          <PipelineFact
+            label="검토 대기"
+            value={summary.reviewPending}
+            total={summary.total}
+            tone="bg-warning"
+          />
+          <PipelineFact
+            label="검토 완료"
+            value={summary.completed}
+            total={summary.total}
+            tone="bg-success"
+          />
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-lg border border-border bg-surface">
+        <header className="grid grid-cols-[minmax(240px,1fr)_180px_150px_auto] gap-2 border-b border-border-muted p-4 mw-900:grid-cols-2 mw-620:grid-cols-[minmax(0,1fr)]">
+          <label className="relative flex items-center">
+            <Search
+              className="absolute left-3 text-subtle"
+              size={15}
+              aria-hidden="true"
+            />
+            <span className="sr-only">지원자 검색</span>
+            <input
+              className="h-10 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-[11px]"
+              aria-label="지원자 검색"
+              type="search"
+              placeholder="이름, 이메일, 포지션 검색"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setPage(1);
+              }}
+            />
+          </label>
+          <select
+            className="h-10 rounded-lg border border-border bg-surface px-3 text-[11px] text-ink-secondary"
+            aria-label="포지션 필터"
+            value={positionFilter}
+            onChange={(event) => {
+              setPositionFilter(event.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="all">전체 포지션</option>
+            {positions.map((position) => (
+              <option key={position.positionId} value={position.positionId}>
+                {position.title}
+              </option>
+            ))}
+          </select>
+          <select
+            className="h-10 rounded-lg border border-border bg-surface px-3 text-[11px] text-ink-secondary"
+            aria-label="진행 상태 필터"
+            value={stageFilter}
+            onChange={(event) => {
+              setStageFilter(event.target.value as StageFilter);
+              setPage(1);
+            }}
+          >
+            <option value="all">전체 상태</option>
+            <option value="progress">진행 중</option>
+            <option value="review">검토 대기</option>
+            <option value="completed">검토 완료</option>
+          </select>
+          <button
+            className="min-h-10 rounded-lg px-3 text-[10px] font-semibold text-muted hover:bg-surface-muted"
+            type="button"
+            onClick={resetFilters}
+          >
+            필터 초기화
+          </button>
         </header>
+
+        <div className="grid grid-cols-[minmax(240px,1.1fr)_minmax(170px,0.8fr)_140px_120px] bg-surface-muted px-5 py-3 text-[9px] font-semibold text-muted mw-720:hidden">
+          <span>지원자</span>
+          <span>포지션</span>
+          <span>현재 상태</span>
+          <span>면접 결과</span>
+        </div>
         {loading ? (
           <div className={ASYNC_STATE} role="status">
             지원자를 불러오는 중입니다.
@@ -189,107 +259,72 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
           <div className={ASYNC_STATE} role="alert">
             지원자 정보를 불러올 수 없습니다.
           </div>
-        ) : visible.length ? (
-          <div className={INVITATION_TABLE_WRAP}>
-            <table className={INVITATION_TABLE}>
-              <thead className={INVITATION_TABLE_HEAD}>
-                <tr>
-                  <th className={INVITATION_TABLE_HEAD_CELL}>지원자</th>
-                  <th className={INVITATION_TABLE_HEAD_CELL}>포지션</th>
-                  <th className={INVITATION_TABLE_HEAD_CELL}>현재 상태</th>
-                  <th className={INVITATION_TABLE_HEAD_CELL}>면접 결과</th>
-                  <th className={INVITATION_TABLE_HEAD_CELL}>
-                    <span className="sr-only">상세</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className={INVITATION_TABLE_BODY}>
-                {pageInvitations.map((invitation) => {
-                  const displayName =
-                    invitation.applicantDisplayName ||
-                    invitation.applicantEmail.split("@")[0];
-                  const status = invitationStatusMeta[invitation.status];
-                  const detailPath = `/positions/${invitation.positionId}/applicants/${invitation.invitationId}`;
-                  return (
-                    <tr
-                      className={INVITATION_TABLE_ROW}
-                      key={invitation.invitationId}
-                    >
-                      <td className={INVITATION_TABLE_CELL_AT[0]}>
-                        <span className={RECIPIENT_AVATAR} aria-hidden="true">
-                          {displayName.slice(0, 1)}
-                        </span>
-                        <span className={INVITATION_TABLE_IDENTITY_TEXT}>
-                          <Link
-                            className={INVITATION_APPLICANT_LINK}
-                            aria-label={`${displayName} 상세 보기`}
-                            to={detailPath}
-                          >
-                            <strong className={INVITATION_TABLE_NAME}>
-                              {displayName}
-                            </strong>
-                          </Link>
-                          <small className={INVITATION_TABLE_EMAIL}>
-                            {invitation.applicantEmail}
-                          </small>
-                        </span>
-                      </td>
-                      <td
-                        className={`${INVITATION_TABLE_CELL_AT[1]} font-semibold text-ink-secondary`}
-                      >
-                        {invitation.positionTitle}
-                      </td>
-                      <td className={INVITATION_TABLE_CELL_AT[2]}>
-                        <span
-                          className={`${INVITATION_STATUS} ${invitationTone(
-                            status.tone,
-                          )}`}
-                        >
-                          {status.label}
-                        </span>
-                      </td>
-                      <td className={INVITATION_TABLE_CELL_AT[3]}>
-                        {invitation.interviewSessionId ? "검토 가능" : "대기"}
-                      </td>
-                      <td className={INVITATION_TABLE_CELL_AT[4]}>
-                        <Link className={BUTTON_QUIET} to={detailPath}>
-                          상세
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        ) : pageInvitations.length ? (
+          <div className="divide-y divide-border-muted">
+            {pageInvitations.map((invitation) => {
+              const displayName =
+                invitation.applicantDisplayName ||
+                invitation.applicantEmail.split("@")[0];
+              const status = invitationStatusMeta[invitation.status];
+              return (
+                <Link
+                  className="grid min-h-16 grid-cols-[minmax(240px,1.1fr)_minmax(170px,0.8fr)_140px_120px] items-center px-5 py-3 hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-brand mw-720:grid-cols-[44px_minmax(0,1fr)_auto] mw-720:gap-x-3 mw-720:gap-y-2"
+                  key={invitation.invitationId}
+                  to={`/positions/${invitation.positionId}/applicants/${invitation.invitationId}`}
+                  aria-label={`${displayName} 리포트 열기`}
+                >
+                  <span className="flex min-w-0 items-center gap-3 mw-720:contents">
+                    <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-[11px] font-bold text-brand">
+                      {displayName.slice(0, 1)}
+                    </span>
+                    <span className="min-w-0 mw-720:col-[2]">
+                      <strong className="block text-[11px] text-ink">
+                        {displayName}
+                      </strong>
+                      <small className="mt-0.5 block truncate text-[9px] text-muted">
+                        {invitation.applicantEmail}
+                      </small>
+                    </span>
+                  </span>
+                  <span className="truncate text-[10px] font-semibold text-ink-secondary mw-720:col-[2] mw-720:row-[2]">
+                    {invitation.positionTitle}
+                  </span>
+                  <span
+                    className={`w-fit ${INVITATION_STATUS} ${invitationTone(status.tone)} mw-720:col-[3] mw-720:row-[1]`}
+                  >
+                    {status.label}
+                  </span>
+                  <span className="text-[10px] text-muted mw-720:col-[3] mw-720:row-[2]">
+                    {invitation.interviewSessionId ? "리포트 확인" : "대기"}
+                  </span>
+                </Link>
+              );
+            })}
           </div>
         ) : (
-          <div className={ASYNC_STATE}>
-            <Users size={24} aria-hidden="true" />
-            <div className="grid justify-items-center gap-[11px]">
-              <strong>조건에 맞는 지원자가 없습니다.</strong>
-            </div>
+          <div className={`${ASYNC_STATE} min-h-44`}>
+            <Users size={24} />
+            <strong>조건에 맞는 지원자가 없습니다.</strong>
           </div>
         )}
-        {!loading && !error && visible.length > pageSize ? (
-          <footer className={PAGINATION}>
-            <span>
-              {visible.length}명 중 {(activePage - 1) * pageSize + 1}–
-              {Math.min(activePage * pageSize, visible.length)}
-            </span>
-            <div className={PAGINATION_CONTROLS}>
+
+        {!loading && !error ? (
+          <footer className="flex min-h-14 items-center justify-between border-t border-border-muted px-5 text-[10px] text-muted">
+            <span>{visible.length}명 표시</span>
+            <span className="flex items-center gap-2">
               <button
-                className={PAGINATION_BUTTON}
+                className="rounded-md border border-border px-3 py-1.5 disabled:opacity-40"
                 type="button"
                 disabled={activePage === 1}
                 onClick={() => setPage((value) => Math.max(1, value - 1))}
               >
                 이전
               </button>
-              <span>
+              <b className="font-mono text-ink">
                 {activePage} / {pageCount}
-              </span>
+              </b>
               <button
-                className={PAGINATION_BUTTON}
+                className="rounded-md border border-border px-3 py-1.5 disabled:opacity-40"
                 type="button"
                 disabled={activePage === pageCount}
                 onClick={() =>
@@ -298,7 +333,7 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
               >
                 다음
               </button>
-            </div>
+            </span>
           </footer>
         ) : null}
       </section>
@@ -310,18 +345,62 @@ function SummaryMetric({
   icon,
   label,
   value,
-  ariaLabel,
 }: {
   icon: ReactNode;
   label: string;
-  value: number;
-  ariaLabel: string;
+  value: string;
 }) {
   return (
-    <article className={SUMMARY_CELL} aria-label={ariaLabel}>
-      <span className="text-muted">{icon}</span>
-      <span className={SUMMARY_LABEL}>{label}</span>
-      <strong className={SUMMARY_VALUE}>{value}</strong>
+    <article
+      className="grid min-h-20 grid-cols-[30px_minmax(0,1fr)] items-center gap-3 border-r border-border-muted px-4 last:border-r-0 mw-720:nth-2:border-r-0 mw-720:nth-[-n+2]:border-b mw-720:nth-[-n+2]:border-border-muted"
+      aria-label={`${label} ${value}`}
+    >
+      <span className="grid size-8 place-items-center rounded-lg bg-brand-soft text-brand">
+        {icon}
+      </span>
+      <span>
+        <small className="block text-[9px] text-muted">{label}</small>
+        <strong className="mt-1 block font-mono text-[17px] text-ink">
+          {value}
+        </strong>
+      </span>
     </article>
   );
+}
+
+function PipelineFact({
+  label,
+  value,
+  total,
+  tone,
+}: {
+  label: string;
+  value: number;
+  total: number;
+  tone: string;
+}) {
+  const width = total ? Math.round((value / total) * 100) : 0;
+  return (
+    <div className="grid gap-1.5">
+      <span className="flex justify-between text-[9px] text-muted">
+        <span>{label}</span>
+        <b className="font-mono text-ink">{value}명</b>
+      </span>
+      <span className="h-1.5 overflow-hidden rounded-full bg-surface-strong">
+        <i
+          className={`block h-full rounded-full ${tone}`}
+          style={{ width: `${width}%` }}
+        />
+      </span>
+    </div>
+  );
+}
+
+function applicantStage(
+  invitation: CompanyInvitation,
+): Exclude<StageFilter, "all"> {
+  if (invitation.status === "reviewed") return "completed";
+  if (invitation.status === "completed" || invitation.interviewSessionId)
+    return "review";
+  return "progress";
 }

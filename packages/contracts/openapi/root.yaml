@@ -460,6 +460,29 @@ components:
           type:
           - string
           - 'null'
+    InterviewerPersonaDefinition:
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      - tone
+      - voice_id
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        tone:
+          type: string
+          enum:
+          - calm
+          - friendly
+          - analytical
+          - concise
+        voice_id:
+          type: string
+          minLength: 1
+          maxLength: 100
     JobRequirementInput:
       type: object
       additionalProperties: false
@@ -609,6 +632,7 @@ components:
           type: array
           minItems: 1
           maxItems: 12
+          description: Criterion weights must total exactly 100.
           items:
             $ref: '#/components/schemas/EvaluationCriterionInput'
         prohibited_topics:
@@ -622,9 +646,7 @@ components:
         interview_level:
           $ref: '#/components/schemas/InterviewLevel'
         persona_definition:
-          type: object
-          description: System-managed compatibility field; recruiter clients must
-            not set it.
+          $ref: '#/components/schemas/InterviewerPersonaDefinition'
     CompetencyModelVersion:
       type: object
       additionalProperties: false
@@ -672,8 +694,7 @@ components:
         interview_level:
           $ref: '#/components/schemas/InterviewLevel'
         persona_definition:
-          type: object
-          description: System-managed compatibility field.
+          $ref: '#/components/schemas/InterviewerPersonaDefinition'
         status:
           type: string
           enum:

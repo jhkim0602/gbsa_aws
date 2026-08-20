@@ -41,6 +41,9 @@ class CriteriaService:
         interview_level: InterviewLevel = DEFAULT_INTERVIEW_LEVEL,
         persona_definition: dict[str, object] | None = None,
     ) -> CompetencyModelVersion:
+        total_weight = sum(float(item["weight"]) for item in criteria)
+        if abs(total_weight - 100) > 0.001:
+            raise ValueError("criterion weights must total 100")
         existing_id = self._idempotency.get(
             context,
             operation="criterion_version.create",

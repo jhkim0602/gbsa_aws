@@ -3,23 +3,32 @@ import {
   BarChart3,
   BriefcaseBusiness,
   ClipboardCheck,
-  FileText,
   GaugeCircle,
   Info,
   LayoutDashboard,
   ListChecks,
+  LockKeyhole,
   PencilLine,
   Route,
-  Target,
+  Search,
+  Send,
   Timer,
   UserRoundCheck,
   Users,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { Link } from "react-router-dom";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "../hiring/tech-stack-combobox/dialog";
 
 import {
   interviewLevelLabels,
+  invitationStatusMeta,
   PositionInvitations,
   type InvitationEmailTemplateApi,
   type PositionInvitationApi,
@@ -34,13 +43,20 @@ import {
 import { summarizeApplicantPipeline } from "./applicantSummary";
 import { statusLabel, statusTone } from "./companyFormatters";
 import { PositionDashboard } from "./PositionDashboard";
-import { CriteriaEditModal, PositionQuickEditModal } from "./PositionSettings";
+import { PositionQuickEditModal } from "./PositionSettings";
+import {
+  ApplicantScoreTable,
+  applyConfiguredWeights,
+  CompetencyDistribution,
+  ScoreDistribution,
+} from "./CompetencyInsights";
 import {
   countRecruiterPhases,
   recruiterStages,
   type PositionTab,
 } from "./positionWorkspaceModel";
 import type {
+  CompanyApplicantInsight,
   CompanyCriterionVersion,
   CompanyInvitation,
   CompanyOperationsApi,
@@ -97,36 +113,6 @@ const PANEL_GROUP = "grid gap-[18px]";
  */
 const SUB_PANEL = "overflow-hidden rounded-lg border border-border bg-surface";
 
-const SUMMARY =
-  "grid grid-cols-[repeat(4,minmax(130px,1fr))_auto] overflow-hidden rounded-lg" +
-  " border border-border bg-surface m-[18px_32px_0] mw-1050:grid-cols-2" +
-  " mw-720:m-[14px_16px_0] mw-480:grid-cols-[minmax(0,1fr)]";
-/*
- * The dividers follow the grid: vertical while the row is four wide, horizontal for the
- * second row at 1050px, and horizontal only once the grid is a single column.
- */
-const SUMMARY_ITEM =
-  "grid min-h-18 grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-2.5" +
-  " p-[12px_16px] not-first:border-l not-first:border-l-border-muted" +
-  " mw-1050:nth-3:border-l-0 mw-1050:nth-3:border-t" +
-  " mw-1050:nth-3:border-t-border-muted mw-1050:nth-4:border-t" +
-  " mw-1050:nth-4:border-t-border-muted mw-720:min-h-[62px]" +
-  " mw-720:grid-cols-[24px_minmax(0,1fr)_auto] mw-720:p-[10px_12px]" +
-  " mw-480:not-first:border-t mw-480:not-first:border-t-border-muted" +
-  " mw-480:not-first:border-l-0";
-const SUMMARY_LABEL = "text-[12px] text-muted";
-const SUMMARY_VALUE =
-  "[font-variant-numeric:tabular-nums] text-[22px] text-ink mw-720:text-[19px]";
-// The goal reads as a trailing note beside the counts, then wraps under them at 1050px.
-const SUMMARY_GOAL =
-  "flex min-w-[132px] items-center justify-center border-l border-l-border" +
-  " bg-surface-muted p-[12px_16px] text-[12px] text-muted mw-1050:col-[1/-1]" +
-  " mw-1050:border-t mw-1050:border-t-border mw-1050:border-l-0";
-const SUMMARY_GOAL_VALUE = "ml-[5px] text-ink";
-
-const STATS_GRID =
-  "grid grid-cols-[minmax(0,1.6fr)_minmax(260px,0.4fr)] gap-[18px]" +
-  " mw-1040:grid-cols-[minmax(0,1fr)]";
 const SECTION_HEADING =
   "flex min-h-18 items-center justify-between gap-[18px] border-b" +
   " border-b-border-muted p-[16px_20px] mw-720:flex-col mw-720:items-start";
@@ -134,22 +120,6 @@ const SECTION_HEADING_TITLE = "text-[15px] leading-[1.4] text-ink";
 const SECTION_HEADING_TEXT = "mt-[3px] text-[12px] leading-[1.5] text-muted";
 const SECTION_HEADING_COUNT = "text-[12px] font-[650] text-muted";
 const SECTION_HEADING_BUTTON = `${BUTTON_SECONDARY} mw-720:w-full`;
-
-const BARS = "grid p-[8px_20px_18px]";
-const BAR_ROW =
-  "grid min-h-[54px] grid-cols-[120px_minmax(120px,1fr)_48px_42px] items-center" +
-  " gap-3 border-b border-b-border-muted last:border-b-0" +
-  " mw-720:grid-cols-[92px_minmax(80px,1fr)_38px]";
-const BAR_TRACK = "h-[7px] overflow-hidden rounded bg-surface-strong";
-const BAR_FILL = "block h-full min-w-[3px] rounded-[inherit] bg-brand";
-// The percentage is the column the 720px grid drops, so it hides rather than reflows.
-const BAR_PERCENT = "text-right text-[12px] text-muted mw-720:hidden";
-
-const ATTENTION = `${SUB_PANEL} flex flex-col`;
-const ATTENTION_VALUE = "m-[28px_20px_0] text-[34px] text-ink";
-const ATTENTION_LABEL = "m-[3px_20px_0] text-[12px] text-muted";
-const ATTENTION_TEXT =
-  "m-[auto_20px_20px] text-[12px] leading-[1.6] text-muted";
 
 // `list-style: none` and the zeroed padding are what preflight already applies to `ol`.
 const STAGE_LIST =
@@ -202,9 +172,8 @@ const CRITERIA_SECTION_TITLE = "mb-[13px] text-[13px] text-ink";
 
 const REQUIREMENT_LIST = "grid gap-2";
 const REQUIREMENT =
-  "grid min-h-[46px] grid-cols-[42px_minmax(0,1fr)_auto] items-center gap-[11px]" +
-  " rounded-md border border-border-muted bg-surface-muted p-[9px_12px]" +
-  " mw-720:grid-cols-[42px_minmax(0,1fr)]";
+  "grid min-h-[46px] grid-cols-[42px_minmax(0,1fr)] items-center gap-[11px]" +
+  " rounded-md border border-border-muted bg-surface-muted p-[9px_12px]";
 const REQUIREMENT_TAG =
   "inline-flex min-h-[22px] items-center justify-center rounded text-[10px]" +
   " font-bold";
@@ -214,8 +183,6 @@ const REQUIREMENT_TAG_TONE = {
   preferred: `${REQUIREMENT_TAG} bg-success-soft text-success`,
 } as const;
 const REQUIREMENT_TEXT = "min-w-0 text-[12px]";
-// The priority note tucks under the statement once the trailing column is gone.
-const REQUIREMENT_NOTE = "text-[10px] text-muted mw-720:col-[2]";
 const INFORMATION_EMPTY = "text-[12px] text-muted";
 
 const CRITERION_LIST = "grid rounded-md border border-border-muted";
@@ -226,15 +193,9 @@ const CRITERION_HEADER =
 const CRITERION_TITLE = "ml-[9px] text-[13px]";
 const CRITERION_TEXT = "mt-[5px] text-[12px] text-muted";
 const CRITERION_WEIGHT = "flex-none text-[11px] text-muted";
-const CRITERION_GUIDE =
-  "mt-[15px] grid grid-cols-2 gap-[9px_18px] border-t border-t-border-muted" +
-  " pt-[14px] mw-720:grid-cols-[minmax(0,1fr)]";
-const CRITERION_GUIDE_ROW = "grid grid-cols-[84px_minmax(0,1fr)] gap-2";
-const CRITERION_GUIDE_LABEL = "text-[11px] leading-[1.55] text-muted";
-const CRITERION_GUIDE_VALUE = "text-[11px] leading-[1.55] text-ink";
 
 const POLICY_GRID =
-  "grid grid-cols-4 mw-1040:grid-cols-2 mw-720:grid-cols-[minmax(0,1fr)]";
+  "grid grid-cols-6 mw-1180:grid-cols-3 mw-720:grid-cols-[minmax(0,1fr)]";
 /*
  * The icon spans both text rows, so each cell is a two-row grid; its dividers follow the
  * same four → two → one column progression as the stage list.
@@ -254,11 +215,11 @@ const positionTabs: ReadonlyArray<{
   label: string;
   icon: typeof Users;
 }> = [
-  { id: "overview", label: "대시보드", icon: LayoutDashboard },
-  { id: "applicants", label: "지원자 목록", icon: Users },
-  { id: "statistics", label: "지원자 통계", icon: BarChart3 },
-  { id: "stages", label: "면접 단계", icon: Route },
-  { id: "information", label: "포지션 정보", icon: Info },
+  { id: "overview", label: "인사이트", icon: LayoutDashboard },
+  { id: "applicants", label: "지원자", icon: Users },
+  { id: "statistics", label: "역량 분포", icon: BarChart3 },
+  { id: "stages", label: "면접 운영", icon: Route },
+  { id: "information", label: "설정값", icon: Info },
 ];
 
 export function PositionOperations({
@@ -286,9 +247,12 @@ export function PositionOperations({
   );
   const [criteriaLoading, setCriteriaLoading] = useState(true);
   const [criteriaError, setCriteriaError] = useState("");
+  const [insights, setInsights] = useState<readonly CompanyApplicantInsight[]>(
+    [],
+  );
   const [activeTab, setActiveTab] = useState<PositionTab>("overview");
   const [quickEditOpen, setQuickEditOpen] = useState(false);
-  const [criteriaEditOpen, setCriteriaEditOpen] = useState(false);
+  const [invitationModalOpen, setInvitationModalOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const position =
     revisedPosition?.positionId === positionId
@@ -305,7 +269,8 @@ export function PositionOperations({
     setRevisedPosition(null);
     setActiveTab("overview");
     setQuickEditOpen(false);
-    setCriteriaEditOpen(false);
+    setInvitationModalOpen(false);
+    setInsights([]);
     setNotice("");
   }, [positionId]);
 
@@ -313,17 +278,21 @@ export function PositionOperations({
     let active = true;
     setCriteriaLoading(true);
     setCriteriaError("");
-    api
-      .listCriterionVersions(positionId)
-      .then((items) => {
-        if (active) setCriteria(items);
-      })
-      .catch(() => {
-        if (active) setCriteriaError("면접 기준을 불러오지 못했습니다.");
-      })
-      .finally(() => {
-        if (active) setCriteriaLoading(false);
-      });
+    Promise.allSettled([
+      api.listCriterionVersions(positionId),
+      api.listApplicantInsights?.(positionId) ?? Promise.resolve([]),
+    ]).then(([criteriaResult, insightResult]) => {
+      if (!active) return;
+      if (criteriaResult.status === "fulfilled") {
+        setCriteria(criteriaResult.value);
+      } else {
+        setCriteriaError("면접 기준을 불러오지 못했습니다.");
+      }
+      setInsights(
+        insightResult.status === "fulfilled" ? insightResult.value : [],
+      );
+      setCriteriaLoading(false);
+    });
     return () => {
       active = false;
     };
@@ -332,6 +301,10 @@ export function PositionOperations({
   const phaseCounts = useMemo(
     () => countRecruiterPhases(positionInvitations),
     [positionInvitations],
+  );
+  const weightedInsights = useMemo(
+    () => applyConfiguredWeights(insights, criteria),
+    [criteria, insights],
   );
 
   if (loading) {
@@ -479,8 +452,9 @@ export function PositionOperations({
               position={position}
               invitations={positionInvitations}
               criteria={currentCriteria}
-              phaseCounts={phaseCounts}
+              insights={weightedInsights}
               onOpenTab={openTab}
+              onOpenInvitations={() => setInvitationModalOpen(true)}
             />
           </section>
         ) : null}
@@ -491,13 +465,11 @@ export function PositionOperations({
             role="tabpanel"
             aria-labelledby="position-tab-applicants"
           >
-            <PositionInvitations
-              embedded
-              view="workspace"
-              positionId={positionId}
-              positionName={position.title}
-              api={invitationApi}
-              templateApi={templateApi}
+            <ApplicantRoster
+              position={position}
+              invitations={positionInvitations}
+              insights={weightedInsights}
+              onInvite={() => setInvitationModalOpen(true)}
             />
           </section>
         ) : null}
@@ -509,10 +481,16 @@ export function PositionOperations({
             aria-labelledby="position-tab-statistics"
             className={PANEL_GROUP}
           >
-            <PositionSummary summary={summary} headcount={position.headcount} />
-            <ApplicantStatistics
+            <ScoreDistribution insights={weightedInsights} />
+            <CompetencyDistribution
+              insights={weightedInsights}
               invitations={positionInvitations}
-              phaseCounts={phaseCounts}
+              limit={10}
+            />
+            <ApplicantScoreTable
+              positionId={position.positionId}
+              invitations={positionInvitations}
+              insights={weightedInsights}
             />
           </section>
         ) : null}
@@ -545,7 +523,6 @@ export function PositionOperations({
               loading={criteriaLoading}
               error={criteriaError}
               onEditPosition={() => setQuickEditOpen(true)}
-              onEditCriteria={() => setCriteriaEditOpen(true)}
             />
           </section>
         ) : null}
@@ -562,140 +539,156 @@ export function PositionOperations({
           setNotice(message);
         }}
       />
-      <CriteriaEditModal
-        open={criteriaEditOpen}
-        position={position}
-        currentCriteria={currentCriteria}
-        api={api}
-        onClose={() => setCriteriaEditOpen(false)}
-        onCriteriaUpdated={(updated, message) => {
-          setCriteria((items) => [
-            updated,
-            ...items.filter((item) => item.versionId !== updated.versionId),
-          ]);
-          setNotice(message);
-        }}
-      />
+      <Dialog open={invitationModalOpen} onOpenChange={setInvitationModalOpen}>
+        <DialogContent className="grid max-h-[92vh] w-[min(1000px,96vw)] max-w-none grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0">
+          <DialogHeader className="border-b border-border-muted px-6 py-5 pr-12">
+            <DialogTitle>지원자 초대</DialogTitle>
+            <DialogDescription>
+              {position.title} 포지션에 지원자를 추가하고 초대 메일을
+              발송합니다.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 overflow-y-auto bg-[#f7f8fb]">
+            <PositionInvitations
+              embedded
+              view="invite"
+              positionId={positionId}
+              positionName={position.title}
+              interviewAt={position.interviewAt}
+              api={invitationApi}
+              templateApi={templateApi}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function PositionSummary({
-  summary,
-  headcount,
-}: {
-  summary: ReturnType<typeof summarizeApplicantPipeline>;
-  headcount?: number | null;
-}) {
-  return (
-    <section className={SUMMARY} aria-label="포지션 지원자 요약">
-      <article
-        className={SUMMARY_ITEM}
-        aria-label={`전체 지원자 ${summary.total}명`}
-      >
-        <Users className="text-muted" size={18} aria-hidden="true" />
-        <span className={SUMMARY_LABEL}>전체 지원자</span>
-        <strong className={SUMMARY_VALUE}>{summary.total}</strong>
-      </article>
-      <article
-        className={SUMMARY_ITEM}
-        aria-label={`진행 중인 지원자 ${summary.inProgress}명`}
-      >
-        <UserRoundCheck className="text-muted" size={18} aria-hidden="true" />
-        <span className={SUMMARY_LABEL}>진행 중</span>
-        <strong className={SUMMARY_VALUE}>{summary.inProgress}</strong>
-      </article>
-      <article
-        className={SUMMARY_ITEM}
-        aria-label={`검토 대기 지원자 ${summary.reviewPending}명`}
-      >
-        <ClipboardCheck className="text-muted" size={18} aria-hidden="true" />
-        <span className={SUMMARY_LABEL}>검토 대기</span>
-        <strong className={SUMMARY_VALUE}>{summary.reviewPending}</strong>
-      </article>
-      <article
-        className={SUMMARY_ITEM}
-        aria-label={`완료된 지원자 ${summary.completed}명`}
-      >
-        <BriefcaseBusiness
-          className="text-muted"
-          size={18}
-          aria-hidden="true"
-        />
-        <span className={SUMMARY_LABEL}>검토 완료</span>
-        <strong className={SUMMARY_VALUE}>{summary.completed}</strong>
-      </article>
-      <p className={SUMMARY_GOAL}>
-        <Target size={14} aria-hidden="true" />
-        채용 목표{" "}
-        <strong className={SUMMARY_GOAL_VALUE}>{headcount ?? "미정"}명</strong>
-      </p>
-    </section>
-  );
-}
-
-function ApplicantStatistics({
+function ApplicantRoster({
+  position,
   invitations,
-  phaseCounts,
+  insights,
+  onInvite,
 }: {
+  position: CompanyPosition;
   invitations: readonly CompanyInvitation[];
-  phaseCounts: readonly number[];
+  insights: readonly CompanyApplicantInsight[];
+  onInvite(): void;
 }) {
-  const total = invitations.length;
-  const attention = invitations.filter((item) =>
-    ["interrupted", "expired", "revoked"].includes(item.status),
-  ).length;
+  const [query, setQuery] = useState("");
+  const insightByInvitation = new Map(
+    insights.map((insight) => [insight.invitationId, insight]),
+  );
+  const normalizedQuery = query.trim().toLocaleLowerCase("ko-KR");
+  const visible = invitations.filter((invitation) => {
+    if (!normalizedQuery) return true;
+    return (
+      invitation.applicantEmail
+        .toLocaleLowerCase("ko-KR")
+        .includes(normalizedQuery) ||
+      (invitation.applicantDisplayName ?? "")
+        .toLocaleLowerCase("ko-KR")
+        .includes(normalizedQuery)
+    );
+  });
 
   return (
-    <div className={STATS_GRID}>
-      <section className={SUB_PANEL}>
-        <header className={SECTION_HEADING}>
-          <div>
-            <h2 className={SECTION_HEADING_TITLE}>단계별 지원자 분포</h2>
-            <p className={SECTION_HEADING_TEXT}>
-              현재 지원자가 위치한 채용 단계입니다.
-            </p>
-          </div>
-          <span className={SECTION_HEADING_COUNT}>총 {total}명</span>
-        </header>
-        <div className={BARS}>
-          {recruiterStages.map((stage, index) => {
-            const count = phaseCounts[index] ?? 0;
-            const percentage = total ? Math.round((count / total) * 100) : 0;
+    <section className="overflow-hidden rounded-lg border border-border bg-surface">
+      <header className="flex min-h-20 items-center justify-between gap-5 border-b border-border-muted px-5 py-4 mw-720:flex-col mw-720:items-stretch">
+        <div>
+          <p className="text-[9px] font-bold tracking-[0.06em] text-brand uppercase">
+            APPLICANT WORKSPACE
+          </p>
+          <h2 className="mt-1 text-[16px] text-ink">지원자 비교</h2>
+          <p className="mt-1 text-[11px] text-muted">
+            지원자의 현재 역량 점수와 핵심 근거를 먼저 확인합니다.
+          </p>
+        </div>
+        <div className="flex gap-2 mw-720:flex-col">
+          <label className="relative flex min-w-[220px] items-center mw-720:w-full">
+            <Search
+              className="absolute left-3 text-subtle"
+              size={15}
+              aria-hidden="true"
+            />
+            <span className="sr-only">지원자 검색</span>
+            <input
+              className="h-10 w-full rounded-md border border-border bg-surface pl-9 pr-3 text-[11px] outline-none focus:border-brand"
+              type="search"
+              value={query}
+              placeholder="이름 또는 이메일"
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
+          <button className={BUTTON_SECONDARY} type="button" onClick={onInvite}>
+            <Send size={14} aria-hidden="true" /> 지원자 초대
+          </button>
+        </div>
+      </header>
+
+      <div className="grid grid-cols-[minmax(160px,0.7fr)_minmax(210px,1fr)_90px_100px] gap-3 border-b border-border-muted bg-surface-muted px-5 py-2.5 text-[9px] font-semibold text-muted mw-720:hidden">
+        <span>지원자</span>
+        <span>확인된 강점</span>
+        <span className="text-right">역량 점수</span>
+        <span className="text-right">근거 충족</span>
+      </div>
+      {visible.length ? (
+        <div className="grid [content-visibility:auto]">
+          {visible.map((invitation) => {
+            const insight = insightByInvitation.get(invitation.invitationId);
+            const status = invitationStatusMeta[invitation.status];
+            const displayName =
+              invitation.applicantDisplayName ||
+              invitation.applicantEmail.split("@")[0];
+            const strongest = insight
+              ? [...insight.criteria]
+                  .filter((criterion) => criterion.score != null)
+                  .sort(
+                    (left, right) => (right.score ?? 0) - (left.score ?? 0),
+                  )[0]
+              : null;
             return (
-              <div className={BAR_ROW} key={stage.phase}>
-                <span className="text-[12px]">{stage.title}</span>
-                <div
-                  className={BAR_TRACK}
-                  aria-label={`${stage.title} ${count}명`}
-                >
-                  <i className={BAR_FILL} style={{ width: `${percentage}%` }} />
-                </div>
-                <strong className="text-[12px]">{count}명</strong>
-                <small className={BAR_PERCENT}>{percentage}%</small>
-              </div>
+              <Link
+                className="group grid min-h-[70px] grid-cols-[minmax(160px,0.7fr)_minmax(210px,1fr)_90px_100px] items-center gap-3 border-b border-border-muted px-5 py-3 last:border-b-0 hover:bg-surface-muted mw-720:grid-cols-[minmax(0,1fr)_64px]"
+                key={invitation.invitationId}
+                to={`/positions/${position.positionId}/applicants/${invitation.invitationId}`}
+                aria-label={`${displayName} 리포트 열기`}
+              >
+                <span className="grid min-w-0 grid-cols-[34px_minmax(0,1fr)] items-center gap-2.5">
+                  <i className="grid size-[34px] place-items-center rounded-lg bg-brand-soft text-[11px] font-bold text-brand not-italic">
+                    {displayName.slice(0, 1)}
+                  </i>
+                  <span className="min-w-0">
+                    <strong className="block truncate text-[12px] text-ink">
+                      {displayName}
+                    </strong>
+                    <small className="mt-0.5 block truncate text-[9px] text-muted">
+                      {invitation.applicantEmail}
+                    </small>
+                  </span>
+                </span>
+                <span className="min-w-0 truncate text-[10px] text-ink-secondary mw-720:col-[1] mw-720:pl-[44px]">
+                  {strongest
+                    ? `${strongest.criterionName} · ${strongest.score}`
+                    : `${status.label} · 면접 결과 대기`}
+                </span>
+                <strong className="text-right font-mono text-[18px] text-ink mw-720:row-[1] mw-720:col-[2]">
+                  {insight?.overallScore ?? "–"}
+                </strong>
+                <span className="text-right text-[10px] text-muted mw-720:hidden">
+                  {insight ? `${insight.evidenceCoverage}%` : "–"}
+                </span>
+              </Link>
             );
           })}
         </div>
-      </section>
-      <section className={ATTENTION}>
-        <header className={SECTION_HEADING}>
-          <div>
-            <h2 className={SECTION_HEADING_TITLE}>운영 확인 항목</h2>
-            <p className={SECTION_HEADING_TEXT}>
-              재접속, 만료 또는 취소 상태를 우선 확인합니다.
-            </p>
-          </div>
-        </header>
-        <strong className={ATTENTION_VALUE}>{attention}</strong>
-        <span className={ATTENTION_LABEL}>확인이 필요한 지원자</span>
-        <p className={ATTENTION_TEXT}>
-          {attention
-            ? "지원자 목록에서 확인 필요 필터를 선택해 상태를 점검하세요."
-            : "현재 별도로 확인할 지원자가 없습니다."}
-        </p>
-      </section>
-    </div>
+      ) : (
+        <div className="grid min-h-40 place-items-center text-[11px] text-muted">
+          검색 결과가 없습니다.
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -779,14 +772,12 @@ function PositionInformation({
   loading,
   error,
   onEditPosition,
-  onEditCriteria,
 }: {
   position: CompanyPosition;
   criteria: CompanyCriterionVersion | null;
   loading: boolean;
   error: string;
   onEditPosition(): void;
-  onEditCriteria(): void;
 }) {
   return (
     <>
@@ -832,21 +823,42 @@ function PositionInformation({
       <section className={SUB_PANEL}>
         <header className={SECTION_HEADING}>
           <div>
-            <h2 className={SECTION_HEADING_TITLE}>현재 적용 중인 면접 기준</h2>
+            <h2 className={SECTION_HEADING_TITLE}>지원자 제출 자료</h2>
             <p className={SECTION_HEADING_TEXT}>
-              지원자 질문과 답변 검토에 사용하는 기업 설정값입니다.
+              초대 링크에서 지원자가 반드시 제출해야 하는 자료입니다.
             </p>
           </div>
-          {position.status !== "closed" ? (
-            <button
-              className={SECTION_HEADING_BUTTON}
-              type="button"
-              onClick={onEditCriteria}
-            >
-              <FileText size={14} aria-hidden="true" />
-              면접 기준 수정
-            </button>
-          ) : null}
+        </header>
+        <div className="flex flex-wrap gap-2 p-5">
+          {position.submissionRequirements
+            .filter((requirement) => requirement.enabled)
+            .map((requirement) => (
+              <span
+                className="inline-flex min-h-9 items-center gap-2 rounded-md border border-border-muted bg-surface-muted px-3 text-[11px] text-ink-secondary"
+                key={requirement.materialType}
+              >
+                <span className="size-1.5 rounded-full bg-brand" />
+                {submissionRequirementLabel(requirement.materialType)}
+                {requirement.required ? (
+                  <b className="text-[9px] text-danger">필수</b>
+                ) : null}
+              </span>
+            ))}
+        </div>
+      </section>
+
+      <section className={SUB_PANEL}>
+        <header className={SECTION_HEADING}>
+          <div>
+            <h2 className={SECTION_HEADING_TITLE}>현재 적용 중인 면접 기준</h2>
+            <p className={SECTION_HEADING_TEXT}>
+              지원자 간 같은 조건을 유지하기 위해 게시 후에는 수정할 수
+              없습니다.
+            </p>
+          </div>
+          <span className="inline-flex min-h-8 items-center gap-1.5 rounded-md bg-surface-muted px-3 text-[10px] font-semibold text-muted">
+            <LockKeyhole size={13} aria-hidden="true" /> 게시된 기준 · 읽기 전용
+          </span>
         </header>
 
         {loading ? (
@@ -884,9 +896,6 @@ function PositionInformation({
                       <strong className={REQUIREMENT_TEXT}>
                         {requirement.statement}
                       </strong>
-                      <small className={REQUIREMENT_NOTE}>
-                        중요도 {priorityLabel(requirement.priority)}
-                      </small>
                     </li>
                   ))}
                 </ul>
@@ -898,7 +907,9 @@ function PositionInformation({
             </section>
 
             <section className={CRITERIA_SECTION}>
-              <h3 className={CRITERIA_SECTION_TITLE}>평가기준과 검증 가이드</h3>
+              <h3 className={CRITERIA_SECTION_TITLE}>
+                평가 기준과 결과 가중치
+              </h3>
               <div className={CRITERION_LIST}>
                 {criteria.criteria.map((criterion) => (
                   <article className={CRITERION} key={criterion.code}>
@@ -918,44 +929,6 @@ function PositionInformation({
                         가중치 {criterion.weight}
                       </b>
                     </header>
-                    <dl className={CRITERION_GUIDE}>
-                      <div className={CRITERION_GUIDE_ROW}>
-                        <dt className={CRITERION_GUIDE_LABEL}>확인 요소</dt>
-                        <dd className={CRITERION_GUIDE_VALUE}>
-                          {criterion.verificationGuide.observableDimensions.join(
-                            " · ",
-                          )}
-                        </dd>
-                      </div>
-                      <div className={CRITERION_GUIDE_ROW}>
-                        <dt className={CRITERION_GUIDE_LABEL}>
-                          좋은 답변 신호
-                        </dt>
-                        <dd className={CRITERION_GUIDE_VALUE}>
-                          {criterion.verificationGuide.strongAnswerSignals.join(
-                            " · ",
-                          )}
-                        </dd>
-                      </div>
-                      <div className={CRITERION_GUIDE_ROW}>
-                        <dt className={CRITERION_GUIDE_LABEL}>
-                          추가 확인 신호
-                        </dt>
-                        <dd className={CRITERION_GUIDE_VALUE}>
-                          {criterion.verificationGuide.weakAnswerSignals.join(
-                            " · ",
-                          )}
-                        </dd>
-                      </div>
-                      <div className={CRITERION_GUIDE_ROW}>
-                        <dt className={CRITERION_GUIDE_LABEL}>꼬리질문 방향</dt>
-                        <dd className={CRITERION_GUIDE_VALUE}>
-                          {criterion.verificationGuide.followUpDirections.join(
-                            " · ",
-                          )}
-                        </dd>
-                      </div>
-                    </dl>
                   </article>
                 ))}
               </div>
@@ -1001,6 +974,24 @@ function PositionInformation({
               <small className={POLICY_LABEL}>면접 난이도</small>
               <strong className={POLICY_VALUE}>
                 {interviewLevelLabels[criteria.interviewLevel].name}
+              </strong>
+            </span>
+            <span className={POLICY}>
+              <UserRoundCheck
+                className={POLICY_ICON}
+                size={17}
+                aria-hidden="true"
+              />
+              <small className={POLICY_LABEL}>면접관</small>
+              <strong className={POLICY_VALUE}>
+                {criteria.personaDefinition?.name ?? "기본 면접관"}
+              </strong>
+            </span>
+            <span className={POLICY}>
+              <Info className={POLICY_ICON} size={17} aria-hidden="true" />
+              <small className={POLICY_LABEL}>음성 프리셋</small>
+              <strong className={POLICY_VALUE}>
+                {criteria.personaDefinition?.voiceId ?? "기본 음성"}
               </strong>
             </span>
             <span className={POLICY}>
@@ -1050,6 +1041,14 @@ function formatDate(value: string) {
   }).format(new Date(`${value}T00:00:00`));
 }
 
-function priorityLabel(priority: number) {
-  return ["높음", "중간", "보통", "낮음", "참고"][priority - 1] ?? priority;
+function submissionRequirementLabel(
+  value: CompanyPosition["submissionRequirements"][number]["materialType"],
+) {
+  return {
+    resume: "이력서",
+    cover_letter: "자기소개서",
+    career_description: "경력기술서",
+    projects: "대표 프로젝트",
+    portfolio: "포트폴리오",
+  }[value];
 }

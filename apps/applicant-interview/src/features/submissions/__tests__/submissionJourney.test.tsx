@@ -4,6 +4,37 @@ import { describe, expect, it, vi } from "vitest";
 import { SubmissionWorkspace, type SubmissionWorkspaceApi } from "../index";
 
 describe("SubmissionWorkspace", () => {
+  it("shows only configured materials and blocks interview until all required ones are ready", async () => {
+    const onContinue = vi.fn();
+    const api: SubmissionWorkspaceApi = {
+      uploadDocument: vi.fn(),
+      registerRepository: vi.fn(),
+      getReadiness: vi.fn().mockResolvedValue({
+        overallStatus: "ready",
+        interviewReady: true,
+      }),
+      getWorkspace: vi.fn(),
+    };
+    render(
+      <SubmissionWorkspace
+        api={api}
+        requirements={[
+          { id: "resume", required: true, enabled: true },
+          { id: "cover-letter", required: false, enabled: false },
+        ]}
+        submittedMaterials={[]}
+        onContinue={onContinue}
+      />,
+    );
+
+    expect(screen.getAllByText("이력서").length).toBeGreaterThan(0);
+    expect(screen.queryByText("자기소개서")).toBeNull();
+    expect(await screen.findByText("필수 자료 1개 남음")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "환경 점검으로 이동" }),
+    ).toBeNull();
+  });
+
   it("manages each material from the two-column workspace", async () => {
     const api: SubmissionWorkspaceApi = {
       uploadDocument: vi.fn().mockResolvedValue(undefined),
@@ -14,6 +45,7 @@ describe("SubmissionWorkspace", () => {
         impactSummary:
           "Git 분석 일부가 실패했지만 문서 기반 면접은 가능합니다.",
       }),
+      getWorkspace: vi.fn(),
     };
     render(<SubmissionWorkspace api={api} />);
 
@@ -65,7 +97,7 @@ describe("SubmissionWorkspace", () => {
       "projects",
     );
 
-    expect(await screen.findByText("일부 완료")).toBeTruthy();
+    expect((await screen.findAllByText("일부 완료")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "분석 상태 확인" })).toBeNull();
   });
 });

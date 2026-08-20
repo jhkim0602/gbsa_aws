@@ -8,6 +8,7 @@ import {
   CompanyOverview,
   CompanyPositions,
   PositionOperations,
+  type CompanyApplicantReport,
   type CompanyInvitation,
   type CompanyOperationsApi,
   type CompanyWorkspaceApi,
@@ -34,6 +35,9 @@ const api: CompanyWorkspaceApi = {
       headcount: 3,
       recruitmentStartAt: "2026-08-15",
       recruitmentEndAt: "2026-09-30",
+      submissionRequirements: [
+        { materialType: "resume", required: true, enabled: true },
+      ],
       status: "draft",
       rowVersion: 1,
       createdAt: "2026-08-15T01:00:00Z",
@@ -42,6 +46,9 @@ const api: CompanyWorkspaceApi = {
       positionId: "position-2",
       title: "프로덕트 디자이너",
       description: "지원자 경험과 운영 도구를 설계합니다.",
+      submissionRequirements: [
+        { materialType: "resume", required: true, enabled: true },
+      ],
       status: "active",
       rowVersion: 3,
       createdAt: "2026-08-14T01:00:00Z",
@@ -166,8 +173,11 @@ const operationsApi: CompanyOperationsApi = {
       description: input.description,
       roleType: input.roleType,
       headcount: input.headcount,
+      interviewCapacity: input.interviewCapacity,
+      interviewAt: input.interviewAt,
       recruitmentStartAt: input.recruitmentStartAt,
       recruitmentEndAt: input.recruitmentEndAt,
+      submissionRequirements: input.submissionRequirements,
       status: input.status,
       rowVersion: input.rowVersion + 1,
       createdAt: "2026-08-14T01:00:00Z",
@@ -175,6 +185,77 @@ const operationsApi: CompanyOperationsApi = {
   ),
   listCriterionVersions: vi.fn().mockResolvedValue([publishedCriterionVersion]),
   publishCriteria: vi.fn().mockResolvedValue({ versionId: "version-2" }),
+  listSubmissions: vi.fn().mockResolvedValue([]),
+};
+
+const applicantReport: CompanyApplicantReport = {
+  insight: {
+    invitationId: "invitation-2",
+    interviewSessionId: "session-1",
+    competencyModelVersionId: "version-1",
+    overallScore: 88,
+    unscoredCriteriaCount: 0,
+    evidenceCoverage: 100,
+    summary: "제품 문제를 구조화한 근거가 구체적입니다.",
+    criteria: [
+      {
+        criterionId: "PROBLEM_SOLVING",
+        criterionName: "문제 해결",
+        score: 88,
+        assessmentState: "confirmed",
+        evidenceCount: 1,
+      },
+    ],
+  },
+  report: {
+    summary: "문제의 원인과 해결 결과를 구체적인 수치로 설명했습니다.",
+    status: "ready",
+    overallScore: 88,
+    unscoredCriteriaCount: 0,
+    items: [
+      {
+        reportItemId: "report-item-1",
+        criterionId: "PROBLEM_SOLVING",
+        criterionName: "문제 해결",
+        assessmentState: "confirmed",
+        observation: "사용자 조사와 지표를 함께 사용해 문제를 좁혔습니다.",
+        followUpQuestion: null,
+        averageScore: 88,
+        axisAssessments: [],
+        evidence: [
+          {
+            evidenceId: "evidence-1",
+            answerTurnId: "answer-1",
+            transcriptSegmentId: "answer-1",
+            startMs: 4_000,
+            endMs: 12_000,
+            observation: "문제 정의와 개선 결과를 설명함",
+            rationale: "평가 기준을 직접 뒷받침합니다.",
+            sufficiency: "direct",
+          },
+        ],
+      },
+    ],
+  },
+  timeline: {
+    entries: [
+      {
+        entryId: "question-1",
+        type: "question",
+        startMs: 0,
+        endMs: 3_500,
+        text: "가장 복잡한 제품 문제를 어떻게 정의했나요?",
+      },
+      {
+        entryId: "answer-1",
+        type: "answer",
+        startMs: 4_000,
+        endMs: 12_000,
+        text: "사용자 조사와 오류 지표를 교차 검증해 문제를 좁혔습니다.",
+      },
+    ],
+    playback: { status: "ready", url: "https://example.com/interview.mp4" },
+  },
 };
 
 const invitationApi: PositionInvitationApi = {
@@ -217,7 +298,7 @@ const templateApi: InvitationEmailTemplateApi = {
 };
 
 describe("company workspace", () => {
-  it("renders recruiter KPIs, position status and real timestamped activity", async () => {
+  it("renders recruiter KPIs, the recruiting calendar and live applicant activity", async () => {
     render(
       <MemoryRouter>
         <CompanyOverview api={operationsApi} />
@@ -232,11 +313,17 @@ describe("company workspace", () => {
     expect(screen.getByLabelText("검토 대기 1건")).toBeTruthy();
     expect(screen.getByLabelText("완료된 면접 1건")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "포지션 현황" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "최근 활동" })).toBeTruthy();
-    expect(screen.getByText("프로덕트 디자이너 포지션 생성")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "채용 캘린더" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "지원자 실시간 로그" }),
+    ).toBeTruthy();
+    expect(screen.getByText("AI 면접을 시작했습니다.")).toBeTruthy();
+    expect(screen.getByText("AI 면접을 종료했습니다.")).toBeTruthy();
     expect(screen.getAllByText("검토 대기").length).toBeGreaterThan(0);
-    expect(screen.getByText("오늘 확인할 업무")).toBeTruthy();
     expect(screen.getByText("검토할 지원자")).toBeTruthy();
+    expect(screen.queryByText("오늘 확인할 업무")).toBeNull();
+    expect(screen.queryByText("지원자 단계")).toBeNull();
+    expect(screen.queryByText("최근 활동")).toBeNull();
     expect(screen.queryByText("recruiter@example.com")).toBeNull();
     expect(screen.getByRole("link", { name: "새 채용 관리" })).toBeTruthy();
   });
@@ -250,21 +337,33 @@ describe("company workspace", () => {
 
     expect(screen.getByRole("heading", { name: "채용 포지션" })).toBeTruthy();
     expect(await screen.findByText("백엔드 플랫폼 엔지니어")).toBeTruthy();
-    expect(screen.getAllByText("초안")).toHaveLength(2);
-    expect(screen.getAllByText("운영 중")).toHaveLength(2);
-    expect(screen.getByText("3명")).toBeTruthy();
-    expect(screen.getByText("08. 15.")).toBeTruthy();
-    expect(screen.getByText("09. 30.")).toBeTruthy();
+    expect(screen.getAllByText("초안").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("운영 중").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("3명").length).toBeGreaterThan(0);
+    expect(screen.getByText(/08\. 15\..*09\. 30\./)).toBeTruthy();
 
     expect(
       screen
         .getByRole("link", {
-          name: "백엔드 플랫폼 엔지니어 운영 보기",
+          name: "백엔드 플랫폼 엔지니어 포지션 열기",
         })
         .getAttribute("href"),
     ).toBe("/positions/position-1");
-    expect(screen.getByText("지원자 0명")).toBeTruthy();
-    expect(screen.getByText("지원자 4명")).toBeTruthy();
+    expect(
+      screen.getByRole("progressbar", {
+        name: "백엔드 플랫폼 엔지니어 지원 현황 0%",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("progressbar", {
+        name: "프로덕트 디자이너 지원 현황 0%",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("link", {
+        name: "프로덕트 디자이너 포지션 열기",
+      }).textContent,
+    ).toContain("지원자 4명");
   });
 
   it("opens a divided position dashboard and connects every detailed workspace", async () => {
@@ -287,60 +386,44 @@ describe("company workspace", () => {
     ).toBeTruthy();
     expect(
       screen
-        .getByRole("tab", { name: "대시보드" })
+        .getByRole("tab", { name: "인사이트" })
         .getAttribute("aria-selected"),
     ).toBe("true");
     expect(
-      screen.getByRole("heading", { name: "지원자 운영 현황" }),
+      screen.getByRole("heading", { name: "포지션 판단 요약" }),
     ).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "최근 지원자" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "초대 현황" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "단계 분포" })).toBeTruthy();
     expect(
-      screen.getByRole("heading", { name: "면접 기준 요약" }),
+      screen.getByRole("heading", { name: "평가 기준별 평균" }),
     ).toBeTruthy();
-    expect(screen.getByText("면접 난이도")).toBeTruthy();
-    expect(screen.getByText("시니어")).toBeTruthy();
     expect(
-      screen
-        .getByRole("link", { name: "검토할 지원자 종합 리포트" })
-        .getAttribute("href"),
-    ).toBe("/positions/position-2/applicants/invitation-2");
+      screen.getByRole("heading", { name: "지원자 역량 비교" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "현재 면접 설정" }),
+    ).toBeTruthy();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "지원자 목록 상세 보기" }),
-    );
+    fireEvent.click(screen.getByRole("tab", { name: "지원자" }));
     expect(
-      screen
-        .getByRole("tab", { name: "지원자 목록" })
-        .getAttribute("aria-selected"),
+      screen.getByRole("tab", { name: "지원자" }).getAttribute("aria-selected"),
     ).toBe("true");
+    expect(screen.getByRole("heading", { name: "지원자 비교" })).toBeTruthy();
     expect(await screen.findByText("준비된 지원자")).toBeTruthy();
     expect(screen.getByText("ready@example.com")).toBeTruthy();
     expect(screen.getByText("검토할 지원자")).toBeTruthy();
-    expect(
-      screen.getByRole("heading", { name: "지원자 초대 관리" }),
-    ).toBeTruthy();
-    expect(screen.getByRole("button", { name: "초대 패널 접기" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "지원자 초대" })).toBeTruthy();
     expect(
       screen
-        .getByRole("link", { name: "검토할 지원자 상세 보기" })
+        .getByRole("link", { name: "검토할 지원자 리포트 열기" })
         .getAttribute("href"),
     ).toBe("/positions/position-2/applicants/invitation-2");
 
-    fireEvent.click(screen.getByRole("tab", { name: "대시보드" }));
-    fireEvent.click(
-      screen.getByRole("button", { name: "지원자 통계 상세 보기" }),
-    );
-    expect(screen.getByLabelText("전체 지원자 4명")).toBeTruthy();
-    expect(screen.getByLabelText("진행 중인 지원자 2명")).toBeTruthy();
-    expect(screen.getByLabelText("검토 대기 지원자 1명")).toBeTruthy();
-    expect(screen.getByLabelText("완료된 지원자 1명")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "역량 분포" }));
+    expect(screen.getByRole("heading", { name: "총점 분포" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "지원자 역량 비교" }),
+    ).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("tab", { name: "대시보드" }));
-    fireEvent.click(
-      screen.getByRole("button", { name: "면접 단계 상세 보기" }),
-    );
+    fireEvent.click(screen.getByRole("tab", { name: "면접 운영" }));
     expect(
       screen.getByRole("heading", { name: "지원자 면접 흐름" }),
     ).toBeTruthy();
@@ -348,10 +431,7 @@ describe("company workspace", () => {
     expect(screen.getByText("자료 제출·분석")).toBeTruthy();
     expect(screen.getByText("결과 검토")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("tab", { name: "대시보드" }));
-    fireEvent.click(
-      screen.getByRole("button", { name: "포지션 정보 상세 보기" }),
-    );
+    fireEvent.click(screen.getByRole("tab", { name: "설정값" }));
     expect(
       screen.getByRole("heading", { name: "현재 적용 중인 면접 기준" }),
     ).toBeTruthy();
@@ -359,6 +439,10 @@ describe("company workspace", () => {
     expect(screen.getByText("시니어")).toBeTruthy();
     expect(screen.getByText("제품 문제를 구조화하는 경험")).toBeTruthy();
     expect(screen.getByText("문제 해결")).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "지원자 제출 자료" }),
+    ).toBeTruthy();
+    expect(screen.getByText("이력서")).toBeTruthy();
     expect(screen.queryByText(/버전/)).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "간편 수정" }));
@@ -473,14 +557,16 @@ describe("company workspace", () => {
       await screen.findByRole("heading", { name: "지원자 관리" }),
     ).toBeTruthy();
     expect(screen.getByLabelText("전체 지원자 4명")).toBeTruthy();
-    expect(screen.getByLabelText("진행 중인 지원자 2명")).toBeTruthy();
-    expect(screen.getByLabelText("검토 대기 지원자 1명")).toBeTruthy();
-    expect(screen.getByLabelText("완료된 지원자 1명")).toBeTruthy();
-    expect(screen.getAllByText("프로덕트 디자이너")).toHaveLength(4);
+    expect(screen.getByLabelText("지원 포지션 1개")).toBeTruthy();
+    expect(screen.getByLabelText("진행 중 2명")).toBeTruthy();
+    expect(screen.getByLabelText("검토 대기 1명")).toBeTruthy();
+    expect(
+      screen.getAllByText("프로덕트 디자이너").length,
+    ).toBeGreaterThanOrEqual(4);
     expect(screen.getByText("검토할 지원자")).toBeTruthy();
     expect(
       screen
-        .getByRole("link", { name: "검토할 지원자 상세 보기" })
+        .getByRole("link", { name: "검토할 지원자 리포트 열기" })
         .getAttribute("href"),
     ).toBe("/positions/position-2/applicants/invitation-2");
   });
@@ -494,6 +580,18 @@ describe("company workspace", () => {
           interviewSessionId: "session-1",
         },
       ]),
+      listSubmissions: vi.fn().mockResolvedValue([
+        {
+          submissionId: "submission-1",
+          materialType: "resume",
+          sourceType: "file",
+          originalFilename: "resume.pdf",
+          sourceUrl: "https://example.com/resume.pdf",
+          status: "analyzed",
+          createdAt: "2026-08-18T01:00:00Z",
+        },
+      ]),
+      getApplicantReport: vi.fn().mockResolvedValue(applicantReport),
     };
     render(
       <MemoryRouter>
@@ -513,29 +611,31 @@ describe("company workspace", () => {
     ).toBeTruthy();
     expect(
       screen
-        .getByRole("tab", { name: "종합 개요" })
+        .getByRole("tab", { name: "분석 리포트" })
         .getAttribute("aria-selected"),
     ).toBe("true");
     expect(
-      screen.getByRole("heading", { name: "지원 진행 요약" }),
+      await screen.findByRole("heading", { name: "종합 분석" }),
     ).toBeTruthy();
-    expect(screen.getByLabelText("현재 채용 단계 4단계 중 4단계")).toBeTruthy();
-    expect(screen.getAllByText("면접 완료").length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "기준별 역량" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "평가 기준과 답변 근거" }),
+    ).toBeTruthy();
+    expect(screen.getByText("총점")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("tab", { name: "면접 기록" }));
     expect(
-      screen.getByRole("heading", { name: "면접 기록과 응답" }),
+      screen.getByRole("heading", { name: "시간별 대화 기록" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("가장 복잡한 제품 문제를 어떻게 정의했나요?"),
     ).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("tab", { name: "분석 리포트" }));
+    fireEvent.click(screen.getByRole("tab", { name: "제출 자료" }));
     expect(
-      screen.getByRole("heading", { name: "면접 분석 리포트" }),
+      screen.getByRole("heading", { name: "제출 자료 원본" }),
     ).toBeTruthy();
-    expect(
-      screen
-        .getByRole("link", { name: "전체 분석 리포트 열기" })
-        .getAttribute("href"),
-    ).toBe("/review/session-1?invitationId=invitation-2");
+    expect(screen.getByText("resume.pdf")).toBeTruthy();
   });
 
   it("bounds invitation fan-out and keeps invitations in position order", async () => {
@@ -576,7 +676,7 @@ describe("company workspace", () => {
     expect(await screen.findByLabelText("전체 지원자 20명")).toBeTruthy();
     expect(peakInFlight).toBeLessThanOrEqual(6);
     const order = screen
-      .getAllByRole("link", { name: /상세 보기$/ })
+      .getAllByRole("link", { name: /리포트 열기$/ })
       .map((link) => link.getAttribute("href"));
     expect(order[0]).toContain("/applicants/bulk-0");
     expect(order[1]).toContain("/applicants/bulk-1");

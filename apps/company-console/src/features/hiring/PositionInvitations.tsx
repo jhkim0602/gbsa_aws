@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   CheckCircle2,
   CircleAlert,
   FileUp,
@@ -352,14 +353,8 @@ const VALIDATION_CHIP_TONE = {
   warning: `${VALIDATION_CHIP} bg-warning-soft text-warning`,
 } as const;
 const ACTIONS =
-  "flex items-end justify-end gap-3 mw-680:flex-col mw-680:items-stretch";
+  "flex items-center justify-end gap-3 mw-680:flex-col mw-680:items-stretch";
 const ACTIONS_ASIDE = "flex flex-col items-stretch justify-end gap-3";
-const SEGMENTED = "flex flex-wrap gap-1";
-const SEGMENTED_LEGEND = "mb-1 w-full text-[11px] text-muted";
-const SEGMENT =
-  "min-h-[34px] min-w-12 rounded-md border border-border bg-surface px-2.5" +
-  " text-[11px] text-muted";
-const SEGMENT_ACTIVE = `${SEGMENT} border-brand bg-brand-soft font-[650] text-brand`;
 const DRAWER_SCRIM = "fixed inset-0 z-40 border-0 bg-[#0f172a52]";
 const DRAWER =
   "fixed inset-y-0 right-0 z-41 grid w-[min(1080px,96vw)]" +
@@ -381,6 +376,7 @@ const ROW_COMPLETE = "text-[9px] text-subtle";
 export function PositionInvitations({
   positionId,
   positionName,
+  interviewAt,
   api,
   templateApi,
   embedded = false,
@@ -388,6 +384,7 @@ export function PositionInvitations({
 }: {
   positionId: string;
   positionName?: string;
+  interviewAt?: string | null;
   api: PositionInvitationApi;
   /** Omitted where the invitation email is not editable, e.g. read-only rosters. */
   templateApi?: InvitationEmailTemplateApi;
@@ -400,7 +397,6 @@ export function PositionInvitations({
   const [draftRows, setDraftRows] = useState<readonly InvitationDraftRow[]>([
     createDraftRow(),
   ]);
-  const [expiryDays, setExpiryDays] = useState(7);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<InvitationFilter>("all");
   const [loading, setLoading] = useState(true);
@@ -536,7 +532,7 @@ export function PositionInvitations({
       const result = await api.createInvitations(
         positionId,
         applicants,
-        expiryDays,
+        resolveInvitationValidityDays(interviewAt),
       );
       setNotice(`${result.acceptedCount}명의 초대를 발송했습니다.`);
       setDraftRows([createDraftRow()]);
@@ -589,6 +585,9 @@ export function PositionInvitations({
             createDraftRow(applicant.displayName, applicant.email),
           ),
       );
+      setNotice(
+        `${Math.min(imported.length, 1000)}명을 불러왔습니다. 이메일 검증 결과를 확인해 주세요.`,
+      );
     } catch {
       setError(
         "파일을 불러오지 못했습니다. CSV의 이름·이메일 열 또는 JSON 배열 형식을 확인해 주세요.",
@@ -597,6 +596,35 @@ export function PositionInvitations({
   }
 
   const entry = workspace ? ENTRY.card : ENTRY.table;
+
+  if (templateApi && templateOpen && view === "invite") {
+    return (
+      <section className="bg-surface" aria-label="초대 메일 수정">
+        <header className="flex min-h-16 items-center gap-3 border-b border-border-muted px-5 py-3 mw-620:items-start">
+          <button
+            className={`${BUTTON_QUIET} shrink-0`}
+            type="button"
+            onClick={() => setTemplateOpen(false)}
+          >
+            <ArrowLeft size={14} aria-hidden="true" /> 명단으로
+          </button>
+          <div className="min-w-0 border-l border-border-muted pl-3">
+            <h2 className="text-[14px] text-ink">초대 메일 설정</h2>
+            <p className="mt-1 truncate text-[9px] text-muted">
+              {positionName ?? "이 포지션"} 지원자에게 발송할 메일을 편집합니다.
+            </p>
+          </div>
+        </header>
+        <InvitationEmailEditor
+          api={templateApi}
+          layout="modal"
+          scope={{ kind: "position", positionId, positionName }}
+          onSaved={setEmailTemplate}
+          onClose={() => setTemplateOpen(false)}
+        />
+      </section>
+    );
+  }
 
   return (
     <div>
@@ -613,7 +641,7 @@ export function PositionInvitations({
         </header>
       ) : null}
 
-      <div className={CONTENT}>
+      <div className={view === "invite" ? "p-5 mw-720:p-3" : CONTENT}>
         {notice ? (
           <p className={formAlertClass("panel", "success")} role="status">
             {notice}
@@ -739,11 +767,17 @@ export function PositionInvitations({
               <section className={CARD}>
                 <header className={workspace ? CARD_HEADER_ASIDE : CARD_HEADER}>
                   <div>
+                    {view === "invite" ? (
+                      <p className="mb-1 text-[9px] font-bold tracking-[0.06em] text-brand uppercase">
+                        01 · 지원자 명단
+                      </p>
+                    ) : null}
                     <h2 className={CARD_TITLE}>
-                      {workspace ? "지원자 초대 관리" : "지원자 초대"}
+                      {workspace ? "지원자 초대 관리" : "초대할 지원자"}
                     </h2>
                     <p className={CARD_TEXT}>
-                      이름과 이메일을 확인한 뒤 유효한 행만 일괄 발송합니다.
+                      직접 입력하거나 CSV·JSON 파일을 불러오면 중복과 이메일
+                      형식을 자동으로 확인합니다.
                     </p>
                   </div>
                   <div
@@ -768,7 +802,7 @@ export function PositionInvitations({
                       }`}
                     >
                       <FileUp size={14} aria-hidden="true" />
-                      CSV/JSON 가져오기
+                      CSV·JSON 불러오기
                       <input
                         className="sr-only"
                         aria-label="CSV 또는 JSON 가져오기"
@@ -797,7 +831,8 @@ export function PositionInvitations({
                         workspace ? "col-[1/-1]" : "mw-680:col-[1/-1]"
                       }`}
                     >
-                      최대 1,000명
+                      최대 1,000명 · CSV: 이름, 이메일 열 · JSON: applicants
+                      배열
                     </span>
                   </div>
                 </header>
@@ -966,26 +1001,10 @@ export function PositionInvitations({
                     )}
                   </div>
                   <div className={workspace ? ACTIONS_ASIDE : ACTIONS}>
-                    <fieldset
-                      className={`${SEGMENTED} ${workspace ? "w-full" : ""}`}
-                    >
-                      <legend className={SEGMENTED_LEGEND}>
-                        초대 링크 유효기간
-                      </legend>
-                      {[3, 7, 14].map((days) => (
-                        <button
-                          key={days}
-                          type="button"
-                          className={
-                            expiryDays === days ? SEGMENT_ACTIVE : SEGMENT
-                          }
-                          aria-pressed={expiryDays === days}
-                          onClick={() => setExpiryDays(days)}
-                        >
-                          {days}일
-                        </button>
-                      ))}
-                    </fieldset>
+                    <span className="max-w-52 text-[9px] leading-[1.5] text-muted">
+                      초대 링크는 포지션의 면접 예정 시각을 기준으로 자동
+                      관리됩니다.
+                    </span>
                     <button
                       className={`${BUTTON_PRIMARY} ${
                         workspace ? "w-full" : "mw-680:w-full"
@@ -1316,9 +1335,17 @@ function parseInvitationJson(content: string): InvitationApplicant[] {
         "displayName",
         "display_name",
         "name",
+        "fullName",
         "이름",
+        "성명",
       ]),
-      email: firstString(values, ["email", "e-mail", "이메일"]),
+      email: firstString(values, [
+        "email",
+        "e-mail",
+        "emailAddress",
+        "이메일",
+        "메일",
+      ]),
     };
   });
 }
@@ -1330,10 +1357,10 @@ function parseInvitationCsv(content: string): InvitationApplicant[] {
   if (!rows.length) return [];
   const normalizedHeader = rows[0].map(normalizeHeader);
   const nameIndex = normalizedHeader.findIndex((value) =>
-    ["name", "displayname", "이름"].includes(value),
+    ["name", "fullname", "displayname", "이름", "성명"].includes(value),
   );
   const emailIndex = normalizedHeader.findIndex((value) =>
-    ["email", "이메일"].includes(value),
+    ["email", "emailaddress", "이메일", "메일"].includes(value),
   );
   const hasHeader = nameIndex >= 0 || emailIndex >= 0;
   const resolvedNameIndex = nameIndex >= 0 ? nameIndex : 0;
@@ -1398,6 +1425,13 @@ function firstString(record: Record<string, unknown>, keys: readonly string[]) {
     if (typeof value === "string") return value.trim();
   }
   return "";
+}
+
+export function resolveInvitationValidityDays(interviewAt?: string | null) {
+  if (!interviewAt) return 7;
+  const milliseconds = new Date(interviewAt).getTime() - Date.now();
+  if (!Number.isFinite(milliseconds)) return 7;
+  return Math.max(1, Math.ceil(milliseconds / 86_400_000) + 1);
 }
 
 export function parseInvitationApplicants(value: string): {

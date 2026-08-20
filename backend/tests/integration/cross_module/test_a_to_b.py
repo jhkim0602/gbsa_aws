@@ -30,6 +30,10 @@ from interview_evidence.shared.security.principals import (
     CompanyPrincipal,
     FakePrincipalProvider,
 )
+from interview_evidence.shared.submission_materials import (
+    SubmissionMaterialType,
+    SubmissionRequirement,
+)
 from interview_evidence.shared.tenant import ActorType, TenantContext
 from interview_evidence.submission_analysis.api import create_lane_b_runtime
 
@@ -71,6 +75,23 @@ def build_consented_invitation() -> tuple[
         company_principal,
         title="Backend Engineer",
         description="Build evidence-backed interview systems.",
+        submission_requirements=(
+            SubmissionRequirement(
+                material_type=SubmissionMaterialType.RESUME,
+                required=True,
+                instructions="PDF 이력서를 제출해 주세요.",
+            ),
+            SubmissionRequirement(
+                material_type=SubmissionMaterialType.PROJECTS,
+                required=True,
+                instructions="대표 공개 저장소를 등록해 주세요.",
+            ),
+            SubmissionRequirement(
+                material_type=SubmissionMaterialType.COVER_LETTER,
+                required=False,
+                enabled=False,
+            ),
+        ),
         idempotency_key="cross-position",
     )
     criterion = criteria_service.create_version(
@@ -81,7 +102,7 @@ def build_consented_invitation() -> tuple[
                 "code": "PROBLEM_SOLVING",
                 "name": "Problem solving",
                 "description": "Explains alternatives and tradeoffs.",
-                "weight": 1.0,
+                "weight": 100.0,
                 "abstain_guidance": "Abstain without final-answer evidence.",
                 "common_questions": ("Which alternatives did you compare?",),
                 "required": True,
@@ -155,6 +176,30 @@ async def test_lane_b_uses_real_position_invitation_and_consent_boundary() -> No
         base_url="https://testserver",
         cookies={"iep_applicant_session": "applicant-session"},
     ) as client:
+        workspace = await client.get("/v1/applicant/submission-workspace")
+        assert workspace.status_code == 200
+        assert workspace.json()["position_title"] == "Backend Engineer"
+        assert workspace.json()["requirements"] == [
+            {
+                "material_type": "resume",
+                "required": True,
+                "enabled": True,
+                "instructions": "PDF 이력서를 제출해 주세요.",
+            },
+            {
+                "material_type": "projects",
+                "required": True,
+                "enabled": True,
+                "instructions": "대표 공개 저장소를 등록해 주세요.",
+            },
+            {
+                "material_type": "cover_letter",
+                "required": False,
+                "enabled": False,
+                "instructions": None,
+            },
+        ]
+
         allowed = await client.post(
             "/v1/applicant/submissions/upload-intents",
             headers={"Idempotency-Key": "cross-boundary-allowed"},

@@ -32,26 +32,42 @@ type EditorScope =
  * Both panes cap their height so the editor fits a page, but the drawer already constrains
  * them, and `.template-drawer .template-editor__*` released the cap there.
  */
-type EditorLayout = "panel" | "drawer";
+type EditorLayout = "panel" | "drawer" | "modal";
 
 /** Guides are edited as one textarea and split into lines only on submit. */
 type Draft = Omit<InvitationEmailTemplate, "guides"> & { guidesText: string };
 
 const PREVIEW_DEBOUNCE_MS = 350;
 
-const EDITOR =
-  "grid min-h-0 grid-cols-[minmax(0,380px)_minmax(0,1fr)]" +
-  " mw-1080:grid-cols-[minmax(0,1fr)]";
+const EDITOR_LAYOUT: Record<EditorLayout, string> = {
+  panel:
+    "grid min-h-0 grid-cols-[minmax(0,380px)_minmax(0,1fr)] mw-1080:grid-cols-[minmax(0,1fr)]",
+  drawer:
+    "grid min-h-0 grid-cols-[minmax(0,380px)_minmax(0,1fr)] mw-1080:grid-cols-[minmax(0,1fr)]",
+  modal:
+    "grid min-h-0 grid-cols-[minmax(0,350px)_minmax(0,1fr)] mw-820:grid-cols-[minmax(0,1fr)]",
+};
 const FORM =
-  "grid gap-[14px] overflow-y-auto border-r border-r-border-muted p-4" +
-  " mw-1080:border-r-0 mw-1080:border-b mw-1080:border-b-border-muted" +
-  " mw-1080:max-h-none";
+  "grid gap-[14px] overflow-y-auto border-r border-r-border-muted p-4";
+const FORM_LAYOUT: Record<EditorLayout, string> = {
+  panel:
+    "mw-1080:border-r-0 mw-1080:border-b mw-1080:border-b-border-muted mw-1080:max-h-none",
+  drawer:
+    "mw-1080:border-r-0 mw-1080:border-b mw-1080:border-b-border-muted mw-1080:max-h-none",
+  modal:
+    "mw-820:border-r-0 mw-820:border-b mw-820:border-b-border-muted mw-820:max-h-none",
+};
 const PREVIEW =
-  "grid min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] bg-surface-muted" +
-  " mw-1080:max-h-none";
+  "grid min-w-0 grid-rows-[auto_minmax(0,1fr)_auto] bg-surface-muted";
+const PREVIEW_LAYOUT: Record<EditorLayout, string> = {
+  panel: "mw-1080:max-h-none",
+  drawer: "mw-1080:max-h-none",
+  modal: "mw-820:max-h-none",
+};
 const PANE_HEIGHT: Record<EditorLayout, string> = {
   panel: "max-h-[78vh]",
   drawer: "min-h-0 max-h-none",
+  modal: "min-h-0 max-h-[calc(88vh-174px)] mw-820:max-h-none",
 };
 
 const SCOPE_NOTE =
@@ -120,12 +136,19 @@ const SEGMENT =
   " text-[11px] text-muted";
 const SEGMENT_ACTIVE = `${SEGMENT} border-brand bg-brand-soft font-[650] text-brand`;
 const PREVIEW_STAGE = "overflow-y-auto p-[14px]";
+const PREVIEW_STAGE_LAYOUT: Record<EditorLayout, string> = {
+  panel: "",
+  drawer: "",
+  modal: "mw-820:max-h-[520px] mw-620:max-h-[420px]",
+};
 const PREVIEW_FRAME =
   "mx-auto block h-[1180px] w-full rounded-lg border border-border bg-white";
 const PREVIEW_FOOT =
   "flex flex-wrap items-center gap-2 border-t border-t-border-muted" +
-  " bg-surface p-[11px_14px]";
-const PREVIEW_FOOT_TEXT = "mr-auto text-[9px] text-muted";
+  " bg-surface p-[11px_14px] mw-620:grid mw-620:grid-cols-1";
+const PREVIEW_FOOT_TEXT = "mr-auto text-[9px] text-muted mw-620:mr-0";
+const PREVIEW_ACTIONS =
+  "flex flex-wrap items-center gap-2 mw-620:grid mw-620:w-full mw-620:grid-cols-2";
 
 export function InvitationEmailEditor({
   api,
@@ -337,8 +360,8 @@ export function InvitationEmailEditor({
   const swatches = [...BRAND_COLOR_PRESETS, ...customColors];
 
   return (
-    <div className={EDITOR}>
-      <div className={`${FORM} ${PANE_HEIGHT[layout]}`}>
+    <div className={EDITOR_LAYOUT[layout]}>
+      <div className={`${FORM} ${FORM_LAYOUT[layout]} ${PANE_HEIGHT[layout]}`}>
         {notice ? (
           <p className={formAlertClass("panel", "success")} role="status">
             {notice}
@@ -547,7 +570,9 @@ export function InvitationEmailEditor({
         </section>
       </div>
 
-      <div className={`${PREVIEW} ${PANE_HEIGHT[layout]}`}>
+      <div
+        className={`${PREVIEW} ${PREVIEW_LAYOUT[layout]} ${PANE_HEIGHT[layout]}`}
+      >
         <header className={PREVIEW_BAR}>
           <div>
             <strong className={PREVIEW_BAR_TITLE}>미리보기</strong>
@@ -574,7 +599,7 @@ export function InvitationEmailEditor({
             ))}
           </div>
         </header>
-        <div className={PREVIEW_STAGE}>
+        <div className={`${PREVIEW_STAGE} ${PREVIEW_STAGE_LAYOUT[layout]}`}>
           <iframe
             className={`${PREVIEW_FRAME}${device === "mobile" ? " max-w-[400px]" : ""}`}
             title="초대 메일 미리보기"
@@ -590,32 +615,36 @@ export function InvitationEmailEditor({
               ? "저장하지 않은 변경이 있습니다."
               : "변경 사항은 저장 전까지 발송되지 않습니다."}
           </span>
-          <button
-            className={BUTTON_QUIET}
-            type="button"
-            disabled={saving}
-            onClick={() => void revert()}
-          >
-            <RotateCcw size={14} aria-hidden="true" />
-            {positionScope ? "전사 기본값 따르기" : "기본 문구로 되돌리기"}
-          </button>
-          {onClose ? (
+          <div className={PREVIEW_ACTIONS}>
             <button
-              className={BUTTON_SECONDARY}
+              className={`${BUTTON_QUIET} mw-620:col-[1/-1] mw-620:w-full`}
               type="button"
-              onClick={onClose}
+              disabled={saving}
+              onClick={() => void revert()}
             >
-              닫기
+              <RotateCcw size={14} aria-hidden="true" />
+              {positionScope ? "전사 기본값 따르기" : "기본 문구로 되돌리기"}
             </button>
-          ) : null}
-          <button
-            className={BUTTON_PRIMARY}
-            type="button"
-            disabled={saving || !dirty}
-            onClick={() => void save()}
-          >
-            {saving ? "저장 중" : onClose ? "저장하고 닫기" : "저장"}
-          </button>
+            {onClose ? (
+              <button
+                className={`${BUTTON_SECONDARY} mw-620:w-full`}
+                type="button"
+                onClick={onClose}
+              >
+                닫기
+              </button>
+            ) : null}
+            <button
+              className={`${BUTTON_PRIMARY} mw-620:w-full ${
+                onClose ? "" : "mw-620:col-[1/-1]"
+              }`}
+              type="button"
+              disabled={saving || !dirty}
+              onClick={() => void save()}
+            >
+              {saving ? "저장 중" : onClose ? "저장하고 닫기" : "저장"}
+            </button>
+          </div>
         </footer>
       </div>
     </div>

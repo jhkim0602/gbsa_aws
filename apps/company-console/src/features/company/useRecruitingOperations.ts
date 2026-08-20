@@ -18,6 +18,7 @@ type RecruitingOperationsState = Readonly<{
   invitations: readonly PositionedInvitation[];
   loading: boolean;
   error: boolean;
+  lastUpdatedAt: string | null;
 }>;
 
 /** Browsers cap per-origin connections anyway; an unbounded fan-out only queues. */
@@ -29,21 +30,31 @@ const initialState: RecruitingOperationsState = {
   invitations: [],
   loading: true,
   error: false,
+  lastUpdatedAt: null,
 };
 
 export function useRecruitingOperations(
   api: CompanyOperationsApi,
   positionId?: string,
+  refreshIntervalMs = 0,
 ) {
   const [state, setState] = useState<RecruitingOperationsState>(initialState);
 
   useEffect(() => {
     let active = true;
-    const positionsRequest = positionId
-      ? api.getPosition(positionId).then((position) => [position])
-      : api.listPositions();
-    Promise.all([api.getCurrentUser(), positionsRequest])
-      .then(async ([user, positions]) => {
+    let inFlight = false;
+
+    async function load() {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const positionsRequest = positionId
+          ? api.getPosition(positionId).then((position) => [position])
+          : api.listPositions();
+        const [user, positions] = await Promise.all([
+          api.getCurrentUser(),
+          positionsRequest,
+        ]);
         const batches: PositionedInvitation[][] = positions.map(() => []);
         let next = 0;
         const drain = async () => {
@@ -69,18 +80,31 @@ export function useRecruitingOperations(
             invitations: batches.flat(),
             loading: false,
             error: false,
+            lastUpdatedAt: new Date().toISOString(),
           });
         }
-      })
-      .catch(() => {
+      } catch {
         if (active) {
-          setState({ ...initialState, loading: false, error: true });
+          setState((current) =>
+            current.lastUpdatedAt
+              ? current
+              : { ...initialState, loading: false, error: true },
+          );
         }
-      });
+      } finally {
+        inFlight = false;
+      }
+    }
+
+    void load();
+    const timer = refreshIntervalMs
+      ? window.setInterval(() => void load(), refreshIntervalMs)
+      : null;
     return () => {
       active = false;
+      if (timer !== null) window.clearInterval(timer);
     };
-  }, [api, positionId]);
+  }, [api, positionId, refreshIntervalMs]);
 
   return state;
 }

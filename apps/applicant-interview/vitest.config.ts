@@ -10,14 +10,7 @@ export default defineConfig({
     //   featureRoutes      `/submissions` renders through `routeAdapters.tsx:317`, which
     //                      shows a `role="status"` placeholder until `getWorkspace()`
     //                      resolves, so the heading is not in the first paint.
-    //   submissionJourney  "일부 완료" now matches multiple nodes, so `getByText` throws
-    //                      where it used to find one.
-    // Excluded rather than deleted: the flows they cover are real, and they should come back
-    // using `findBy*` and a narrower query.
-    exclude: [
-      "**/node_modules/**",
-      "src/app/__tests__/featureRoutes.test.tsx",
-      "src/features/submissions/__tests__/submissionJourney.test.tsx",
-    ],
+    // The feature-route test remains excluded until its async workspace fixture is restored.
+    exclude: ["**/node_modules/**", "src/app/__tests__/featureRoutes.test.tsx"],
   },
 });

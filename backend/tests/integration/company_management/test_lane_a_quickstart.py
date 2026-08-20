@@ -81,7 +81,7 @@ async def test_lane_a_company_to_consented_applicant_journey() -> None:
                         "code": "PROBLEM_SOLVING",
                         "name": "문제 해결",
                         "description": "대안을 비교하고 근거를 설명한다.",
-                        "weight": 1,
+                        "weight": 100,
                         "verification_guide": {
                             "observable_dimensions": [
                                 "실제 상황",

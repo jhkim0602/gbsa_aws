@@ -366,16 +366,9 @@ export function CriteriaStep(
     );
   const criteriaReady =
     draft.criteria.length > 0 &&
-    draft.criteria.every(
-      (criterion) =>
-        criterion.name.trim() &&
-        criterion.observableDimensions.trim() &&
-        criterion.strongAnswerSignals.trim() &&
-        criterion.weakAnswerSignals.trim() &&
-        criterion.followUpDirections.trim() &&
-        criterion.abstainGuidance.trim() &&
-        criterion.commonQuestions.trim(),
-    );
+    draft.criteria.every((criterion) => criterion.weight >= 0) &&
+    draft.criteria.reduce((total, criterion) => total + criterion.weight, 0) ===
+      100;
   const ready = !stage
     ? requirementsReady && criteriaReady
     : stage === "evaluation"
@@ -384,8 +377,7 @@ export function CriteriaStep(
         draft.interviewCapacity > 0 &&
         Boolean(draft.interviewAt) &&
         !Number.isNaN(Date.parse(draft.interviewAt)) &&
-        draft.interviewDurationMinutes >= 10 &&
-        Boolean(draft.prohibitedTopics.trim());
+        draft.interviewDurationMinutes >= 10;
 
   return (
     <form className="grid" onSubmit={onSubmit}>
@@ -429,15 +421,15 @@ export function CompletionState({
       <div className="mt-[22px] flex flex-wrap justify-center gap-2 [&>span]:inline-flex [&>span]:items-center [&>span]:gap-[5px] [&>span]:rounded-full [&>span]:bg-success-soft [&>span]:px-2 [&>span]:py-[5px] [&>span]:text-[9px] [&>span]:text-success">
         <span>
           <Check size={13} aria-hidden="true" />
-          필수·우대 요구사항 연결
+          필수·우대 자격요건 설정
         </span>
         <span>
           <Check size={13} aria-hidden="true" />
-          평가기준과 검증 가이드 게시
+          자격요건별 가중치 반영
         </span>
         <span>
           <Check size={13} aria-hidden="true" />
-          면접 운영 정책 고정
+          질문·검증 가이드 자동 적용
         </span>
       </div>
       {onOpenPosition ? (
