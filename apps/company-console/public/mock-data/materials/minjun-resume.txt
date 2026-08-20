@@ -1,0 +1,12 @@
+김민준 · Backend Platform Engineer
+
+7년간 트래픽이 큰 커머스·채용 플랫폼의 백엔드 시스템을 설계하고 운영했습니다.
+
+핵심 경험
+- AWS EKS 기반 주문 플랫폼 운영
+- Kafka 이벤트 파이프라인 설계
+- PostgreSQL 파티셔닝과 Redis 캐시 최적화
+- p95 지연시간 1.8초 → 320ms 개선
+
+기술
+Kotlin, Spring Boot, Python, PostgreSQL, Redis, Kafka, AWS, Kubernetes

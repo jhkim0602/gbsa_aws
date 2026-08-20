@@ -137,6 +137,80 @@ export class PcmAudioWorkletCapture {
   }
 }
 
+export class PcmFrameBatcher {
+  private pending = new Int16Array(0);
+
+  constructor(
+    private readonly targetSamples: number,
+    private readonly onFrame: (frame: Int16Array) => void,
+  ) {}
+
+  push(frame: Int16Array): void {
+    const combined = new Int16Array(this.pending.length + frame.length);
+    combined.set(this.pending);
+    combined.set(frame, this.pending.length);
+    let offset = 0;
+    while (combined.length - offset >= this.targetSamples) {
+      this.onFrame(combined.slice(offset, offset + this.targetSamples));
+      offset += this.targetSamples;
+    }
+    this.pending = combined.slice(offset);
+  }
+
+  flush(): void {
+    if (this.pending.length > 0) this.onFrame(this.pending);
+    this.pending = new Int16Array(0);
+  }
+}
+
+export type AudioPlaybackState = "idle" | "playing";
+
+export class PcmAudioWorkletPlayer {
+  private context: AudioContext | null = null;
+  private player: AudioWorkletNode | null = null;
+
+  async start(
+    sampleRateHz: number,
+    onStateChange: (state: AudioPlaybackState) => void,
+  ): Promise<void> {
+    await this.stop();
+    this.context = new AudioContext({ sampleRate: sampleRateHz });
+    await this.context.audioWorklet.addModule(
+      new URL("./ttsPlayback.worklet.js", import.meta.url),
+    );
+    this.player = new AudioWorkletNode(this.context, "iep-tts-playback", {
+      numberOfInputs: 0,
+      numberOfOutputs: 1,
+      outputChannelCount: [1],
+    });
+    this.player.port.onmessage = (
+      event: MessageEvent<{ type?: "playing" | "ended" }>,
+    ) => {
+      if (event.data.type === "playing") onStateChange("playing");
+      if (event.data.type === "ended") onStateChange("idle");
+    };
+    this.player.connect(this.context.destination);
+    await this.context.resume();
+  }
+
+  enqueue(chunk: ArrayBuffer): void {
+    if (!this.player) return;
+    const copy = chunk.slice(0);
+    this.player.port.postMessage({ type: "chunk", chunk: copy }, [copy]);
+  }
+
+  end(): void {
+    this.player?.port.postMessage({ type: "end" });
+  }
+
+  async stop(): Promise<void> {
+    this.player?.disconnect();
+    await this.context?.close();
+    this.player = null;
+    this.context = null;
+  }
+}
+
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, 1);

@@ -124,3 +124,42 @@ def test_criterion_filter_keeps_criterion_agnostic_submission_chunks() -> None:
         )
 
     assert tuple(candidate.document.source_id for candidate in candidates) == (chunk_id,)
+
+
+def test_debug_documents_return_extracted_text_for_the_current_invitation() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    chunk_id = UUID("00000000-0000-7000-8000-000000000030")
+    with Session(engine) as session:
+        index = PostgresHybridSearchIndex(session)
+        index.add(
+            SearchDocument(
+                document_id=str(chunk_id),
+                company_id=COMPANY_ID,
+                applicant_id=APPLICANT_ID,
+                source_id=chunk_id,
+                text="지원자가 제출한 이력서에서 추출된 문단",
+                vector=_vector(1.0, 0.0),
+                symbols=(),
+                locator={"page_number": 2, "section": "경력"},
+                ownership_confidence=1.0,
+                invitation_id=INVITATION_ID,
+                competency_model_version_id=VERSION_ID,
+                document_type="submission_chunk",
+                source_type="submission_chunk",
+                embedding_model="amazon.titan-embed-text-v2:0",
+                embedding_version="titan-v2",
+                material_type="resume",
+            )
+        )
+
+        documents = index.list_debug_documents(
+            _context(),
+            applicant_id=APPLICANT_ID,
+            invitation_id=INVITATION_ID,
+        )
+
+    assert len(documents) == 1
+    assert documents[0].text == "지원자가 제출한 이력서에서 추출된 문단"
+    assert documents[0].material_type == "resume"
+    assert documents[0].locator == {"page_number": 2, "section": "경력"}

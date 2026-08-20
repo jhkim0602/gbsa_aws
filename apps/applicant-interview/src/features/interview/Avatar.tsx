@@ -1,4 +1,21 @@
+import { useEffect, useState } from "react";
+
 export type InterviewerLevel = "entry" | "junior" | "senior";
+
+type EyeState = "open" | "closed";
+type MouthState = "closed" | "mid" | "open";
+
+const MOUTH_SEQUENCE: readonly MouthState[] = [
+  "mid",
+  "open",
+  "mid",
+  "closed",
+  "mid",
+  "open",
+];
+const MOUTH_FRAME_DURATION_MS = 140;
+const BLINK_DURATION_MS = 140;
+const BLINK_DELAYS_MS = [3200, 4700, 3800] as const;
 
 export const INTERVIEWER_LEVELS: Readonly<
   Record<
@@ -40,6 +57,66 @@ export function Avatar({
   level?: InterviewerLevel;
   className?: string;
 }) {
+  const [eyes, setEyes] = useState<EyeState>("open");
+  const [mouth, setMouth] = useState<MouthState>("closed");
+
+  useEffect(() => {
+    if (textOnly) {
+      setEyes("open");
+      return undefined;
+    }
+
+    let blinkDelayIndex = 0;
+    let blinkTimer: number | undefined;
+    let reopenTimer: number | undefined;
+
+    const scheduleBlink = () => {
+      blinkTimer = window.setTimeout(() => {
+        setEyes("closed");
+        reopenTimer = window.setTimeout(() => {
+          setEyes("open");
+          blinkDelayIndex = (blinkDelayIndex + 1) % BLINK_DELAYS_MS.length;
+          scheduleBlink();
+        }, BLINK_DURATION_MS);
+      }, BLINK_DELAYS_MS[blinkDelayIndex]);
+    };
+
+    scheduleBlink();
+    return () => {
+      if (blinkTimer !== undefined) window.clearTimeout(blinkTimer);
+      if (reopenTimer !== undefined) window.clearTimeout(reopenTimer);
+    };
+  }, [textOnly]);
+
+  useEffect(() => {
+    if (textOnly || !speaking) {
+      setMouth("closed");
+      return undefined;
+    }
+
+    let sequenceIndex =
+      ((speechMarkIndex % MOUTH_SEQUENCE.length) + MOUTH_SEQUENCE.length) %
+      MOUTH_SEQUENCE.length;
+    setMouth(MOUTH_SEQUENCE[sequenceIndex]);
+
+    const mouthTimer = window.setInterval(() => {
+      sequenceIndex = (sequenceIndex + 1) % MOUTH_SEQUENCE.length;
+      setMouth(MOUTH_SEQUENCE[sequenceIndex]);
+    }, MOUTH_FRAME_DURATION_MS);
+
+    return () => window.clearInterval(mouthTimer);
+  }, [speaking, speechMarkIndex, textOnly]);
+
+  useEffect(() => {
+    if (typeof Image === "undefined") return;
+    for (const eyeState of ["open", "closed"] as const) {
+      for (const mouthState of ["closed", "mid", "open"] as const) {
+        const image = new Image();
+        image.src = `/interviewers/${level}_eyes_${eyeState}_mouth_${mouthState}.webp`;
+      }
+    }
+  }, [level]);
+
   if (textOnly) {
     return (
       <div
@@ -52,14 +129,7 @@ export function Avatar({
   }
 
   const levelInfo = INTERVIEWER_LEVELS[level];
-
-  /*
-   * TODO: TTS가 phoneme/viseme 타임라인을 제공하면 아래 6개 프레임을
-   * speechMarkIndex에 매핑한다.
-   * eyes_open/closed x mouth_closed/mid/open = 총 6단계.
-   * 현재는 안정적인 기본 표정(open + closed) 한 장만 표시한다.
-   */
-  const imageSource = `/interviewers/${level}_eyes_open_mouth_closed.webp`;
+  const imageSource = `/interviewers/${level}_eyes_${eyes}_mouth_${mouth}.webp`;
 
   return (
     <figure
@@ -67,6 +137,8 @@ export function Avatar({
       aria-label={speaking ? "AI 면접관 발화 중" : "AI 면접관 대기 중"}
       data-speech-mark={speechMarkIndex}
       data-level={level}
+      data-eyes={eyes}
+      data-mouth={mouth}
     >
       <img
         className="h-full w-full object-cover object-center"

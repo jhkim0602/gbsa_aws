@@ -19,6 +19,8 @@ import {
   CompanyOverview,
   CompanyPositions,
   PositionOperations,
+  type CompanyApplicantInsight,
+  type CompanyApplicantReport,
   type CompanyOperationsApi,
 } from "../features/company";
 import {
@@ -31,7 +33,17 @@ import {
   type PositionInvitationApi,
   type HiringWorkspaceApi,
 } from "../features/hiring";
-import { ReviewWorkspace, type ReviewApi } from "../features/review";
+import {
+  ReviewWorkspace,
+  type ReviewApi,
+  type ReviewReport,
+  type ReviewTimeline,
+} from "../features/review";
+import {
+  mockCompanyOperationsApi,
+  mockInvitationEmailTemplateApi,
+  mockPositionInvitationApi,
+} from "../mocks/recruitingApi";
 import type { components } from "@iep/contracts/generated/typescript/openapi";
 
 import {
@@ -127,6 +139,11 @@ const hiringApi: HiringWorkspaceApi = {
         prohibited_topics: input.prohibitedTopics,
         interview_duration_minutes: input.interviewDurationMinutes,
         interview_level: input.interviewLevel,
+        persona_definition: {
+          name: input.personaDefinition.name,
+          tone: input.personaDefinition.tone,
+          voice_id: input.personaDefinition.voiceId,
+        },
       }),
     });
     const published = await companyRequest<
@@ -314,6 +331,20 @@ const invitationEmailTemplateApi: InvitationEmailTemplateApi = {
 const companyOperationsApi: CompanyOperationsApi = {
   ...companyWorkspaceApi,
   listInvitations: positionInvitationApi.listInvitations,
+  async requestApplicantDeletion(invitationId) {
+    await companyRequest<components["schemas"]["DeletionStatus"]>(
+      "/v1/privacy/deletion-requests",
+      {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey("applicant-deletion") },
+        body: JSON.stringify({
+          scope_type: "invitation",
+          scope_id: invitationId,
+          reason: "company_user_requested_applicant_deletion",
+        }),
+      },
+    );
+  },
   async updatePosition(input) {
     const result = await companyRequest<components["schemas"]["Position"]>(
       `/v1/positions/${input.positionId}`,
@@ -418,6 +449,7 @@ const companyOperationsApi: CompanyOperationsApi = {
       interviewDurationMinutes: version.interview_duration_minutes,
       // Versions published before the difficulty toggle existed omit the field.
       interviewLevel: version.interview_level ?? "junior",
+      personaDefinition: toCompanyPersona(version.persona_definition),
     }));
   },
   async listSubmissions(invitationId) {
@@ -451,8 +483,187 @@ const companyOperationsApi: CompanyOperationsApi = {
       createdAt: submission.created_at,
     }));
   },
+  async listApplicantInsights(positionId) {
+    const invitations = await positionInvitationApi.listInvitations(positionId);
+    const completed = invitations.filter(
+      (invitation) => invitation.interviewSessionId,
+    );
+    const reports = await Promise.allSettled(
+      completed.map(async (invitation) => {
+        const sessionId = invitation.interviewSessionId;
+        if (!sessionId) return null;
+        const report = await companyRequest<ReportResponse>(
+          `/v1/interview-sessions/${sessionId}/report`,
+        );
+        return toApplicantInsight(
+          invitation.invitationId,
+          sessionId,
+          invitation.competencyModelVersionId,
+          toReviewReport(report),
+        );
+      }),
+    );
+    return reports.flatMap((result) =>
+      result.status === "fulfilled" && result.value ? [result.value] : [],
+    );
+  },
+  async getApplicantReport(
+    interviewSessionId,
+    invitationId,
+    competencyModelVersionId,
+  ) {
+    const [report, timeline] = await Promise.all([
+      companyRequest<ReportResponse>(
+        `/v1/interview-sessions/${interviewSessionId}/report`,
+      ),
+      companyRequest<TimelineResponse>(
+        `/v1/interview-sessions/${interviewSessionId}/timeline`,
+      ),
+    ]);
+    const mappedReport = toReviewReport(report);
+    return {
+      insight: toApplicantInsight(
+        invitationId,
+        interviewSessionId,
+        competencyModelVersionId,
+        mappedReport,
+      ),
+      report: mappedReport,
+      timeline: toReviewTimeline(timeline),
+    } satisfies CompanyApplicantReport;
+  },
   publishCriteria: hiringApi.publishCriteria,
 };
+
+function toCompanyPersona(value: unknown) {
+  if (!value || typeof value !== "object") return undefined;
+  const persona = value as Record<string, unknown>;
+  const tone = persona.tone;
+  if (
+    typeof persona.name !== "string" ||
+    typeof persona.voice_id !== "string" ||
+    !["calm", "friendly", "analytical", "concise"].includes(String(tone))
+  ) {
+    return undefined;
+  }
+  return {
+    name: persona.name,
+    tone: tone as "calm" | "friendly" | "analytical" | "concise",
+    voiceId: persona.voice_id,
+  };
+}
+
+function toReviewReport(report: ReportResponse): ReviewReport {
+  return {
+    summary: report.summary,
+    status: report.status,
+    overallScore: report.overall_score ?? null,
+    unscoredCriteriaCount: report.unscored_criteria_count ?? 0,
+    items: report.items.map((item) => ({
+      reportItemId: item.report_item_id,
+      criterionId: item.criterion_id,
+      criterionName: item.criterion_name || item.criterion_id,
+      assessmentState: item.assessment_state,
+      observation: item.observation,
+      followUpQuestion: item.follow_up_question ?? null,
+      averageScore: item.average_score ?? null,
+      axisAssessments: (item.axis_assessments ?? []).map((axis) => ({
+        axis: axis.axis,
+        label: axis.label,
+        score: axis.score,
+        rationale: axis.rationale,
+        quotedEvidenceIds: [...axis.quoted_evidence_ids],
+      })),
+      evidence: item.evidence.map((evidence) => ({
+        evidenceId: evidence.evidence_id,
+        answerTurnId: evidence.answer_turn_id,
+        transcriptSegmentId: evidence.transcript_segment_id,
+        startMs: evidence.video_start_ms,
+        endMs: evidence.video_end_ms,
+        observation: evidence.observation,
+        rationale: evidence.rationale,
+        sufficiency: evidence.sufficiency,
+      })),
+    })),
+  };
+}
+
+function toReviewTimeline(timeline: TimelineResponse): ReviewTimeline {
+  return {
+    entries: timeline.entries.map((entry) => ({
+      entryId: entry.entry_id,
+      type: entry.entry_type,
+      startMs: entry.start_ms,
+      endMs: entry.end_ms,
+      text: entry.text ?? null,
+      questionRationale: entry.question_rationale
+        ? {
+            criterionId: entry.question_rationale.criterion_id,
+            verificationTargetType:
+              entry.question_rationale.verification_target_type,
+            objective: entry.question_rationale.objective,
+            questionType: entry.question_rationale.question_type,
+            policyResult: entry.question_rationale.policy_result,
+            sourceReferences: entry.question_rationale.source_references.map(
+              (source) => ({
+                sourceId: source.source_id,
+                sourceType: source.source_type,
+                locator: source.locator,
+                excerpt: source.excerpt,
+              }),
+            ),
+          }
+        : null,
+    })),
+    playback: {
+      status: timeline.playback.status,
+      url: timeline.playback.url ?? undefined,
+    },
+  };
+}
+
+function toApplicantInsight(
+  invitationId: string,
+  interviewSessionId: string,
+  competencyModelVersionId: string,
+  report: ReviewReport,
+): CompanyApplicantInsight {
+  const criteria = report.items.map((item) => ({
+    criterionId: item.criterionId,
+    criterionName: item.criterionName,
+    score: item.averageScore,
+    assessmentState: item.assessmentState,
+    evidenceCount: item.evidence.length,
+  }));
+  return {
+    invitationId,
+    interviewSessionId,
+    competencyModelVersionId,
+    overallScore: report.overallScore,
+    unscoredCriteriaCount: report.unscoredCriteriaCount,
+    evidenceCoverage: criteria.length
+      ? Math.round(
+          (criteria.filter((criterion) => criterion.evidenceCount > 0).length /
+            criteria.length) *
+            100,
+        )
+      : 0,
+    summary: report.summary,
+    criteria,
+  };
+}
+
+const useMockRecruitingData =
+  import.meta.env.DEV && import.meta.env.VITE_USE_MOCK_DATA === "true";
+const recruitingOperationsApi = useMockRecruitingData
+  ? mockCompanyOperationsApi
+  : companyOperationsApi;
+const recruitingInvitationApi = useMockRecruitingData
+  ? mockPositionInvitationApi
+  : positionInvitationApi;
+const recruitingTemplateApi = useMockRecruitingData
+  ? mockInvitationEmailTemplateApi
+  : invitationEmailTemplateApi;
 
 type ReportResponse = components["schemas"]["ReportView"];
 
@@ -462,14 +673,14 @@ export function CompanyHomeRoute() {
   if (AUTH_CONFIG && !getCompanyAccessToken(localStorage)) {
     return <Navigate replace to="/auth/login" />;
   }
-  return <CompanyOverview api={companyOperationsApi} />;
+  return <CompanyOverview api={recruitingOperationsApi} />;
 }
 
 export function CompanyPositionsRoute() {
   if (AUTH_CONFIG && !getCompanyAccessToken(localStorage)) {
     return <Navigate replace to="/auth/login" />;
   }
-  return <CompanyPositions api={companyOperationsApi} />;
+  return <CompanyPositions api={recruitingOperationsApi} />;
 }
 
 export function PositionOperationsRoute() {
@@ -483,9 +694,9 @@ export function PositionOperationsRoute() {
   return (
     <PositionOperations
       positionId={positionId}
-      api={companyOperationsApi}
-      invitationApi={positionInvitationApi}
-      templateApi={invitationEmailTemplateApi}
+      api={recruitingOperationsApi}
+      invitationApi={recruitingInvitationApi}
+      templateApi={recruitingTemplateApi}
     />
   );
 }
@@ -501,7 +712,7 @@ export function ApplicantManagementRoute() {
   if (AUTH_CONFIG && !getCompanyAccessToken(localStorage)) {
     return <Navigate replace to="/auth/login" />;
   }
-  return <ApplicantManagement api={companyOperationsApi} />;
+  return <ApplicantManagement api={recruitingOperationsApi} />;
 }
 
 export function ApplicantDetailRoute() {
@@ -516,7 +727,7 @@ export function ApplicantDetailRoute() {
     <ApplicantDetail
       positionId={positionId}
       invitationId={invitationId}
-      api={companyOperationsApi}
+      api={recruitingOperationsApi}
     />
   );
 }
@@ -652,74 +863,8 @@ export function ReviewRoute() {
           sessionId={sessionId}
           invitationId={invitationId}
           api={reviewApi}
-          report={{
-            summary: report.summary,
-            status: report.status,
-            overallScore: report.overall_score ?? null,
-            unscoredCriteriaCount: report.unscored_criteria_count ?? 0,
-            items: report.items.map((item) => ({
-              reportItemId: item.report_item_id,
-              criterionId: item.criterion_id,
-              // Reports generated before the name was captured carry an empty string.
-              criterionName: item.criterion_name || item.criterion_id,
-              assessmentState: item.assessment_state,
-              observation: item.observation,
-              followUpQuestion: item.follow_up_question ?? null,
-              averageScore: item.average_score ?? null,
-              // Absent on reports generated before scoring existed.
-              axisAssessments: (item.axis_assessments ?? []).map((axis) => ({
-                axis: axis.axis,
-                label: axis.label,
-                score: axis.score,
-                rationale: axis.rationale,
-                quotedEvidenceIds: [...axis.quoted_evidence_ids],
-              })),
-              evidence: item.evidence.map((evidence) => ({
-                evidenceId: evidence.evidence_id,
-                answerTurnId: evidence.answer_turn_id,
-                // Matches a timeline entry id, which is how the report resolves the
-                // quoted answer text without asking the API for it again.
-                transcriptSegmentId: evidence.transcript_segment_id,
-                startMs: evidence.video_start_ms,
-                endMs: evidence.video_end_ms,
-                observation: evidence.observation,
-                rationale: evidence.rationale,
-                sufficiency: evidence.sufficiency,
-              })),
-            })),
-          }}
-          timeline={{
-            entries: timeline.entries.map((entry) => ({
-              entryId: entry.entry_id,
-              type: entry.entry_type,
-              startMs: entry.start_ms,
-              endMs: entry.end_ms,
-              text: entry.text ?? null,
-              questionRationale: entry.question_rationale
-                ? {
-                    criterionId: entry.question_rationale.criterion_id,
-                    verificationTargetType:
-                      entry.question_rationale.verification_target_type,
-                    objective: entry.question_rationale.objective,
-                    questionType: entry.question_rationale.question_type,
-                    policyResult: entry.question_rationale.policy_result,
-                    sourceReferences:
-                      entry.question_rationale.source_references.map(
-                        (source) => ({
-                          sourceId: source.source_id,
-                          sourceType: source.source_type,
-                          locator: source.locator,
-                          excerpt: source.excerpt,
-                        }),
-                      ),
-                  }
-                : null,
-            })),
-            playback: {
-              status: timeline.playback.status,
-              url: timeline.playback.url ?? undefined,
-            },
-          }}
+          report={toReviewReport(report)}
+          timeline={toReviewTimeline(timeline)}
           deletion={{
             status: "not_requested",
             verifiedTargets: 0,

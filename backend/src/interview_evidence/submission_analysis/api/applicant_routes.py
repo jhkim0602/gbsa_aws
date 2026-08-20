@@ -16,6 +16,7 @@ from interview_evidence.shared.submission_materials import (
     SubmissionRequirement,
 )
 from interview_evidence.shared.tenant import ActorType, TenantContext
+from interview_evidence.submission_analysis.adapters.search import AnalysisDebugSearch
 from interview_evidence.submission_analysis.application.authorization import (
     SubmissionAuthorization,
     SubmissionAuthorizationDenied,
@@ -31,6 +32,7 @@ from interview_evidence.submission_analysis.domain.submission import (
     SourceType,
     Submission,
 )
+from interview_evidence.submission_analysis.repositories.postgres import SubmissionRepository
 
 
 class UploadIntentCreate(BaseModel):
@@ -110,6 +112,42 @@ class SubmissionWorkspaceView(BaseModel):
     submissions: list[SubmissionView]
 
 
+class AnalysisDebugAnalysisView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    analysis_id: UUID
+    submission_id: UUID
+    analysis_version: int
+    extractor_version: str
+    chunk_config_version: str
+    status: str
+    claims: list[dict[str, object]]
+    verification_points: list[dict[str, object]]
+    failure_code: str | None
+    impact_summary: str | None
+
+
+class AnalysisDebugDocumentView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_id: UUID
+    source_type: str
+    material_type: str | None
+    locator: dict[str, object]
+    text: str
+    embedding_model: str
+    embedding_version: str
+
+
+class AnalysisDebugView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    submissions: list[SubmissionView]
+    analyses: list[AnalysisDebugAnalysisView]
+    extracted_documents: list[AnalysisDebugDocumentView]
+    strategy: dict[str, object] | None
+
+
 class ApplicantScope(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -124,6 +162,8 @@ def create_applicant_submission_router(
     authorization: SubmissionAuthorizationPort,
     service: SubmissionService,
     audit: AuditAppender,
+    debug_repository: SubmissionRepository | None = None,
+    debug_search: AnalysisDebugSearch | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1")
 
@@ -316,6 +356,67 @@ def create_applicant_submission_router(
             strategy_version=readiness.strategy_version,
             impact_summary=readiness.impact_summary,
         )
+
+    if debug_repository is not None and debug_search is not None:
+
+        @router.get(
+            "/applicant/analysis-debug",
+            response_model=AnalysisDebugView,
+            operation_id="getApplicantAnalysisDebug",
+        )
+        def get_analysis_debug(scope: Scope) -> AnalysisDebugView:
+            submissions = tuple(
+                submission
+                for submission in service.list_submissions(
+                    scope.context,
+                    scope.principal.applicant_id,
+                )
+                if submission.invitation_id == scope.principal.invitation_id
+            )
+            analyses = debug_repository.list_analyses(
+                scope.context,
+                frozenset(submission.submission_id for submission in submissions),
+            )
+            documents = debug_search.list_debug_documents(
+                scope.context,
+                applicant_id=scope.principal.applicant_id,
+                invitation_id=scope.principal.invitation_id,
+            )
+            strategy = debug_repository.latest_strategy(
+                scope.context,
+                scope.principal.invitation_id,
+            )
+            return AnalysisDebugView(
+                submissions=[_submission_view(submission) for submission in submissions],
+                analyses=[
+                    AnalysisDebugAnalysisView(
+                        analysis_id=analysis.analysis_id,
+                        submission_id=analysis.submission_id,
+                        analysis_version=analysis.analysis_version,
+                        extractor_version=analysis.extractor_version,
+                        chunk_config_version=analysis.chunk_config_version,
+                        status=analysis.status.value,
+                        claims=list(analysis.claims),
+                        verification_points=list(analysis.verification_points),
+                        failure_code=analysis.failure_code,
+                        impact_summary=analysis.impact_summary,
+                    )
+                    for analysis in analyses
+                ],
+                extracted_documents=[
+                    AnalysisDebugDocumentView(
+                        source_id=document.source_id,
+                        source_type=document.source_type,
+                        material_type=document.material_type,
+                        locator=document.locator,
+                        text=document.text,
+                        embedding_model=document.embedding_model,
+                        embedding_version=document.embedding_version,
+                    )
+                    for document in documents
+                ],
+                strategy=(strategy.model_dump(mode="json") if strategy is not None else None),
+            )
 
     return router
 

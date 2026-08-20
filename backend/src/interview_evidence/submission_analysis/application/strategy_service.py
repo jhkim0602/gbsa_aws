@@ -6,6 +6,10 @@ from interview_evidence.shared.aws_clients.ports import AIModel
 from interview_evidence.shared.ids import Clock, new_uuid7
 from interview_evidence.shared.messaging.outbox import Outbox, OutboxEvent
 from interview_evidence.shared.tenant import TenantContext
+from interview_evidence.submission_analysis.application.strategy_prompt import (
+    build_strategy_prompt,
+    parse_strategy_response,
+)
 from interview_evidence.submission_analysis.domain.source import (
     SourceReferenceCandidate,
 )
@@ -54,17 +58,21 @@ class StrategyService:
         source_candidates: tuple[SourceReferenceCandidate, ...],
         strategy_version: int,
     ) -> InterviewStrategy:
-        result = self._model.generate(
-            context,
-            {
-                "invitation_id": str(invitation_id),
-                "competency_model_version_id": str(competency_model_version_id),
-                "criterion_ids": [str(value) for value in criterion_ids],
-                "source_candidates": [
-                    candidate.model_dump(mode="json") for candidate in source_candidates
-                ],
-            },
-        )
+        try:
+            result = parse_strategy_response(
+                self._model.generate(
+                    context,
+                    build_strategy_prompt(
+                        invitation_id=invitation_id,
+                        competency_model_version_id=competency_model_version_id,
+                        criterion_ids=criterion_ids,
+                        source_candidates=source_candidates,
+                        model_config_version=self._model_config_version,
+                    ),
+                )
+            )
+        except (TypeError, ValueError) as error:
+            raise StrategyGenerationError("invalid structured strategy output") from error
         allowed_criteria = set(criterion_ids)
         allowed_sources = {candidate.source_id for candidate in source_candidates}
         try:

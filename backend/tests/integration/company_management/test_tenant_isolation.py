@@ -286,7 +286,7 @@ async def test_company_routes_do_not_reveal_another_tenants_position() -> None:
                         "code": "PROBLEM_SOLVING",
                         "name": "문제 해결",
                         "description": "대안을 비교한다.",
-                        "weight": 1,
+                        "weight": 100,
                         "verification_guide": {
                             "observable_dimensions": ["상황", "행동", "결과"],
                             "strong_answer_signals": ["판단 근거가 구체적임"],

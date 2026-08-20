@@ -6,6 +6,7 @@ import { ApplicantAccess, type ApplicantAccessApi } from "../index";
 describe("ApplicantAccess", () => {
   it("exchanges the token, verifies identity, and records all required consents", async () => {
     const api: ApplicantAccessApi = {
+      getInvitationPreview: vi.fn().mockResolvedValue(invitationPreview),
       exchangeToken: vi.fn().mockResolvedValue(undefined),
       verifyIdentity: vi.fn().mockResolvedValue(undefined),
       getConsentPolicy: vi.fn().mockResolvedValue(consentPolicy),
@@ -24,7 +25,15 @@ describe("ApplicantAccess", () => {
     expect(screen.getByText("자료 제출")).toBeTruthy();
     expect(screen.getByText("환경 점검")).toBeTruthy();
     expect(screen.getByText("AI 면접")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "초대 확인" }));
+    expect(
+      await screen.findByText(invitationPreview.positionTitle),
+    ).toBeTruthy();
+    expect(screen.getByText("8월 28일 (금) 오후 02:00")).toBeTruthy();
+    expect(screen.getByText("30분")).toBeTruthy();
+    expect(screen.getByText("이력서")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "내용을 확인하고 계속" }),
+    );
     expect(await screen.findByText("본인 확인")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("이름"), {
@@ -62,6 +71,7 @@ describe("ApplicantAccess", () => {
 
   it("does not continue until every required purpose is accepted", async () => {
     const api: ApplicantAccessApi = {
+      getInvitationPreview: vi.fn().mockResolvedValue(invitationPreview),
       exchangeToken: vi.fn().mockResolvedValue(undefined),
       verifyIdentity: vi.fn().mockResolvedValue(undefined),
       getConsentPolicy: vi.fn().mockResolvedValue(consentPolicy),
@@ -69,7 +79,9 @@ describe("ApplicantAccess", () => {
     };
     render(<ApplicantAccess api={api} initialToken={"t".repeat(48)} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "초대 확인" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "내용을 확인하고 계속" }),
+    );
     fireEvent.change(await screen.findByLabelText("이름"), {
       target: { value: "홍길동" },
     });
@@ -115,4 +127,30 @@ const consentPolicy = {
     "ai_assessment" as const,
   ],
   contentDigest: "d".repeat(64),
+};
+
+const invitationPreview = {
+  companyName: "InterviewEP",
+  positionTitle: "백엔드 플랫폼 엔지니어",
+  positionDescription:
+    "대규모 트래픽을 안정적으로 처리하는 플랫폼을 설계합니다.",
+  roleType: "개발",
+  interviewAt: "2026-08-28T14:00:00+09:00",
+  interviewDurationMinutes: 30,
+  interviewLevel: "senior" as const,
+  interviewerName: "심층형 면접관",
+  submissionRequirements: [
+    {
+      materialType: "resume",
+      required: true,
+      enabled: true,
+      instructions: "PDF로 제출해 주세요.",
+    },
+    {
+      materialType: "projects",
+      required: false,
+      enabled: true,
+      instructions: null,
+    },
+  ],
 };

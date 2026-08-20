@@ -104,12 +104,14 @@ export function TimelineView({
   playbackUrl,
   selectedStartMs,
   onSeek,
+  showTimeline = true,
 }: {
   entries: ReviewTimelineEntry[];
   playbackStatus: "ready" | "partial" | "processing" | "unavailable";
   playbackUrl?: string;
   selectedStartMs?: number | null;
   onSeek(startMs: number): void;
+  showTimeline?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const mediaRef = useRef<HTMLVideoElement>(null);
@@ -162,7 +164,7 @@ export function TimelineView({
               영상 · 자막
             </p>
             <h2 id="timeline-title" className="text-[12px] font-[650]">
-              면접 타임라인
+              {showTimeline ? "면접 타임라인" : "면접 영상"}
             </h2>
           </span>
         </div>
@@ -209,116 +211,123 @@ export function TimelineView({
         )}
       </div>
 
-      <label className="relative m-2.5 flex items-center">
-        <span className="sr-only">자막 검색</span>
-        <Search
-          className="absolute left-[9px] text-subtle"
-          size={16}
-          aria-hidden="true"
-        />
-        <input
-          className={SEARCH_INPUT}
-          value={query}
-          placeholder="자막 내용 검색"
-          onChange={(event) => setQuery(event.target.value)}
-        />
-        <small className="absolute right-[9px] font-mono text-[8px] text-subtle">
-          {visible.length}개 구간
-        </small>
-      </label>
+      {showTimeline ? (
+        <>
+          <label className="relative m-2.5 flex items-center">
+            <span className="sr-only">자막 검색</span>
+            <Search
+              className="absolute left-[9px] text-subtle"
+              size={16}
+              aria-hidden="true"
+            />
+            <input
+              className={SEARCH_INPUT}
+              value={query}
+              placeholder="자막 내용 검색"
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            <small className="absolute right-[9px] font-mono text-[8px] text-subtle">
+              {visible.length}개 구간
+            </small>
+          </label>
 
-      <ol className={TIMELINE_LIST}>
-        {visible.map((entry) => {
-          const Icon = typeIcons[entry.type];
-          return (
-            <li
-              key={entry.entryId}
-              className="not-first:border-t not-first:border-border-muted"
-            >
-              <button
-                className={ENTRY_SEEK}
-                type="button"
-                onClick={() => selectTime(entry.startMs)}
-              >
-                <span
-                  className={`${ENTRY_ICON} ${ENTRY_ICON_TONE[entry.type]}`}
+          <ol className={TIMELINE_LIST}>
+            {visible.map((entry) => {
+              const Icon = typeIcons[entry.type];
+              return (
+                <li
+                  key={entry.entryId}
+                  className="not-first:border-t not-first:border-border-muted"
                 >
-                  <Icon size={15} aria-hidden="true" />
-                </span>
-                <span className="grid gap-1">
-                  <span className="flex items-center justify-between">
-                    <strong className="text-[9px]">
-                      {typeLabels[entry.type]}
-                    </strong>
-                    <time className="font-mono text-[8px] text-subtle">
-                      {formatTime(entry.startMs)}
-                    </time>
-                  </span>
-                  <small className="text-[9px] leading-[1.5] text-muted">
-                    {entry.text ?? "기술 이벤트"}
-                  </small>
-                </span>
-              </button>
-              {entry.questionRationale ? (
-                <details className="mr-1 mb-2.5 ml-[38px] rounded-[5px] border border-border-muted bg-surface-muted">
-                  <summary className={RATIONALE_SUMMARY}>
-                    <FileSearch size={14} aria-hidden="true" />
-                    질문 근거
-                    <span className="ml-auto font-mono text-[8px] text-subtle">
-                      {entry.questionRationale.sourceReferences.length}개 자료
+                  <button
+                    className={ENTRY_SEEK}
+                    type="button"
+                    onClick={() => selectTime(entry.startMs)}
+                  >
+                    <span
+                      className={`${ENTRY_ICON} ${ENTRY_ICON_TONE[entry.type]}`}
+                    >
+                      <Icon size={15} aria-hidden="true" />
                     </span>
-                  </summary>
-                  <div className="grid gap-[9px] border-t border-border-muted px-[9px] pb-[9px]">
-                    <p className="mt-2 text-[8px] leading-[1.45] text-muted">
-                      지원자 답변 Evidence가 아닌 질문 생성 참고 자료입니다.
-                    </p>
-                    <div className="grid grid-cols-[18px_minmax(0,1fr)] items-start gap-[5px] text-brand-strong">
-                      <Target size={14} aria-hidden="true" />
-                      <span className="grid gap-0.5">
-                        <small className="text-[8px] text-subtle">
-                          검증 목적
-                        </small>
-                        <strong className="text-[9px] font-semibold leading-[1.5] text-ink-secondary">
-                          {entry.questionRationale.objective}
+                    <span className="grid gap-1">
+                      <span className="flex items-center justify-between">
+                        <strong className="text-[9px]">
+                          {typeLabels[entry.type]}
                         </strong>
+                        <time className="font-mono text-[8px] text-subtle">
+                          {formatTime(entry.startMs)}
+                        </time>
                       </span>
-                    </div>
-                    <span className="w-fit rounded-sm bg-warning-soft px-1.5 py-[3px] text-[8px] font-[650] text-warning">
-                      {targetTypeLabel(
-                        entry.questionRationale.verificationTargetType,
-                      )}
+                      <small className="text-[9px] leading-[1.5] text-muted">
+                        {entry.text ?? "기술 이벤트"}
+                      </small>
                     </span>
-                    {entry.questionRationale.sourceReferences.length ? (
-                      <ul className="grid gap-1.5">
-                        {entry.questionRationale.sourceReferences.map(
-                          (source) => (
-                            <li
-                              key={source.sourceId}
-                              className="grid gap-[5px] rounded-sm border border-border-muted bg-surface p-2"
-                            >
-                              <span className="flex items-center gap-[7px] text-[8px] font-[650] text-ink-secondary">
-                                {sourceTypeLabel(source.sourceType)}
-                                <small className="font-mono text-[7px] text-subtle">
-                                  {formatLocator(source.locator)}
-                                </small>
-                              </span>
-                              <p className={SOURCE_PROSE}>{source.excerpt}</p>
-                            </li>
-                          ),
+                  </button>
+                  {entry.questionRationale ? (
+                    <details className="mr-1 mb-2.5 ml-[38px] rounded-[5px] border border-border-muted bg-surface-muted">
+                      <summary className={RATIONALE_SUMMARY}>
+                        <FileSearch size={14} aria-hidden="true" />
+                        질문 근거
+                        <span className="ml-auto font-mono text-[8px] text-subtle">
+                          {entry.questionRationale.sourceReferences.length}개
+                          자료
+                        </span>
+                      </summary>
+                      <div className="grid gap-[9px] border-t border-border-muted px-[9px] pb-[9px]">
+                        <p className="mt-2 text-[8px] leading-[1.45] text-muted">
+                          지원자 답변 Evidence가 아닌 질문 생성 참고 자료입니다.
+                        </p>
+                        <div className="grid grid-cols-[18px_minmax(0,1fr)] items-start gap-[5px] text-brand-strong">
+                          <Target size={14} aria-hidden="true" />
+                          <span className="grid gap-0.5">
+                            <small className="text-[8px] text-subtle">
+                              검증 목적
+                            </small>
+                            <strong className="text-[9px] font-semibold leading-[1.5] text-ink-secondary">
+                              {entry.questionRationale.objective}
+                            </strong>
+                          </span>
+                        </div>
+                        <span className="w-fit rounded-sm bg-warning-soft px-1.5 py-[3px] text-[8px] font-[650] text-warning">
+                          {targetTypeLabel(
+                            entry.questionRationale.verificationTargetType,
+                          )}
+                        </span>
+                        {entry.questionRationale.sourceReferences.length ? (
+                          <ul className="grid gap-1.5">
+                            {entry.questionRationale.sourceReferences.map(
+                              (source) => (
+                                <li
+                                  key={source.sourceId}
+                                  className="grid gap-[5px] rounded-sm border border-border-muted bg-surface p-2"
+                                >
+                                  <span className="flex items-center gap-[7px] text-[8px] font-[650] text-ink-secondary">
+                                    {sourceTypeLabel(source.sourceType)}
+                                    <small className="font-mono text-[7px] text-subtle">
+                                      {formatLocator(source.locator)}
+                                    </small>
+                                  </span>
+                                  <p className={SOURCE_PROSE}>
+                                    {source.excerpt}
+                                  </p>
+                                </li>
+                              ),
+                            )}
+                          </ul>
+                        ) : (
+                          <p className={SOURCE_PROSE}>
+                            공통 평가 질문으로 진행되어 참고 자료가 없습니다.
+                          </p>
                         )}
-                      </ul>
-                    ) : (
-                      <p className={SOURCE_PROSE}>
-                        공통 평가 질문으로 진행되어 참고 자료가 없습니다.
-                      </p>
-                    )}
-                  </div>
-                </details>
-              ) : null}
-            </li>
-          );
-        })}
-      </ol>
+                      </div>
+                    </details>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ol>
+        </>
+      ) : null}
     </section>
   );
 }

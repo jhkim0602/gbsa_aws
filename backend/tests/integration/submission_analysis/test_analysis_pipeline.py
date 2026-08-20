@@ -12,6 +12,9 @@ from interview_evidence.shared.ids import FrozenClock
 from interview_evidence.shared.messaging.outbox import InMemoryOutbox
 from interview_evidence.shared.tenant import ActorType, TenantContext
 from interview_evidence.submission_analysis.adapters.search import InMemorySearchIndex
+from interview_evidence.submission_analysis.application.strategy_prompt import (
+    strategy_task_payload_of,
+)
 from interview_evidence.submission_analysis.domain.git_analysis import (
     CommitIdentityInput,
     OwnershipClass,
@@ -89,7 +92,9 @@ class SourceAwareModel:
         _context: TenantContext,
         model_input: Mapping[str, Any],
     ) -> Mapping[str, Any]:
-        source_candidates = model_input["source_candidates"]
+        payload = strategy_task_payload_of(model_input)
+        assert payload is not None
+        source_candidates = payload["provided_source_candidates"]
         assert isinstance(source_candidates, list)
         first_source = source_candidates[0]
         assert isinstance(first_source, dict)

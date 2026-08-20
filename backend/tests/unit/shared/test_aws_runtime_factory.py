@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 
 import pytest
+from botocore.config import Config
+from interview_evidence.runtime import aws as aws_runtime
 from interview_evidence.runtime.aws import create_aws_runtime_dependencies
 
 
@@ -93,3 +95,35 @@ def test_aws_runtime_factory_fails_closed_when_configuration_is_missing() -> Non
             environment,
             client_factory=lambda service: FakeClient(service),
         )
+
+
+def test_aws_client_factory_limits_global_local_endpoint_to_emulated_services(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: dict[str, dict[str, object]] = {}
+
+    def fake_boto_client(service_name: str, **kwargs: object) -> FakeClient:
+        calls[service_name] = kwargs
+        return FakeClient(service_name)
+
+    monkeypatch.setattr(aws_runtime.boto3, "client", fake_boto_client)
+    factory = aws_runtime._client_factory(
+        {
+            "AWS_REGION": "ap-northeast-2",
+            "AWS_ENDPOINT_URL": "http://localhost:4566",
+        }
+    )
+
+    factory("s3")
+    factory("textract")
+
+    assert calls["s3"]["endpoint_url"] == "http://localhost:4566"
+    s3_config = calls["s3"]["config"]
+    assert isinstance(s3_config, Config)
+    assert s3_config.s3 == {"addressing_style": "path"}
+    assert s3_config.ignore_configured_endpoint_urls is False
+
+    assert "endpoint_url" not in calls["textract"]
+    textract_config = calls["textract"]["config"]
+    assert isinstance(textract_config, Config)
+    assert textract_config.ignore_configured_endpoint_urls is True

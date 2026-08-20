@@ -1,9 +1,11 @@
+import asyncio
 import json
 from collections.abc import Callable
+from contextlib import suppress
 from datetime import UTC, datetime
 from functools import partial
 from hashlib import sha256
-from typing import Literal, Protocol
+from typing import Literal, Protocol, runtime_checkable
 from uuid import UUID
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -20,6 +22,7 @@ from interview_evidence.shared.security.principals import (
     PrincipalNotFoundError,
     PrincipalProvider,
 )
+from interview_evidence.shared.speech.ports import SpeechProviderError
 from interview_evidence.shared.tenant import ActorType, TenantContext
 
 
@@ -88,6 +91,21 @@ class SessionStartHandler(Protocol):
         principal: ApplicantPrincipal,
         envelope: WebSocketEnvelope,
         started: InterviewSession,
+    ) -> ServerEnvelope: ...
+
+
+@runtime_checkable
+class StreamingTranscriptHandler(Protocol):
+    def record_streaming_transcript(
+        self,
+        context: TenantContext,
+        principal: ApplicantPrincipal,
+        envelope: WebSocketEnvelope,
+        *,
+        answer_turn_id: UUID,
+        text: str,
+        confidence: float,
+        last_chunk_sequence: int,
     ) -> ServerEnvelope: ...
 
 
@@ -203,6 +221,17 @@ class ProtocolStreamHandler:
                     "text_only": True,
                 },
             )
+        if envelope.message_type == "answer.start":
+            answer_turn_id = UUID(str(envelope.payload.get("answer_turn_id", "")))
+            return self._server_message(
+                envelope,
+                message_type="answer.started",
+                sequence=envelope.sequence,
+                payload={
+                    "answer_turn_id": str(answer_turn_id),
+                    "state": "recording",
+                },
+            )
         if envelope.message_type == "answer.complete" and self._answer_handler is not None:
             return self._answer_handler.complete_answer(context, principal, envelope)
         if envelope.message_type == "answer.complete":
@@ -260,6 +289,39 @@ class ProtocolStreamHandler:
             ),
         )
 
+    def record_streaming_transcript(
+        self,
+        context: TenantContext,
+        principal: ApplicantPrincipal,
+        envelope: WebSocketEnvelope,
+        *,
+        answer_turn_id: UUID,
+        text: str,
+        confidence: float,
+        last_chunk_sequence: int,
+    ) -> ServerEnvelope:
+        if not isinstance(self._audio_handler, StreamingTranscriptHandler):
+            return self._server_message(
+                envelope,
+                message_type="error",
+                sequence=envelope.sequence,
+                payload={
+                    "code": "TRANSCRIPTION_UNAVAILABLE",
+                    "message": "음성 인식을 준비하고 있습니다. 연결을 유지해 주세요.",
+                    "retryable": True,
+                    "current_sequence": envelope.sequence,
+                },
+            )
+        return self._audio_handler.record_streaming_transcript(
+            context,
+            principal,
+            envelope,
+            answer_turn_id=answer_turn_id,
+            text=text,
+            confidence=confidence,
+            last_chunk_sequence=last_chunk_sequence,
+        )
+
     @staticmethod
     def _server_message(
         envelope: WebSocketEnvelope,
@@ -284,7 +346,16 @@ def create_interview_websocket_router(
     principal_provider: PrincipalProvider,
     handler: ProtocolStreamHandler,
     database: RequestScopedDatabase | None = None,
+    speech: object | None = None,
 ) -> APIRouter:
+    from interview_evidence.interview_engine.api.streaming_speech import (
+        StreamingSpeechConnection,
+        WebSocketSpeechRuntime,
+    )
+
+    if speech is not None and not isinstance(speech, WebSocketSpeechRuntime):
+        raise TypeError("speech must be a WebSocketSpeechRuntime")
+    speech_runtime = speech or WebSocketSpeechRuntime()
     router = APIRouter(prefix="/v1")
 
     @router.websocket("/applicant/interview-sessions/{session_id}/stream")
@@ -294,9 +365,8 @@ def create_interview_websocket_router(
             await websocket.close(code=4001)
             return
         try:
-            principal = _execute_transaction(
-                database,
-                partial(principal_provider.get_applicant_principal, session_cookie),
+            principal = await _execute_transaction_async(
+                database, partial(principal_provider.get_applicant_principal, session_cookie)
             )
         except PrincipalNotFoundError:
             await websocket.close(code=4001)
@@ -310,7 +380,7 @@ def create_interview_websocket_router(
             trace_id=websocket.headers.get("x-trace-id") or str(request_id),
         )
         try:
-            _execute_transaction(
+            await _execute_transaction_async(
                 database,
                 lambda: handler.authorize_connection(
                     context,
@@ -323,6 +393,34 @@ def create_interview_websocket_router(
             return
         await websocket.accept()
         pending_audio: tuple[WebSocketEnvelope, AudioChunkMetadata] | None = None
+        outgoing: asyncio.Queue[ServerEnvelope | bytes] = asyncio.Queue()
+
+        async def publish(response: ServerEnvelope) -> None:
+            await outgoing.put(response)
+
+        async def publish_output(response: ServerEnvelope | bytes) -> None:
+            await outgoing.put(response)
+
+        async def send_outgoing() -> None:
+            while True:
+                response = await outgoing.get()
+                if isinstance(response, bytes):
+                    await websocket.send_bytes(response)
+                else:
+                    await websocket.send_json(response.model_dump(mode="json"))
+
+        sender = asyncio.create_task(send_outgoing())
+        streaming = StreamingSpeechConnection(
+            context=context,
+            runtime=speech_runtime,
+            publish=publish_output,
+        )
+
+        async def publish_handler_response(response: ServerEnvelope) -> None:
+            prepared = streaming.prepare_question_response(response)
+            await publish(prepared)
+            await streaming.start_question_audio(prepared)
+
         try:
             while True:
                 incoming = await websocket.receive()
@@ -331,14 +429,23 @@ def create_interview_websocket_router(
                 binary = incoming.get("bytes")
                 if binary is not None:
                     if pending_audio is None:
-                        await websocket.send_json(
-                            _invalid_message(session_id).model_dump(mode="json")
-                        )
+                        await publish(_invalid_message(session_id))
                         continue
                     envelope, metadata = pending_audio
                     pending_audio = None
                     try:
-                        responses = _execute_transaction(
+                        validate_audio_frame(metadata, binary)
+                        if streaming.enabled:
+                            if not streaming.active:
+                                await streaming.start_answer(
+                                    envelope,
+                                    answer_turn_id=metadata.answer_turn_id,
+                                    sample_rate_hz=metadata.sample_rate_hz,
+                                    channel_count=metadata.channel_count,
+                                )
+                            await streaming.send_audio(metadata, binary)
+                            continue
+                        responses = await _execute_transaction_async(
                             database,
                             partial(
                                 handler.handle_audio,
@@ -349,10 +456,10 @@ def create_interview_websocket_router(
                                 binary,
                             ),
                         )
-                    except ValueError:
+                    except (ValueError, SpeechProviderError):
                         responses = (_invalid_message(session_id),)
                     for response in responses:
-                        await websocket.send_json(response.model_dump(mode="json"))
+                        await publish_handler_response(response)
                     continue
                 try:
                     text = incoming.get("text")
@@ -368,15 +475,48 @@ def create_interview_websocket_router(
                             AudioChunkMetadata.model_validate(envelope.payload),
                         )
                         continue
-                    response = _execute_transaction(
-                        database,
-                        partial(handler.handle, context, principal, envelope),
+                    if envelope.message_type == "answer.start" and streaming.enabled:
+                        answer_turn_id = UUID(str(envelope.payload.get("answer_turn_id", "")))
+                        await streaming.start_answer(
+                            envelope,
+                            answer_turn_id=answer_turn_id,
+                            sample_rate_hz=_positive_int(
+                                envelope.payload.get("sample_rate_hz"), default=16000
+                            ),
+                            channel_count=_positive_int(
+                                envelope.payload.get("channel_count"), default=1
+                            ),
+                        )
+                    if envelope.message_type == "answer.complete" and streaming.active:
+                        answer_turn_id = UUID(str(envelope.payload.get("answer_turn_id", "")))
+                        transcript = await streaming.complete_answer(answer_turn_id)
+                        transcript_response = await _execute_transaction_async(
+                            database,
+                            partial(
+                                handler.record_streaming_transcript,
+                                context,
+                                principal,
+                                envelope,
+                                answer_turn_id=transcript.answer_turn_id,
+                                text=transcript.text,
+                                confidence=transcript.confidence,
+                                last_chunk_sequence=transcript.last_chunk_sequence,
+                            ),
+                        )
+                        await publish(transcript_response)
+                    response = await _execute_transaction_async(
+                        database, partial(handler.handle, context, principal, envelope)
                     )
-                except (ValueError, TypeError):
+                except (ValueError, TypeError, SpeechProviderError):
                     response = _invalid_message(session_id)
-                await websocket.send_json(response.model_dump(mode="json"))
+                await publish_handler_response(response)
         except WebSocketDisconnect:
             return
+        finally:
+            await streaming.abort()
+            sender.cancel()
+            with suppress(asyncio.CancelledError):
+                await sender
 
     return router
 
@@ -397,6 +537,13 @@ def _execute_transaction[ResultT](
         raise
     finally:
         database.end_scope(token)
+
+
+async def _execute_transaction_async[ResultT](
+    database: RequestScopedDatabase | None,
+    execute: Callable[[], ResultT],
+) -> ResultT:
+    return await asyncio.to_thread(_execute_transaction, database, execute)
 
 
 def validate_audio_frame(metadata: AudioChunkMetadata, audio: bytes) -> None:
@@ -421,3 +568,9 @@ def _invalid_message(session_id: UUID) -> ServerEnvelope:
             "current_sequence": 0,
         },
     )
+
+
+def _positive_int(value: object, *, default: int) -> int:
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return default

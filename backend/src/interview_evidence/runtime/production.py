@@ -59,6 +59,7 @@ from interview_evidence.interview_engine.api import (
 from interview_evidence.interview_engine.api.applicant_routes import (
     create_applicant_interview_router,
 )
+from interview_evidence.interview_engine.api.streaming_speech import WebSocketSpeechRuntime
 from interview_evidence.interview_engine.api.websocket import (
     create_interview_websocket_router,
 )
@@ -88,6 +89,8 @@ from interview_evidence.reporting.application.deletion_service import DeletionSe
 from interview_evidence.reporting.application.evidence_service import EvidenceService
 from interview_evidence.reporting.application.public import ReportingPublic
 from interview_evidence.reporting.application.transcript_service import TranscriptService
+from interview_evidence.runtime.email import create_local_email_sender
+from interview_evidence.runtime.speech import create_speech_runtime_dependencies
 from interview_evidence.shared.aws_clients.ports import (
     AIModel,
     ConsumableQueue,
@@ -112,6 +115,7 @@ from interview_evidence.shared.persistence import (
     SQLOutbox,
     SQLUploadIntentStore,
 )
+from interview_evidence.shared.security.local import resolve_company_principal_provider
 from interview_evidence.shared.security.principals import (
     ApplicantPrincipal,
     CompanyPrincipal,
@@ -120,7 +124,10 @@ from interview_evidence.shared.security.principals import (
 from interview_evidence.submission_analysis.adapters.postgres_hybrid import (
     PostgresHybridSearchIndex,
 )
-from interview_evidence.submission_analysis.adapters.search import SearchIndex
+from interview_evidence.submission_analysis.adapters.search import (
+    AnalysisDebugSearch,
+    SearchIndex,
+)
 from interview_evidence.submission_analysis.api import (
     create_lane_b_runtime,
 )
@@ -169,6 +176,8 @@ def create_production_runtime(
     speech_to_text: SpeechToText | None = None,
     text_to_speech: TextToSpeech | None = None,
 ) -> Runtime:
+    streaming_speech = create_speech_runtime_dependencies(environment)
+    email_sender = email_sender or create_local_email_sender(environment)
     applicant_access_base_url = _applicant_access_base_url(environment)
     logo_base_url = _logo_base_url(environment, applicant_access_base_url)
     aws = None
@@ -185,7 +194,11 @@ def create_production_runtime(
         from interview_evidence.runtime.aws import create_aws_runtime_dependencies
 
         aws = create_aws_runtime_dependencies(environment)
-        principal_provider = principal_provider or aws.principal_provider
+        if principal_provider is None:
+            principal_provider = resolve_company_principal_provider(
+                environment,
+                default=aws.principal_provider,
+            )
         object_storage = object_storage or aws.object_storage
         media_storage = media_storage or aws.media_storage
         email_sender = email_sender or aws.email_sender
@@ -193,8 +206,10 @@ def create_production_runtime(
         search_index = search_index or aws.search_index
         model = model or aws.model
         embedder = embedder or aws.embedder
-        speech_to_text = speech_to_text or aws.speech_to_text
-        text_to_speech = text_to_speech or aws.text_to_speech
+        if speech_to_text is None and streaming_speech.stt_provider == "aws_legacy":
+            speech_to_text = aws.speech_to_text
+        if text_to_speech is None and streaming_speech.tts_provider == "aws_legacy":
+            text_to_speech = aws.text_to_speech
         database_url = aws.database_url
     else:
         database_url = environment.get("DATABASE_URL", "").strip()
@@ -203,6 +218,8 @@ def create_production_runtime(
         if not database_url:
             raise RuntimeError("production DATABASE_URL is required")
         database = RequestScopedDatabase(database_url)
+    if principal_provider is None:
+        raise RuntimeError("production principal provider is required")
     active_principal_provider = principal_provider
     active_metrics = metrics or (aws.metrics if aws is not None else NullMetricRecorder())
 
@@ -292,6 +309,15 @@ def create_production_runtime(
         text_embedder=embedder,
         speech_to_text=speech_to_text,
         text_to_speech=text_to_speech,
+        websocket_speech=WebSocketSpeechRuntime(
+            speech_to_text=streaming_speech.streaming_speech_to_text,
+            text_to_speech=streaming_speech.streaming_text_to_speech,
+            recognition_language_code=environment.get("GCP_STT_LANGUAGE_CODE", "ko-KR").strip(),
+            recognition_model=environment.get("GCP_STT_MODEL", "latest_long").strip(),
+            final_result_timeout_seconds=float(
+                environment.get("GCP_STT_FINAL_TIMEOUT_SECONDS", "8")
+            ),
+        ),
     )
     interview_public = InterviewEnginePublic(
         repository=lane_c.repository,
@@ -331,6 +357,7 @@ def create_production_runtime(
             "C": privacy_deletion.execute_interview,
             "D": privacy_deletion.execute_reporting,
         },
+        outbox=outbox,
     )
     lane_d = create_lane_d_runtime(
         principal_provider=principals,
@@ -395,6 +422,17 @@ def create_production_runtime(
                 authorization=company_submission,
                 service=lane_b.service,
                 audit=audit,
+                debug_repository=(
+                    lane_b.repository
+                    if environment.get("APP_ENVIRONMENT", "").strip().casefold() == "local"
+                    else None
+                ),
+                debug_search=(
+                    cast(AnalysisDebugSearch, search_index)
+                    if environment.get("APP_ENVIRONMENT", "").strip().casefold() == "local"
+                    and hasattr(search_index, "list_debug_documents")
+                    else None
+                ),
             ),
             create_company_submission_router(
                 principal_provider=principals,
@@ -410,6 +448,7 @@ def create_production_runtime(
                 principal_provider=principals,
                 handler=lane_c.stream_handler,
                 database=database,
+                speech=lane_c.websocket_speech,
             ),
             create_reporting_router(
                 principal_provider=principals,

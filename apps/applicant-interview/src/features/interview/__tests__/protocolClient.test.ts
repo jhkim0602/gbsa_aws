@@ -6,10 +6,12 @@ import { createInterviewSessionStore } from "../sessionStore";
 class FakeSocket implements SocketLike {
   readonly sent: Array<string | ArrayBuffer> = [];
   readyState = 0;
+  binaryType: BinaryType = "blob";
   onopen: (() => void) | null = null;
   onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
-  onmessage: ((event: MessageEvent<string>) => void) | null = null;
+  onmessage: ((event: MessageEvent<string | ArrayBuffer>) => void) | null =
+    null;
 
   send(data: string | ArrayBuffer) {
     this.sent.push(data);
@@ -27,6 +29,10 @@ class FakeSocket implements SocketLike {
 
   serverMessage(message: object) {
     this.onmessage?.({ data: JSON.stringify(message) } as MessageEvent<string>);
+  }
+
+  serverBinary(chunk: ArrayBuffer) {
+    this.onmessage?.({ data: chunk } as MessageEvent<ArrayBuffer>);
   }
 }
 
@@ -172,6 +178,75 @@ describe("interview protocol client", () => {
       "audio.chunk.begin",
     );
     expect(socket.sent[2]).toBeInstanceOf(ArrayBuffer);
+  });
+
+  it("routes streaming captions and binary question audio", () => {
+    const socket = new FakeSocket();
+    const onTranscript = vi.fn();
+    const onQuestionAudioStart = vi.fn();
+    const onQuestionAudioChunk = vi.fn();
+    const onQuestionAudioEnd = vi.fn();
+    const client = new InterviewProtocolClient({
+      sessionId: "00000000-0000-7000-8000-000000000421",
+      socketFactory: () => socket,
+      store: createInterviewSessionStore(),
+      onQuestion: vi.fn(),
+      onTranscript,
+      onQuestionAudioStart,
+      onQuestionAudioChunk,
+      onQuestionAudioEnd,
+    });
+    client.connect();
+    socket.open();
+
+    socket.serverMessage({
+      protocol_version: "1.0",
+      message_type: "transcript.partial",
+      session_id: "00000000-0000-7000-8000-000000000421",
+      sequence: 1,
+      idempotency_key: "server-transcript-0001",
+      correlation_id: "00000000-0000-7000-8000-000000000422",
+      sent_at: "2026-08-20T10:00:00Z",
+      payload: { text: "실시간 자막" },
+    });
+    socket.serverMessage({
+      protocol_version: "1.0",
+      message_type: "question.audio.begin",
+      session_id: "00000000-0000-7000-8000-000000000421",
+      sequence: 2,
+      idempotency_key: "server-audio-0001",
+      correlation_id: "00000000-0000-7000-8000-000000000423",
+      sent_at: "2026-08-20T10:00:01Z",
+      payload: {
+        question_turn_id: "00000000-0000-7000-8000-000000000424",
+        encoding: "pcm_s16le",
+        sample_rate_hz: 24000,
+        channel_count: 1,
+      },
+    });
+    const chunk = new Uint8Array([1, 2, 3, 4]).buffer;
+    socket.serverBinary(chunk);
+    socket.serverMessage({
+      protocol_version: "1.0",
+      message_type: "question.audio.end",
+      session_id: "00000000-0000-7000-8000-000000000421",
+      sequence: 2,
+      idempotency_key: "server-audio-0002",
+      correlation_id: "00000000-0000-7000-8000-000000000423",
+      sent_at: "2026-08-20T10:00:02Z",
+      payload: {},
+    });
+
+    expect(socket.binaryType).toBe("arraybuffer");
+    expect(onTranscript).toHaveBeenCalledWith("실시간 자막", false);
+    expect(onQuestionAudioStart).toHaveBeenCalledWith({
+      questionTurnId: "00000000-0000-7000-8000-000000000424",
+      encoding: "pcm_s16le",
+      sampleRateHz: 24000,
+      channelCount: 1,
+    });
+    expect(onQuestionAudioChunk).toHaveBeenCalledWith(chunk);
+    expect(onQuestionAudioEnd).toHaveBeenCalledOnce();
   });
 
   it("moves the applicant journey to completion on session.completed", () => {

@@ -611,5 +611,12 @@ function criterionDraft(
     prohibitedTopics: criteria.prohibitedTopics.join(", "),
     interviewDurationMinutes: criteria.interviewDurationMinutes,
     interviewLevel: criteria.interviewLevel,
+    ...(criteria.personaDefinition
+      ? {
+          interviewerName: criteria.personaDefinition.name,
+          interviewerTone: criteria.personaDefinition.tone,
+          interviewerVoiceId: criteria.personaDefinition.voiceId,
+        }
+      : {}),
   };
 }

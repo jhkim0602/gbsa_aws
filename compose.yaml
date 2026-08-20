@@ -1,14 +1,15 @@
 name: interview-evidence-platform
 
-# Local infrastructure only -- Postgres, DynamoDB, LocalStack. The API and the worker are not
+# Local infrastructure only -- Postgres, DynamoDB, LocalStack and Mailpit. The API and worker are
 # here: they run on the host with `make api` / `make worker`, against the production runtime
 # (`create_production_runtime`) that the deployed environment uses. There is no separate local
 # application wiring to keep in sync, and no image to rebuild after every edit.
 #
 # Everything reachable through an endpoint override lands here; everything else -- Bedrock,
-# Cognito, Transcribe, Polly, Textract, MediaConvert -- goes to real AWS, because
+# Cognito, Transcribe, Polly and MediaConvert -- goes to real AWS, because
 # `runtime/aws.py:_client_factory` only redirects the services listed there. That is deliberate:
 # see docs/local-development.md for what it means and what it costs.
+# PDF OCR uses GCP Document AI through the same service account as GCP speech.
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -47,8 +48,8 @@ services:
   # working call into a connection refused. Unset, LocalStack starts each community service on
   # first use, which covers all four without naming any.
   #
-  # SES is accepted, not delivered: nothing here has a mailbox. Read an invitation link from the
-  # API response or from the database rather than expecting mail.
+  # The local API sends invitation mail directly to Mailpit over SMTP. SES remains available in
+  # LocalStack for AWS adapter tests, but is not the local invitation delivery path.
   localstack:
     image: localstack/localstack:3.8
     environment:
@@ -63,6 +64,21 @@ services:
       retries: 20
     volumes:
       - localstack-data:/var/lib/localstack
+
+  mailpit:
+    image: public.ecr.aws/supabase/mailpit:v1.22.3
+    ports:
+      - "${MAILPIT_WEB_PORT:-8025}:8025"
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -O - http://127.0.0.1:8025/api/v1/info >/dev/null",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
 volumes:
   postgres-data:

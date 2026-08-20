@@ -107,14 +107,14 @@ class CompanyDeletionTargets:
                     company_id=context.company_id,
                     owner_lane="A",
                     store="aurora",
-                    resource_type="invitation",
+                    resource_type="invitation_state_history",
                     resource_id=invitation_id,
                 ),
                 CompanyDeletionTarget(
                     company_id=context.company_id,
                     owner_lane="A",
                     store="aurora",
-                    resource_type="invitation_state_history",
+                    resource_type="invitation",
                     resource_id=invitation_id,
                 ),
                 CompanyDeletionTarget(

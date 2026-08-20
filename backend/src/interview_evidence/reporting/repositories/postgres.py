@@ -17,6 +17,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    delete,
     select,
 )
 from sqlalchemy.orm import (
@@ -367,6 +368,14 @@ class ReportingRepository(Protocol):
         request: DeletionRequest,
         manifest: DeletionManifest,
     ) -> DeletionManifest: ...
+    def delete_and_verify_target(
+        self,
+        context: TenantContext,
+        *,
+        store: str,
+        target_type: str,
+        resource_id: str,
+    ) -> bool: ...
 
 
 class SQLAlchemyReportingRepository:
@@ -878,3 +887,61 @@ class SQLAlchemyReportingRepository:
             row.verified_at = target.verified_at
         self._session.flush()
         return manifest
+
+    def delete_and_verify_target(
+        self,
+        context: TenantContext,
+        *,
+        store: str,
+        target_type: str,
+        resource_id: str,
+    ) -> bool:
+        if store != "aurora":
+            return False
+        row_map: dict[
+            str,
+            tuple[
+                type[Base],
+                InstrumentedAttribute[UUID],
+                InstrumentedAttribute[UUID],
+            ],
+        ] = {
+            "transcript_segment": (
+                TranscriptSegmentRow,
+                TranscriptSegmentRow.company_id,
+                TranscriptSegmentRow.transcript_segment_id,
+            ),
+            "recording_asset": (
+                RecordingAssetRow,
+                RecordingAssetRow.company_id,
+                RecordingAssetRow.recording_asset_id,
+            ),
+            "session_event": (
+                SessionEventRow,
+                SessionEventRow.company_id,
+                SessionEventRow.session_event_id,
+            ),
+            "report": (ReportRow, ReportRow.company_id, ReportRow.report_id),
+            "report_item": (
+                ReportItemRow,
+                ReportItemRow.company_id,
+                ReportItemRow.report_item_id,
+            ),
+            "evidence": (EvidenceRow, EvidenceRow.company_id, EvidenceRow.evidence_id),
+            "human_review": (
+                HumanReviewRow,
+                HumanReviewRow.company_id,
+                HumanReviewRow.human_review_id,
+            ),
+        }
+        row = row_map.get(target_type)
+        if row is None:
+            raise ValueError("unsupported reporting deletion target")
+        target_id = UUID(resource_id)
+        predicate = (
+            row[1] == self._tenant(context),
+            row[2] == target_id,
+        )
+        self._session.execute(delete(row[0]).where(*predicate))
+        self._session.flush()
+        return self._session.scalar(select(row[2]).where(*predicate)) is None

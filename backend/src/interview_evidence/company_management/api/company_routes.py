@@ -3,7 +3,7 @@ from typing import Annotated, Protocol
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from interview_evidence.company_management.adapters.company_auth import CompanyAuthAdapter
 from interview_evidence.company_management.application.company_service import CompanyService
@@ -123,6 +123,14 @@ class InterviewerProfilePage(BaseModel):
     next_cursor: str | None = None
 
 
+class InterviewerPersonaDefinitionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=80)
+    tone: InterviewerTone
+    voice_id: str = Field(min_length=1, max_length=100)
+
+
 class EvaluationCriterionInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -164,7 +172,13 @@ class CompetencyModelVersionCreate(BaseModel):
     prohibited_topics: tuple[str, ...]
     interview_duration_minutes: int = Field(ge=10, le=120)
     interview_level: InterviewLevel = DEFAULT_INTERVIEW_LEVEL
-    persona_definition: dict[str, object] | None = None
+    persona_definition: InterviewerPersonaDefinitionInput | None = None
+
+    @model_validator(mode="after")
+    def criterion_weights_total_one_hundred(self) -> "CompetencyModelVersionCreate":
+        if abs(sum(criterion.weight for criterion in self.criteria) - 100) > 0.001:
+            raise ValueError("criterion weights must total 100")
+        return self
 
 
 class CompetencyModelVersionView(CompetencyModelVersionCreate):
@@ -537,6 +551,11 @@ def create_company_router(
                 prohibited_topics=body.prohibited_topics,
                 interview_duration_minutes=body.interview_duration_minutes,
                 interview_level=body.interview_level,
+                persona_definition=(
+                    body.persona_definition.model_dump(mode="json")
+                    if body.persona_definition is not None
+                    else None
+                ),
                 idempotency_key=idempotency_key,
             )
         except TenantScopedResourceNotFound as error:
@@ -686,8 +705,9 @@ def create_company_router(
                             deadline_text=format_deadline(issuance.invitation.expires_at),
                             template=template,
                             recipient_address=issuance.invitation.applicant_email,
-                            invitation_url=(
-                                f"{applicant_access_base_url}?token={issuance.token.raw_token}"
+                            invitation_url=_invitation_access_url(
+                                applicant_access_base_url,
+                                issuance.token.raw_token,
                             ),
                             applicant_display_name=issuance.invitation.applicant_display_name,
                         ),
@@ -1017,6 +1037,10 @@ def _position_view(position: Position) -> PositionView:
         row_version=position.row_version,
         created_at=position.created_at,
     )
+
+
+def _invitation_access_url(base_url: str, raw_token: str) -> str:
+    return f"{base_url.rstrip('/')}/{raw_token}"
 
 
 def _interviewer_profile_view(profile: InterviewerProfile) -> InterviewerProfileView:

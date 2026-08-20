@@ -2,6 +2,7 @@ export type RequirementType = "required" | "preferred";
 
 /** How deep the AI interviewer digs. Mirrors the InterviewLevel contract enum. */
 export type InterviewLevel = "entry" | "junior" | "senior";
+export type InterviewerTone = "calm" | "friendly" | "analytical" | "concise";
 export type SubmissionMaterialId =
   "resume" | "cover_letter" | "career_description" | "projects" | "portfolio";
 
@@ -82,6 +83,11 @@ export type CriteriaConfiguration = Readonly<{
   prohibitedTopics: string[];
   interviewDurationMinutes: number;
   interviewLevel: InterviewLevel;
+  personaDefinition: {
+    name: string;
+    tone: InterviewerTone;
+    voiceId: string;
+  };
 }>;
 
 export type HiringWorkspaceApi = Readonly<{
@@ -129,6 +135,9 @@ export type HiringDraft = {
   prohibitedTopics: string;
   interviewDurationMinutes: number;
   interviewLevel: InterviewLevel;
+  interviewerName: string;
+  interviewerTone: InterviewerTone;
+  interviewerVoiceId: string;
 };
 
 export type HiringDraftUpdater = <K extends keyof HiringDraft>(
@@ -147,7 +156,7 @@ export function createCriterionDraft(index: number): CriterionDraft {
     code: `CRITERION_${index}`,
     name: "",
     description: "",
-    weight: 20,
+    weight: index === 1 ? 100 : 20,
     required: index === 1,
     observableDimensions: "상황\n본인이 직접 수행한 행동\n판단 근거\n결과",
     strongAnswerSignals: "구체적인 상황, 본인 역할, 행동과 결과가 포함됨",
@@ -218,4 +227,7 @@ export const initialHiringDraft: HiringDraft = {
   prohibitedTopics: "가족관계, 출신지역, 혼인·임신 여부, 외모",
   interviewDurationMinutes: 30,
   interviewLevel: "junior",
+  interviewerName: "실무형 면접관",
+  interviewerTone: "analytical",
+  interviewerVoiceId: "Seoyeon",
 };

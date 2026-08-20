@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from hashlib import sha256
 from uuid import UUID
 
 from interview_evidence.interview_engine.adapters.polly import (
@@ -50,7 +51,7 @@ class LiveInterviewHandler:
         session_service: SessionApplicationService,
         interview_service: InterviewService,
         plan_provider: InterviewPlanProvider,
-        speech_to_text: SpeechToText,
+        speech_to_text: SpeechToText | None,
         speech: SpeechSynthesisAdapter,
         idempotency: IdempotencyStore,
         checkpoints: CheckpointService,
@@ -184,6 +185,7 @@ class LiveInterviewHandler:
             question_turn=question_turn,
             source_reference_count=0,
             speech=speech,
+            voice_id=plan.voice_id,
         )
 
     def handle_audio(
@@ -223,6 +225,15 @@ class LiveInterviewHandler:
         metadata: AudioChunkMetadata,
         audio: bytes,
     ) -> tuple[ServerEnvelope, ...]:
+        if self._speech_to_text is None:
+            return (
+                self._error(
+                    envelope,
+                    code="TRANSCRIPTION_UNAVAILABLE",
+                    message="음성 인식을 준비하고 있습니다. 연결을 유지해 주세요.",
+                    retryable=True,
+                ),
+            )
         response = self._speech_to_text.transcribe(
             context,
             audio,
@@ -264,6 +275,70 @@ class LiveInterviewHandler:
                     "review_required": confidence < 0.75,
                 },
             ),
+        )
+
+    def record_streaming_transcript(
+        self,
+        context: TenantContext,
+        principal: ApplicantPrincipal,
+        envelope: WebSocketEnvelope,
+        *,
+        answer_turn_id: UUID,
+        text: str,
+        confidence: float,
+        last_chunk_sequence: int,
+    ) -> ServerEnvelope:
+        self._session_service.resume(context, principal, session_id=envelope.session_id)
+        return self._idempotency.execute(
+            context,
+            session_id=envelope.session_id,
+            operation="transcript.streaming.final",
+            idempotency_key=f"{envelope.idempotency_key}:transcript",
+            request_payload={
+                "answer_turn_id": str(answer_turn_id),
+                "transcript_sha256": sha256(text.encode("utf-8")).hexdigest(),
+                "last_chunk_sequence": last_chunk_sequence,
+            },
+            execute=lambda: self._record_streaming_transcript_once(
+                context,
+                envelope=envelope,
+                answer_turn_id=answer_turn_id,
+                text=text,
+                confidence=confidence,
+                last_chunk_sequence=last_chunk_sequence,
+            ),
+            occurred_at=self._clock.now(),
+        )
+
+    def _record_streaming_transcript_once(
+        self,
+        context: TenantContext,
+        *,
+        envelope: WebSocketEnvelope,
+        answer_turn_id: UUID,
+        text: str,
+        confidence: float,
+        last_chunk_sequence: int,
+    ) -> ServerEnvelope:
+        draft = self._save_transcript_draft(
+            context,
+            session_id=envelope.session_id,
+            answer_turn_id=answer_turn_id,
+            text=text,
+            idempotency_key=f"{envelope.idempotency_key}:transcript",
+            replace_existing=True,
+        )
+        return self._message(
+            envelope,
+            message_type="transcript.final",
+            sequence=envelope.sequence,
+            payload={
+                "answer_turn_id": str(draft.turn_id),
+                "chunk_sequence": last_chunk_sequence,
+                "text": text,
+                "confidence": confidence,
+                "review_required": confidence < 0.75,
+            },
         )
 
     def complete_answer(
@@ -453,6 +528,7 @@ class LiveInterviewHandler:
             question_turn=result.question_turn,
             source_reference_count=len(result.source_references),
             speech=result.speech,
+            voice_id=plan.voice_id,
         )
 
     def _save_transcript_draft(
@@ -463,6 +539,7 @@ class LiveInterviewHandler:
         answer_turn_id: UUID,
         text: str,
         idempotency_key: str,
+        replace_existing: bool = False,
     ) -> InterviewTurn:
         session = self._repository.get_session(context, session_id)
         try:
@@ -477,7 +554,8 @@ class LiveInterviewHandler:
                 or existing.status is TurnStatus.FINAL
             ):
                 raise ValueError("audio answer turn is outside the active answer")
-            combined = f"{existing.text or ''} {text}".strip()
+            if not replace_existing:
+                combined = f"{existing.text or ''} {text}".strip()
         return self._repository.save_turn(
             context,
             InterviewTurn(
@@ -533,6 +611,7 @@ class LiveInterviewHandler:
         question_turn: InterviewTurn,
         source_reference_count: int,
         speech: SpeechOutput,
+        voice_id: str,
     ) -> ServerEnvelope:
         return cls._message(
             envelope,
@@ -547,6 +626,7 @@ class LiveInterviewHandler:
                 "speech_marks_url": speech.speech_marks_url,
                 "source_reference_count": source_reference_count,
                 "text_only": speech.text_only,
+                "voice_id": voice_id,
             },
         )
 

@@ -68,41 +68,35 @@ describe("HiringWorkspace", () => {
     expect(completeButton.getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("publishes linked requirements and verification guides without interviewer controls", async () => {
+  it("publishes evaluation items with internal verification guides", async () => {
     const api = createApi();
     await advanceToEvaluation(api);
 
     expect(screen.queryByText("AI 면접관")).toBeNull();
     expect(screen.queryByLabelText("음성")).toBeNull();
+    expect(screen.queryByLabelText("중요도 1")).toBeNull();
+    expect(screen.queryByLabelText("연결 평가기준 1")).toBeNull();
+    expect(screen.queryByLabelText("확인할 요소 1")).toBeNull();
+    expect(screen.queryByLabelText("공통 질문 1")).toBeNull();
+    expect(screen.queryByLabelText("평가 축 1")).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("요구사항 1"), {
+    fireEvent.change(screen.getByLabelText("자격요건 1"), {
       target: { value: "ECS 운영 장애 대응 경험" },
-    });
-    fireEvent.change(screen.getByLabelText("평가기준 이름 1"), {
-      target: { value: "운영 문제 해결" },
-    });
-    fireEvent.change(screen.getByLabelText("설명 1"), {
-      target: { value: "장애 원인을 분석하고 복구하는 역량" },
-    });
-    fireEvent.change(screen.getByLabelText("확인할 요소 1"), {
-      target: {
-        value: "실제 장애 상황\n원인 분석\n직접 수행한 복구\n재발 방지",
-      },
-    });
-    fireEvent.change(screen.getByLabelText("좋은 답변 신호 1"), {
-      target: { value: "본인 행동과 판단 근거가 구체적임" },
-    });
-    fireEvent.change(screen.getByLabelText("추가 확인 신호 1"), {
-      target: { value: "팀 활동이나 결과만 언급함" },
-    });
-    fireEvent.change(screen.getByLabelText("꼬리질문 방향 1"), {
-      target: { value: "본인이 직접 수행한 행동\n복구 우선순위" },
-    });
-    fireEvent.change(screen.getByLabelText("공통 질문 1"), {
-      target: { value: "운영 장애를 해결한 경험을 설명해 주세요." },
     });
     fireEvent.click(screen.getByRole("button", { name: "다음" }));
     await screen.findByText("면접은 어떻게 진행할까요?");
+    expect(screen.queryByText("내부 면접 정책")).toBeNull();
+    expect(screen.queryByLabelText("금지 주제")).toBeNull();
+    expect(screen.queryByLabelText("면접 시간(분)")).toBeNull();
+    expect(screen.getByAltText("신입 AI 면접관").getAttribute("src")).toBe(
+      "/interviewers/entry_eyes_open_mouth_closed.webp",
+    );
+    expect(screen.getByAltText("주니어 AI 면접관").getAttribute("src")).toBe(
+      "/interviewers/junior_eyes_open_mouth_closed.webp",
+    );
+    expect(screen.getByAltText("시니어 AI 면접관").getAttribute("src")).toBe(
+      "/interviewers/senior_eyes_open_mouth_closed.webp",
+    );
     fireEvent.change(screen.getByLabelText("채용 인원"), {
       target: { value: "2" },
     });
@@ -125,6 +119,18 @@ describe("HiringWorkspace", () => {
         interviewAt: "2026-09-15T14:00",
         recruitmentStartAt: "2026-09-01",
         recruitmentEndAt: "2026-09-30",
+        submissionRequirements: expect.arrayContaining([
+          expect.objectContaining({
+            materialType: "resume",
+            required: true,
+            enabled: true,
+          }),
+          expect.objectContaining({
+            materialType: "portfolio",
+            required: false,
+            enabled: false,
+          }),
+        ]),
       }),
     );
     expect(api.publishCriteria).toHaveBeenCalledWith("position-1", {
@@ -139,17 +145,26 @@ describe("HiringWorkspace", () => {
       criteria: [
         expect.objectContaining({
           code: "CRITERION_1",
-          name: "운영 문제 해결",
+          name: "ECS 운영 장애 대응 경험",
+          description: "ECS 운영 장애 대응 경험",
           verificationGuide: {
             observableDimensions: [
-              "실제 장애 상황",
-              "원인 분석",
-              "직접 수행한 복구",
-              "재발 방지",
+              "상황",
+              "본인이 직접 수행한 행동",
+              "판단 근거",
+              "결과",
             ],
-            strongAnswerSignals: ["본인 행동과 판단 근거가 구체적임"],
-            weakAnswerSignals: ["팀 활동이나 결과만 언급함"],
-            followUpDirections: ["본인이 직접 수행한 행동", "복구 우선순위"],
+            strongAnswerSignals: [
+              "구체적인 상황, 본인 역할, 행동과 결과가 포함됨",
+            ],
+            weakAnswerSignals: [
+              "팀 활동이나 기술 이름만 있고 본인 행동이 불명확함",
+            ],
+            followUpDirections: [
+              "본인이 직접 수행한 행동",
+              "판단 근거",
+              "측정 가능한 결과",
+            ],
             maxFollowUps: 2,
             timeBudgetSeconds: 300,
           },
@@ -158,57 +173,73 @@ describe("HiringWorkspace", () => {
       prohibitedTopics: ["가족관계", "출신지역", "혼인·임신 여부", "외모"],
       interviewDurationMinutes: 30,
       interviewLevel: "senior",
+      personaDefinition: {
+        name: "심층형 면접관",
+        tone: "concise",
+        voiceId: "Seoyeon",
+      },
     });
     expect(
       vi.mocked(api.createPosition).mock.invocationCallOrder[0],
     ).toBeLessThan(vi.mocked(api.publishCriteria).mock.invocationCallOrder[0]);
   });
 
-  it("adds multiple criteria and keeps requirement links selectable", async () => {
+  it("adds a qualification and its internal criterion together", async () => {
     const api = createApi();
     await advanceToEvaluation(api);
 
-    fireEvent.click(screen.getByRole("button", { name: "평가기준 추가" }));
-    expect(screen.getByLabelText("평가기준 이름 2")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "요구사항 추가" }));
-    fireEvent.change(screen.getByLabelText("요구사항 2"), {
+    fireEvent.click(screen.getByRole("button", { name: "자격요건 추가" }));
+    fireEvent.change(screen.getByLabelText("자격요건 2"), {
       target: { value: "대규모 API 설계 경험" },
     });
-    fireEvent.change(screen.getByLabelText("연결 평가기준 2"), {
-      target: { value: "CRITERION_2" },
-    });
-
+    expect(screen.queryByLabelText("연결 평가기준 2")).toBeNull();
+    expect(screen.queryByLabelText("평가 축 2")).toBeNull();
     expect(
-      (screen.getByLabelText("연결 평가기준 2") as HTMLSelectElement).value,
-    ).toBe("CRITERION_2");
-    expect(screen.getByText("합계 40")).toBeTruthy();
+      screen
+        .getAllByRole("button", { name: "우대 사항" })[1]
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(screen.getByText("가중치 합계").parentElement?.textContent).toBe(
+      "가중치 합계100",
+    );
+    expect((screen.getByLabelText("가중치 1") as HTMLInputElement).value).toBe(
+      "80",
+    );
+    expect((screen.getByLabelText("가중치 2") as HTMLInputElement).value).toBe(
+      "20",
+    );
   });
 
-  it("uses inline plus controls and keeps criterion weights editable", async () => {
+  it("keeps only the qualification and weight editable", async () => {
     const api = createApi();
     await advanceToEvaluation(api);
 
-    const addRequirement = screen.getByRole("button", {
-      name: "요구사항 추가",
+    const addEvaluationItem = screen.getByRole("button", {
+      name: "자격요건 추가",
     });
-    const addCriterion = screen.getByRole("button", {
-      name: "평가기준 추가",
+    expect(addEvaluationItem.textContent).toContain("자격요건 추가");
+    fireEvent.click(addEvaluationItem);
+    expect(screen.queryByLabelText("평가 축 1")).toBeNull();
+    const qualification = screen.getByLabelText("자격요건 1");
+    fireEvent.change(qualification, {
+      target: { value: "끝까지 파고드는 태도" },
     });
-
-    expect(addRequirement.textContent).toBe("");
-    expect(addCriterion.textContent).toBe("");
-
-    fireEvent.change(screen.getByLabelText("평가기준 이름 1"), {
-      target: { value: "태도와 문화" },
-    });
+    qualification.focus();
+    fireEvent.keyDown(qualification, { key: "Enter", code: "Enter" });
+    expect(document.activeElement).not.toBe(qualification);
+    expect(screen.getByText("어떤 기준으로 평가할까요?")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("가중치 1 직접 입력"), {
       target: { value: "35" },
     });
 
-    expect(screen.getByText("합계 35")).toBeTruthy();
+    expect(screen.getByText("가중치 합계").parentElement?.textContent).toBe(
+      "가중치 합계100",
+    );
     expect((screen.getByLabelText("가중치 1") as HTMLInputElement).value).toBe(
       "35",
+    );
+    expect((screen.getByLabelText("가중치 2") as HTMLInputElement).value).toBe(
+      "65",
     );
   });
 });

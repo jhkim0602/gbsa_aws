@@ -13,6 +13,7 @@ from interview_evidence.reporting.domain.deletion import (
 )
 from interview_evidence.reporting.repositories.postgres import ReportingRepository
 from interview_evidence.shared.ids import new_uuid7
+from interview_evidence.shared.messaging.outbox import Outbox, OutboxEvent
 from interview_evidence.shared.tenant import TenantContext
 
 
@@ -30,6 +31,34 @@ TargetEnumerator = Callable[
 ]
 TargetExecutor = Callable[[TenantContext, DeletionTarget], bool]
 
+_DELETION_TARGET_PRIORITY = {
+    "verification_target": 10,
+    "claim_conflict": 10,
+    "candidate_code_unit": 10,
+    "submission_chunk": 10,
+    "question_source_reference": 10,
+    "session_checkpoint": 10,
+    "verification_progress": 10,
+    "recording_chunk": 10,
+    "evidence": 10,
+    "human_review": 10,
+    "invitation_state_history": 10,
+    "consent_record": 10,
+    "applicant_profile": 10,
+    "candidate_verification_map": 20,
+    "candidate_claim": 20,
+    "git_commit_analysis": 20,
+    "submission_analysis": 20,
+    "question_rationale": 20,
+    "report_item": 20,
+    "git_repository_analysis": 30,
+    "interview_turn": 30,
+    "submission": 100,
+    "interview_session": 100,
+    "report": 100,
+    "invitation": 100,
+}
+
 
 class DeletionService:
     def __init__(
@@ -38,10 +67,12 @@ class DeletionService:
         *,
         enumerators: tuple[TargetEnumerator, ...] = (),
         executors: dict[str, TargetExecutor] | None = None,
+        outbox: Outbox | None = None,
     ) -> None:
         self._repository = repository
         self._enumerators = enumerators
         self._executors = executors or {}
+        self._outbox = outbox
 
     def request(
         self,
@@ -88,6 +119,24 @@ class DeletionService:
             targets=targets,
         )
         self._repository.save_deletion(context, request, manifest)
+        if self._outbox is not None:
+            self._outbox.append(
+                OutboxEvent(
+                    outbox_event_id=new_uuid7(occurred_at),
+                    company_id=context.company_id,
+                    aggregate_type="deletion_request",
+                    aggregate_id=request.deletion_request_id,
+                    aggregate_version=manifest.manifest_version,
+                    event_type="deletion.requested",
+                    event_version=1,
+                    payload={
+                        "deletion_request_id": str(request.deletion_request_id),
+                    },
+                    idempotency_key=f"deletion-requested-{request.deletion_request_id}",
+                    trace_id=context.trace_id,
+                    occurred_at=occurred_at,
+                )
+            )
         return request, manifest
 
     def execute(
@@ -98,7 +147,11 @@ class DeletionService:
         occurred_at: datetime,
     ) -> DeletionManifest:
         request, manifest = self._repository.get_deletion(context, request_id)
-        for target in manifest.targets:
+        targets = sorted(
+            manifest.targets,
+            key=lambda target: _DELETION_TARGET_PRIORITY.get(target.target_type, 0),
+        )
+        for target in targets:
             if target.status is TargetStatus.VERIFIED_ABSENT:
                 continue
             executor = self._executors.get(target.owner_lane)

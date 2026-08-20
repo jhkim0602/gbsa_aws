@@ -16,6 +16,7 @@ from interview_evidence.interview_engine.api.applicant_routes import (
     create_applicant_interview_router,
 )
 from interview_evidence.interview_engine.api.live_handlers import LiveInterviewHandler
+from interview_evidence.interview_engine.api.streaming_speech import WebSocketSpeechRuntime
 from interview_evidence.interview_engine.api.websocket import (
     ProtocolStreamHandler,
     create_interview_websocket_router,
@@ -72,6 +73,7 @@ class LaneCRuntime:
     audit: AuditAppender
     outbox: Outbox
     stream_handler: ProtocolStreamHandler
+    websocket_speech: WebSocketSpeechRuntime
 
 
 def create_lane_c_runtime(
@@ -91,6 +93,7 @@ def create_lane_c_runtime(
     text_embedder: TextEmbedder | None = None,
     speech_to_text: SpeechToText | None = None,
     text_to_speech: TextToSpeech | None = None,
+    websocket_speech: WebSocketSpeechRuntime | None = None,
 ) -> LaneCRuntime:
     active_repository = repository
     active_storage = object_storage
@@ -99,6 +102,7 @@ def create_lane_c_runtime(
     active_idempotency = idempotency
     active_hot_view = hot_view
     active_outbox = outbox
+    active_websocket_speech = websocket_speech or WebSocketSpeechRuntime()
     checkpoints = CheckpointService(active_repository, active_outbox)
     reconciler = ContextReconciler(active_repository, active_hot_view)
     service = SessionApplicationService(
@@ -119,16 +123,24 @@ def create_lane_c_runtime(
         clock=active_clock,
     )
     stream_handler = ProtocolStreamHandler(session_service=service)
-    live_dependencies = (
+    core_live_dependencies = (
         plan_provider,
         retrieval_provider,
         model,
-        speech_to_text,
-        text_to_speech,
     )
-    if any(dependency is not None for dependency in live_dependencies):
-        if not all(dependency is not None for dependency in live_dependencies):
-            raise ValueError("all live interview dependencies must be configured together")
+    live_requested = any(dependency is not None for dependency in core_live_dependencies) or any(
+        dependency is not None
+        for dependency in (
+            speech_to_text,
+            text_to_speech,
+            active_websocket_speech.speech_to_text,
+            active_websocket_speech.text_to_speech,
+        )
+    )
+    if live_requested:
+        if not all(dependency is not None for dependency in core_live_dependencies):
+            raise ValueError("plan, retrieval and model must be configured for live interviews")
+        speech = SpeechSynthesisAdapter(text_to_speech)
         recovery = RecoveryService(
             repository=active_repository,
             idempotency=active_idempotency,
@@ -147,7 +159,7 @@ def create_lane_c_runtime(
             ),
             generator=QuestionGenerator(cast(AIModel, model)),
             policy=QuestionPolicy(),
-            speech=SpeechSynthesisAdapter(cast(TextToSpeech, text_to_speech)),
+            speech=speech,
             outbox=active_outbox,
         )
         live_handler = LiveInterviewHandler(
@@ -155,8 +167,8 @@ def create_lane_c_runtime(
             session_service=service,
             interview_service=interview_service,
             plan_provider=cast(InterviewPlanProvider, plan_provider),
-            speech_to_text=cast(SpeechToText, speech_to_text),
-            speech=SpeechSynthesisAdapter(cast(TextToSpeech, text_to_speech)),
+            speech_to_text=speech_to_text,
+            speech=speech,
             idempotency=active_idempotency,
             checkpoints=checkpoints,
             clock=active_clock,
@@ -175,6 +187,7 @@ def create_lane_c_runtime(
     websocket_router = create_interview_websocket_router(
         principal_provider=principal_provider,
         handler=stream_handler,
+        speech=active_websocket_speech,
     )
     return LaneCRuntime(
         app=create_app([router, websocket_router]),
@@ -185,6 +198,7 @@ def create_lane_c_runtime(
         audit=active_audit,
         outbox=active_outbox,
         stream_handler=stream_handler,
+        websocket_speech=active_websocket_speech,
     )
 
 
@@ -205,6 +219,7 @@ def create_lane_c_app(
     text_embedder: TextEmbedder | None = None,
     speech_to_text: SpeechToText | None = None,
     text_to_speech: TextToSpeech | None = None,
+    websocket_speech: WebSocketSpeechRuntime | None = None,
 ) -> FastAPI:
     return create_lane_c_runtime(
         principal_provider=principal_provider,
@@ -222,6 +237,7 @@ def create_lane_c_app(
         text_embedder=text_embedder,
         speech_to_text=speech_to_text,
         text_to_speech=text_to_speech,
+        websocket_speech=websocket_speech,
     ).app
 
 

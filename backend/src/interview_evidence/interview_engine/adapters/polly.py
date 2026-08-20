@@ -16,7 +16,7 @@ class SpeechOutput:
 
 
 class SpeechSynthesisAdapter:
-    def __init__(self, synthesizer: TextToSpeech) -> None:
+    def __init__(self, synthesizer: TextToSpeech | None) -> None:
         self._synthesizer = synthesizer
 
     def synthesize(
@@ -26,6 +26,14 @@ class SpeechSynthesisAdapter:
         text: str,
         voice_id: str,
     ) -> SpeechOutput:
+        if self._synthesizer is None:
+            return SpeechOutput(
+                audio_url=None,
+                audio_expires_at=None,
+                speech_marks_url=None,
+                text_only=True,
+                degraded_mode="text_only",
+            )
         try:
             response = self._synthesizer.synthesize(
                 context,

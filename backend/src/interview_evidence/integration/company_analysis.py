@@ -26,7 +26,7 @@ class CompanyAnalysisAxisProvider:
         invitation = self._company.authorize_invitation(
             context,
             invitation_id,
-            required_state="consented",
+            required_state=frozenset({"consented", "materials_submitted", "analyzing", "ready"}),
         )
         if not invitation.authorized:
             raise PermissionError("analysis invitation is not authorized")

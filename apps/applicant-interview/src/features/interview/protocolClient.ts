@@ -8,10 +8,11 @@ import type {
 
 export interface SocketLike {
   readonly readyState: number;
+  binaryType?: BinaryType;
   onopen: (() => void) | null;
   onclose: (() => void) | null;
   onerror: (() => void) | null;
-  onmessage: ((event: MessageEvent<string>) => void) | null;
+  onmessage: ((event: MessageEvent<string | ArrayBuffer>) => void) | null;
   send(data: string | ArrayBuffer): void;
   close(): void;
 }
@@ -33,6 +34,13 @@ type Envelope = Readonly<{
   payload: Record<string, unknown>;
 }>;
 
+export type QuestionAudioFormat = Readonly<{
+  questionTurnId: string;
+  encoding: "pcm_s16le";
+  sampleRateHz: number;
+  channelCount: 1;
+}>;
+
 export class InterviewProtocolClient {
   private socket: SocketLike | null = null;
 
@@ -43,6 +51,11 @@ export class InterviewProtocolClient {
       socketFactory(): SocketLike;
       store: StoreApi<InterviewSessionStore>;
       onQuestion(question: Question): void;
+      onTranscript?(text: string, isFinal: boolean): void;
+      onQuestionAudioStart?(format: QuestionAudioFormat): void;
+      onQuestionAudioChunk?(chunk: ArrayBuffer): void;
+      onQuestionAudioEnd?(): void;
+      onQuestionAudioError?(): void;
     }>,
   ) {}
 
@@ -55,6 +68,7 @@ export class InterviewProtocolClient {
         previousConnection === "disconnected" ? "connecting" : "reconnecting",
       );
     const socket = this.options.socketFactory();
+    socket.binaryType = "arraybuffer";
     this.socket = socket;
     socket.onopen = () => {
       this.options.store.getState().setConnectionState("connected");
@@ -102,6 +116,20 @@ export class InterviewProtocolClient {
       last_audio_chunk_sequence: input.lastAudioChunkSequence,
       last_recording_chunk_sequence: input.lastRecordingChunkSequence,
       expected_state: "awaiting_answer",
+    });
+  }
+
+  startAnswer(
+    input: Readonly<{
+      answerTurnId: string;
+      sampleRateHz: number;
+    }>,
+  ): void {
+    this.sendEnvelope("answer.start", {
+      answer_turn_id: input.answerTurnId,
+      sample_rate_hz: input.sampleRateHz,
+      channel_count: 1,
+      codec: "pcm_s16le",
     });
   }
 
@@ -162,7 +190,11 @@ export class InterviewProtocolClient {
     return this.socket;
   }
 
-  private handleServerMessage(raw: string): void {
+  private handleServerMessage(raw: string | ArrayBuffer): void {
+    if (raw instanceof ArrayBuffer) {
+      this.options.onQuestionAudioChunk?.(raw);
+      return;
+    }
     const envelope = parseEnvelope(raw, this.options.sessionId);
     if (!envelope) return;
 
@@ -189,6 +221,36 @@ export class InterviewProtocolClient {
           : current.degradedModes.filter((mode) => mode !== "text_only"),
       });
       this.options.onQuestion(question);
+      return;
+    }
+
+    if (
+      envelope.message_type === "transcript.partial" ||
+      envelope.message_type === "transcript.final"
+    ) {
+      const text = readString(envelope.payload.text);
+      if (text !== null) {
+        this.options.onTranscript?.(
+          text,
+          envelope.message_type === "transcript.final",
+        );
+      }
+      return;
+    }
+
+    if (envelope.message_type === "question.audio.begin") {
+      const format = parseQuestionAudioFormat(envelope.payload);
+      if (format) this.options.onQuestionAudioStart?.(format);
+      return;
+    }
+
+    if (envelope.message_type === "question.audio.end") {
+      this.options.onQuestionAudioEnd?.();
+      return;
+    }
+
+    if (envelope.message_type === "question.audio.error") {
+      this.options.onQuestionAudioError?.();
       return;
     }
 
@@ -296,6 +358,27 @@ function parseQuestion(payload: Record<string, unknown>): Question | null {
     return null;
   }
   return { questionTurnId, text, textOnly: payload.text_only };
+}
+
+function parseQuestionAudioFormat(
+  payload: Record<string, unknown>,
+): QuestionAudioFormat | null {
+  const questionTurnId = readString(payload.question_turn_id);
+  const sampleRateHz = readInteger(payload.sample_rate_hz);
+  if (
+    !questionTurnId ||
+    payload.encoding !== "pcm_s16le" ||
+    sampleRateHz === null ||
+    payload.channel_count !== 1
+  ) {
+    return null;
+  }
+  return {
+    questionTurnId,
+    encoding: "pcm_s16le",
+    sampleRateHz,
+    channelCount: 1,
+  };
 }
 
 function readInterviewState(value: unknown): InterviewState | null {
