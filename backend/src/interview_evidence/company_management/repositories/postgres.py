@@ -427,6 +427,9 @@ class CompanyRepository(Protocol):
     ) -> tuple[CompetencyModelVersion, ...]: ...
     def save_invitation(self, context: TenantContext, invitation: Invitation) -> Invitation: ...
     def get_invitation(self, context: TenantContext, invitation_id: UUID) -> Invitation: ...
+    def get_invitation_for_update(
+        self, context: TenantContext, invitation_id: UUID
+    ) -> Invitation: ...
     def list_invitations(
         self, context: TenantContext, position_id: UUID
     ) -> tuple[Invitation, ...]: ...
@@ -870,6 +873,21 @@ class SqlAlchemyCompanyRepository:
                 InvitationRow.company_id == tenant.company_id,
                 InvitationRow.invitation_id == invitation_id,
             )
+        )
+        if row is None:
+            raise TenantScopedResourceNotFound("tenant-scoped resource not found")
+        return self._invitation_from_row(row)
+
+    def get_invitation_for_update(self, context: TenantContext, invitation_id: UUID) -> Invitation:
+        tenant = self._tenant(context)
+        row = self._session.scalar(
+            select(InvitationRow)
+            .where(
+                InvitationRow.company_id == tenant.company_id,
+                InvitationRow.invitation_id == invitation_id,
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         if row is None:
             raise TenantScopedResourceNotFound("tenant-scoped resource not found")

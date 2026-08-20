@@ -10,7 +10,11 @@ from interview_evidence.shared.ids import CommandMeta
 from interview_evidence.shared.messaging.outbox import OutboxEvent
 from interview_evidence.shared.tenant import TenantContext
 from interview_evidence.submission_analysis.api import LaneBRuntime
-from interview_evidence.submission_analysis.domain.submission import SourceType, SubmissionStatus
+from interview_evidence.submission_analysis.domain.submission import (
+    SourceType,
+    Submission,
+    SubmissionStatus,
+)
 from interview_evidence.workers.analysis.handlers import AnalysisJob, AnalysisJobHandler
 
 
@@ -39,7 +43,13 @@ class AnalysisRequestedEventHandler:
     def __call__(self, context: TenantContext, event: OutboxEvent) -> object:
         submission_id = UUID(str(event.payload["submission_id"]))
         submission = self._runtime.repository.get_submission(context, submission_id)
-        if self._company is not None:
+        if self._company is not None and _owns_analysis_state_transition(
+            submission,
+            self._runtime.repository.list_submissions_for_invitation(
+                context,
+                submission.invitation_id,
+            ),
+        ):
             snapshot = self._company.authorize_invitation(
                 context,
                 submission.invitation_id,
@@ -68,6 +78,13 @@ class AnalysisRequestedEventHandler:
                 idempotency_key=event.idempotency_key,
             ),
         )
+
+
+def _owns_analysis_state_transition(
+    submission: Submission,
+    submissions: tuple[Submission, ...],
+) -> bool:
+    return submission.submission_id == min(item.submission_id for item in submissions)
 
 
 class AnalysisCompletedEventHandler:

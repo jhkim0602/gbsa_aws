@@ -441,7 +441,14 @@ class CompanyManagementPublic:
         to_state: str,
         meta: CommandMeta,
     ) -> InvitationStateSnapshot:
-        current = self._repository.get_invitation(context, invitation_id)
+        current = self._repository.get_invitation_for_update(context, invitation_id)
+        if current.status.value == to_state:
+            return InvitationStateSnapshot(
+                company_id=context.company_id,
+                invitation_id=invitation_id,
+                state=current.status.value,
+                row_version=current.row_version,
+            )
         if current.status.value != from_state:
             raise ValueError("invitation state does not match the requested transition")
         if meta.expected_version is None:

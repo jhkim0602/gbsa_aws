@@ -255,8 +255,29 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
             )
             for draft in drafts
         )
+        candidates = tuple(
+            SourceReferenceCandidate(
+                source_id=chunk.chunk_id,
+                source_type="submission_chunk",
+                locator=chunk.source_location.model_dump(mode="json", exclude_none=True),
+                content_hash=chunk.chunk_hash,
+                relevance_score=1.0,
+                ownership_confidence=1.0,
+            )
+            for chunk in chunks
+        )
+        analysis = self._repository.save_analysis(
+            context,
+            analysis.model_copy(
+                update={
+                    "claims": (
+                        {"type": "document_extracted", "chunk_count": len(drafts)},
+                        *(self._candidate_claim(candidate) for candidate in candidates),
+                    )
+                }
+            ),
+        )
         self._repository.save_chunks(context, chunks)
-        candidates: list[SourceReferenceCandidate] = []
         for draft, chunk in zip(drafts, chunks, strict=True):
             locator = chunk.source_location.model_dump(mode="json", exclude_none=True)
             self._search_index.add(
@@ -281,27 +302,6 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     material_type=submission.material_type.value,
                 )
             )
-            candidates.append(
-                SourceReferenceCandidate(
-                    source_id=chunk.chunk_id,
-                    source_type="submission_chunk",
-                    locator=locator,
-                    content_hash=chunk.chunk_hash,
-                    relevance_score=1.0,
-                    ownership_confidence=1.0,
-                )
-            )
-        analysis = self._repository.save_analysis(
-            context,
-            analysis.model_copy(
-                update={
-                    "claims": (
-                        {"type": "document_extracted", "chunk_count": len(drafts)},
-                        *(self._candidate_claim(candidate) for candidate in candidates),
-                    )
-                }
-            ),
-        )
         self._repository.save_submission(
             context,
             analyzing.transition(SubmissionStatus.READY),
