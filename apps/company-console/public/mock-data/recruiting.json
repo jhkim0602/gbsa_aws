@@ -17,15 +17,31 @@
       "recruitmentStartAt": "2026-08-18",
       "recruitmentEndAt": "2026-09-12",
       "submissionRequirements": [
-        { "materialType": "resume", "required": true, "enabled": true },
+        {
+          "materialType": "resume",
+          "required": true,
+          "enabled": true
+        },
         {
           "materialType": "career_description",
           "required": true,
           "enabled": true
         },
-        { "materialType": "projects", "required": true, "enabled": true },
-        { "materialType": "cover_letter", "required": false, "enabled": false },
-        { "materialType": "portfolio", "required": false, "enabled": false }
+        {
+          "materialType": "projects",
+          "required": true,
+          "enabled": true
+        },
+        {
+          "materialType": "cover_letter",
+          "required": false,
+          "enabled": false
+        },
+        {
+          "materialType": "portfolio",
+          "required": false,
+          "enabled": false
+        }
       ],
       "status": "active",
       "rowVersion": 4,
@@ -42,15 +58,31 @@
       "recruitmentStartAt": "2026-08-20",
       "recruitmentEndAt": "2026-09-20",
       "submissionRequirements": [
-        { "materialType": "resume", "required": true, "enabled": true },
-        { "materialType": "portfolio", "required": true, "enabled": true },
-        { "materialType": "cover_letter", "required": false, "enabled": false },
+        {
+          "materialType": "resume",
+          "required": true,
+          "enabled": true
+        },
+        {
+          "materialType": "portfolio",
+          "required": true,
+          "enabled": true
+        },
+        {
+          "materialType": "cover_letter",
+          "required": false,
+          "enabled": false
+        },
         {
           "materialType": "career_description",
           "required": false,
           "enabled": false
         },
-        { "materialType": "projects", "required": false, "enabled": false }
+        {
+          "materialType": "projects",
+          "required": false,
+          "enabled": false
+        }
       ],
       "status": "active",
       "rowVersion": 2,
@@ -67,15 +99,31 @@
       "recruitmentStartAt": "2026-09-01",
       "recruitmentEndAt": "2026-09-25",
       "submissionRequirements": [
-        { "materialType": "resume", "required": true, "enabled": true },
+        {
+          "materialType": "resume",
+          "required": true,
+          "enabled": true
+        },
         {
           "materialType": "career_description",
           "required": true,
           "enabled": true
         },
-        { "materialType": "cover_letter", "required": false, "enabled": false },
-        { "materialType": "projects", "required": false, "enabled": false },
-        { "materialType": "portfolio", "required": false, "enabled": false }
+        {
+          "materialType": "cover_letter",
+          "required": false,
+          "enabled": false
+        },
+        {
+          "materialType": "projects",
+          "required": false,
+          "enabled": false
+        },
+        {
+          "materialType": "portfolio",
+          "required": false,
+          "enabled": false
+        }
       ],
       "status": "draft",
       "rowVersion": 1,
@@ -95,7 +143,10 @@
       "analysisStatus": "ready",
       "interviewStatus": "completed",
       "reportStatus": "ready",
-      "interviewSessionId": "mock-session-001"
+      "interviewSessionId": "mock-session-001",
+      "overallScore": 87,
+      "scoredCriteriaCount": 2,
+      "totalCriteriaCount": 2
     },
     {
       "invitationId": "mock-invitation-002",
@@ -109,7 +160,10 @@
       "analysisStatus": "ready",
       "interviewStatus": "completed",
       "reportStatus": "ready",
-      "interviewSessionId": "mock-session-002"
+      "interviewSessionId": "mock-session-002",
+      "overallScore": 72,
+      "scoredCriteriaCount": 1,
+      "totalCriteriaCount": 2
     },
     {
       "invitationId": "mock-invitation-003",
@@ -123,7 +177,10 @@
       "analysisStatus": "ready",
       "interviewStatus": "interviewing",
       "reportStatus": null,
-      "interviewSessionId": "mock-session-003"
+      "interviewSessionId": "mock-session-003",
+      "overallScore": null,
+      "scoredCriteriaCount": null,
+      "totalCriteriaCount": null
     },
     {
       "invitationId": "mock-invitation-004",
@@ -137,7 +194,10 @@
       "analysisStatus": "ready",
       "interviewStatus": "ready",
       "reportStatus": null,
-      "interviewSessionId": null
+      "interviewSessionId": null,
+      "overallScore": null,
+      "scoredCriteriaCount": null,
+      "totalCriteriaCount": null
     },
     {
       "invitationId": "mock-invitation-005",
@@ -151,7 +211,10 @@
       "analysisStatus": "analyzing",
       "interviewStatus": null,
       "reportStatus": null,
-      "interviewSessionId": null
+      "interviewSessionId": null,
+      "overallScore": null,
+      "scoredCriteriaCount": null,
+      "totalCriteriaCount": null
     },
     {
       "invitationId": "mock-invitation-006",
@@ -165,7 +228,10 @@
       "analysisStatus": "ready",
       "interviewStatus": "completed",
       "reportStatus": "ready",
-      "interviewSessionId": "mock-session-006"
+      "interviewSessionId": "mock-session-006",
+      "overallScore": 89,
+      "scoredCriteriaCount": 1,
+      "totalCriteriaCount": 1
     },
     {
       "invitationId": "mock-invitation-007",
@@ -179,7 +245,10 @@
       "analysisStatus": "waiting",
       "interviewStatus": null,
       "reportStatus": null,
-      "interviewSessionId": null
+      "interviewSessionId": null,
+      "overallScore": null,
+      "scoredCriteriaCount": null,
+      "totalCriteriaCount": null
     },
     {
       "invitationId": "mock-invitation-008",
@@ -193,7 +262,10 @@
       "analysisStatus": null,
       "interviewStatus": null,
       "reportStatus": null,
-      "interviewSessionId": null
+      "interviewSessionId": null,
+      "overallScore": null,
+      "scoredCriteriaCount": null,
+      "totalCriteriaCount": null
     }
   ],
   "criterionVersions": [
@@ -263,6 +335,13 @@
         "name": "심층형 면접관",
         "tone": "concise",
         "voiceId": "Seoyeon"
+      },
+      "axisWeights": {
+        "correctness": 30.0,
+        "depth": 30.0,
+        "fundamentals": 15.0,
+        "ownership": 15.0,
+        "communication": 10.0
       }
     },
     {
@@ -308,6 +387,13 @@
         "name": "실무형 면접관",
         "tone": "analytical",
         "voiceId": "Seoyeon"
+      },
+      "axisWeights": {
+        "correctness": 25.0,
+        "depth": 20.0,
+        "fundamentals": 10.0,
+        "ownership": 20.0,
+        "communication": 25.0
       }
     }
   ],
@@ -353,7 +439,7 @@
       "report": {
         "summary": "대규모 트래픽 상황에서 병목을 수치로 정의하고 단계적으로 해소한 경험이 구체적입니다. 운영 책임감도 충분하지만 장애 이후 팀 학습을 제도화한 사례는 추가 확인이 필요합니다.",
         "status": "ready",
-        "overallScore": 86,
+        "overallScore": 87,
         "unscoredCriteriaCount": 0,
         "items": [
           {
@@ -363,28 +449,47 @@
             "assessmentState": "confirmed",
             "observation": "트래픽 증가 원인을 지표로 좁히고 캐시, 큐, 데이터베이스 파티셔닝을 순서대로 적용했습니다.",
             "followUpQuestion": null,
-            "averageScore": 90,
+            "averageScore": 89,
             "axisAssessments": [
               {
-                "axis": "context",
-                "label": "상황 이해",
+                "axis": "correctness",
+                "label": "정확성",
                 "score": 92,
-                "rationale": "초당 요청량과 지연시간을 기준으로 병목을 정의했습니다.",
-                "quotedEvidenceIds": ["evidence-001"]
+                "rationale": "초당 요청량과 지연시간을 기준으로 병목을 정확히 지목했습니다.",
+                "quotedEvidenceIds": ["evidence-001"],
+                "weight": 30.0
               },
               {
-                "axis": "judgement",
-                "label": "설계 판단",
+                "axis": "depth",
+                "label": "깊이",
                 "score": 91,
-                "rationale": "비용과 운영 복잡도를 비교해 단계적 확장을 선택했습니다.",
-                "quotedEvidenceIds": ["evidence-001"]
+                "rationale": "비용과 운영 복잡도를 비교해 단계적 확장을 선택한 근거를 설명했습니다.",
+                "quotedEvidenceIds": ["evidence-001"],
+                "weight": 30.0
               },
               {
-                "axis": "outcome",
-                "label": "결과",
+                "axis": "fundamentals",
+                "label": "CS 기본기",
+                "score": 84,
+                "rationale": "인덱스와 커넥션 풀의 동작을 원리 수준에서 설명했습니다.",
+                "quotedEvidenceIds": ["evidence-001"],
+                "weight": 15.0
+              },
+              {
+                "axis": "ownership",
+                "label": "본인 기여",
                 "score": 87,
-                "rationale": "지연시간과 장애율 개선을 수치로 설명했습니다.",
-                "quotedEvidenceIds": ["evidence-002"]
+                "rationale": "본인이 직접 수행한 변경과 팀의 결정을 구분해 말했습니다.",
+                "quotedEvidenceIds": ["evidence-001"],
+                "weight": 15.0
+              },
+              {
+                "axis": "communication",
+                "label": "설명력",
+                "score": 88,
+                "rationale": "지연시간과 장애율 개선을 수치로 정리해 전달했습니다.",
+                "quotedEvidenceIds": ["evidence-001"],
+                "weight": 10.0
               }
             ],
             "evidence": [
@@ -408,7 +513,65 @@
                 "rationale": "성과 검증 근거를 제공합니다.",
                 "sufficiency": "direct"
               }
-            ]
+            ],
+            "criterionWeight": 65.0,
+            "axisBreakdown": {
+              "numerator": 89.35,
+              "denominator": 1.0,
+              "contributions": [
+                {
+                  "key": "correctness",
+                  "score": 92,
+                  "weight": 30.0,
+                  "normalizedWeight": 0.3,
+                  "contribution": 27.599999999999998,
+                  "criterionName": "정확성",
+                  "assessmentState": null,
+                  "reason": null
+                },
+                {
+                  "key": "depth",
+                  "score": 91,
+                  "weight": 30.0,
+                  "normalizedWeight": 0.3,
+                  "contribution": 27.3,
+                  "criterionName": "깊이",
+                  "assessmentState": null,
+                  "reason": null
+                },
+                {
+                  "key": "fundamentals",
+                  "score": 84,
+                  "weight": 15.0,
+                  "normalizedWeight": 0.15,
+                  "contribution": 12.6,
+                  "criterionName": "CS 기본기",
+                  "assessmentState": null,
+                  "reason": null
+                },
+                {
+                  "key": "ownership",
+                  "score": 87,
+                  "weight": 15.0,
+                  "normalizedWeight": 0.15,
+                  "contribution": 13.049999999999999,
+                  "criterionName": "본인 기여",
+                  "assessmentState": null,
+                  "reason": null
+                },
+                {
+                  "key": "communication",
+                  "score": 88,
+                  "weight": 10.0,
+                  "normalizedWeight": 0.1,
+                  "contribution": 8.8,
+                  "criterionName": "설명력",
+                  "assessmentState": null,
+                  "reason": null
+                }
+              ],
+              "exclusions": []
+            }
           },
           {
             "reportItemId": "report-item-001-owner",
@@ -417,28 +580,47 @@
             "assessmentState": "partially_confirmed",
             "observation": "본인이 정한 완료 기준과 반복 과정은 명확하나 팀 차원의 재발 방지 체계는 충분히 확인되지 않았습니다.",
             "followUpQuestion": "장애 회고를 팀의 운영 기준으로 정착시킨 사례가 있나요?",
-            "averageScore": 82,
+            "averageScore": 83,
             "axisAssessments": [
               {
-                "axis": "definition",
-                "label": "문제 정의",
+                "axis": "correctness",
+                "label": "정확성",
                 "score": 86,
-                "rationale": "완료 조건을 오류율과 복구시간으로 정의했습니다.",
-                "quotedEvidenceIds": ["evidence-003"]
+                "rationale": "초당 요청량과 지연시간을 기준으로 병목을 정확히 지목했습니다.",
+                "quotedEvidenceIds": ["evidence-003"],
+                "weight": 30.0
+              },
+              {
+                "axis": "depth",
+                "label": "깊이",
+                "score": null,
+                "rationale": "이 축을 판단할 근거가 답변에 없었습니다.",
+                "quotedEvidenceIds": [],
+                "weight": 30.0
+              },
+              {
+                "axis": "fundamentals",
+                "label": "CS 기본기",
+                "score": 79,
+                "rationale": "인덱스와 커넥션 풀의 동작을 원리 수준에서 설명했습니다.",
+                "quotedEvidenceIds": ["evidence-003"],
+                "weight": 15.0
               },
               {
                 "axis": "ownership",
-                "label": "주도 행동",
+                "label": "본인 기여",
                 "score": 84,
-                "rationale": "대안을 직접 실험하고 기준을 갱신했습니다.",
-                "quotedEvidenceIds": ["evidence-003"]
+                "rationale": "본인이 직접 수행한 변경과 팀의 결정을 구분해 말했습니다.",
+                "quotedEvidenceIds": ["evidence-003"],
+                "weight": 15.0
               },
               {
-                "axis": "learning",
-                "label": "조직 학습",
+                "axis": "communication",
+                "label": "설명력",
                 "score": 76,
-                "rationale": "개인 개선 이후 팀 확산 근거는 제한적입니다.",
-                "quotedEvidenceIds": ["evidence-004"]
+                "rationale": "지연시간과 장애율 개선을 수치로 정리해 전달했습니다.",
+                "quotedEvidenceIds": ["evidence-003"],
+                "weight": 10.0
               }
             ],
             "evidence": [
@@ -462,9 +644,93 @@
                 "rationale": "조직 학습은 추가 검증이 필요합니다.",
                 "sufficiency": "supporting"
               }
-            ]
+            ],
+            "criterionWeight": 35.0,
+            "axisBreakdown": {
+              "numerator": 57.85,
+              "denominator": 0.7,
+              "contributions": [
+                {
+                  "key": "correctness",
+                  "score": 86,
+                  "weight": 30.0,
+                  "normalizedWeight": 0.3,
+                  "contribution": 25.8,
+                  "criterionName": "정확성",
+                  "assessmentState": null,
+                  "reason": null
+                },
+                {
+                  "key": "fundamentals",
+                  "score": 79,
+                  "weight": 15.0,
+                  "normalizedWeight": 0.15,
+                  "contribution": 11.85,
+                  "criterionName": "CS 기본기",
+                  "assessmentState": null,
+                  "reason": null
+                },
+                {
+                  "key": "ownership",
+                  "score": 84,
+                  "weight": 15.0,
+                  "normalizedWeight": 0.15,
+                  "contribution": 12.6,
+                  "criterionName": "본인 기여",
+                  "assessmentState": null,
+                  "reason": null
+                },
+                {
+                  "key": "communication",
+                  "score": 76,
+                  "weight": 10.0,
+                  "normalizedWeight": 0.1,
+                  "contribution": 7.6000000000000005,
+                  "criterionName": "설명력",
+                  "assessmentState": null,
+                  "reason": null
+                }
+              ],
+              "exclusions": [
+                {
+                  "key": "depth",
+                  "weight": 30.0,
+                  "normalizedWeight": 0.3,
+                  "criterionName": "깊이",
+                  "assessmentState": null,
+                  "reason": "이 축을 판단할 근거가 답변에 없었습니다."
+                }
+              ]
+            }
           }
-        ]
+        ],
+        "scoringBreakdown": {
+          "numerator": 86.9,
+          "denominator": 1.0,
+          "contributions": [
+            {
+              "key": "SYSTEM_DESIGN",
+              "score": 89,
+              "weight": 65.0,
+              "normalizedWeight": 0.65,
+              "contribution": 57.85,
+              "criterionName": "대규모 트래픽 시스템 설계·운영 경험",
+              "assessmentState": "confirmed",
+              "reason": "깊이와 CS 기본기는 답변이 구체적이지 않아 판단을 보류했습니다."
+            },
+            {
+              "key": "OWNERSHIP",
+              "score": 83,
+              "weight": 35.0,
+              "normalizedWeight": 0.35,
+              "contribution": 29.049999999999997,
+              "criterionName": "문제의 기준을 세우고 끝까지 파고드는 태도",
+              "assessmentState": "partially_confirmed",
+              "reason": "이 기준에 해당하는 질문이 면접 시간 안에 나오지 않았습니다."
+            }
+          ],
+          "exclusions": []
+        }
       },
       "timeline": {
         "entries": [
@@ -521,8 +787,8 @@
       "report": {
         "summary": "안정적인 시스템 운영 경험과 협업 근거가 확인됩니다. 대규모 확장 시의 트레이드오프 설명은 비교적 짧아 추가 검증이 권장됩니다.",
         "status": "ready",
-        "overallScore": 78,
-        "unscoredCriteriaCount": 0,
+        "overallScore": 72,
+        "unscoredCriteriaCount": 1,
         "items": [
           {
             "reportItemId": "report-item-002-system",
@@ -531,14 +797,47 @@
             "assessmentState": "partially_confirmed",
             "observation": "서비스 분리와 모니터링 개선 경험을 설명했습니다.",
             "followUpQuestion": "피크 트래픽에서 데이터 정합성을 어떻게 보장했나요?",
-            "averageScore": 74,
+            "averageScore": 72,
             "axisAssessments": [
               {
-                "axis": "judgement",
-                "label": "설계 판단",
+                "axis": "correctness",
+                "label": "정확성",
                 "score": 74,
-                "rationale": "선택 근거는 있으나 대안 비교가 제한적입니다.",
-                "quotedEvidenceIds": ["evidence-021"]
+                "rationale": "초당 요청량과 지연시간을 기준으로 병목을 정확히 지목했습니다.",
+                "quotedEvidenceIds": ["evidence-021"],
+                "weight": 30.0
+              },
+              {
+                "axis": "depth",
+                "label": "깊이",
+                "score": null,
+                "rationale": "이 축을 판단할 근거가 답변에 없었습니다.",
+                "quotedEvidenceIds": [],
+                "weight": 30.0
+              },
+              {
+                "axis": "fundamentals",
+                "label": "CS 기본기",
+                "score": null,
+                "rationale": "이 축을 판단할 근거가 답변에 없었습니다.",
+                "quotedEvidenceIds": [],
+                "weight": 15.0
+              },
+              {
+                "axis": "ownership",
+                "label": "본인 기여",
+                "score": 71,
+                "rationale": "본인이 직접 수행한 변경과 팀의 결정을 구분해 말했습니다.",
+                "quotedEvidenceIds": ["evidence-021"],
+                "weight": 15.0
+              },
+              {
+                "axis": "communication",
+                "label": "설명력",
+                "score": 68,
+                "rationale": "지연시간과 장애율 개선을 수치로 정리해 전달했습니다.",
+                "quotedEvidenceIds": ["evidence-021"],
+                "weight": 10.0
               }
             ],
             "evidence": [
@@ -552,39 +851,190 @@
                 "rationale": "부분 근거입니다.",
                 "sufficiency": "supporting"
               }
-            ]
+            ],
+            "criterionWeight": 65.0,
+            "axisBreakdown": {
+              "numerator": 39.650000000000006,
+              "denominator": 0.5499999999999999,
+              "contributions": [
+                {
+                  "key": "correctness",
+                  "score": 74,
+                  "weight": 30.0,
+                  "normalizedWeight": 0.3,
+                  "contribution": 22.2,
+                  "criterionName": "정확성",
+                  "assessmentState": null,
+                  "reason": null
+                },
+                {
+                  "key": "ownership",
+                  "score": 71,
+                  "weight": 15.0,
+                  "normalizedWeight": 0.15,
+                  "contribution": 10.65,
+                  "criterionName": "본인 기여",
+                  "assessmentState": null,
+                  "reason": null
+                },
+                {
+                  "key": "communication",
+                  "score": 68,
+                  "weight": 10.0,
+                  "normalizedWeight": 0.1,
+                  "contribution": 6.800000000000001,
+                  "criterionName": "설명력",
+                  "assessmentState": null,
+                  "reason": null
+                }
+              ],
+              "exclusions": [
+                {
+                  "key": "depth",
+                  "weight": 30.0,
+                  "normalizedWeight": 0.3,
+                  "criterionName": "깊이",
+                  "assessmentState": null,
+                  "reason": "이 축을 판단할 근거가 답변에 없었습니다."
+                },
+                {
+                  "key": "fundamentals",
+                  "weight": 15.0,
+                  "normalizedWeight": 0.15,
+                  "criterionName": "CS 기본기",
+                  "assessmentState": null,
+                  "reason": "이 축을 판단할 근거가 답변에 없었습니다."
+                }
+              ]
+            }
           },
           {
             "reportItemId": "report-item-002-owner",
             "criterionId": "OWNERSHIP",
             "criterionName": "문제의 기준을 세우고 끝까지 파고드는 태도",
-            "assessmentState": "confirmed",
+            "assessmentState": "insufficient_evidence",
             "observation": "장애 대응 프로세스를 직접 개선하고 팀 기준으로 정착시켰습니다.",
-            "followUpQuestion": null,
-            "averageScore": 82,
+            "followUpQuestion": "이 기준을 확인할 질문이 면접 시간 안에 나오지 않았습니다.",
+            "averageScore": null,
             "axisAssessments": [
               {
+                "axis": "correctness",
+                "label": "정확성",
+                "score": null,
+                "rationale": "이 축을 판단할 근거가 답변에 없었습니다.",
+                "quotedEvidenceIds": [],
+                "weight": 30.0
+              },
+              {
+                "axis": "depth",
+                "label": "깊이",
+                "score": null,
+                "rationale": "이 축을 판단할 근거가 답변에 없었습니다.",
+                "quotedEvidenceIds": [],
+                "weight": 30.0
+              },
+              {
+                "axis": "fundamentals",
+                "label": "CS 기본기",
+                "score": null,
+                "rationale": "이 축을 판단할 근거가 답변에 없었습니다.",
+                "quotedEvidenceIds": [],
+                "weight": 15.0
+              },
+              {
                 "axis": "ownership",
-                "label": "주도 행동",
-                "score": 82,
-                "rationale": "개선 전후의 팀 행동 변화를 설명했습니다.",
-                "quotedEvidenceIds": ["evidence-022"]
+                "label": "본인 기여",
+                "score": null,
+                "rationale": "이 축을 판단할 근거가 답변에 없었습니다.",
+                "quotedEvidenceIds": [],
+                "weight": 15.0
+              },
+              {
+                "axis": "communication",
+                "label": "설명력",
+                "score": null,
+                "rationale": "이 축을 판단할 근거가 답변에 없었습니다.",
+                "quotedEvidenceIds": [],
+                "weight": 10.0
               }
             ],
-            "evidence": [
-              {
-                "evidenceId": "evidence-022",
-                "answerTurnId": "answer-022",
-                "transcriptSegmentId": "segment-answer-022",
-                "startMs": 16000,
-                "endMs": 23000,
-                "observation": "팀 운영 기준으로 확장한 사례",
-                "rationale": "주도성의 직접 근거입니다.",
-                "sufficiency": "direct"
-              }
-            ]
+            "evidence": [],
+            "criterionWeight": 35.0,
+            "axisBreakdown": {
+              "numerator": 0.0,
+              "denominator": 0.0,
+              "contributions": [],
+              "exclusions": [
+                {
+                  "key": "correctness",
+                  "weight": 30.0,
+                  "normalizedWeight": 0.3,
+                  "criterionName": "정확성",
+                  "assessmentState": null,
+                  "reason": "이 축을 판단할 근거가 답변에 없었습니다."
+                },
+                {
+                  "key": "depth",
+                  "weight": 30.0,
+                  "normalizedWeight": 0.3,
+                  "criterionName": "깊이",
+                  "assessmentState": null,
+                  "reason": "이 축을 판단할 근거가 답변에 없었습니다."
+                },
+                {
+                  "key": "fundamentals",
+                  "weight": 15.0,
+                  "normalizedWeight": 0.15,
+                  "criterionName": "CS 기본기",
+                  "assessmentState": null,
+                  "reason": "이 축을 판단할 근거가 답변에 없었습니다."
+                },
+                {
+                  "key": "ownership",
+                  "weight": 15.0,
+                  "normalizedWeight": 0.15,
+                  "criterionName": "본인 기여",
+                  "assessmentState": null,
+                  "reason": "이 축을 판단할 근거가 답변에 없었습니다."
+                },
+                {
+                  "key": "communication",
+                  "weight": 10.0,
+                  "normalizedWeight": 0.1,
+                  "criterionName": "설명력",
+                  "assessmentState": null,
+                  "reason": "이 축을 판단할 근거가 답변에 없었습니다."
+                }
+              ]
+            }
           }
-        ]
+        ],
+        "scoringBreakdown": {
+          "numerator": 46.800000000000004,
+          "denominator": 0.65,
+          "contributions": [
+            {
+              "key": "SYSTEM_DESIGN",
+              "score": 72,
+              "weight": 65.0,
+              "normalizedWeight": 0.65,
+              "contribution": 46.800000000000004,
+              "criterionName": "대규모 트래픽 시스템 설계·운영 경험",
+              "assessmentState": "partially_confirmed",
+              "reason": "깊이와 CS 기본기는 답변이 구체적이지 않아 판단을 보류했습니다."
+            }
+          ],
+          "exclusions": [
+            {
+              "key": "OWNERSHIP",
+              "weight": 35.0,
+              "normalizedWeight": 0.35,
+              "criterionName": "문제의 기준을 세우고 끝까지 파고드는 태도",
+              "assessmentState": "insufficient_evidence",
+              "reason": "이 기준에 해당하는 질문이 면접 시간 안에 나오지 않았습니다."
+            }
+          ]
+        }
       },
       "timeline": {
         "entries": [
@@ -640,18 +1090,44 @@
             "averageScore": 89,
             "axisAssessments": [
               {
-                "axis": "problem",
-                "label": "문제 정의",
+                "axis": "correctness",
+                "label": "정확성",
                 "score": 91,
-                "rationale": "행동 데이터와 인터뷰를 교차 검증했습니다.",
-                "quotedEvidenceIds": ["evidence-061"]
+                "rationale": "초당 요청량과 지연시간을 기준으로 병목을 정확히 지목했습니다.",
+                "quotedEvidenceIds": ["evidence-061"],
+                "weight": 25.0
               },
               {
-                "axis": "impact",
-                "label": "성과 측정",
+                "axis": "depth",
+                "label": "깊이",
+                "score": 88,
+                "rationale": "비용과 운영 복잡도를 비교해 단계적 확장을 선택한 근거를 설명했습니다.",
+                "quotedEvidenceIds": ["evidence-061"],
+                "weight": 20.0
+              },
+              {
+                "axis": "fundamentals",
+                "label": "CS 기본기",
+                "score": 82,
+                "rationale": "인덱스와 커넥션 풀의 동작을 원리 수준에서 설명했습니다.",
+                "quotedEvidenceIds": ["evidence-061"],
+                "weight": 10.0
+              },
+              {
+                "axis": "ownership",
+                "label": "본인 기여",
                 "score": 87,
-                "rationale": "처리 시간과 오류율 변화를 확인했습니다.",
-                "quotedEvidenceIds": ["evidence-062"]
+                "rationale": "본인이 직접 수행한 변경과 팀의 결정을 구분해 말했습니다.",
+                "quotedEvidenceIds": ["evidence-061"],
+                "weight": 20.0
+              },
+              {
+                "axis": "communication",
+                "label": "설명력",
+                "score": 92,
+                "rationale": "지연시간과 장애율 개선을 수치로 정리해 전달했습니다.",
+                "quotedEvidenceIds": ["evidence-061"],
+                "weight": 25.0
               }
             ],
             "evidence": [
@@ -675,9 +1151,84 @@
                 "rationale": "결과 근거입니다.",
                 "sufficiency": "direct"
               }
-            ]
+            ],
+            "criterionWeight": 100.0,
+            "axisBreakdown": {
+              "numerator": 88.95,
+              "denominator": 1.0,
+              "contributions": [
+                {
+                  "key": "correctness",
+                  "score": 91,
+                  "weight": 25.0,
+                  "normalizedWeight": 0.25,
+                  "contribution": 22.75,
+                  "criterionName": "정확성",
+                  "assessmentState": null,
+                  "reason": null
+                },
+                {
+                  "key": "depth",
+                  "score": 88,
+                  "weight": 20.0,
+                  "normalizedWeight": 0.2,
+                  "contribution": 17.6,
+                  "criterionName": "깊이",
+                  "assessmentState": null,
+                  "reason": null
+                },
+                {
+                  "key": "fundamentals",
+                  "score": 82,
+                  "weight": 10.0,
+                  "normalizedWeight": 0.1,
+                  "contribution": 8.200000000000001,
+                  "criterionName": "CS 기본기",
+                  "assessmentState": null,
+                  "reason": null
+                },
+                {
+                  "key": "ownership",
+                  "score": 87,
+                  "weight": 20.0,
+                  "normalizedWeight": 0.2,
+                  "contribution": 17.400000000000002,
+                  "criterionName": "본인 기여",
+                  "assessmentState": null,
+                  "reason": null
+                },
+                {
+                  "key": "communication",
+                  "score": 92,
+                  "weight": 25.0,
+                  "normalizedWeight": 0.25,
+                  "contribution": 23.0,
+                  "criterionName": "설명력",
+                  "assessmentState": null,
+                  "reason": null
+                }
+              ],
+              "exclusions": []
+            }
           }
-        ]
+        ],
+        "scoringBreakdown": {
+          "numerator": 89.0,
+          "denominator": 1.0,
+          "contributions": [
+            {
+              "key": "PRODUCT_THINKING",
+              "score": 89,
+              "weight": 100.0,
+              "normalizedWeight": 1.0,
+              "contribution": 89.0,
+              "criterionName": "B2B 제품 문제를 구조화한 경험",
+              "assessmentState": "confirmed",
+              "reason": null
+            }
+          ],
+          "exclusions": []
+        }
       },
       "timeline": {
         "entries": [
