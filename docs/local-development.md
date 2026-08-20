@@ -48,7 +48,7 @@ both and goes to the account your credentials name:
 | Service | Locally | Consequence |
 |---|---|---|
 | **Bedrock** | real AWS | Question generation and criterion assessment are billed per call. `BEDROCK_MODEL_ID` must be enabled in `AWS_REGION` or every call fails `AccessDenied`. |
-| **Cognito** | real AWS | See [Logging in](#logging-in). |
+| **Cognito** | real AWS | Production uses it; local company-console auth uses the fixed local identity below. |
 | Transcribe / Polly | real AWS | Billed. Needed only once an interview produces audio. |
 | Textract | real AWS | Billed. Needed only for document submission analysis. |
 | MediaConvert | real AWS | The placeholder role ARN fails at job submission; a real ARN is needed to post-process a recording. |
@@ -62,26 +62,28 @@ small `AIModel` stub is the cheaper path, not reviving that tree.
 
 ## Logging in
 
-Cognito has no local substitute, so the console's login needs a real user pool. The `dev`
-environment already allows `http://localhost:5173` as a redirect target
-(`console_base_urls` in `infra/environments/dev/terraform.tfvars.json`), so point the console at
-that pool:
+When `APP_ENVIRONMENT=local`, the API accepts the fixed local company identity configured in the
+root `.env`. The checked-in example contains the ids used by the local recruiting data:
+
+```bash
+# .env
+LOCAL_COMPANY_ACCESS_TOKEN=local-company-access-token
+LOCAL_COMPANY_ID=00000000-0000-7000-8000-000000000001
+LOCAL_COMPANY_USER_ID=00000000-0000-7000-8000-000000000002
+LOCAL_COMPANY_IDENTITY_SUBJECT=local-production-company-user
+LOCAL_COMPANY_EMAIL=local-company@example.test
+```
+
+Give Vite the same token in its ignored local settings file:
 
 ```bash
 # apps/company-console/.env.local
-VITE_COGNITO_DOMAIN=https://iep-dev-company-868216907365.auth.ap-northeast-2.amazoncognito.com
-VITE_COGNITO_CLIENT_ID=<dev pool client id>
-VITE_COGNITO_REDIRECT_URI=http://localhost:5173
+VITE_LOCAL_COMPANY_TOKEN=local-company-access-token
 ```
 
-All three or none: `readCompanyAuthConfig` returns null when any is missing, and the console then
-falls back to reading a bare `iep_company_token` from `localStorage`, which your local API will
-reject. With none of them set you can still work on any screen that does not call the API.
-
-The token is resolved by the API through Cognito `GetUser`, so the user must exist in that pool
-and the company must exist in *your local* database — the two are separate stores. A pool user
-whose `custom:company_id` names a company your local Postgres has never seen gets a principal
-that resolves and then fails on the first query.
+This provider cannot activate in staging or production: any `APP_ENVIRONMENT` other than `local`
+continues to use Cognito. The ids still need to name a company user in your local Postgres; the
+provider authenticates the request but does not seed application data.
 
 ## No seed data
 
@@ -97,8 +99,9 @@ removed from every lane's `api/__init__.py` in the same commit.
 The backend installs no CORS middleware. In production each CloudFront distribution routes
 `/v1/*` to the ALB beside its own SPA origin, so the browser only ever makes same-origin requests.
 Both `vite.config.ts` files proxy `/v1` (with `ws: true`, for the interview transcript) to
-reproduce that, which is why neither app needs `VITE_API_BASE_URL` locally. The target is
-hardcoded to `http://localhost:8080`; change it in `vite.config.ts` if you move the API.
+reproduce that, which is why neither app needs `VITE_API_BASE_URL` locally. The development
+servers and proxy target use explicit `127.0.0.1` addresses so stale Docker listeners on IPv6
+localhost cannot silently receive browser or API traffic.
 
 ## Notes
 

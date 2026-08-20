@@ -112,6 +112,7 @@ from interview_evidence.shared.persistence import (
     SQLOutbox,
     SQLUploadIntentStore,
 )
+from interview_evidence.shared.security.local import resolve_company_principal_provider
 from interview_evidence.shared.security.principals import (
     ApplicantPrincipal,
     CompanyPrincipal,
@@ -185,7 +186,11 @@ def create_production_runtime(
         from interview_evidence.runtime.aws import create_aws_runtime_dependencies
 
         aws = create_aws_runtime_dependencies(environment)
-        principal_provider = principal_provider or aws.principal_provider
+        if principal_provider is None:
+            principal_provider = resolve_company_principal_provider(
+                environment,
+                default=aws.principal_provider,
+            )
         object_storage = object_storage or aws.object_storage
         media_storage = media_storage or aws.media_storage
         email_sender = email_sender or aws.email_sender
@@ -203,6 +208,8 @@ def create_production_runtime(
         if not database_url:
             raise RuntimeError("production DATABASE_URL is required")
         database = RequestScopedDatabase(database_url)
+    if principal_provider is None:
+        raise RuntimeError("production principal provider is required")
     active_principal_provider = principal_provider
     active_metrics = metrics or (aws.metrics if aws is not None else NullMetricRecorder())
 
