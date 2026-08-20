@@ -55,7 +55,7 @@ export class ChunkedRecorder {
   private recorder: MediaRecorder | null = null;
   private sequence: number;
   private startedAt = 0;
-  private timesliceMs = 2000;
+  private lastChunkEndMs = 0;
   private pendingPersist: Promise<void> = Promise.resolve();
 
   constructor(
@@ -70,11 +70,12 @@ export class ChunkedRecorder {
 
   start(stream: MediaStream, timesliceMs = 2000): void {
     this.startedAt = performance.now();
-    this.timesliceMs = timesliceMs;
+    this.lastChunkEndMs = 0;
     this.recorder = new MediaRecorder(stream);
     this.recorder.addEventListener("dataavailable", (event) => {
+      const elapsedMs = Math.round(performance.now() - this.startedAt);
       this.pendingPersist = this.pendingPersist.then(() =>
-        this.persist(event.data),
+        this.persist(event.data, elapsedMs),
       );
     });
     this.recorder.start(timesliceMs);
@@ -92,9 +93,11 @@ export class ChunkedRecorder {
     await this.pendingPersist;
   }
 
-  private async persist(blob: Blob): Promise<void> {
+  private async persist(blob: Blob, elapsedMs: number): Promise<void> {
     if (blob.size === 0) return;
-    const elapsed = Math.round(performance.now() - this.startedAt);
+    const chunkStartMs = this.lastChunkEndMs;
+    const chunkEndMs = Math.max(elapsedMs, chunkStartMs + 1);
+    this.lastChunkEndMs = chunkEndMs;
     this.sequence += 1;
     const digest = await crypto.subtle.digest(
       "SHA-256",
@@ -109,9 +112,8 @@ export class ChunkedRecorder {
       blob,
       byteSize: blob.size,
       sha256,
-      sessionStartMs:
-        this.initialSessionStartMs + Math.max(0, elapsed - this.timesliceMs),
-      sessionEndMs: this.initialSessionStartMs + elapsed,
+      sessionStartMs: this.initialSessionStartMs + chunkStartMs,
+      sessionEndMs: this.initialSessionStartMs + chunkEndMs,
     };
     await this.buffer.put(chunk);
     await this.onChunk(chunk);

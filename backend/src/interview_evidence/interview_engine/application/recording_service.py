@@ -189,9 +189,23 @@ class RecordingService:
             expected_sha256=intent.content_hash,
         ):
             raise RecordingIntegrityError("recording object metadata did not match intent")
-        for existing in self._repository.list_recording_chunks(context, intent.session_id):
+        existing_chunks = self._repository.list_recording_chunks(context, intent.session_id)
+        session_start_ms = intent.session_start_ms
+        previous = max(
+            (chunk for chunk in existing_chunks if chunk.sequence < intent.sequence),
+            key=lambda chunk: chunk.sequence,
+            default=None,
+        )
+        if previous is not None and session_start_ms < previous.session_end_ms:
+            if (
+                previous.sequence != intent.sequence - 1
+                or intent.session_end_ms <= previous.session_end_ms
+            ):
+                raise RecordingIntegrityError("recording chunk time range overlaps")
+            session_start_ms = previous.session_end_ms
+        for existing in existing_chunks:
             overlaps = (
-                intent.session_start_ms < existing.session_end_ms
+                session_start_ms < existing.session_end_ms
                 and intent.session_end_ms > existing.session_start_ms
             )
             if overlaps and existing.sequence != intent.sequence:
@@ -207,7 +221,7 @@ class RecordingService:
             object_key=intent.object_key,
             content_hash=intent.content_hash,
             byte_size=intent.byte_size,
-            session_start_ms=intent.session_start_ms,
+            session_start_ms=session_start_ms,
             session_end_ms=intent.session_end_ms,
             upload_status=RecordingUploadStatus.VERIFIED,
             idempotency_key=intent.idempotency_key,

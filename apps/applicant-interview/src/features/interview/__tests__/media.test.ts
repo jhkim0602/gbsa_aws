@@ -93,4 +93,49 @@ describe("ChunkedRecorder", () => {
       }),
     );
   });
+
+  it("keeps a short final chunk contiguous with the previous chunk", async () => {
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+    vi.spyOn(performance, "now")
+      .mockReturnValueOnce(1000)
+      .mockReturnValueOnce(3000)
+      .mockReturnValueOnce(3200);
+    const onChunk = vi.fn().mockResolvedValue(undefined);
+    const recorder = new ChunkedRecorder(
+      "session-id",
+      {
+        put: vi.fn().mockResolvedValue(undefined),
+        list: vi.fn().mockResolvedValue([]),
+        removeVerified: vi.fn().mockResolvedValue(undefined),
+      },
+      onChunk,
+      0,
+      5000,
+    );
+
+    recorder.start({} as MediaStream);
+    FakeMediaRecorder.instance?.emit({
+      size: 21,
+      arrayBuffer: async () =>
+        new TextEncoder().encode("first recording chunk").buffer,
+    } as Blob);
+    FakeMediaRecorder.instance?.emit({
+      size: 11,
+      arrayBuffer: async () => new TextEncoder().encode("final chunk").buffer,
+    } as Blob);
+    await recorder.stop();
+
+    expect(onChunk.mock.calls.map(([chunk]) => chunk)).toEqual([
+      expect.objectContaining({
+        sequence: 1,
+        sessionStartMs: 5000,
+        sessionEndMs: 7000,
+      }),
+      expect.objectContaining({
+        sequence: 2,
+        sessionStartMs: 7000,
+        sessionEndMs: 7200,
+      }),
+    ]);
+  });
 });

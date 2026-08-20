@@ -263,4 +263,124 @@ describe("InterviewSession", () => {
       vi.useRealTimers();
     }
   });
+
+  it("retries the same fast interview question after reconnecting", async () => {
+    vi.useFakeTimers();
+    try {
+      let sessionStore:
+        | Parameters<
+            InterviewSessionDependencies["createProtocolClient"]
+          >[0]["store"]
+        | undefined;
+      let onQuestion:
+        | ((question: {
+            questionTurnId: string;
+            text: string;
+            textOnly: boolean;
+          }) => void)
+        | undefined;
+      const protocol = {
+        connect: vi.fn(() => {
+          sessionStore?.getState().setConnectionState("connected");
+        }),
+        disconnect: vi.fn(() => {
+          sessionStore?.getState().setConnectionState("reconnecting");
+        }),
+        startAnswer: vi.fn(),
+        completeAnswer: vi.fn(),
+        sendAudioFrame: vi.fn(),
+        repeatQuestion: vi.fn(),
+        submitAutomatedAnswer: vi.fn(),
+      };
+      const failedRecorder = {
+        start: vi.fn(),
+        stop: vi
+          .fn()
+          .mockRejectedValueOnce(new Error("applicant request failed: 409"))
+          .mockResolvedValue(undefined),
+      };
+      const retriedRecorder = {
+        start: vi.fn(),
+        stop: vi.fn().mockResolvedValue(undefined),
+      };
+      const stream = {
+        getTracks: () => [],
+      } as unknown as MediaStream;
+      const dependencies: Partial<InterviewSessionDependencies> = {
+        socketFactory: vi.fn(),
+        mediaDevices: { getUserMedia: vi.fn() },
+        mediaBuffer: {
+          put: vi.fn(),
+          list: vi.fn().mockResolvedValue([]),
+          removeVerified: vi.fn().mockResolvedValue(undefined),
+        },
+        createRecorder: vi
+          .fn()
+          .mockReturnValueOnce(failedRecorder)
+          .mockReturnValueOnce(retriedRecorder),
+        createAudioCapture: vi.fn(),
+        createAutomatedMedia: vi.fn().mockResolvedValue({
+          stream,
+          dispose: vi.fn(),
+        }),
+        createProtocolClient: vi.fn((input) => {
+          sessionStore = input.store;
+          onQuestion = input.onQuestion;
+          input.store.getState().setConnectionState("connected");
+          input.store.getState().applyServerState({
+            state: "awaiting_answer",
+            serverSequence: 1,
+            lastFinalTurnId: null,
+            lastVerifiedRecordingChunkSequence: 0,
+            degradedModes: [],
+          });
+          return protocol;
+        }),
+      };
+
+      render(
+        <InterviewSession
+          sessionId="00000000-0000-7000-8000-000000000530"
+          equipmentCheckId="00000000-0000-7000-8000-000000000531"
+          websocketUrl="ws://localhost/session"
+          recordingApi={{ upload: vi.fn() }}
+          dependencies={dependencies}
+          automationMode="fast"
+        />,
+      );
+
+      act(() => {
+        onQuestion?.({
+          questionTurnId: "00000000-0000-7000-8000-000000000532",
+          text: "재연결 테스트 질문입니다.",
+          textOnly: true,
+        });
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3100);
+      });
+
+      expect(
+        screen.getByText("자동 면접 오류: applicant request failed: 409"),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "다시 연결" }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(protocol.connect).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3100);
+      });
+
+      expect(dependencies.createRecorder).toHaveBeenCalledTimes(2);
+      expect(protocol.submitAutomatedAnswer).toHaveBeenCalledOnce();
+      expect(protocol.submitAutomatedAnswer).toHaveBeenCalledWith({
+        answerTurnId: expect.any(String),
+        text: expect.stringContaining("재연결 테스트 질문입니다."),
+        lastRecordingChunkSequence: 0,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

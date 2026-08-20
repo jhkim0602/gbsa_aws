@@ -139,6 +139,7 @@ export function InterviewSession({
   const automatedQuestionRef = useRef<string | null>(null);
   const automatedAnswerIndexRef = useRef(0);
   const automationRunningRef = useRef(false);
+  const reconnectRunningRef = useRef(false);
   const automatedMediaRef = useRef<AutomatedMedia | null>(null);
 
   const resolved = useMemo<InterviewSessionDependencies>(
@@ -270,6 +271,8 @@ export function InterviewSession({
     automationRunningRef.current = true;
     void runAutomatedAnswer()
       .catch((error: unknown) => {
+        automatedQuestionRef.current = null;
+        automationRunningRef.current = false;
         setAutomationStatus(
           error instanceof Error
             ? `자동 면접 오류: ${error.message}`
@@ -387,7 +390,6 @@ export function InterviewSession({
     if (!automationMode) return;
     await delay(900);
     const answerIndex = automatedAnswerIndexRef.current;
-    automatedAnswerIndexRef.current += 1;
     const answer = automatedAnswer(question, answerIndex);
     setTranscript(answer);
     setAutomationStatus(
@@ -445,6 +447,7 @@ export function InterviewSession({
           lastRecordingChunkSequence: lastRecordingSequenceRef.current,
         });
       }
+      automatedAnswerIndexRef.current += 1;
     } finally {
       if (recorder && !recorderStopped) {
         await Promise.resolve(recorder.stop()).catch(() => undefined);
@@ -458,8 +461,27 @@ export function InterviewSession({
   }
 
   function reconnect(): void {
-    clientRef.current?.connect();
-    void replayBufferedChunks();
+    if (reconnectRunningRef.current) return;
+    reconnectRunningRef.current = true;
+    if (automationMode) {
+      setAutomationStatus("저장된 녹화를 복구한 뒤 다시 연결합니다.");
+    }
+    void replayBufferedChunks()
+      .then(() => {
+        clientRef.current?.connect();
+      })
+      .catch((error: unknown) => {
+        if (automationMode) {
+          setAutomationStatus(
+            error instanceof Error
+              ? `녹화 복구 오류: ${error.message}`
+              : "저장된 녹화를 복구할 수 없습니다.",
+          );
+        }
+      })
+      .finally(() => {
+        reconnectRunningRef.current = false;
+      });
   }
 
   function addExplanation(): void {
