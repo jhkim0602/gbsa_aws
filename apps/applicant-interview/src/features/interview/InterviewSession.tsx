@@ -119,6 +119,7 @@ export function InterviewSession({
   const [transcript, setTranscript] = useState("");
   const [interviewerSpeaking, setInterviewerSpeaking] = useState(false);
   const [automationStatus, setAutomationStatus] = useState("");
+  const [automationRunVersion, setAutomationRunVersion] = useState(0);
   const mediaBuffer = useMemo(
     () => dependencies?.mediaBuffer ?? new IndexedDbMediaBuffer(),
     [dependencies?.mediaBuffer],
@@ -282,9 +283,11 @@ export function InterviewSession({
       })
       .finally(() => {
         automationRunningRef.current = false;
+        setAutomationRunVersion((version) => version + 1);
       });
   }, [
     automationMode,
+    automationRunVersion,
     questionTurnId,
     snapshot.connectionState,
     snapshot.state,

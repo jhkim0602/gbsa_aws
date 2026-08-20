@@ -264,6 +264,103 @@ describe("InterviewSession", () => {
     }
   });
 
+  it("continues when the next fast interview question arrives immediately", async () => {
+    vi.useFakeTimers();
+    try {
+      let onQuestion:
+        | ((question: {
+            questionTurnId: string;
+            text: string;
+            textOnly: boolean;
+          }) => void)
+        | undefined;
+      const protocol = {
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        startAnswer: vi.fn(),
+        completeAnswer: vi.fn(),
+        sendAudioFrame: vi.fn(),
+        repeatQuestion: vi.fn(),
+        submitAutomatedAnswer: vi.fn(() => {
+          onQuestion?.({
+            questionTurnId: "00000000-0000-7000-8000-000000000525",
+            text: "문제의 원인을 어떻게 해결했나요?",
+            textOnly: true,
+          });
+        }),
+      };
+      const stream = {
+        getTracks: () => [],
+      } as unknown as MediaStream;
+      const recorder = {
+        start: vi.fn(),
+        stop: vi.fn().mockResolvedValue(undefined),
+      };
+      const dependencies: Partial<InterviewSessionDependencies> = {
+        socketFactory: vi.fn(),
+        mediaDevices: { getUserMedia: vi.fn() },
+        mediaBuffer: {
+          put: vi.fn(),
+          list: vi.fn().mockResolvedValue([]),
+          removeVerified: vi.fn().mockResolvedValue(undefined),
+        },
+        createRecorder: vi.fn(() => recorder),
+        createAudioCapture: vi.fn(),
+        createAutomatedMedia: vi.fn().mockResolvedValue({
+          stream,
+          dispose: vi.fn(),
+        }),
+        createProtocolClient: vi.fn((input) => {
+          onQuestion = input.onQuestion;
+          input.store.getState().setConnectionState("connected");
+          input.store.getState().applyServerState({
+            state: "awaiting_answer",
+            serverSequence: 1,
+            lastFinalTurnId: null,
+            lastVerifiedRecordingChunkSequence: 0,
+            degradedModes: [],
+          });
+          return protocol;
+        }),
+      };
+
+      render(
+        <InterviewSession
+          sessionId="00000000-0000-7000-8000-000000000523"
+          equipmentCheckId="00000000-0000-7000-8000-000000000524"
+          websocketUrl="ws://localhost/session"
+          recordingApi={{ upload: vi.fn() }}
+          dependencies={dependencies}
+          automationMode="fast"
+        />,
+      );
+
+      act(() => {
+        onQuestion?.({
+          questionTurnId: "00000000-0000-7000-8000-000000000526",
+          text: "문제를 발견한 경험을 설명해 주세요.",
+          textOnly: true,
+        });
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3100);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3100);
+      });
+
+      expect(dependencies.createRecorder).toHaveBeenCalledTimes(2);
+      expect(protocol.submitAutomatedAnswer).toHaveBeenCalledTimes(2);
+      expect(protocol.submitAutomatedAnswer).toHaveBeenLastCalledWith({
+        answerTurnId: expect.any(String),
+        text: expect.stringContaining("문제의 원인을 어떻게 해결했나요?"),
+        lastRecordingChunkSequence: 0,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("retries the same fast interview question after reconnecting", async () => {
     vi.useFakeTimers();
     try {
