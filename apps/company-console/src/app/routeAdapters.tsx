@@ -24,6 +24,9 @@ import {
   type CompanyOperationsApi,
 } from "../features/company";
 import {
+  assessmentAxisKeys,
+  type AxisWeightDraft,
+  defaultAxisWeights,
   type InvitationStatus,
   HiringWorkspace,
   InvitationEmailSettings,
@@ -38,6 +41,7 @@ import {
   type ReviewApi,
   type ReviewReport,
   type ReviewTimeline,
+  type ScoreBreakdown,
 } from "../features/review";
 import {
   mockCompanyOperationsApi,
@@ -139,6 +143,10 @@ const hiringApi: HiringWorkspaceApi = {
         prohibited_topics: input.prohibitedTopics,
         interview_duration_minutes: input.interviewDurationMinutes,
         interview_level: input.interviewLevel,
+        // All five axes, always. The API accepts an empty mapping as equal weight for versions
+        // published before weights existed, but refuses a partial one — no reading of the
+        // absent keys is anything but a silently wrong score.
+        axis_weights: input.axisWeights,
         persona_definition: {
           name: input.personaDefinition.name,
           tone: input.personaDefinition.tone,
@@ -180,6 +188,9 @@ const positionInvitationApi: PositionInvitationApi = {
       interviewStatus: invitation.interview_status,
       reportStatus: invitation.report_status,
       interviewSessionId: invitation.interview_session_id,
+      overallScore: invitation.overall_score ?? null,
+      scoredCriteriaCount: invitation.scored_criteria_count ?? null,
+      totalCriteriaCount: invitation.total_criteria_count ?? null,
     }));
   },
   async createInvitations(positionId, applicants, expiresInDays) {
@@ -449,6 +460,10 @@ const companyOperationsApi: CompanyOperationsApi = {
       interviewDurationMinutes: version.interview_duration_minutes,
       // Versions published before the difficulty toggle existed omit the field.
       interviewLevel: version.interview_level ?? "junior",
+      // Versions published before axis weights existed carry no mapping, and were scored with
+      // every axis counting the same. Filling the equal defaults in here shows the recruiter the
+      // weighting those reports actually used rather than a set of blank fields.
+      axisWeights: readAxisWeights(version.axis_weights),
       personaDefinition: toCompanyPersona(version.persona_definition),
     }));
   },
@@ -535,6 +550,28 @@ const companyOperationsApi: CompanyOperationsApi = {
   publishCriteria: hiringApi.publishCriteria,
 };
 
+/**
+ * Read a published version's axis weights into the shape the wizard edits.
+ *
+ * An absent or empty mapping is a version published before weights existed, and those interviews
+ * were scored with every axis counting the same — so the equal defaults are what that version
+ * actually used, not a placeholder. A key the server somehow omitted falls back the same way
+ * rather than rendering an empty field the recruiter would have to guess at.
+ */
+function readAxisWeights(
+  weights: Readonly<Partial<Record<string, number>>> | undefined,
+): AxisWeightDraft {
+  const draft = { ...defaultAxisWeights };
+  if (!weights) return draft;
+  for (const key of assessmentAxisKeys) {
+    const value = weights[key];
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+      draft[key] = value;
+    }
+  }
+  return draft;
+}
+
 function toCompanyPersona(value: unknown) {
   if (!value || typeof value !== "object") return undefined;
   const persona = value as Record<string, unknown>;
@@ -553,12 +590,48 @@ function toCompanyPersona(value: unknown) {
   };
 }
 
+/**
+ * Read a score's arithmetic, or null when the report predates it.
+ *
+ * Null rather than a zeroed breakdown: an empty calculator claiming `0 ÷ 0` would read as a
+ * finding, when the truth is that this report was generated before the arithmetic was recorded
+ * and its score is a plain mean.
+ */
+function toScoreBreakdown(
+  breakdown: components["schemas"]["ScoreBreakdown"] | undefined,
+): ScoreBreakdown | null {
+  if (!breakdown) return null;
+  return {
+    numerator: breakdown.numerator,
+    denominator: breakdown.denominator,
+    contributions: breakdown.contributions.map((contribution) => ({
+      key: contribution.key,
+      score: contribution.score,
+      weight: contribution.weight,
+      normalizedWeight: contribution.normalized_weight,
+      contribution: contribution.contribution,
+      criterionName: contribution.criterion_name ?? null,
+      assessmentState: contribution.assessment_state ?? null,
+      reason: contribution.reason ?? null,
+    })),
+    exclusions: breakdown.exclusions.map((exclusion) => ({
+      key: exclusion.key,
+      weight: exclusion.weight,
+      normalizedWeight: exclusion.normalized_weight,
+      criterionName: exclusion.criterion_name ?? null,
+      assessmentState: exclusion.assessment_state ?? null,
+      reason: exclusion.reason ?? null,
+    })),
+  };
+}
+
 function toReviewReport(report: ReportResponse): ReviewReport {
   return {
     summary: report.summary,
     status: report.status,
     overallScore: report.overall_score ?? null,
     unscoredCriteriaCount: report.unscored_criteria_count ?? 0,
+    scoringBreakdown: toScoreBreakdown(report.scoring_breakdown),
     items: report.items.map((item) => ({
       reportItemId: item.report_item_id,
       criterionId: item.criterion_id,
@@ -567,12 +640,17 @@ function toReviewReport(report: ReportResponse): ReviewReport {
       observation: item.observation,
       followUpQuestion: item.follow_up_question ?? null,
       averageScore: item.average_score ?? null,
+      // 1, not 0: a report from before weights existed counted every criterion equally, and
+      // zero would drop it out of any arithmetic the console does with these.
+      criterionWeight: item.criterion_weight ?? 1,
+      axisBreakdown: toScoreBreakdown(item.axis_breakdown),
       axisAssessments: (item.axis_assessments ?? []).map((axis) => ({
         axis: axis.axis,
         label: axis.label,
         score: axis.score,
         rationale: axis.rationale,
         quotedEvidenceIds: [...axis.quoted_evidence_ids],
+        weight: axis.weight ?? null,
       })),
       evidence: item.evidence.map((evidence) => ({
         evidenceId: evidence.evidence_id,

@@ -1,4 +1,5 @@
 import {
+  ArrowDownWideNarrow,
   ArrowLeft,
   CheckCircle2,
   CircleAlert,
@@ -24,6 +25,11 @@ import {
   formAlertClass,
   ICON_BUTTON,
   INVITATION_APPLICANT_LINK,
+  INVITATION_SCORE,
+  INVITATION_SCORE_COVERAGE,
+  INVITATION_SCORE_UNSCORED,
+  INVITATION_SCORE_VALUE,
+  INVITATION_SORT_BUTTON,
   INVITATION_STATUS,
   INVITATION_TABLE,
   INVITATION_TABLE_BODY,
@@ -77,6 +83,21 @@ export type PositionInvitation = Readonly<{
   interviewStatus?: string | null;
   reportStatus?: string | null;
   interviewSessionId?: string | null;
+  /**
+   * The weighted report score. Null until a report exists, and null when nothing in it could be
+   * scored — never 0, which would rank an applicant who could not be assessed below one who
+   * answered badly.
+   */
+  overallScore?: number | null;
+  /**
+   * How many of the position's criteria the score covers.
+   *
+   * Displayed next to the score, always. Two applicants whose interviews reached different
+   * criteria do not have comparable numbers, and a ranked column that hides this invites the
+   * comparison it cannot support.
+   */
+  scoredCriteriaCount?: number | null;
+  totalCriteriaCount?: number | null;
 }>;
 
 export type InvitationApplicant = Readonly<{
@@ -1085,12 +1106,38 @@ function InvitationTable({
   issuing: boolean;
   onReissue(applicant: InvitationApplicant): void;
 }) {
+  const [sorted, setSorted] = useState(false);
+  // Off by default, so the list keeps the order the recruiter invited people in until they ask
+  // to rank. An unscored applicant sorts last rather than as a zero: the interview has not
+  // happened, which is not the same as answering badly.
+  const rows = sorted
+    ? [...invitations].sort(
+        (left, right) => (right.overallScore ?? -1) - (left.overallScore ?? -1),
+      )
+    : invitations;
+
   return (
     <div className={INVITATION_TABLE_WRAP}>
       <table className={INVITATION_TABLE}>
         <thead className={INVITATION_TABLE_HEAD}>
           <tr>
             <th className={INVITATION_TABLE_HEAD_CELL}>지원자</th>
+            <th
+              className={INVITATION_TABLE_HEAD_CELL}
+              aria-sort={sorted ? "descending" : "none"}
+            >
+              <button
+                className={INVITATION_SORT_BUTTON}
+                type="button"
+                onClick={() => setSorted((current) => !current)}
+              >
+                종합 점수
+                <ArrowDownWideNarrow aria-hidden="true" size={12} />
+                <span className="sr-only">
+                  {sorted ? "점수 정렬 해제" : "점수 높은 순 정렬"}
+                </span>
+              </button>
+            </th>
             <th className={INVITATION_TABLE_HEAD_CELL}>현재 상태</th>
             <th className={INVITATION_TABLE_HEAD_CELL}>진행 단계</th>
             <th className={INVITATION_TABLE_HEAD_CELL}>링크 만료</th>
@@ -1100,7 +1147,7 @@ function InvitationTable({
           </tr>
         </thead>
         <tbody className={INVITATION_TABLE_BODY}>
-          {invitations.map((invitation) => {
+          {rows.map((invitation) => {
             const status = invitationStatusMeta[invitation.status];
             const recruiterPhase = invitationRecruiterPhase(invitation.status);
             const displayName =
@@ -1133,6 +1180,12 @@ function InvitationTable({
                 </td>
                 <td
                   className={INVITATION_TABLE_CELL_AT[1]}
+                  data-label="종합 점수"
+                >
+                  <ApplicantScore invitation={invitation} />
+                </td>
+                <td
+                  className={INVITATION_TABLE_CELL_AT[2]}
                   data-label="현재 상태"
                 >
                   <span
@@ -1144,7 +1197,7 @@ function InvitationTable({
                   </span>
                 </td>
                 <td
-                  className={INVITATION_TABLE_CELL_AT[2]}
+                  className={INVITATION_TABLE_CELL_AT[3]}
                   data-label="진행 단계"
                 >
                   <div
@@ -1169,7 +1222,7 @@ function InvitationTable({
                   </div>
                 </td>
                 <td
-                  className={INVITATION_TABLE_CELL_AT[3]}
+                  className={INVITATION_TABLE_CELL_AT[4]}
                   data-label="링크 만료"
                 >
                   <time
@@ -1179,7 +1232,7 @@ function InvitationTable({
                     {formatDate(invitation.expiresAt)}
                   </time>
                 </td>
-                <td className={INVITATION_TABLE_CELL_AT[4]} data-label="작업">
+                <td className={INVITATION_TABLE_CELL_AT[5]} data-label="작업">
                   {canReissue ? (
                     <button
                       className={BUTTON_QUIET}
@@ -1205,6 +1258,53 @@ function InvitationTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+/**
+ * One applicant's score, with the share of the criteria it was taken over.
+ *
+ * The coverage line is not decoration. Two applicants ranked side by side whose interviews
+ * reached different criteria do not have comparable numbers, and a column of bare scores invites
+ * exactly the comparison it cannot support. Showing "3 / 4" next to 82 is what lets a recruiter
+ * see that one of these is not the same measurement as the other.
+ *
+ * A missing score reads as "면접 전" rather than 0 — the interview has not happened, which is not
+ * the same as answering badly.
+ */
+function ApplicantScore({ invitation }: { invitation: PositionInvitation }) {
+  const { overallScore, scoredCriteriaCount, totalCriteriaCount } = invitation;
+  if (overallScore === null || overallScore === undefined) {
+    return (
+      <span className={INVITATION_SCORE_UNSCORED}>
+        {invitation.reportStatus ? "채점 불가" : "면접 전"}
+      </span>
+    );
+  }
+  const partial =
+    typeof scoredCriteriaCount === "number" &&
+    typeof totalCriteriaCount === "number" &&
+    scoredCriteriaCount < totalCriteriaCount;
+  return (
+    <span className={INVITATION_SCORE}>
+      <strong className={INVITATION_SCORE_VALUE}>{overallScore}점</strong>
+      {typeof scoredCriteriaCount === "number" &&
+      typeof totalCriteriaCount === "number" ? (
+        <small
+          className={INVITATION_SCORE_COVERAGE}
+          // Read out as prose, because "3 / 4" on its own does not say what it counts.
+          aria-label={`전체 기준 ${totalCriteriaCount}개 중 ${scoredCriteriaCount}개 채점`}
+          title={
+            partial
+              ? "채점되지 않은 기준이 있어 다른 지원자와 같은 분모가 아닙니다."
+              : "모든 기준이 채점되었습니다."
+          }
+        >
+          기준 {scoredCriteriaCount} / {totalCriteriaCount}
+          {partial ? " ⚠" : ""}
+        </small>
+      ) : null}
+    </span>
   );
 }
 

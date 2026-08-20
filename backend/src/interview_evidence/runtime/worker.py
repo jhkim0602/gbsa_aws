@@ -224,23 +224,43 @@ class ReportRequestedEventHandler:
         )
         if recording is None or not turns:
             raise TimeoutError("report inputs are not ready")
+        # `strict=False` is load-bearing and lossy: an interview that produced fewer answers
+        # than the position has criteria pairs only the leading ones, and the trailing criteria
+        # silently disappear. That used to cost nothing but coverage; now those criteria carry
+        # weight, so a dropped one would quietly shrink the divisor the score is read against.
+        #
+        # So the pairing is made explicit. Every criterion becomes an input; the ones with no
+        # answer to pair with get no Evidence, which `ReportGenerator` already records as
+        # `insufficient_evidence` -- and `Report.criterion_aggregate` then excludes them *with
+        # their weight visible*, which is what the calculator has to show.
+        paired = {
+            criterion_item.criterion_id: turn
+            for criterion_item, turn in zip(criterion.criteria, turns, strict=False)
+            if turn.turn_id in transcripts
+        }
+        if not paired:
+            raise TimeoutError("report transcript inputs are not ready")
         inputs = tuple(
             CriterionInput(
                 criterion_id=criterion_item.criterion_id,
                 criterion_name=criterion_item.name,
                 criterion_text=criterion_item.description,
-                question=questions.get(turn.turn_id, ""),
-                observation="지원자의 최종 답변에서 관찰된 내용",
-                answer_turn_id=turn.turn_id,
-                transcript=transcripts[turn.turn_id],
-                video_start_ms=transcripts[turn.turn_id].session_start_ms,
-                video_end_ms=transcripts[turn.turn_id].session_end_ms,
+                question=questions.get(turn.turn_id, "") if turn is not None else "",
+                observation=(
+                    "지원자의 최종 답변에서 관찰된 내용"
+                    if turn is not None
+                    else "이 기준을 확인할 답변이 면접에서 나오지 않았습니다"
+                ),
+                # None, not a placeholder: there is no answer, so there is no turn and no
+                # transcript. `ReportGenerator` records the item as `insufficient_evidence`
+                # rather than trying to build an Evidence range out of nothing.
+                answer_turn_id=turn.turn_id if turn is not None else None,
+                transcript=transcripts[turn.turn_id] if turn is not None else None,
+                weight=criterion_item.weight,
             )
-            for criterion_item, turn in zip(criterion.criteria, turns, strict=False)
-            if turn.turn_id in transcripts
+            for criterion_item in criterion.criteria
+            for turn in (paired.get(criterion_item.criterion_id),)
         )
-        if not inputs:
-            raise TimeoutError("report transcript inputs are not ready")
         return self._generator.generate(
             context,
             session_id=session_id,
@@ -251,6 +271,7 @@ class ReportRequestedEventHandler:
             events=self._reporting.repository.list_session_events(context, session_id),
             occurred_at=self._clock.now(),
             interview_level=criterion.interview_level,
+            axis_weights=criterion.axis_weights,
         )
 
 

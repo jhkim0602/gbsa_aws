@@ -1,6 +1,7 @@
 import { Bot, FileSearch, LockKeyhole, PlayCircle, Quote } from "lucide-react";
 import { type KeyboardEvent, useState } from "react";
 
+import { BUTTON_SECONDARY } from "../../app/styles/primitives";
 import { formatLocator, sourceTypeLabel } from "./questionSources";
 import type {
   AssessmentState,
@@ -11,6 +12,7 @@ import type {
   ReviewQuestionSource,
   ReviewReport,
   ReviewReportItem,
+  ScoreBreakdown,
 } from "./types";
 
 const assessmentLabels: Record<AssessmentState, string> = {
@@ -152,7 +154,11 @@ export function ReportView({
   /** Resolves a citation to the answer it quoted. Absent leaves the spans unresolved. */
   evidenceContext?: ReviewEvidenceContext;
   onSelectEvidence(startMs: number): void;
-  onOverride?(reportItemId: string, assessmentState: AssessmentState): void;
+  onOverride?(
+    reportItemId: string,
+    assessmentState: AssessmentState,
+    reason: string,
+  ): void;
 }) {
   const [activeTab, setActiveTab] = useState<ReportTab>("overview");
   const activeIndex = reportTabs.findIndex((tab) => tab.id === activeTab);
@@ -310,10 +316,12 @@ function OverviewPage({ report }: { report: ReviewReport }) {
           >
             {report.overallScore ?? "—"}
           </strong>
+          {/* The divisor, not just the count. "82 of 4 criteria" reads as a verdict on the
+              whole interview; "82, weighted, over 70% of it" is what the number actually is. */}
           <small className="text-[8px] leading-[1.4] text-subtle">
             {report.overallScore === null
               ? "점수화된 기준 없음"
-              : `100점 기준 · 기준 ${report.items.length - report.unscoredCriteriaCount}개 평균`}
+              : coverageLabel(report)}
           </small>
         </div>
         <p className="text-[11px] leading-[1.75] text-ink-secondary">
@@ -331,6 +339,11 @@ function OverviewPage({ report }: { report: ReviewReport }) {
           ? ` 기준 ${report.unscoredCriteriaCount}개는 인용할 답변이 없어 이 점수에 포함되지 않았습니다.`
           : ""}
       </p>
+
+      <ScoreCalculator
+        breakdown={report.scoringBreakdown}
+        score={report.overallScore}
+      />
 
       <section className={REPORT_SECTION} aria-label="축별 평균 점수">
         <h4 className={REPORT_SECTION_HEADING}>축별 평균</h4>
@@ -414,6 +427,97 @@ function OverviewPage({ report }: { report: ReviewReport }) {
   );
 }
 
+/**
+ * A reviewer overruling the AI's assessment of one criterion, with the reason they give.
+ *
+ * The reason is required, and the control will not submit without one. Before this, the state
+ * was sent the moment the select changed and the reason was a fixed string, so every override in
+ * the audit trail read identically — which records the fact and loses the only part a later
+ * reader needs. Disagreement with a score is exactly where "why" matters.
+ *
+ * Human judgement stays separate from the AI original: this writes a `HumanReview`, and the
+ * report itself remains immutable (`ai_original_immutable`).
+ */
+function AssessmentOverride({
+  item,
+  index,
+  onOverride,
+}: {
+  item: ReviewReportItem;
+  index: number;
+  onOverride(
+    reportItemId: string,
+    assessmentState: AssessmentState,
+    reason: string,
+  ): void;
+}) {
+  const [state, setState] = useState<AssessmentState>(item.assessmentState);
+  const [reason, setReason] = useState("");
+  const [saved, setSaved] = useState(false);
+  const changed = state !== item.assessmentState;
+  const ready = changed && reason.trim().length > 0;
+
+  return (
+    // `.report-item .compact-field` is hidden when printed: an editable control is not part of
+    // the document.
+    <div className="grid gap-1.5 print:hidden">
+      <label className="grid gap-1.5">
+        <span className="text-[9px] font-semibold text-ink-secondary">
+          사람 평가
+        </span>
+        <select
+          aria-label={`사람 평가 ${index + 1}`}
+          className="min-h-[34px] w-full rounded-md border border-border bg-surface px-[9px] py-[7px] text-[10px] text-ink focus:border-brand focus:outline-2 focus:outline-offset-0 focus:outline-[#5966ce1f]"
+          value={state}
+          onChange={(event) => {
+            setState(event.target.value as AssessmentState);
+            setSaved(false);
+          }}
+        >
+          <option value="confirmed">확인됨</option>
+          <option value="partially_confirmed">부분 확인</option>
+          <option value="insufficient_evidence">근거 부족</option>
+          <option value="needs_follow_up">추가 확인 필요</option>
+        </select>
+      </label>
+
+      {changed ? (
+        <>
+          <label className="grid gap-1.5">
+            <span className="text-[9px] font-semibold text-ink-secondary">
+              수정 사유
+            </span>
+            <textarea
+              aria-label={`수정 사유 ${index + 1}`}
+              className="min-h-[56px] w-full resize-y rounded-md border border-border bg-surface px-[9px] py-[7px] text-[10px] leading-[1.6] text-ink placeholder:text-subtle focus:border-brand focus:outline-2 focus:outline-offset-0 focus:outline-[#5966ce1f]"
+              placeholder="Evidence를 확인한 결과 AI 판단과 다르게 본 이유를 적어 주세요."
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+            />
+          </label>
+          <button
+            className={`${BUTTON_SECONDARY} justify-self-start`}
+            disabled={!ready}
+            type="button"
+            onClick={() => {
+              onOverride(item.reportItemId, state, reason.trim());
+              setSaved(true);
+            }}
+          >
+            사람 평가 저장
+          </button>
+        </>
+      ) : null}
+
+      {saved ? (
+        <p className="text-[9px] text-success" role="status">
+          사람 평가를 기록했습니다. AI 원본 리포트는 그대로 유지됩니다.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function CriteriaPage({
   report,
   evidenceContext,
@@ -423,7 +527,11 @@ function CriteriaPage({
   report: ReviewReport;
   evidenceContext: ReviewEvidenceContext;
   onSelectEvidence(startMs: number): void;
-  onOverride?(reportItemId: string, assessmentState: AssessmentState): void;
+  onOverride?(
+    reportItemId: string,
+    assessmentState: AssessmentState,
+    reason: string,
+  ): void;
 }) {
   // Which citation the reviewer is following, so the axis they clicked and the answer it
   // rests on are highlighted together instead of the reviewer having to match ids by eye.
@@ -442,7 +550,7 @@ function CriteriaPage({
 
   return (
     <div className="grid gap-3.5">
-      {report.items.map((item) => {
+      {report.items.map((item, index) => {
         const evidenceById = new Map(
           item.evidence.map((evidence) => [evidence.evidenceId, evidence]),
         );
@@ -496,28 +604,11 @@ function CriteriaPage({
             )}
 
             {onOverride && (
-              // `.report-item .compact-field` is hidden when printed: an editable control
-              // is not part of the document.
-              <label className="grid gap-1.5 print:hidden">
-                <span className="text-[9px] font-semibold text-ink-secondary">
-                  사람 평가
-                </span>
-                <select
-                  className="min-h-[34px] w-full rounded-md border border-border bg-surface px-[9px] py-[7px] text-[10px] text-ink focus:border-brand focus:outline-2 focus:outline-offset-0 focus:outline-[#5966ce1f]"
-                  defaultValue={item.assessmentState}
-                  onChange={(event) =>
-                    onOverride(
-                      item.reportItemId,
-                      event.target.value as AssessmentState,
-                    )
-                  }
-                >
-                  <option value="confirmed">확인됨</option>
-                  <option value="partially_confirmed">부분 확인</option>
-                  <option value="insufficient_evidence">근거 부족</option>
-                  <option value="needs_follow_up">추가 확인 필요</option>
-                </select>
-              </label>
+              <AssessmentOverride
+                item={item}
+                index={index}
+                onOverride={onOverride}
+              />
             )}
 
             <div className="grid gap-2">
@@ -822,6 +913,103 @@ function ScoreBar({ score }: { score: number | null }) {
   );
 }
 
+/**
+ * What the score covers, in the terms the score was actually computed in.
+ *
+ * "기준 3개 평균" counts criteria; the score is a weighted mean, so a criterion worth 40% and one
+ * worth 5% are not two of anything. The divisor is the honest unit, and it is the one the
+ * calculator below expands.
+ */
+function coverageLabel(report: ReviewReport) {
+  const denominator = report.scoringBreakdown?.denominator;
+  if (denominator === undefined || denominator <= 0) {
+    return `100점 기준 · 기준 ${report.items.length - report.unscoredCriteriaCount}개 평균`;
+  }
+  const covered = Math.round(denominator * 100);
+  return covered >= 100
+    ? "100점 기준 · 전체 기준 반영"
+    : `100점 기준 · 가중치 ${covered}%만 반영`;
+}
+
+const CALC_ROW =
+  "grid grid-cols-[minmax(0,1fr)_58px_44px_62px] items-center gap-2 py-[5px]" +
+  " mw-520:grid-cols-[minmax(0,1fr)_auto]";
+const CALC_NAME = "truncate text-[10px] text-ink-secondary";
+const CALC_NUMBER = "text-right font-mono text-[10px] text-ink-secondary";
+const CALC_TOTAL =
+  "mt-1 grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-2 border-t border-border" +
+  " pt-2 text-[10px]";
+
+/**
+ * The arithmetic behind the report score, laid out so a reviewer can redo it.
+ *
+ * The divisor is the reason this exists rather than a bare number. `55.7 ÷ 0.75 = 74` says a
+ * quarter of the interview is not in the score; `74` alone cannot. Excluded criteria are listed
+ * with their reason for the same reason — otherwise the divisor appears from nowhere.
+ */
+function ScoreCalculator({
+  breakdown,
+  score,
+}: {
+  breakdown: ScoreBreakdown | null;
+  score: number | null;
+}) {
+  // Null on reports generated before the arithmetic was recorded. Rendering an empty calculator
+  // would imply a finding; saying nothing is accurate.
+  if (!breakdown || breakdown.contributions.length === 0) return null;
+
+  return (
+    <section className={REPORT_SECTION} aria-label="종합 점수 계산 근거">
+      <h4 className={REPORT_SECTION_HEADING}>이 점수가 나온 계산</h4>
+      <div>
+        {breakdown.contributions.map((contribution) => (
+          <div className={CALC_ROW} key={contribution.key}>
+            <span className={CALC_NAME}>
+              {contribution.criterionName ?? contribution.key}
+            </span>
+            <span className={CALC_NUMBER}>{contribution.score}점</span>
+            <span className={CALC_NUMBER}>
+              {Math.round(contribution.normalizedWeight * 100)}%
+            </span>
+            <span className={`${CALC_NUMBER} text-ink`}>
+              {contribution.contribution.toFixed(1)}
+            </span>
+          </div>
+        ))}
+        <p className={CALC_TOTAL}>
+          <span className="text-muted">
+            합 {breakdown.numerator.toFixed(1)} ÷{" "}
+            {breakdown.denominator.toFixed(2)}
+          </span>
+          <strong className="font-mono text-[13px] font-bold text-ink">
+            {score ?? UNSCORED_TEXT}
+          </strong>
+        </p>
+      </div>
+
+      {breakdown.exclusions.length > 0 ? (
+        <div className="grid gap-1 rounded-[5px] bg-surface-muted px-2.5 py-2">
+          <span className="text-[8px] font-[650] text-muted">
+            점수에서 제외된 기준
+          </span>
+          {breakdown.exclusions.map((exclusion) => (
+            <p
+              className="text-[9px] leading-[1.55] text-ink-secondary"
+              key={exclusion.key}
+            >
+              <span className="font-mono">
+                {Math.round(exclusion.normalizedWeight * 100)}%
+              </span>{" "}
+              {exclusion.criterionName ?? exclusion.key}
+              {exclusion.reason ? ` — ${exclusion.reason}` : ""}
+            </p>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 type AxisSummary = {
   axis: string;
   label: string;
@@ -830,39 +1018,51 @@ type AxisSummary = {
 };
 
 /**
- * Average each axis across the criteria that could be judged on it.
+ * Average each axis across the criteria that could be judged on it, weighted by criterion.
  *
- * Criteria with a null score on an axis are left out of that axis's mean instead of
- * counting as zero, the same way the backend averages: a criterion the interview never
- * reached must not drag an axis toward a failure.
+ * Criteria with a null score on an axis are left out of that axis's mean instead of counting as
+ * zero, the same way the backend aggregates: a criterion the interview never reached must not
+ * drag an axis toward a failure.
+ *
+ * Weighted by `criterionWeight`, because an unweighted mean here would disagree with the report
+ * score sitting above it — a candidate strong on the criterion worth 60% and weak on the one
+ * worth 10% would show a middling axis average beside a high overall score, and a reviewer
+ * would have no way to tell which one to believe. Reports from before weights existed carry 1
+ * for every criterion, which reduces to the plain mean this used to be.
  */
 function summarizeAxes(items: ReviewReportItem[]): AxisSummary[] {
   const order: string[] = [];
-  const groups = new Map<string, { label: string; scores: number[] }>();
+  const groups = new Map<
+    string,
+    { label: string; weighted: number; weight: number; scoredCount: number }
+  >();
   for (const item of items) {
+    const weight = item.criterionWeight > 0 ? item.criterionWeight : 0;
     for (const axis of item.axisAssessments) {
       let group = groups.get(axis.axis);
       if (!group) {
-        group = { label: axis.label, scores: [] };
+        group = { label: axis.label, weighted: 0, weight: 0, scoredCount: 0 };
         groups.set(axis.axis, group);
         order.push(axis.axis);
       }
-      if (axis.score !== null) group.scores.push(axis.score);
+      if (axis.score === null) continue;
+      group.scoredCount += 1;
+      group.weighted += axis.score * weight;
+      group.weight += weight;
     }
   }
   return order.map((axis) => {
     const group = groups.get(axis);
-    const scores = group?.scores ?? [];
     return {
       axis,
       label: group?.label ?? axis,
+      // `weight` can be 0 while `scoredCount` is not, when every criterion carrying this axis
+      // was itself weighted 0. There is no basis for a number then, and 0 would read as one.
       score:
-        scores.length > 0
-          ? Math.round(
-              scores.reduce((total, score) => total + score, 0) / scores.length,
-            )
+        group && group.weight > 0
+          ? Math.round(group.weighted / group.weight)
           : null,
-      scoredCount: scores.length,
+      scoredCount: group?.scoredCount ?? 0,
     };
   });
 }

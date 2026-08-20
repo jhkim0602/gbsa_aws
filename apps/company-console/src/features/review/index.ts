@@ -15,4 +15,7 @@ export type {
   ReviewHistoryEntry,
   ReviewReport,
   ReviewTimeline,
+  ScoreBreakdown,
+  ScoreContribution,
+  ScoreExclusion,
 } from "./types";

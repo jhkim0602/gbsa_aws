@@ -382,4 +382,98 @@ describe("parseInvitationImport", () => {
       { displayName: "정데이터", email: "data@example.com" },
     ]);
   });
+  it("shows each score with the share of the criteria it was taken over", async () => {
+    // Two applicants ranked side by side whose interviews reached different criteria do not have
+    // comparable numbers. A column of bare scores invites exactly that comparison, so the
+    // coverage travels with the number and a partial one is marked.
+    const scored = [
+      {
+        ...invitations[0],
+        status: "reviewed" as const,
+        reportStatus: "ready",
+        overallScore: 82,
+        scoredCriteriaCount: 4,
+        totalCriteriaCount: 4,
+      },
+      {
+        ...invitations[1],
+        status: "completed" as const,
+        reportStatus: "ready",
+        overallScore: 91,
+        scoredCriteriaCount: 3,
+        totalCriteriaCount: 4,
+      },
+    ];
+    const api: PositionInvitationApi = {
+      listInvitations: vi.fn().mockResolvedValue(scored),
+      createInvitations: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter>
+        <PositionInvitations
+          embedded
+          view="workspace"
+          positionId="position-1"
+          positionName="백엔드 개발자"
+          api={api}
+          templateApi={buildTemplateApi()}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("82점")).toBeTruthy();
+    expect(screen.getByText("91점")).toBeTruthy();
+    expect(screen.getByText("기준 4 / 4")).toBeTruthy();
+    // The partial one is flagged, because its divisor is not the other's.
+    expect(screen.getByText("기준 3 / 4 ⚠")).toBeTruthy();
+  });
+
+  it("ranks by score on request and puts applicants without one last", async () => {
+    // Not sorted by default: the roster keeps invitation order until the recruiter asks to rank.
+    // An unscored applicant sorts last rather than as a zero -- the interview has not happened,
+    // which is not the same as answering badly.
+    const mixed = [
+      { ...invitations[0], overallScore: null },
+      {
+        ...invitations[1],
+        reportStatus: "ready",
+        overallScore: 64,
+        scoredCriteriaCount: 4,
+        totalCriteriaCount: 4,
+      },
+    ];
+    const api: PositionInvitationApi = {
+      listInvitations: vi.fn().mockResolvedValue(mixed),
+      createInvitations: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter>
+        <PositionInvitations
+          embedded
+          view="workspace"
+          positionId="position-1"
+          positionName="백엔드 개발자"
+          api={api}
+          templateApi={buildTemplateApi()}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("64점");
+    const names = () =>
+      screen
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => row.textContent ?? "");
+    expect(names()[0]).toContain("홍길동");
+
+    fireEvent.click(screen.getByRole("button", { name: /점수 높은 순 정렬/ }));
+
+    expect(names()[0]).toContain("김개발");
+    expect(names()[1]).toContain("홍길동");
+    // And the unscored applicant says why there is no number, rather than showing 0.
+    expect(screen.getByText("면접 전")).toBeTruthy();
+  });
 });

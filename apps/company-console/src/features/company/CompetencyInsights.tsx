@@ -55,25 +55,18 @@ export function applyConfiguredWeights(
       );
       return { ...criterion, weight: configured?.weight };
     });
-    const scored = weightedCriteria.filter(
-      (criterion) => criterion.score != null && criterion.weight != null,
-    );
-    const scoredWeight = scored.reduce(
-      (sum, criterion) => sum + (criterion.weight ?? 0),
-      0,
-    );
-    const weightedScore = scoredWeight
-      ? Math.round(
-          scored.reduce(
-            (sum, criterion) =>
-              sum + (criterion.score ?? 0) * (criterion.weight ?? 0),
-            0,
-          ) / scoredWeight,
-        )
-      : insight.overallScore;
+    // `overallScore` is left alone: it now arrives already weighted, computed by the report
+    // generator from the weights that report *froze* and stored in `reports.scoring_inputs`.
+    //
+    // Recomputing it here would undo that freeze at display time. It would also disagree with
+    // the server whenever the join below is partial -- it matches on `code === criterionId`
+    // (a code against a UUID, so never) falling through to `name === criterionName`, so a
+    // renamed or duplicated criterion drops out and the browser would average over a subset
+    // while the report averaged over all of them. Two numbers, no way to tell which is right.
+    //
+    // The per-criterion `weight` is still joined on, because the charts below show it.
     return {
       ...insight,
-      overallScore: weightedScore,
       criteria: weightedCriteria,
     };
   });

@@ -531,6 +531,21 @@ export interface components {
         };
         /** @enum {string} */
         readonly AssessmentState: "confirmed" | "partially_confirmed" | "insufficient_evidence" | "needs_follow_up";
+        /** @description How much each of the five scoring axes counts toward a criterion's score.
+         *     Either omitted/empty, meaning equal weight, or naming every axis. A partial mapping
+         *     is refused: reading the absent keys as zero drops those axes out of the score and
+         *     reading them as one adds incomparable scales, and neither is visible to the reviewer.
+         *     A weight of zero is allowed and means the axis is not looked at for this position.
+         *     Versions published before weights existed carry an empty mapping, which is how their
+         *     reports were actually scored.
+         *      */
+        readonly AssessmentAxisWeights: {
+            readonly communication?: number;
+            readonly correctness?: number;
+            readonly depth?: number;
+            readonly fundamentals?: number;
+            readonly ownership?: number;
+        };
         /** @description One evaluation axis as the model judged it. The score is an AI judgement offered to a reviewer as material, never a hiring decision, and it is only present when the citations in quoted_evidence_ids resolved to real Evidence at generation time. */
         readonly AxisAssessmentView: {
             readonly axis: string;
@@ -541,6 +556,11 @@ export interface components {
             readonly rationale: string;
             /** @description null means the answers gave no basis to judge this axis, or that the score was withheld because its citations did not resolve. It is never a zero, because zero says the answer was wrong. */
             readonly score: number | null;
+            /** @description What this axis counted for in the criterion score, frozen when the
+             *     report was generated. Absent on reports scored before weights existed, which
+             *     counted every axis equally.
+             *      */
+            readonly weight?: number | null;
         };
         readonly CompanyLogoView: {
             readonly byte_size: number;
@@ -558,6 +578,7 @@ export interface components {
             readonly status: "invited" | "active" | "disabled";
         };
         readonly CompetencyModelVersion: {
+            readonly axis_weights?: components["schemas"]["AssessmentAxisWeights"];
             /** Format: uuid */
             readonly competency_model_version_id: string;
             readonly criteria: readonly components["schemas"]["EvaluationCriterionInput"][];
@@ -578,6 +599,7 @@ export interface components {
             readonly version_number: number;
         };
         readonly CompetencyModelVersionCreate: {
+            readonly axis_weights?: components["schemas"]["AssessmentAxisWeights"];
             readonly criteria: readonly components["schemas"]["EvaluationCriterionInput"][];
             readonly interview_duration_minutes: number;
             readonly interview_level?: components["schemas"]["InterviewLevel"];
@@ -861,12 +883,24 @@ export interface components {
             readonly interview_status?: string | null;
             /** Format: uuid */
             readonly invitation_id: string;
+            /** @description The weighted report score, so a position's applicant list can rank on it.
+             *     Null until a report exists, and null when nothing in it could be scored - never
+             *     zero, which would sort an applicant who could not be assessed below one who
+             *     answered badly.
+             *      */
+            readonly overall_score?: number | null;
             /** Format: uuid */
             readonly position_id: string;
             readonly report_status?: string | null;
             readonly row_version: number;
+            /** @description How many of the position's criteria the score covers. Read beside the score,
+             *     because two applicants whose interviews reached different criteria do not have
+             *     comparable numbers and a ranked column has to be able to say so.
+             *      */
+            readonly scored_criteria_count?: number | null;
             /** @enum {string} */
             readonly status: "invited" | "identity_verified" | "consented" | "materials_submitted" | "analyzing" | "ready" | "interviewing" | "interrupted" | "completed" | "reviewed" | "expired" | "revoked" | "deleted";
+            readonly total_criteria_count?: number | null;
         };
         readonly JobRequirementInput: {
             readonly criterion_code: string;
@@ -960,14 +994,22 @@ export interface components {
         };
         readonly ReportItemView: {
             readonly assessment_state: components["schemas"]["AssessmentState"];
-            /** @description Mean of this item's scored axes. Unscored axes are left out rather than counted as zero. */
+            /** @description Weighted mean of this item's scored axes. Unscored axes are left out of both
+             *     the numerator and the divisor rather than counted as zero.
+             *      */
             readonly average_score?: number | null;
             /** @description Empty for reports generated before scoring existed, which the console reads as "this report has no scores". */
             readonly axis_assessments: readonly components["schemas"]["AxisAssessmentView"][];
+            readonly axis_breakdown?: components["schemas"]["ScoreBreakdown"];
             /** Format: uuid */
             readonly criterion_id: string;
             /** @description Criterion name captured when the report was generated, so a reviewer never reads a bare UUID and the report survives deletion of the criterion version. Empty only for reports generated before this field existed. */
             readonly criterion_name: string;
+            /** @description What this criterion counted for in the report score, frozen when the report
+             *     was generated. 1 on reports scored before weights existed, which counted every
+             *     criterion equally.
+             *      */
+            readonly criterion_weight?: number;
             readonly evidence: readonly components["schemas"]["EvidenceView"][];
             readonly follow_up_question?: string | null;
             readonly observation: string;
@@ -981,11 +1023,17 @@ export interface components {
             readonly ai_original_immutable: true;
             readonly human_reviews?: readonly components["schemas"]["HumanReviewView"][];
             readonly items: readonly components["schemas"]["ReportItemView"][];
-            /** @description Mean across the criteria that could be scored. Explicitly not a hiring score - it says nothing about the criteria the interview never reached, which is why the console shows it beside unscored_criteria_count and the final decision stays with a person. */
+            /** @description Weighted mean across the criteria that could be scored, using the weights
+             *     the company published and the report froze. Explicitly not a hiring score - it says
+             *     nothing about the criteria the interview never reached, which is why the console shows
+             *     it beside unscored_criteria_count and scoring_breakdown.denominator, and the final
+             *     decision stays with a person.
+             *      */
             readonly overall_score?: number | null;
             /** Format: uuid */
             readonly report_id: string;
             readonly report_version: number;
+            readonly scoring_breakdown?: components["schemas"]["ScoreBreakdown"];
             /** @enum {string} */
             readonly status: "generating" | "ready" | "partial" | "failed";
             readonly summary: string;
@@ -998,6 +1046,48 @@ export interface components {
             /** Format: uuid */
             readonly target_id: string;
             readonly value: string;
+        };
+        /** @description The arithmetic behind a score, so the console renders it rather than asserts it.
+         *     denominator is the part that cannot be inferred from the number alone: 82 out of the
+         *     whole interview and 82 out of the 70% of it that could be judged are different claims.
+         *      */
+        readonly ScoreBreakdown: {
+            readonly contributions: readonly components["schemas"]["ScoreContribution"][];
+            /** @description Sum of the normalized weights that were actually scored. Below 1.0 whenever something was excluded. */
+            readonly denominator: number;
+            readonly exclusions: readonly components["schemas"]["ScoreExclusion"][];
+            readonly numerator: number;
+        };
+        /** @description One scored entry's arithmetic, in the form the reviewer's calculator renders.
+         *     normalized_weight is the share of the whole configuration rather than of what survived,
+         *     so the contributions add up to numerator and the shortfall against 1.0 is visible as
+         *     denominator.
+         *      */
+        readonly ScoreContribution: {
+            readonly assessment_state?: components["schemas"]["AssessmentState"];
+            /** @description normalized_weight x score. */
+            readonly contribution: number;
+            readonly criterion_name?: string;
+            /** @description Criterion id at report level, axis key at criterion level. */
+            readonly key: string;
+            readonly normalized_weight: number;
+            readonly reason?: string;
+            readonly score: number;
+            readonly weight: number;
+        };
+        /** @description An entry that carried weight but could not be scored, so it is absent from both
+         *     the numerator and the divisor. Reported rather than dropped: without it the divisor
+         *     appears from nowhere, and a reviewer cannot see that a quarter of the interview is
+         *     missing from the number.
+         *      */
+        readonly ScoreExclusion: {
+            readonly assessment_state?: components["schemas"]["AssessmentState"];
+            readonly criterion_name?: string;
+            readonly key: string;
+            readonly normalized_weight: number;
+            /** @description Why this entry could not be scored, taken from the report item's uncertainty. */
+            readonly reason?: string;
+            readonly weight: number;
         };
         readonly SubmissionCreate: {
             /** @enum {string} */

@@ -56,6 +56,7 @@ function report(overrides: Partial<ReviewReport> = {}): ReviewReport {
     status: "ready",
     overallScore: 74,
     unscoredCriteriaCount: 0,
+    scoringBreakdown: null,
     items: [
       {
         reportItemId: "item-1",
@@ -72,6 +73,7 @@ function report(overrides: Partial<ReviewReport> = {}): ReviewReport {
             score: 78,
             rationale: "재시도 폭주를 원인으로 정확히 짚었습니다.",
             quotedEvidenceIds: ["ev-1"],
+            weight: null,
           },
           {
             axis: "ownership",
@@ -79,9 +81,12 @@ function report(overrides: Partial<ReviewReport> = {}): ReviewReport {
             score: 70,
             rationale: "본인이 직접 롤백을 결정했다고 설명했습니다.",
             quotedEvidenceIds: ["ev-1", "ev-2"],
+            weight: null,
           },
         ],
         evidence: [DIRECT_EVIDENCE, SUPPORTING_EVIDENCE],
+        criterionWeight: 1,
+        axisBreakdown: null,
       },
     ],
     ...overrides,
@@ -158,15 +163,17 @@ const TIMELINE: ReviewTimelineEntry[] = [
 
 function renderReport(value: ReviewReport, entries = TIMELINE) {
   const onSelectEvidence = vi.fn();
+  const onOverride = vi.fn();
   render(
     <ReportView
       report={value}
       evidenceContext={buildEvidenceContext(entries)}
       onSelectEvidence={onSelectEvidence}
+      onOverride={onOverride}
     />,
   );
   fireEvent.click(screen.getByRole("tab", { name: "기준별 평가" }));
-  return { onSelectEvidence };
+  return { onSelectEvidence, onOverride };
 }
 
 describe("evidence traceability", () => {
@@ -368,5 +375,38 @@ describe("evidence traceability", () => {
 
     expect(document.querySelector("video")?.currentTime).toBe(121);
     expect(play).toHaveBeenCalled();
+  });
+  it("records the reviewer's own reason when they overrule the AI, not a fixed string", () => {
+    // The API always accepted a real reason; the console used to send
+    // "기업 검토자가 평가 상태를 수정함" for every override, which records the fact and loses the
+    // only part a later reader needs. Disagreement with a score is exactly where "why" matters.
+    const { onOverride } = renderReport(report());
+
+    fireEvent.change(screen.getByLabelText("사람 평가 1"), {
+      target: { value: "needs_follow_up" },
+    });
+    fireEvent.change(screen.getByLabelText("수정 사유 1"), {
+      target: { value: "인용된 답변이 복구 판단까지는 설명하지 않습니다." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "사람 평가 저장" }));
+
+    expect(onOverride).toHaveBeenCalledWith(
+      "item-1",
+      "needs_follow_up",
+      "인용된 답변이 복구 판단까지는 설명하지 않습니다.",
+    );
+  });
+
+  it("will not submit an override without a reason", () => {
+    const { onOverride } = renderReport(report());
+
+    fireEvent.change(screen.getByLabelText("사람 평가 1"), {
+      target: { value: "insufficient_evidence" },
+    });
+
+    const save = screen.getByRole("button", { name: "사람 평가 저장" });
+    expect(save.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(save);
+    expect(onOverride).not.toHaveBeenCalled();
   });
 });

@@ -70,6 +70,56 @@ def _aware(value: datetime) -> datetime:
     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
+def _scoring_inputs(report: Report) -> dict[str, object]:
+    """Record the arithmetic that produced this report's score.
+
+    The score a reviewer reads is protected by ``report_items.criterion_weight`` and
+    ``axis_weights``, not by this: those are frozen per item and the display path re-derives
+    from them, so a company adjusting its weights next month cannot change a number someone
+    already acted on. What this adds is the arithmetic *as it ran* -- which re-derivation cannot
+    reproduce if the arithmetic changes -- and an answer to "why 74?" that survives the version
+    it came from being superseded or deleted.
+
+    ``numerator`` and ``denominator`` are kept even though they are recoverable from the
+    contributions, because they are what the calculator renders (``55.7 ÷ 0.75 = 74``).
+
+    No reader yet. Deliberately written before there is one: the values are only useful if they
+    were captured at generation time, and a report is immutable, so a column added later would
+    be empty for every report that already exists.
+    """
+    aggregate = report.criterion_aggregate
+    return {
+        "criteria": [
+            {
+                "criterion_id": contribution.key,
+                "score": contribution.score,
+                "weight": contribution.weight,
+                "normalized_weight": contribution.normalized_weight,
+                "contribution": contribution.contribution,
+            }
+            for contribution in aggregate.contributions
+        ],
+        # Excluded criteria carry weight but no score. Recorded here so the calculator can show
+        # the shortfall against 1.0 with a reason next to it, rather than a divisor that appears
+        # from nowhere.
+        "excluded": [
+            {
+                "criterion_id": exclusion.key,
+                "weight": exclusion.weight,
+                "normalized_weight": exclusion.normalized_weight,
+            }
+            for exclusion in aggregate.exclusions
+        ],
+        "numerator": aggregate.numerator,
+        "denominator": aggregate.denominator,
+        "axis_weights": {
+            str(item.criterion_id): dict(item.axis_weights)
+            for item in report.items
+            if item.axis_weights
+        },
+    }
+
+
 def _stored_axes(axes: tuple[AxisAssessment, ...]) -> list[dict[str, object]]:
     return [
         {
@@ -193,6 +243,18 @@ class ReportRow(Base):
     config_version: Mapped[str] = mapped_column(String(100))
     status: Mapped[str] = mapped_column(String(30))
     summary: Mapped[str] = mapped_column(Text)
+    #: The weighted score, denormalised onto the row so the applicant list can sort and filter
+    #: on it in one query. It is derived from the items, but recomputing it per row would make
+    #: the invitation list load every report's items to order a column.
+    #:
+    #: Nullable because a report where nothing could be scored has no score -- never zero,
+    #: which would read as "every answer was wrong".
+    overall_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: The arithmetic this report was produced with: the weights, the numerator, the divisor and
+    #: what was excluded. Frozen, for the same reason the report itself is immutable -- a company
+    #: adjusting its weights next month must not silently change a score a reviewer already
+    #: acted on, and "why 74?" has to stay answerable from the report alone.
+    scoring_inputs: Mapped[dict[str, object]] = mapped_column(JSON, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
@@ -222,6 +284,13 @@ class ReportItemRow(Base):
     #: The model's per-axis scores, stored as one JSON array rather than a child table:
     #: they are read and written with their item and never queried across reports.
     axis_assessments: Mapped[list[dict[str, object]]] = mapped_column(JSON, server_default="[]")
+    #: What this criterion counted for, snapshotted from the published version. 1.0 for rows
+    #: written before weights were applied, which with every row at 1.0 reproduces the plain
+    #: mean those reports were scored with.
+    criterion_weight: Mapped[float] = mapped_column(Float, server_default="1.0")
+    #: What each axis counted for within this criterion. Empty means equal weight, on the same
+    #: reasoning.
+    axis_weights: Mapped[dict[str, float]] = mapped_column(JSON, server_default="{}")
 
 
 class EvidenceRow(Base):
@@ -550,6 +619,20 @@ class SQLAlchemyReportingRepository:
                 config_version=report.config_version,
                 status=report.status.value,
                 summary=report.summary,
+                # Recorded here from the weights the items carry. Note that the read path does
+                # *not* use it: `_report_view` and the invitation projection both call
+                # `Report.overall_score`, which re-derives the figure from
+                # `report_items.criterion_weight`. That is safe -- those weights are frozen per
+                # item, so a company re-weighting its criteria cannot move a stored report's
+                # score, which is the guarantee this track set out to make.
+                #
+                # What the column and `scoring_inputs` add is a record of the arithmetic as it
+                # ran, which re-derivation cannot reproduce if the arithmetic itself ever
+                # changes (rounding, normalisation). Nothing reads them yet; making the stored
+                # value authoritative on read is a separate change, and it needs a test that
+                # compares the two rather than trusting that they agree.
+                overall_score=report.overall_score,
+                scoring_inputs=_scoring_inputs(report),
                 created_at=report.created_at,
             )
         )
@@ -574,6 +657,8 @@ class SQLAlchemyReportingRepository:
                     uncertainty=item.uncertainty,
                     follow_up_question=item.follow_up_question,
                     axis_assessments=_stored_axes(item.axis_assessments),
+                    criterion_weight=item.criterion_weight,
+                    axis_weights=dict(item.axis_weights),
                 )
             )
         self._session.flush()
@@ -655,6 +740,13 @@ class SQLAlchemyReportingRepository:
                 evidence=tuple(evidence_by_item[item.report_item_id]),
                 follow_up_question=item.follow_up_question,
                 axis_assessments=_restored_axes(item.axis_assessments),
+                # A row written before weights existed holds the column default, and a legacy
+                # row can hold SQL NULL. Both mean "not weighted", which the domain reads as
+                # equal -- the arithmetic those reports were actually scored with.
+                criterion_weight=(
+                    item.criterion_weight if item.criterion_weight is not None else 1.0
+                ),
+                axis_weights=dict(item.axis_weights or {}),
             )
             for item in item_rows
         ]

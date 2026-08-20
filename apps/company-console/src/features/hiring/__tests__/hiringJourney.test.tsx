@@ -173,6 +173,16 @@ describe("HiringWorkspace", () => {
       prohibitedTopics: ["가족관계", "출신지역", "혼인·임신 여부", "외모"],
       interviewDurationMinutes: 30,
       interviewLevel: "senior",
+      // All five, always, and totalling 100. The API accepts an empty mapping as equal weight
+      // but refuses a partial one, so sending fewer than five would be a 422 rather than a
+      // default.
+      axisWeights: {
+        correctness: 20,
+        depth: 20,
+        fundamentals: 20,
+        ownership: 20,
+        communication: 20,
+      },
       personaDefinition: {
         name: "심층형 면접관",
         tone: "concise",
@@ -241,5 +251,58 @@ describe("HiringWorkspace", () => {
     expect((screen.getByLabelText("가중치 2") as HTMLInputElement).value).toBe(
       "65",
     );
+  });
+
+  it("keeps the five scoring axes at a total of 100 and sends all of them", async () => {
+    // The axes are fixed and the domain requires the five weights to total 100, so dragging one
+    // has to redistribute the rest. Sending a partial mapping would be a 422, not a default.
+    const api = createApi();
+    await advanceToEvaluation(api);
+
+    fireEvent.change(screen.getByLabelText("깊이 비중 직접 입력"), {
+      target: { value: "40" },
+    });
+
+    expect(screen.getByText("비중 합계").parentElement?.textContent).toBe(
+      "비중 합계100",
+    );
+    expect((screen.getByLabelText("깊이 비중") as HTMLInputElement).value).toBe(
+      "40",
+    );
+    // The untouched four keep their ratios to each other -- they were equal, so they stay equal.
+    expect(
+      (screen.getByLabelText("정확성 비중") as HTMLInputElement).value,
+    ).toBe("15");
+
+    fireEvent.change(screen.getByLabelText("CS 기본기 비중 직접 입력"), {
+      target: { value: "0" },
+    });
+
+    expect(screen.getByText("비중 합계").parentElement?.textContent).toBe(
+      "비중 합계100",
+    );
+    expect(
+      (screen.getByLabelText("CS 기본기 비중") as HTMLInputElement).value,
+    ).toBe("0");
+  });
+
+  it("axes cannot be added or removed by the recruiter", async () => {
+    // A company expresses what it values by which 평가기준 it asks about. The axes describe how
+    // an answer is read, and each carries the guidance the scoring prompt is built from, so
+    // there is deliberately no control here to add one.
+    const api = createApi();
+    await advanceToEvaluation(api);
+
+    expect(screen.getByText("답변을 읽는 다섯 가지 축")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /채점축 추가/ })).toBeNull();
+    for (const label of [
+      "정확성",
+      "깊이",
+      "CS 기본기",
+      "본인 기여",
+      "설명력",
+    ]) {
+      expect(screen.getByLabelText(`${label} 비중`)).toBeTruthy();
+    }
   });
 });

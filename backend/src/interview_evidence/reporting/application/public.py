@@ -22,6 +22,15 @@ class ReviewProjection:
     report_id: UUID | None
     report_status: str
     human_decision_status: str | None
+    #: The weighted score, so a position's applicant list can rank on it. None when nothing
+    #: could be scored -- never zero, which would sort a candidate we could not assess below
+    #: one who answered badly.
+    overall_score: int | None = None
+    #: How much of the configuration the score covers, as a count of criteria. Sent with the
+    #: score because two candidates whose interviews reached different criteria do not have
+    #: comparable numbers, and a ranked list has to say so.
+    scored_criteria_count: int = 0
+    total_criteria_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +74,11 @@ class ReportingPublic:
             report_id=report.report_id,
             report_status=report.status.value,
             human_decision_status=(decisions[-1].value.get("decision") if decisions else None),
+            # Free: `get_report_for_invitation` above already loaded the whole report with its
+            # items, so these are property reads rather than another query.
+            overall_score=report.overall_score,
+            scored_criteria_count=len(report.scored_items),
+            total_criteria_count=len(report.items),
         )
 
     def get_report(

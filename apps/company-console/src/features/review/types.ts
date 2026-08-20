@@ -45,6 +45,50 @@ export type AxisAssessment = {
   score: number | null;
   rationale: string;
   quotedEvidenceIds: string[];
+  /** What this axis counted for. Null on reports scored before weights existed. */
+  weight: number | null;
+};
+
+/** One scored row of a calculator: `score × normalizedWeight = contribution`. */
+export type ScoreContribution = {
+  /** Criterion id at report level, axis key at criterion level. */
+  key: string;
+  score: number;
+  weight: number;
+  normalizedWeight: number;
+  contribution: number;
+  criterionName: string | null;
+  assessmentState: AssessmentState | null;
+  reason: string | null;
+};
+
+/**
+ * Something that carried weight but could not be scored.
+ *
+ * Rendered, never hidden: it is the difference between the denominator and 1.0, and without it
+ * on screen the divisor appears from nowhere.
+ */
+export type ScoreExclusion = {
+  key: string;
+  weight: number;
+  normalizedWeight: number;
+  criterionName: string | null;
+  assessmentState: AssessmentState | null;
+  reason: string | null;
+};
+
+/**
+ * The arithmetic behind a score.
+ *
+ * `denominator` is the field that cannot be inferred from the score alone: 82 out of the whole
+ * interview and 82 out of the 70% of it that could be judged are different claims, and the
+ * calculator has to show which one it is.
+ */
+export type ScoreBreakdown = {
+  numerator: number;
+  denominator: number;
+  contributions: ScoreContribution[];
+  exclusions: ScoreExclusion[];
 };
 
 export type ReviewReportItem = {
@@ -58,15 +102,21 @@ export type ReviewReportItem = {
   averageScore: number | null;
   axisAssessments: AxisAssessment[];
   evidence: EvidenceRange[];
+  /** What this criterion counted for in the report score. 1 when nothing was weighted. */
+  criterionWeight: number;
+  /** How `averageScore` was reached from the axes, with the axes it could not judge. */
+  axisBreakdown: ScoreBreakdown | null;
 };
 
 export type ReviewReport = {
   summary: string;
   status: string;
-  /** Mean across the criteria that could be scored. Never a hiring verdict. */
+  /** Weighted mean across the criteria that could be scored. Never a hiring verdict. */
   overallScore: number | null;
   /** Read beside `overallScore` so the number is not mistaken for the whole interview. */
   unscoredCriteriaCount: number;
+  /** How `overallScore` was reached, and what it leaves out. Null on pre-scoring reports. */
+  scoringBreakdown: ScoreBreakdown | null;
   items: ReviewReportItem[];
 };
 

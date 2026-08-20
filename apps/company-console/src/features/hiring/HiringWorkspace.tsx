@@ -329,6 +329,9 @@ export function toCriteriaConfiguration(
     prohibitedTopics: splitCommaSeparated(draft.prohibitedTopics),
     interviewDurationMinutes: draft.interviewDurationMinutes,
     interviewLevel: draft.interviewLevel,
+    // Copied rather than passed through: the draft stays editable after the publish request is
+    // built, and a shared reference would let a later keystroke change what was sent.
+    axisWeights: { ...draft.axisWeights },
     personaDefinition: {
       name: draft.interviewerName,
       tone: draft.interviewerTone,

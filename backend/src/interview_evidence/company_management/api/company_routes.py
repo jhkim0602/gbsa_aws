@@ -3,7 +3,7 @@ from typing import Annotated, Protocol
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from interview_evidence.company_management.adapters.company_auth import CompanyAuthAdapter
 from interview_evidence.company_management.application.company_service import CompanyService
@@ -172,6 +172,16 @@ class CompetencyModelVersionCreate(BaseModel):
     prohibited_topics: tuple[str, ...]
     interview_duration_minutes: int = Field(ge=10, le=120)
     interview_level: InterviewLevel = DEFAULT_INTERVIEW_LEVEL
+    #: Declared here because `model_config` forbids extras: the console posts this field, and
+    #: without it the whole publish request is rejected as `extra_forbidden` rather than the
+    #: weights merely being dropped. The five sliders are the only way a company sets them.
+    #:
+    #: Deliberately unvalidated beyond its type, unlike the criterion total below.
+    #: `CompetencyModelVersion` refuses an unknown key, a partial mapping, a negative weight and
+    #: a total that is not 100, and the route turns that ValueError into a 422 carrying the
+    #: reason. Four rules restated here would be four more places to drift, and a drifted weight
+    #: rule produces a wrong score rather than an error.
+    axis_weights: dict[str, float] = Field(default_factory=dict)
     persona_definition: InterviewerPersonaDefinitionInput | None = None
 
     @model_validator(mode="after")
@@ -189,6 +199,23 @@ class CompetencyModelVersionView(CompetencyModelVersionCreate):
     status: str
     row_version: int
     published_at: datetime | None
+
+    @model_validator(mode="after")
+    def criterion_weights_total_one_hundred(self) -> "CompetencyModelVersionView":
+        """Overrides the request rule to nothing: a response describes what *is* stored.
+
+        This class inherits the field shape from the request model, which is convenient and was
+        also a defect -- the "weights total 100" rule came with it and ran while *serialising*.
+        Nothing enforced a total before ``m_013``, so versions stored with any total are the
+        normal case, and refusing to serialise them turned the criteria list into a 500 rather
+        than a list. Reading them is safe: ``scoring.aggregate`` divides by whatever the weights
+        total, so 30/25/20 already scores as the 40%/33%/27% the recruiter set.
+
+        The rule itself is not weakened. It still rejects a submitted version here, and
+        ``CompetencyModelVersion.create`` rejects one that reaches the domain by any other
+        route, so nothing new can be stored with a total that is not 100.
+        """
+        return self
 
 
 class CompetencyModelVersionPage(BaseModel):
@@ -227,6 +254,15 @@ class InvitationView(BaseModel):
     interview_status: str | None = None
     report_status: str | None = None
     interview_session_id: UUID | None = None
+    #: The weighted score from the report, so a position's applicant list can rank on it.
+    #: None until a report exists, and None when nothing in it could be scored -- never zero,
+    #: which would sort an applicant we could not assess below one who answered badly.
+    overall_score: int | None = None
+    #: How many of the position's criteria the score covers. Sent with the score because two
+    #: applicants whose interviews reached different criteria do not have comparable numbers,
+    #: and a ranked column has to be able to say so.
+    scored_criteria_count: int | None = None
+    total_criteria_count: int | None = None
 
 
 class InvitationSessionSnapshot(Protocol):
@@ -249,6 +285,15 @@ class InvitationSessionResolver(Protocol):
 class InvitationReviewSnapshot(Protocol):
     @property
     def report_status(self) -> str: ...
+
+    @property
+    def overall_score(self) -> int | None: ...
+
+    @property
+    def scored_criteria_count(self) -> int: ...
+
+    @property
+    def total_criteria_count(self) -> int: ...
 
 
 class InvitationReviewResolver(Protocol):
@@ -551,6 +596,7 @@ def create_company_router(
                 prohibited_topics=body.prohibited_topics,
                 interview_duration_minutes=body.interview_duration_minutes,
                 interview_level=body.interview_level,
+                axis_weights=body.axis_weights,
                 persona_definition=(
                     body.persona_definition.model_dump(mode="json")
                     if body.persona_definition is not None
@@ -562,7 +608,8 @@ def create_company_router(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
         except ValueError as error:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(error)
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=_domain_error_detail(error),
             ) from error
         audit.append(
             scope.context,
@@ -1054,6 +1101,52 @@ def _interviewer_profile_view(profile: InterviewerProfile) -> InterviewerProfile
     )
 
 
+def _domain_error_detail(error: ValueError) -> str:
+    """The reason a domain rule refused a request, without pydantic's frame around it.
+
+    ``CompetencyModelVersion`` rejects a bad weight mapping from a ``model_validator``, so what
+    reaches the route is a ``ValidationError`` whose ``str()`` is four lines of type tags, an
+    input dump and a documentation URL. ``companyClient`` hands ``detail`` straight to the
+    console, and the recruiter needs "axis weights must total 100, got 50" -- the sentence the
+    validator wrote -- not the envelope it travelled in.
+
+    A plain ``ValueError`` is already that sentence and passes through untouched.
+    """
+    if not isinstance(error, ValidationError):
+        return str(error)
+    reasons = [
+        str(item["msg"]).removeprefix("Value error, ") for item in error.errors(include_url=False)
+    ]
+    return "; ".join(reasons) or str(error)
+
+
+def _persona_view(
+    persona_definition: dict[str, object],
+) -> InterviewerPersonaDefinitionInput | None:
+    """A recruiter-defined interviewer persona, or ``None`` for the system-managed default.
+
+    ``CompetencyModelVersion`` defaults ``persona_definition`` to
+    ``{"mode": "system_managed", "tone": "neutral", "voice_id": "Seoyeon"}``, which is not an
+    ``InterviewerPersonaDefinition``: it has no ``name``, ``neutral`` is not one of the four
+    tones, and ``mode`` is an extra key. Passing it through raised a ValidationError while
+    building the *response*, so every version published without a persona -- both of the ones
+    on the workstation this was found on -- turned the criteria list into a 500.
+
+    ``None`` rather than an invented persona, because that is what the shape means and what the
+    console already does with it: ``toCompanyPersona`` in ``routeAdapters.tsx`` returns
+    ``undefined`` for exactly these three reasons, and ``persona_definition`` is not in the
+    contract's required list.
+
+    Swallowing the error is safe here because a recruiter's persona cannot arrive malformed:
+    ``InterviewerPersonaDefinitionInput`` validates it on the way in, so anything that fails on
+    the way out was written by the domain default rather than by a company.
+    """
+    try:
+        return InterviewerPersonaDefinitionInput.model_validate(persona_definition)
+    except ValidationError:
+        return None
+
+
 def _criterion_view(version: CompetencyModelVersion) -> CompetencyModelVersionView:
     return CompetencyModelVersionView(
         competency_model_version_id=version.competency_model_version_id,
@@ -1072,7 +1165,11 @@ def _criterion_view(version: CompetencyModelVersion) -> CompetencyModelVersionVi
         prohibited_topics=version.prohibited_topics,
         interview_duration_minutes=version.interview_duration_minutes,
         interview_level=version.interview_level,
-        persona_definition=version.persona_definition,
+        # Read back so the wizard reopens on the weights that were saved rather than on the
+        # equal split an empty mapping means. Without this the sliders silently reset to 20
+        # each on the second visit, which reads as the company having chosen that.
+        axis_weights=version.axis_weights,
+        persona_definition=_persona_view(version.persona_definition),
         status=version.status.value,
         row_version=version.row_version,
         published_at=version.published_at,
@@ -1116,4 +1213,9 @@ def _invitation_view(
         interview_status=session.state if session is not None else None,
         report_status=review.report_status if review is not None else None,
         interview_session_id=(session.interview_session_id if session is not None else None),
+        overall_score=review.overall_score if review is not None else None,
+        # None rather than 0 when there is no report: 0 of 0 would render as a coverage figure
+        # for an interview that has not happened.
+        scored_criteria_count=(review.scored_criteria_count if review is not None else None),
+        total_criteria_count=(review.total_criteria_count if review is not None else None),
     )
