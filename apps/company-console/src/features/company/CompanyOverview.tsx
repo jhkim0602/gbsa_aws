@@ -25,6 +25,7 @@ import {
   STATUS_BADGE_TONE,
 } from "../../app/styles/primitives";
 import { statusLabel, statusTone } from "./companyFormatters";
+import { applicantWorkspacePath } from "./applicantSummary";
 import { displayApplicant, invitationProjection } from "./recruitingState";
 import type {
   CompanyInvitationStatus,
@@ -632,7 +633,7 @@ function ApplicantActivityRow({ activity }: { activity: ApplicantActivity }) {
   return (
     <Link
       className={ACTIVITY_ROW}
-      to={`/positions/${invitation.positionId}/applicants/${invitation.invitationId}`}
+      to={applicantWorkspacePath(invitation)}
       aria-label={`${displayApplicant(invitation)} ${activity.title}`}
     >
       <span className="inline-flex items-center gap-1.5 font-mono text-[8px] text-muted">

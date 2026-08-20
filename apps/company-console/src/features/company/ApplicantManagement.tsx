@@ -22,7 +22,10 @@ import {
   invitationTone,
 } from "../../app/styles/primitives";
 import { invitationStatusMeta } from "../hiring/PositionInvitations";
-import { summarizeApplicantPipeline } from "./applicantSummary";
+import {
+  applicantWorkspacePath,
+  summarizeApplicantPipeline,
+} from "./applicantSummary";
 import type {
   CompanyDeletionStatus,
   CompanyInvitation,
@@ -481,7 +484,7 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
                 >
                   <Link
                     className={`grid min-h-16 grid-cols-[minmax(240px,1.1fr)_minmax(170px,0.8fr)_140px_120px] items-center px-5 py-3 hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-brand mw-720:grid-cols-[44px_minmax(0,1fr)_auto] mw-720:gap-x-3 mw-720:gap-y-2 ${deletionActive ? "pointer-events-none opacity-60" : ""}`}
-                    to={`/positions/${invitation.positionId}/applicants/${invitation.invitationId}`}
+                    to={applicantWorkspacePath(invitation)}
                     aria-label={`${displayName} 리포트 열기`}
                     aria-disabled={deletionActive}
                   >

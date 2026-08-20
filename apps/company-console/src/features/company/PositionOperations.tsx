@@ -40,7 +40,10 @@ import {
   STATUS_BADGE,
   STATUS_BADGE_TONE,
 } from "../../app/styles/primitives";
-import { summarizeApplicantPipeline } from "./applicantSummary";
+import {
+  applicantWorkspacePath,
+  summarizeApplicantPipeline,
+} from "./applicantSummary";
 import { statusLabel, statusTone } from "./companyFormatters";
 import { PositionDashboard } from "./PositionDashboard";
 import { PositionQuickEditModal } from "./PositionSettings";
@@ -466,7 +469,6 @@ export function PositionOperations({
             aria-labelledby="position-tab-applicants"
           >
             <ApplicantRoster
-              position={position}
               invitations={positionInvitations}
               insights={weightedInsights}
               onInvite={() => setInvitationModalOpen(true)}
@@ -566,12 +568,10 @@ export function PositionOperations({
 }
 
 function ApplicantRoster({
-  position,
   invitations,
   insights,
   onInvite,
 }: {
-  position: CompanyPosition;
   invitations: readonly CompanyInvitation[];
   insights: readonly CompanyApplicantInsight[];
   onInvite(): void;
@@ -652,7 +652,7 @@ function ApplicantRoster({
               <Link
                 className="group grid min-h-[70px] grid-cols-[minmax(160px,0.7fr)_minmax(210px,1fr)_90px_100px] items-center gap-3 border-b border-border-muted px-5 py-3 last:border-b-0 hover:bg-surface-muted mw-720:grid-cols-[minmax(0,1fr)_64px]"
                 key={invitation.invitationId}
-                to={`/positions/${position.positionId}/applicants/${invitation.invitationId}`}
+                to={applicantWorkspacePath(invitation)}
                 aria-label={`${displayName} 리포트 열기`}
               >
                 <span className="grid min-w-0 grid-cols-[34px_minmax(0,1fr)] items-center gap-2.5">

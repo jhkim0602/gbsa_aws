@@ -37,8 +37,6 @@ import {
 } from "../features/submissions";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
-const COMPANY_CONSOLE_URL =
-  import.meta.env.VITE_COMPANY_CONSOLE_URL ?? "http://127.0.0.1:5173";
 
 const AUTOMATED_EQUIPMENT_RESULT: EquipmentCheckResult = {
   camera: { status: "ready" },
@@ -645,14 +643,6 @@ export function InterviewRoute() {
       interviewerLevel={interviewerLevel}
       automationMode={automationMode}
       onComplete={() => {
-        if (automationMode) {
-          const reviewUrl = new URL(
-            `/review/${session.sessionId}?auto=1`,
-            COMPANY_CONSOLE_URL,
-          );
-          window.location.assign(reviewUrl.toString());
-          return;
-        }
         navigate("/interview/complete", { replace: true });
       }}
     />

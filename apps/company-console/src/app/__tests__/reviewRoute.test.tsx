@@ -111,61 +111,66 @@ describe("ReviewRoute", () => {
     expect(screen.queryByText("0점")).toBeNull();
   });
 
-  it("polls until an automated interview report is ready", async () => {
-    vi.useFakeTimers();
-    try {
-      let reportRequests = 0;
-      vi.stubGlobal(
-        "fetch",
-        vi.fn((input: RequestInfo | URL) => {
-          const url = String(input);
-          if (url.endsWith("/timeline")) {
+  it.each([
+    ["auto=1", "자동 면접이 끝났습니다. 최종 리포트를 생성하고 있습니다."],
+    [
+      `invitationId=${INVITATION_ID}`,
+      "면접이 끝났습니다. 최종 리포트를 생성하고 있습니다.",
+    ],
+  ])(
+    "polls until a completed interview report is ready",
+    async (search, message) => {
+      vi.useFakeTimers();
+      try {
+        let reportRequests = 0;
+        vi.stubGlobal(
+          "fetch",
+          vi.fn((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.endsWith("/timeline")) {
+              return Promise.resolve(
+                new Response(JSON.stringify(TIMELINE_PAYLOAD), {
+                  status: 200,
+                  headers: { "Content-Type": "application/json" },
+                }),
+              );
+            }
+            reportRequests += 1;
+            const pending = reportRequests === 1;
             return Promise.resolve(
-              new Response(JSON.stringify(TIMELINE_PAYLOAD), {
-                status: 200,
-                headers: { "Content-Type": "application/json" },
-              }),
-            );
-          }
-          reportRequests += 1;
-          const pending = reportRequests === 1;
-          return Promise.resolve(
-            new Response(
-              JSON.stringify(
-                pending
-                  ? { status: "queued", retryable: true, message: null }
-                  : reportPayload("자동 면접 검증"),
+              new Response(
+                JSON.stringify(
+                  pending
+                    ? { status: "queued", retryable: true, message: null }
+                    : reportPayload("자동 면접 검증"),
+                ),
+                {
+                  status: pending ? 202 : 200,
+                  headers: { "Content-Type": "application/json" },
+                },
               ),
-              {
-                status: pending ? 202 : 200,
-                headers: { "Content-Type": "application/json" },
-              },
-            ),
-          );
-        }),
-      );
+            );
+          }),
+        );
 
-      renderReview("auto=1");
-      await act(async () => {
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-      expect(
-        screen.getByText(
-          "자동 면접이 끝났습니다. 최종 리포트를 생성하고 있습니다.",
-        ),
-      ).toBeTruthy();
+        renderReview(search);
+        await act(async () => {
+          await Promise.resolve();
+          await Promise.resolve();
+        });
+        expect(screen.getByText(message)).toBeTruthy();
 
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(2000);
-      });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(2000);
+        });
 
-      expect(
-        screen.getByRole("rowheader", { name: "자동 면접 검증" }),
-      ).toBeTruthy();
-      expect(reportRequests).toBe(2);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
+        expect(
+          screen.getByRole("rowheader", { name: "자동 면접 검증" }),
+        ).toBeTruthy();
+        expect(reportRequests).toBe(2);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 });

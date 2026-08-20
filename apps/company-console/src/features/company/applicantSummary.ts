@@ -22,3 +22,16 @@ export function summarizeApplicantPipeline(
     { total: 0, inProgress: 0, reviewPending: 0, completed: 0 },
   );
 }
+
+export function applicantWorkspacePath(invitation: CompanyInvitation): string {
+  if (
+    invitation.interviewSessionId &&
+    (invitation.status === "completed" || invitation.status === "reviewed")
+  ) {
+    const search = new URLSearchParams({
+      invitationId: invitation.invitationId,
+    });
+    return `/review/${invitation.interviewSessionId}?${search.toString()}`;
+  }
+  return `/positions/${invitation.positionId}/applicants/${invitation.invitationId}`;
+}

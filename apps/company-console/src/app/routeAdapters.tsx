@@ -801,6 +801,7 @@ export function ReviewRoute() {
   const automatedReview = import.meta.env.DEV && search.get("auto") === "1";
   const [report, setReport] = useState<ReportResponse | null>(null);
   const [timeline, setTimeline] = useState<TimelineResponse | null>(null);
+  const [reportPending, setReportPending] = useState(false);
   const [error, setError] = useState(false);
   const authenticated =
     !AUTH_CONFIG || Boolean(getCompanyAccessToken(localStorage));
@@ -824,18 +825,20 @@ export function ReviewRoute() {
         if (!isPendingReport(nextReport)) {
           setReport(nextReport);
           setTimeline(nextTimeline);
+          setReportPending(false);
           setError(false);
           return;
         }
-        if (automatedReview) {
-          retryTimer = window.setTimeout(() => void loadReview(), 2000);
-        }
+        setReportPending(true);
+        retryTimer = window.setTimeout(() => void loadReview(), 2000);
       } catch {
         if (!active) return;
         if (automatedReview) {
+          setReportPending(true);
           retryTimer = window.setTimeout(() => void loadReview(), 2000);
           return;
         }
+        setReportPending(false);
         setError(true);
       }
     }
@@ -921,8 +924,8 @@ export function ReviewRoute() {
             <p className="text-[12px]">
               {error
                 ? "리포트를 불러올 수 없습니다. 잠시 후 다시 시도해 주세요."
-                : automatedReview
-                  ? "자동 면접이 끝났습니다. 최종 리포트를 생성하고 있습니다."
+                : automatedReview || reportPending
+                  ? `${automatedReview ? "자동 면접" : "면접"}이 끝났습니다. 최종 리포트를 생성하고 있습니다.`
                   : "리포트와 영상 타임라인을 불러오는 중입니다."}
             </p>
           </div>
