@@ -903,33 +903,30 @@ class SqlAlchemySubmissionRepository:
         self, context: TenantContext, strategy: InterviewStrategy
     ) -> InterviewStrategy:
         require_tenant_context(context).assert_company(strategy.company_id)
-        self._session.merge(
-            InterviewStrategyRow(
-                interview_strategy_id=strategy.interview_strategy_id,
-                company_id=strategy.company_id,
-                invitation_id=strategy.invitation_id,
-                applicant_id=strategy.applicant_id,
-                competency_model_version_id=strategy.competency_model_version_id,
-                strategy_version=strategy.strategy_version,
-                common_topics=list(strategy.common_topics),
-                verification_points=[
-                    value.model_dump(mode="json") for value in strategy.verification_points
-                ],
-                follow_up_directions=strategy.follow_up_directions,
-                time_budget=strategy.time_budget,
-                required_evidence_plan=strategy.required_evidence_plan,
-                source_reference_candidates=[
-                    value.model_dump(mode="json") for value in strategy.source_reference_candidates
-                ],
-                model_config_version=strategy.model_config_version,
-                status=strategy.status.value,
-            )
+        row = InterviewStrategyRow(
+            interview_strategy_id=strategy.interview_strategy_id,
+            company_id=strategy.company_id,
+            invitation_id=strategy.invitation_id,
+            applicant_id=strategy.applicant_id,
+            competency_model_version_id=strategy.competency_model_version_id,
+            strategy_version=strategy.strategy_version,
+            common_topics=list(strategy.common_topics),
+            verification_points=[
+                value.model_dump(mode="json") for value in strategy.verification_points
+            ],
+            follow_up_directions=strategy.follow_up_directions,
+            time_budget=strategy.time_budget,
+            required_evidence_plan=strategy.required_evidence_plan,
+            source_reference_candidates=[
+                value.model_dump(mode="json") for value in strategy.source_reference_candidates
+            ],
+            model_config_version=strategy.model_config_version,
+            status=strategy.status.value,
         )
-        # Raised as the domain error so the caller does not have to know this is a
-        # `uq_interview_strategies_invitation_version` violation, and so the in-memory
-        # repository can present the same behaviour without a database.
         try:
-            self._session.flush()
+            with self._session.begin_nested():
+                self._session.merge(row)
+                self._session.flush()
         except IntegrityError as error:
             raise DuplicateStrategyVersion(
                 f"strategy version {strategy.strategy_version} already exists "

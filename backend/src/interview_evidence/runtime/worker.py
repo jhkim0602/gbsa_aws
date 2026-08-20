@@ -37,6 +37,7 @@ from interview_evidence.shared.tracing import configure_worker_tracing
 from interview_evidence.submission_analysis.adapters.search import SearchIndex
 from interview_evidence.submission_analysis.api import LaneBRuntime
 from interview_evidence.workers.analysis.event_handler import (
+    AnalysisCompletedEventHandler,
     AnalysisRequestedEventHandler,
 )
 from interview_evidence.workers.analysis.git_fetch import (
@@ -89,7 +90,7 @@ class WorkerRuntime:
     def _run_without_transaction(self) -> int:
         completed = self.dispatcher.dispatch_once()
         for consumer in self.consumers:
-            completed += consumer.consume_once(max_messages=10)
+            completed += consumer.consume_once(max_messages=1)
         return completed
 
 
@@ -394,21 +395,22 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
         environment,
         object_storage=aws.object_storage,
     )
-    analysis_handler = AnalysisJobHandler(
-        SubmissionAnalysisPipeline(
-            repository=lane_b.repository,
-            extractor=document_extractor,
-            search_index=search_index,
-            text_embedder=aws.embedder,
-            strategy_model=aws.model,
-            axis_provider=CompanyAnalysisAxisProvider(company),
-            outbox=outbox,
-            clock=clock,
-            git_fetcher=BoundedGitFetcher(
-                GitHubPublicTransport(token=environment.get("GITHUB_TOKEN")),
-                GitFetchLimits(),
-            ),
+    analysis_pipeline = SubmissionAnalysisPipeline(
+        repository=lane_b.repository,
+        extractor=document_extractor,
+        search_index=search_index,
+        text_embedder=aws.embedder,
+        strategy_model=aws.model,
+        axis_provider=CompanyAnalysisAxisProvider(company),
+        outbox=outbox,
+        clock=clock,
+        git_fetcher=BoundedGitFetcher(
+            GitHubPublicTransport(token=environment.get("GITHUB_TOKEN")),
+            GitFetchLimits(),
         ),
+    )
+    analysis_handler = AnalysisJobHandler(
+        analysis_pipeline,
         outbox,
         clock,
         max_attempts=3,
@@ -421,6 +423,11 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
             "submission.analysis_requested": AnalysisRequestedEventHandler(
                 lane_b,
                 analysis_handler,
+                company,
+            ),
+            "submission.analysis_completed": AnalysisCompletedEventHandler(
+                lane_b,
+                analysis_pipeline,
                 company,
             ),
             "interview.completed": InterviewCompletedEventHandler(

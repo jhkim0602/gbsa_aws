@@ -36,6 +36,10 @@ from interview_evidence.submission_analysis.domain.source import (
     SourceReferenceCandidate,
     SubmissionChunk,
 )
+from interview_evidence.submission_analysis.domain.strategy import (
+    InterviewStrategy,
+    StrategyStatus,
+)
 from interview_evidence.submission_analysis.domain.submission import (
     AnalysisStatus,
     SourceType,
@@ -83,6 +87,7 @@ RETRYABLE_SOURCE_CODES = frozenset(
     }
 )
 SOURCE_FAILURE_SUMMARY = "제출 자료를 분석할 수 없어 해당 자료는 면접 준비에서 제외됩니다."
+SOURCE_CANDIDATE_CLAIM = "source_reference_candidate"
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,20 +223,16 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
         )
         self._index_criterion_axis(context, axis)
         occurred_at = self._clock.now()
-        analysis = self._repository.save_analysis(
-            context,
-            SubmissionAnalysis(
-                analysis_id=new_uuid7(occurred_at),
-                company_id=context.company_id,
-                submission_id=submission.submission_id,
-                analysis_version=job.analysis_version,
-                extractor_version=self._extractor.extractor_version,
-                chunk_config_version="document-chunks-v1",
-                claims=({"type": "document_extracted", "chunk_count": len(drafts)},),
-                verification_points=({"type": "answer_verification", "source": "document"},),
-                status=AnalysisStatus.READY,
-                created_at=occurred_at,
-            ),
+        analysis = SubmissionAnalysis(
+            analysis_id=new_uuid7(occurred_at),
+            company_id=context.company_id,
+            submission_id=submission.submission_id,
+            analysis_version=job.analysis_version,
+            extractor_version=self._extractor.extractor_version,
+            chunk_config_version="document-chunks-v1",
+            verification_points=({"type": "answer_verification", "source": "document"},),
+            status=AnalysisStatus.READY,
+            created_at=occurred_at,
         )
         chunks = tuple(
             SubmissionChunk(
@@ -290,13 +291,15 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     ownership_confidence=1.0,
                 )
             )
-        self._generate_strategy(context, submission=submission, axis=axis, candidates=candidates)
-        self._build_verification_map(
+        analysis = self._repository.save_analysis(
             context,
-            submission=submission,
-            axis=axis,
-            material_version=(
-                f"submission-{submission.submission_id}-analysis-{job.analysis_version}"
+            analysis.model_copy(
+                update={
+                    "claims": (
+                        {"type": "document_extracted", "chunk_count": len(drafts)},
+                        *(self._candidate_claim(candidate) for candidate in candidates),
+                    )
+                }
             ),
         )
         self._repository.save_submission(
@@ -553,6 +556,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                         "commit_count": len(commits),
                         "code_unit_count": len(code_units),
                     },
+                    *(self._candidate_claim(candidate) for candidate in candidates),
                 ),
                 verification_points=tuple(
                     {
@@ -564,15 +568,6 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                 ),
                 status=AnalysisStatus.READY,
                 created_at=occurred_at,
-            ),
-        )
-        self._generate_strategy(context, submission=submission, axis=axis, candidates=candidates)
-        self._build_verification_map(
-            context,
-            submission=submission,
-            axis=axis,
-            material_version=(
-                f"submission-{submission.submission_id}-analysis-{job.analysis_version}"
             ),
         )
         self._repository.save_git_repository_analysis(
@@ -683,29 +678,73 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                 )
             )
 
+    def finalize_invitation(
+        self,
+        context: TenantContext,
+        *,
+        invitation_id: UUID,
+        applicant_id: UUID,
+        submission_ids: frozenset[UUID],
+    ) -> bool:
+        analyses = self._repository.list_analyses(context, submission_ids)
+        latest_analyses = self._latest_analyses(analyses)
+        candidates = self._candidates_from_analyses(latest_analyses)
+        if not candidates:
+            return False
+        axis = self._axis_provider.get_axis(context, invitation_id=invitation_id)
+        self._index_criterion_axis(context, axis)
+        material_version = self._aggregate_material_version(latest_analyses)
+        strategy, created = self._generate_strategy(
+            context,
+            invitation_id=invitation_id,
+            applicant_id=applicant_id,
+            axis=axis,
+            candidates=candidates,
+        )
+        if strategy is None:
+            return False
+        verification_map = self._repository.latest_verification_map(
+            context,
+            applicant_id=applicant_id,
+            invitation_id=invitation_id,
+            competency_model_version_id=axis.competency_model_version_id,
+        )
+        if (
+            created
+            or verification_map is None
+            or verification_map.material_version != material_version
+        ):
+            self._build_verification_map(
+                context,
+                applicant_id=applicant_id,
+                invitation_id=invitation_id,
+                axis=axis,
+                material_version=material_version,
+            )
+        return strategy.status in {StrategyStatus.READY, StrategyStatus.PARTIAL}
+
     def _generate_strategy(
         self,
         context: TenantContext,
         *,
-        submission: Submission,
+        invitation_id: UUID,
+        applicant_id: UUID,
         axis: AnalysisAxis,
         candidates: list[SourceReferenceCandidate],
-    ) -> None:
-        """Build the interview strategy for this analysis, versioned after the last one.
-
-        An applicant submits several documents and each finished analysis builds a
-        strategy, so this runs more than once per invitation. Pinning the version at 1
-        made the second analysis violate `uq_interview_strategies_invitation_version`,
-        which failed the whole job and left the applicant with no strategy at all -- and
-        therefore unable to enter the interview.
-
-        A concurrent worker can still win the insert between the read and the write. That
-        is a strategy for the same invitation built from the same axis, so the one already
-        stored is kept rather than retrying the analysis.
-        """
-        previous = self._repository.latest_strategy(context, submission.invitation_id)
+    ) -> tuple[InterviewStrategy | None, bool]:
+        previous = self._repository.latest_strategy(context, invitation_id)
+        candidate_ids = frozenset(candidate.source_id for candidate in candidates)
+        if (
+            previous is not None
+            and previous.competency_model_version_id == axis.competency_model_version_id
+            and frozenset(
+                candidate.source_id for candidate in previous.source_reference_candidates
+            )
+            == candidate_ids
+        ):
+            return previous, False
         try:
-            StrategyService(
+            strategy = StrategyService(
                 self._strategy_model,
                 model_config_version="strategy-v1",
                 repository=self._repository,
@@ -713,21 +752,23 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                 clock=self._clock,
             ).generate(
                 context,
-                invitation_id=submission.invitation_id,
-                applicant_id=submission.applicant_id,
+                invitation_id=invitation_id,
+                applicant_id=applicant_id,
                 competency_model_version_id=axis.competency_model_version_id,
                 criterion_ids=axis.criterion_ids,
                 source_candidates=tuple(candidates),
                 strategy_version=1 if previous is None else previous.strategy_version + 1,
             )
+            return strategy, True
         except DuplicateStrategyVersion:
-            return
+            return self._repository.latest_strategy(context, invitation_id), False
 
     def _build_verification_map(
         self,
         context: TenantContext,
         *,
-        submission: Submission,
+        applicant_id: UUID,
+        invitation_id: UUID,
         axis: AnalysisAxis,
         material_version: str,
     ) -> None:
@@ -743,8 +784,8 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
             clock=self._clock,
         ).build(
             context,
-            applicant_id=submission.applicant_id,
-            invitation_id=submission.invitation_id,
+            applicant_id=applicant_id,
+            invitation_id=invitation_id,
             competency_model_version_id=axis.competency_model_version_id,
             criterion_version=axis.version_number,
             criteria=tuple(
@@ -773,6 +814,50 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
             ),
             material_version=material_version,
         )
+
+    @staticmethod
+    def _candidate_claim(candidate: SourceReferenceCandidate) -> dict[str, object]:
+        return {
+            "type": SOURCE_CANDIDATE_CLAIM,
+            "candidate": candidate.model_dump(mode="json"),
+        }
+
+    @staticmethod
+    def _latest_analyses(
+        analyses: tuple[SubmissionAnalysis, ...],
+    ) -> tuple[SubmissionAnalysis, ...]:
+        latest: dict[UUID, SubmissionAnalysis] = {}
+        for analysis in analyses:
+            current = latest.get(analysis.submission_id)
+            if current is None or analysis.analysis_version > current.analysis_version:
+                latest[analysis.submission_id] = analysis
+        return tuple(latest[key] for key in sorted(latest, key=str))
+
+    @staticmethod
+    def _candidates_from_analyses(
+        analyses: tuple[SubmissionAnalysis, ...],
+    ) -> list[SourceReferenceCandidate]:
+        candidates: dict[UUID, SourceReferenceCandidate] = {}
+        for analysis in analyses:
+            for claim in analysis.claims:
+                if claim.get("type") != SOURCE_CANDIDATE_CLAIM:
+                    continue
+                payload = claim.get("candidate")
+                if not isinstance(payload, dict):
+                    continue
+                candidate = SourceReferenceCandidate.model_validate(payload)
+                candidates[candidate.source_id] = candidate
+        return [candidates[key] for key in sorted(candidates, key=str)]
+
+    @staticmethod
+    def _aggregate_material_version(
+        analyses: tuple[SubmissionAnalysis, ...],
+    ) -> str:
+        identity = "|".join(
+            f"{analysis.submission_id}:{analysis.analysis_version}:{analysis.analysis_id}"
+            for analysis in analyses
+        )
+        return f"aggregate-{hashlib.sha256(identity.encode('utf-8')).hexdigest()[:32]}"
 
     def _record_failed(
         self,

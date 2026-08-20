@@ -1,5 +1,6 @@
 SHELL := /bin/bash
 UV_CACHE_DIR ?= .uv-cache
+WORKER_CONCURRENCY ?= 4
 .PHONY: bootstrap dev-install up down local-infra api worker infra-format-check infra-validate migrate
 
 # Every target below that runs application code loads `.env` first. `set -a` exports what the
@@ -40,7 +41,21 @@ api:
 	$(RUN_WITH_ENV) UV_CACHE_DIR=$(UV_CACHE_DIR) uv run --no-sync uvicorn interview_evidence.main:app --reload --port 8080
 
 worker:
-	$(RUN_WITH_ENV) UV_CACHE_DIR=$(UV_CACHE_DIR) uv run --no-sync python -m interview_evidence.worker
+	$(RUN_WITH_ENV) \
+	pids=""; \
+	cleanup() { \
+		trap - EXIT INT TERM; \
+		if [ -n "$$pids" ]; then \
+			kill $$pids 2>/dev/null || true; \
+			wait $$pids 2>/dev/null || true; \
+		fi; \
+	}; \
+	trap cleanup EXIT INT TERM; \
+	for ((index = 0; index < $(WORKER_CONCURRENCY); index++)); do \
+		UV_CACHE_DIR=$(UV_CACHE_DIR) uv run --no-sync python -m interview_evidence.worker & \
+		pids="$$pids $$!"; \
+	done; \
+	wait
 
 # Alembic reads MIGRATION_DATABASE_URL from the environment (`backend/alembic/env.py`), so this
 # needs `.env` too. Not `interview_evidence.migrate`: that entry point resolves the credential

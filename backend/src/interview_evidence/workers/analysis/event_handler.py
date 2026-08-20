@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Protocol
 from uuid import UUID
 
 from interview_evidence.company_management.application.company_service import (
@@ -9,8 +10,19 @@ from interview_evidence.shared.ids import CommandMeta
 from interview_evidence.shared.messaging.outbox import OutboxEvent
 from interview_evidence.shared.tenant import TenantContext
 from interview_evidence.submission_analysis.api import LaneBRuntime
-from interview_evidence.submission_analysis.domain.submission import SourceType
+from interview_evidence.submission_analysis.domain.submission import SourceType, SubmissionStatus
 from interview_evidence.workers.analysis.handlers import AnalysisJob, AnalysisJobHandler
+
+
+class InvitationAnalysisFinalizer(Protocol):
+    def finalize_invitation(
+        self,
+        context: TenantContext,
+        *,
+        invitation_id: UUID,
+        applicant_id: UUID,
+        submission_ids: frozenset[UUID],
+    ) -> bool: ...
 
 
 class AnalysisRequestedEventHandler:
@@ -44,7 +56,7 @@ class AnalysisRequestedEventHandler:
                         expected_version=snapshot.row_version,
                     ),
                 )
-        outcome = self._handler.handle(
+        return self._handler.handle(
             context,
             AnalysisJob(
                 submission_id=submission_id,
@@ -56,19 +68,35 @@ class AnalysisRequestedEventHandler:
                 idempotency_key=event.idempotency_key,
             ),
         )
-        if self._company is not None:
-            self._advance_ready_when_required_analysis_finishes(
-                context,
-                submission.invitation_id,
-            )
-        return outcome
 
-    def _advance_ready_when_required_analysis_finishes(
+
+class AnalysisCompletedEventHandler:
+    def __init__(
         self,
-        context: TenantContext,
-        invitation_id: UUID,
+        runtime: LaneBRuntime,
+        finalizer: InvitationAnalysisFinalizer,
+        company: CompanyManagementPublic,
     ) -> None:
-        assert self._company is not None
+        self._runtime = runtime
+        self._finalizer = finalizer
+        self._company = company
+
+    def __call__(self, context: TenantContext, event: OutboxEvent) -> object:
+        invitation_id = UUID(str(event.payload["invitation_id"]))
+        submissions = self._runtime.repository.list_submissions_for_invitation(
+            context,
+            invitation_id,
+        )
+        if not submissions or any(
+            submission.status
+            in {
+                SubmissionStatus.RECEIVED,
+                SubmissionStatus.VALIDATING,
+                SubmissionStatus.ANALYZING,
+            }
+            for submission in submissions
+        ):
+            return {"status": "waiting_for_submissions"}
         requirements = self._company.get_submission_requirements(
             context,
             invitation_id,
@@ -78,29 +106,32 @@ class AnalysisRequestedEventHandler:
             for requirement in requirements
             if requirement.enabled and requirement.required
         }
-        submissions = self._runtime.repository.list_submissions_for_invitation(
-            context,
-            invitation_id,
-        )
         ready_materials = {
             submission.material_type
             for submission in submissions
-            if submission.status.value in {"ready", "partial"}
+            if submission.status in {SubmissionStatus.READY, SubmissionStatus.PARTIAL}
         }
-        strategy = self._runtime.repository.latest_strategy(context, invitation_id)
-        if (
-            not required_materials.issubset(ready_materials)
-            or strategy is None
-            or strategy.status.value not in {"ready", "partial"}
+        if not required_materials.issubset(ready_materials):
+            return {"status": "required_submission_failed"}
+        included = tuple(
+            submission
+            for submission in submissions
+            if submission.status in {SubmissionStatus.READY, SubmissionStatus.PARTIAL}
+        )
+        if not included or not self._finalizer.finalize_invitation(
+            context,
+            invitation_id=invitation_id,
+            applicant_id=included[0].applicant_id,
+            submission_ids=frozenset(submission.submission_id for submission in included),
         ):
-            return
+            return {"status": "strategy_not_ready"}
         snapshot = self._company.authorize_invitation(
             context,
             invitation_id,
             required_state=frozenset({"analyzing", "ready"}),
         )
         if snapshot.state != "analyzing":
-            return
+            return {"status": snapshot.state}
         self._company.advance_invitation_state(
             context,
             invitation_id,
@@ -111,3 +142,4 @@ class AnalysisRequestedEventHandler:
                 expected_version=snapshot.row_version,
             ),
         )
+        return {"status": "ready"}
