@@ -56,8 +56,8 @@ from interview_evidence.workers.analysis.document_chunker import (
     chunk_document,
 )
 from interview_evidence.workers.analysis.document_extract import (
-    DocumentExtractionAdapter,
     DocumentExtractionError,
+    DocumentExtractor,
 )
 from interview_evidence.workers.analysis.git_commits import (
     CommitDiff,
@@ -131,7 +131,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
         self,
         *,
         repository: SubmissionRepository,
-        extractor: DocumentExtractionAdapter,
+        extractor: DocumentExtractor,
         search_index: SearchIndex,
         text_embedder: TextEmbedder,
         strategy_model: AIModel,
@@ -204,7 +204,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
             raise NonRetryableAnalysisError("document_integrity_metadata_missing")
         analyzing = self._to_analyzing(submission)
         self._repository.save_submission(context, analyzing)
-        pages = self._extractor.extract(context, job.source_object_id)
+        pages = self._extractor.extract(context, submission.source_uri)
         drafts = chunk_document(
             pages,
             source_hash=submission.content_hash,
@@ -799,7 +799,11 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
             return submission.transition(SubmissionStatus.VALIDATING).transition(
                 SubmissionStatus.ANALYZING
             )
-        if submission.status in {SubmissionStatus.PARTIAL, SubmissionStatus.FAILED}:
+        if submission.status is SubmissionStatus.FAILED:
+            return submission.transition(SubmissionStatus.VALIDATING).transition(
+                SubmissionStatus.ANALYZING
+            )
+        if submission.status is SubmissionStatus.PARTIAL:
             return submission.transition(SubmissionStatus.ANALYZING)
         if submission.status is SubmissionStatus.ANALYZING:
             return submission

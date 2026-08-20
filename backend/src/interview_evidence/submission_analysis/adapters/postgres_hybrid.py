@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from interview_evidence.shared.tenant import TenantContext, require_tenant_context
 from interview_evidence.submission_analysis.adapters.search import (
+    AnalysisDebugDocument,
     SearchCandidate,
     SearchDocument,
 )
@@ -83,6 +84,40 @@ class PostgresHybridSearchIndex:
 
     def healthcheck(self) -> None:
         self._session.execute(select(1))
+
+    def list_debug_documents(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+    ) -> tuple[AnalysisDebugDocument, ...]:
+        tenant = require_tenant_context(context)
+        if tenant.actor_type.value == "applicant" and tenant.actor_id != applicant_id:
+            raise PermissionError("applicant scope mismatch")
+        rows = self._session.scalars(
+            select(RetrievalDocumentRow)
+            .where(
+                RetrievalDocumentRow.company_id == tenant.company_id,
+                RetrievalDocumentRow.applicant_id == applicant_id,
+                RetrievalDocumentRow.invitation_id == invitation_id,
+                RetrievalDocumentRow.document_type == "submission_chunk",
+                RetrievalDocumentRow.deleted_at.is_(None),
+            )
+            .order_by(RetrievalDocumentRow.source_id)
+        ).all()
+        return tuple(
+            AnalysisDebugDocument(
+                source_id=row.source_id,
+                source_type=row.source_type,
+                material_type=_optional_string(row.metadata_json.get("material_type")),
+                locator=row.locator,
+                text=row.protected_text,
+                embedding_model=row.embedding_model,
+                embedding_version=row.embedding_version,
+            )
+            for row in rows
+        )
 
     def candidates(
         self,
@@ -256,3 +291,7 @@ def _symbols_from_metadata(metadata: dict[str, object]) -> tuple[str, ...]:
     if not isinstance(values, list | tuple):
         return ()
     return tuple(str(value) for value in values)
+
+
+def _optional_string(value: object) -> str | None:
+    return value if isinstance(value, str) else None

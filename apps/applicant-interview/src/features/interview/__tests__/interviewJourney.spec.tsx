@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { Avatar } from "../Avatar";
@@ -125,5 +125,42 @@ describe("applicant interview journey", () => {
 
     rerender(<Avatar textOnly speaking={false} speechMarkIndex={0} />);
     expect(screen.getByText("음성 없이 질문을 표시합니다.")).toBeTruthy();
+  });
+
+  it("animates the interviewer mouth during speech and blinks", () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = render(
+        <Avatar textOnly={false} speaking speechMarkIndex={0} level="entry" />,
+      );
+      const avatar = screen.getByLabelText("AI 면접관 발화 중");
+      const image = screen.getByRole("img", { name: "신입 AI 면접관" });
+
+      expect(avatar.getAttribute("data-mouth")).toBe("mid");
+      expect(image.getAttribute("src")).toBe(
+        "/interviewers/entry_eyes_open_mouth_mid.webp",
+      );
+
+      act(() => vi.advanceTimersByTime(140));
+      expect(avatar.getAttribute("data-mouth")).toBe("open");
+
+      act(() => vi.advanceTimersByTime(3060));
+      expect(avatar.getAttribute("data-eyes")).toBe("closed");
+
+      act(() => vi.advanceTimersByTime(140));
+      expect(avatar.getAttribute("data-eyes")).toBe("open");
+
+      rerender(
+        <Avatar
+          textOnly={false}
+          speaking={false}
+          speechMarkIndex={0}
+          level="entry"
+        />,
+      );
+      expect(avatar.getAttribute("data-mouth")).toBe("closed");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

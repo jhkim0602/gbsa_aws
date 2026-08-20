@@ -29,6 +29,7 @@ import {
 import type { StoredMediaChunk } from "../features/interview/media";
 import {
   SubmissionWorkspace,
+  type AnalysisReadiness,
   type SubmissionMaterialId,
   type SubmissionWorkspaceData,
   type SubmissionWorkspaceApi,
@@ -258,13 +259,43 @@ const submissionApi: SubmissionWorkspaceApi = {
     });
   },
   async getReadiness() {
-    const readiness = await applicantRequest<
-      components["schemas"]["AnalysisReadiness"]
-    >("/v1/applicant/analysis-status");
+    const readiness = await applicantRequest<{
+      overall_status: AnalysisReadiness["overallStatus"];
+      interview_ready: boolean;
+      impact_summary?: string | null;
+      strategy_id?: string | null;
+      strategy_version?: number | null;
+      submissions: Array<{
+        material_type: string;
+        status: string;
+        created_at: string;
+      }>;
+    }>("/v1/applicant/analysis-status");
+    const materialStatuses: Partial<
+      Record<SubmissionMaterialId, { status: string; createdAt: string }>
+    > = {};
+    for (const submission of readiness.submissions) {
+      const materialId = fromApiMaterialType(submission.material_type);
+      const current = materialStatuses[materialId];
+      if (!current || submission.created_at > current.createdAt) {
+        materialStatuses[materialId] = {
+          status: submission.status,
+          createdAt: submission.created_at,
+        };
+      }
+    }
     return {
       overallStatus: readiness.overall_status,
       interviewReady: readiness.interview_ready,
       impactSummary: readiness.impact_summary ?? undefined,
+      strategyId: readiness.strategy_id ?? undefined,
+      strategyVersion: readiness.strategy_version ?? undefined,
+      materialStatuses: Object.fromEntries(
+        Object.entries(materialStatuses).map(([materialId, value]) => [
+          materialId,
+          value?.status,
+        ]),
+      ),
     };
   },
   async getWorkspace() {
@@ -291,6 +322,9 @@ const submissionApi: SubmissionWorkspaceApi = {
         status: submission.status,
       })),
     };
+  },
+  async getAnalysisDebug() {
+    return applicantRequest<unknown>("/v1/applicant/analysis-debug");
   },
 };
 
@@ -366,24 +400,78 @@ export function SubmissionsRoute() {
       positionTitle={workspace.positionTitle}
       requirements={workspace.requirements}
       submittedMaterials={workspace.submissions}
-      onContinue={() => navigate("/interview")}
+      onContinue={(strategyId) => navigate(interviewRoutePath(strategyId))}
     />
   );
+}
+
+export function interviewRoutePath(strategyId: string) {
+  const search = new URLSearchParams({ strategyId });
+  return `/interview?${search.toString()}`;
+}
+
+export function serializeInterviewSessionRequest(
+  equipmentCheckId: string,
+  strategyId: string,
+) {
+  if (!strategyId) throw new Error("interview strategy is required");
+  return {
+    equipment_check_id: equipmentCheckId,
+    strategy_id: strategyId,
+    acknowledged_partial_analysis: true,
+  };
 }
 
 export function InterviewRoute() {
   const [search] = useSearchParams();
   const navigate = useNavigate();
-  const strategyId = search.get("strategyId") ?? "";
+  const strategyIdFromSearch = search.get("strategyId") ?? "";
   const interviewerLevel = parseInterviewerLevel(search.get("level"));
+  const roomPreview = import.meta.env.DEV && search.get("preview") === "room";
+  const [resolvedStrategyId, setResolvedStrategyId] =
+    useState(strategyIdFromSearch);
+  const [strategyLoading, setStrategyLoading] = useState(
+    !strategyIdFromSearch && !roomPreview,
+  );
   const [session, setSession] = useState<{
     sessionId: string;
     equipmentCheckId: string;
     websocketPath: string;
   } | null>(null);
   const [error, setError] = useState(false);
+  const strategyId = strategyIdFromSearch || resolvedStrategyId;
 
-  if (import.meta.env.DEV && search.get("preview") === "room") {
+  useEffect(() => {
+    if (roomPreview) return;
+    if (strategyIdFromSearch) {
+      setResolvedStrategyId(strategyIdFromSearch);
+      setStrategyLoading(false);
+      return;
+    }
+    let active = true;
+    setStrategyLoading(true);
+    submissionApi
+      .getReadiness()
+      .then((readiness) => {
+        if (!active) return;
+        if (readiness.interviewReady && readiness.strategyId) {
+          setResolvedStrategyId(readiness.strategyId);
+          return;
+        }
+        setError(true);
+      })
+      .catch(() => {
+        if (active) setError(true);
+      })
+      .finally(() => {
+        if (active) setStrategyLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [roomPreview, strategyIdFromSearch]);
+
+  if (roomPreview) {
     return (
       <InterviewRoom
         question="안녕하세요. 서비스 백엔드와 관련해 가장 대표적인 프로젝트 한 가지를 설명해 주시겠어요?"
@@ -401,6 +489,10 @@ export function InterviewRoute() {
   }
 
   async function start(result: EquipmentCheckResult) {
+    if (!strategyId) {
+      setError(true);
+      return;
+    }
     try {
       const check = await applicantRequest<
         components["schemas"]["EquipmentCheck"]
@@ -418,11 +510,12 @@ export function InterviewRoute() {
       >("/v1/applicant/interview-sessions", {
         method: "POST",
         headers: { "Idempotency-Key": idempotencyKey("interview") },
-        body: JSON.stringify({
-          equipment_check_id: check.equipment_check_id,
-          strategy_id: strategyId,
-          acknowledged_partial_analysis: true,
-        }),
+        body: JSON.stringify(
+          serializeInterviewSessionRequest(
+            check.equipment_check_id,
+            strategyId,
+          ),
+        ),
       });
       setSession({
         sessionId: session.interview_session_id,
@@ -441,6 +534,21 @@ export function InterviewRoute() {
     } catch {
       setError(true);
     }
+  }
+
+  if (strategyLoading) {
+    return <p role="status">면접 전략을 불러오는 중입니다.</p>;
+  }
+
+  if (!strategyId) {
+    return (
+      <main>
+        <p role="alert">분석이 완료된 면접 전략을 불러올 수 없습니다.</p>
+        <button type="button" onClick={() => navigate("/submissions")}>
+          지원 자료로 돌아가기
+        </button>
+      </main>
+    );
   }
 
   if (!session) {

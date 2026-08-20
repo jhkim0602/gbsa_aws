@@ -1,18 +1,23 @@
 import {
   AlertCircle,
   ArrowRight,
+  Code2,
   CheckCircle2,
   FileText,
   GitBranch,
   Plus,
+  RefreshCw,
   X,
 } from "lucide-react";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
 
 export type AnalysisReadiness = {
   overallStatus: "waiting" | "analyzing" | "ready" | "partial" | "failed";
   interviewReady: boolean;
   impactSummary?: string;
+  materialStatuses?: Partial<Record<SubmissionMaterialId, string>>;
+  strategyId?: string;
+  strategyVersion?: number;
 };
 
 export type SubmissionMaterialId =
@@ -33,6 +38,7 @@ export type SubmissionWorkspaceApi = {
   ): Promise<void>;
   getReadiness(): Promise<AnalysisReadiness>;
   getWorkspace(): Promise<SubmissionWorkspaceData>;
+  getAnalysisDebug?(): Promise<unknown>;
 };
 
 export type SubmissionWorkspaceData = Readonly<{
@@ -47,6 +53,52 @@ export type SubmissionWorkspaceData = Readonly<{
 type PdfMaterialId = Exclude<SubmissionMaterialId, "projects">;
 type RequestState = "idle" | "pending" | "success" | "error";
 type StatusTone = "neutral" | "info" | "success" | "warning" | "danger";
+
+type AnalysisDebugDocument = Readonly<{
+  source_id?: string;
+  material_type?: string;
+  locator?: Readonly<{
+    page_number?: number;
+    section?: string;
+    start_line?: number;
+    end_line?: number;
+  }>;
+  text?: string;
+  embedding_model?: string;
+  embedding_version?: string;
+}>;
+
+type AnalysisDebugData = Readonly<{
+  submissions?: readonly Readonly<{
+    original_filename?: string;
+    material_type?: string;
+    status?: string;
+  }>[];
+  analyses?: readonly Readonly<{
+    extractor_version?: string;
+    status?: string;
+    claims?: readonly Readonly<{
+      type?: string;
+      chunk_count?: number;
+    }>[];
+  }>[];
+  extracted_documents?: readonly AnalysisDebugDocument[];
+  strategy?: Readonly<{
+    strategy_version?: number;
+    status?: string;
+    common_topics?: readonly string[];
+    verification_points?: readonly Readonly<{
+      criterion_id?: string;
+      prompt?: string;
+      source_ids?: readonly string[];
+    }>[];
+    follow_up_directions?: Readonly<Record<string, readonly string[]>>;
+    time_budget?: Readonly<{ total_seconds?: number }>;
+    required_evidence_plan?: Readonly<Record<string, number>>;
+    source_reference_candidates?: readonly unknown[];
+    model_config_version?: string;
+  }> | null;
+}>;
 
 type MaterialDefinition = Readonly<{
   id: SubmissionMaterialId;
@@ -63,6 +115,7 @@ type ConfiguredMaterial = MaterialDefinition &
   }>;
 
 const MAX_PROJECT_URLS = 3;
+const READINESS_POLL_INTERVAL_MS = 2_000;
 
 const MATERIAL_DEFINITIONS: Record<SubmissionMaterialId, MaterialDefinition> = {
   resume: {
@@ -156,21 +209,25 @@ function submissionStatus(state: RequestState, hasInput: boolean) {
 
 function analysisStatus(
   state: RequestState,
-  readiness: AnalysisReadiness | null,
+  submissionAnalysisStatus?: string,
 ) {
   if (state !== "success") {
     return { label: "분석 대기", tone: "neutral" as const };
   }
-  if (!readiness || readiness.overallStatus === "waiting") {
+  if (
+    !submissionAnalysisStatus ||
+    submissionAnalysisStatus === "received" ||
+    submissionAnalysisStatus === "validating"
+  ) {
     return { label: "분석 대기", tone: "neutral" as const };
   }
-  if (readiness.overallStatus === "analyzing") {
+  if (submissionAnalysisStatus === "analyzing") {
     return { label: "분석 중", tone: "info" as const };
   }
-  if (readiness.overallStatus === "ready") {
+  if (submissionAnalysisStatus === "ready") {
     return { label: "분석 완료", tone: "success" as const };
   }
-  if (readiness.overallStatus === "partial") {
+  if (submissionAnalysisStatus === "partial") {
     return { label: "일부 완료", tone: "warning" as const };
   }
   return { label: "분석 보류", tone: "danger" as const };
@@ -372,6 +429,315 @@ function RepositorySubmissionEditor({
   );
 }
 
+function AnalysisDebugPanel({
+  result,
+  state,
+  onRefresh,
+}: {
+  result: unknown;
+  state: RequestState;
+  onRefresh: () => void;
+}) {
+  const debugData = isRecord(result) ? (result as AnalysisDebugData) : null;
+  const strategy = debugData?.strategy ?? null;
+  const analyses = debugData?.analyses ?? [];
+  const documents = debugData?.extracted_documents ?? [];
+  const submissions = debugData?.submissions ?? [];
+  const documentsById = new Map(
+    documents
+      .filter((document) => document.source_id)
+      .map((document) => [document.source_id as string, document]),
+  );
+  const totalSeconds = strategy?.time_budget?.total_seconds;
+  const evidenceTargetCount = Object.values(
+    strategy?.required_evidence_plan ?? {},
+  ).reduce((total, count) => total + count, 0);
+
+  return (
+    <section className="mt-4 rounded-lg border border-dashed border-brand/35 bg-brand-soft/35 p-5">
+      <div className="flex items-center justify-between gap-4 max-sm:items-start max-sm:flex-col">
+        <div className="flex items-start gap-3">
+          <span className="grid size-9 shrink-0 place-items-center rounded-md bg-brand-soft text-brand-strong">
+            <Code2 aria-hidden="true" size={18} />
+          </span>
+          <div>
+            <p className="m-0 font-mono text-[10px] font-bold tracking-wide text-brand">
+              LOCAL DEVELOPMENT ONLY
+            </p>
+            <h2 className="mt-1 text-sm font-bold text-ink">
+              분석 디버그 결과
+            </h2>
+            <p className="mt-1 text-xs leading-5 text-muted">
+              최종 면접 전략과 질문 근거를 먼저 확인하고, 필요할 때 추출 문서와
+              원본 JSON을 펼쳐볼 수 있습니다.
+            </p>
+          </div>
+        </div>
+        <button
+          className="inline-flex min-h-9 shrink-0 items-center gap-2 rounded-md border border-brand/30 bg-surface px-3 text-xs font-semibold text-brand-strong hover:bg-brand-soft disabled:cursor-wait disabled:opacity-60"
+          type="button"
+          disabled={state === "pending"}
+          onClick={onRefresh}
+        >
+          <RefreshCw
+            aria-hidden="true"
+            className={state === "pending" ? "animate-spin" : undefined}
+            size={14}
+          />
+          {state === "pending"
+            ? "분석 결과 불러오는 중"
+            : result
+              ? "분석 결과 새로고침"
+              : "분석 결과 불러오기"}
+        </button>
+      </div>
+
+      {state === "error" ? (
+        <p className="mt-4 text-xs font-medium text-danger" role="alert">
+          로컬 분석 결과를 불러오지 못했습니다.
+        </p>
+      ) : null}
+
+      {debugData ? (
+        <div className="mt-4 space-y-4">
+          <section className="rounded-lg border border-border bg-surface p-5">
+            <div className="flex items-start justify-between gap-4 max-sm:flex-col">
+              <div>
+                <p className="m-0 text-[11px] font-semibold text-brand">
+                  FINAL INTERVIEW STRATEGY
+                </p>
+                <h3 className="mt-1 text-base font-bold text-ink">
+                  최종 면접 전략
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-muted">
+                  제출 자료에서 추출한 근거를 바탕으로 생성된 면접 주제와
+                  질문입니다.
+                </p>
+              </div>
+              {strategy ? (
+                <span className="inline-flex min-h-7 shrink-0 items-center rounded-full bg-success-soft px-3 text-xs font-semibold text-success">
+                  버전 {strategy.strategy_version ?? "-"} ·{" "}
+                  {strategy.status === "ready" ? "준비 완료" : strategy.status}
+                </span>
+              ) : null}
+            </div>
+
+            {strategy ? (
+              <>
+                <div className="mt-5 grid grid-cols-3 gap-3 max-md:grid-cols-1">
+                  <DebugMetric
+                    label="전체 면접 시간"
+                    value={
+                      typeof totalSeconds === "number"
+                        ? `${Math.round(totalSeconds / 60)}분`
+                        : "미설정"
+                    }
+                  />
+                  <DebugMetric
+                    label="확보할 답변 근거"
+                    value={`${evidenceTargetCount}개`}
+                  />
+                  <DebugMetric
+                    label="질문 생성 후보"
+                    value={`${strategy.source_reference_candidates?.length ?? 0}개 문단`}
+                  />
+                </div>
+
+                <div className="mt-5">
+                  <h4 className="m-0 text-xs font-bold text-ink">핵심 주제</h4>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(strategy.common_topics ?? []).map((topic) => (
+                      <span
+                        key={topic}
+                        className="rounded-full border border-brand/20 bg-brand-soft px-3 py-1.5 text-xs font-semibold text-brand-strong"
+                      >
+                        {topic}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-5 space-y-3">
+                  <h4 className="m-0 text-xs font-bold text-ink">
+                    대표 질문과 꼬리질문
+                  </h4>
+                  {(strategy.verification_points ?? []).map(
+                    (verificationPoint, index) => {
+                      const criterionId = verificationPoint.criterion_id ?? "";
+                      const followUps =
+                        strategy.follow_up_directions?.[criterionId] ?? [];
+                      return (
+                        <article
+                          key={`${criterionId}-${index}`}
+                          className="rounded-md border border-border bg-surface-muted p-4"
+                        >
+                          <p className="m-0 text-[11px] font-semibold text-brand">
+                            대표 질문 {index + 1}
+                          </p>
+                          <p className="mt-1 text-sm font-semibold leading-6 text-ink">
+                            {verificationPoint.prompt ?? "질문 내용 없음"}
+                          </p>
+                          {followUps.length > 0 ? (
+                            <div className="mt-3 border-t border-border pt-3">
+                              <p className="m-0 text-[11px] font-semibold text-muted">
+                                꼬리질문
+                              </p>
+                              <ol className="mt-2 space-y-1.5 pl-5 text-xs leading-5 text-ink">
+                                {followUps.map((followUp) => (
+                                  <li key={followUp}>{followUp}</li>
+                                ))}
+                              </ol>
+                            </div>
+                          ) : null}
+                        </article>
+                      );
+                    },
+                  )}
+                </div>
+
+                <p className="mt-4 text-[11px] text-muted">
+                  전략 생성 설정: {strategy.model_config_version ?? "확인 불가"}
+                </p>
+              </>
+            ) : (
+              <p className="mt-4 text-xs text-muted">
+                아직 생성된 면접 전략이 없습니다.
+              </p>
+            )}
+          </section>
+
+          {strategy?.verification_points?.length ? (
+            <details
+              className="rounded-lg border border-border bg-surface p-5"
+              open
+            >
+              <summary className="cursor-pointer text-sm font-bold text-ink">
+                질문 근거 문단
+              </summary>
+              <div className="mt-4 space-y-4">
+                {strategy.verification_points.map(
+                  (verificationPoint, index) => (
+                    <article key={`${verificationPoint.criterion_id}-${index}`}>
+                      <p className="m-0 text-xs font-semibold text-ink">
+                        대표 질문 {index + 1}의 근거
+                      </p>
+                      <div className="mt-2 space-y-2">
+                        {(verificationPoint.source_ids ?? []).map(
+                          (sourceId) => {
+                            const document = documentsById.get(sourceId);
+                            return (
+                              <div
+                                key={sourceId}
+                                className="rounded-md border border-border bg-surface-muted p-3"
+                              >
+                                <p className="m-0 text-[11px] font-semibold text-brand-strong">
+                                  {formatDocumentLocation(document)}
+                                </p>
+                                <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-ink">
+                                  {document?.text ?? `문단 ID: ${sourceId}`}
+                                </p>
+                              </div>
+                            );
+                          },
+                        )}
+                      </div>
+                    </article>
+                  ),
+                )}
+              </div>
+            </details>
+          ) : null}
+
+          <details className="rounded-lg border border-border bg-surface p-5">
+            <summary className="cursor-pointer text-sm font-bold text-ink">
+              분석 처리 정보 · 제출 {submissions.length}건 · 분석{" "}
+              {analyses.length}건
+            </summary>
+            <div className="mt-4 grid gap-2">
+              {analyses.map((analysis, index) => {
+                const chunkCount = analysis.claims?.find(
+                  (claim) => claim.type === "document_extracted",
+                )?.chunk_count;
+                return (
+                  <div
+                    key={`${analysis.extractor_version}-${index}`}
+                    className="flex items-center justify-between gap-4 rounded-md bg-surface-muted px-3 py-2 text-xs"
+                  >
+                    <span className="font-medium text-ink">
+                      {analysis.extractor_version ?? "분석기 확인 불가"}
+                    </span>
+                    <span className="text-muted">
+                      {analysis.status ?? "상태 없음"}
+                      {typeof chunkCount === "number"
+                        ? ` · ${chunkCount}개 문단`
+                        : ""}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </details>
+
+          <details className="rounded-lg border border-border bg-surface p-5">
+            <summary className="cursor-pointer text-sm font-bold text-ink">
+              추출 문서 전체 보기 · {documents.length}개 문단
+            </summary>
+            <div className="mt-4 max-h-[560px] space-y-2 overflow-auto pr-1">
+              {documents.map((document, index) => (
+                <article
+                  key={document.source_id ?? index}
+                  className="rounded-md border border-border bg-surface-muted p-3"
+                >
+                  <p className="m-0 text-[11px] font-semibold text-brand-strong">
+                    {formatDocumentLocation(document)}
+                  </p>
+                  <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-ink">
+                    {document.text ?? "추출된 텍스트 없음"}
+                  </p>
+                </article>
+              ))}
+            </div>
+          </details>
+
+          <details className="rounded-lg border border-border bg-surface p-5">
+            <summary className="cursor-pointer text-sm font-bold text-ink">
+              원본 JSON 보기
+            </summary>
+            <pre className="mt-4 max-h-[560px] overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-ink p-4 font-mono text-[11px] leading-5 text-white">
+              {JSON.stringify(result, null, 2)}
+            </pre>
+          </details>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function DebugMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border bg-surface-muted px-4 py-3">
+      <p className="m-0 text-[11px] font-medium text-muted">{label}</p>
+      <p className="mt-1 text-sm font-bold text-ink">{value}</p>
+    </div>
+  );
+}
+
+function formatDocumentLocation(document?: AnalysisDebugDocument) {
+  if (!document) return "근거 문단 위치 확인 불가";
+  const location = [
+    document.locator?.page_number
+      ? `${document.locator.page_number}페이지`
+      : null,
+    document.locator?.section ?? null,
+    document.material_type ?? null,
+  ].filter(Boolean);
+  return location.join(" · ") || "문서 위치 정보 없음";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export function SubmissionWorkspace({
   api,
   onContinue,
@@ -380,7 +746,7 @@ export function SubmissionWorkspace({
   submittedMaterials = [],
 }: {
   api: SubmissionWorkspaceApi;
-  onContinue?: () => void;
+  onContinue?: (strategyId: string) => void;
   positionTitle?: string;
   requirements?: readonly SubmissionRequirement[];
   submittedMaterials?: SubmissionWorkspaceData["submissions"];
@@ -407,10 +773,29 @@ export function SubmissionWorkspace({
     ),
   }));
   const [readiness, setReadiness] = useState<AnalysisReadiness | null>(null);
+  const [debugResult, setDebugResult] = useState<unknown>(null);
+  const [debugState, setDebugState] = useState<RequestState>("idle");
+
+  const refreshReadiness = useCallback(async () => {
+    try {
+      setReadiness(await api.getReadiness());
+    } catch {
+      setReadiness(null);
+    }
+  }, [api]);
+  const readinessSettled =
+    readiness?.interviewReady === true || readiness?.overallStatus === "failed";
+  const debugEnabled =
+    import.meta.env.DEV && api.getAnalysisDebug !== undefined;
 
   useEffect(() => {
+    if (readinessSettled) return;
     void refreshReadiness();
-  }, []);
+    const intervalId = window.setInterval(() => {
+      void refreshReadiness();
+    }, READINESS_POLL_INTERVAL_MS);
+    return () => window.clearInterval(intervalId);
+  }, [readinessSettled, refreshReadiness]);
 
   const activeMaterial =
     configuredMaterials.find((material) => material.id === selectedMaterial) ??
@@ -434,14 +819,6 @@ export function SubmissionWorkspace({
     state: RequestState,
   ) {
     setMaterialStates((current) => ({ ...current, [materialId]: state }));
-  }
-
-  async function refreshReadiness() {
-    try {
-      setReadiness(await api.getReadiness());
-    } catch {
-      setReadiness(null);
-    }
   }
 
   async function uploadPdf(
@@ -505,6 +882,17 @@ export function SubmissionWorkspace({
     updateMaterialState("projects", "idle");
   }
 
+  async function refreshAnalysisDebug() {
+    if (!api.getAnalysisDebug) return;
+    setDebugState("pending");
+    try {
+      setDebugResult(await api.getAnalysisDebug());
+      setDebugState("success");
+    } catch {
+      setDebugState("error");
+    }
+  }
+
   if (!activeMaterial) {
     return null;
   }
@@ -515,9 +903,14 @@ export function SubmissionWorkspace({
       ? repositoryCount > 0
       : files[activeMaterial.id as PdfMaterialId] !== null;
   const activeSubmissionStatus = submissionStatus(activeState, activeHasInput);
-  const activeAnalysisStatus = analysisStatus(activeState, readiness);
+  const activeAnalysisStatus = analysisStatus(
+    activeState,
+    readiness?.materialStatuses?.[activeMaterial.id],
+  );
   const canContinue =
-    remainingRequiredCount === 0 && readiness?.interviewReady === true;
+    remainingRequiredCount === 0 &&
+    readiness?.interviewReady === true &&
+    Boolean(readiness.strategyId);
 
   return (
     <main className="mx-auto w-full max-w-[1120px] px-6 py-10 max-sm:px-4 max-sm:py-7">
@@ -587,7 +980,10 @@ export function SubmissionWorkspace({
                     ? repositoryCount > 0
                     : files[material.id as PdfMaterialId] !== null;
                 const submitted = submissionStatus(state, hasInput);
-                const analyzed = analysisStatus(state, readiness);
+                const analyzed = analysisStatus(
+                  state,
+                  readiness?.materialStatuses?.[material.id],
+                );
                 const selected = activeMaterial.id === material.id;
 
                 return (
@@ -738,7 +1134,7 @@ export function SubmissionWorkspace({
               )}
             </div>
 
-            <footer className="mt-auto flex items-center justify-between gap-5 border-t border-border bg-surface-muted px-7 py-4 max-sm:items-start max-sm:flex-col max-sm:px-5">
+            <footer className="mt-auto flex items-center gap-5 border-t border-border bg-surface-muted px-7 py-4 max-sm:items-start max-sm:flex-col max-sm:px-5">
               <div className="flex min-w-0 items-center gap-3">
                 <span
                   className={cn(
@@ -765,27 +1161,48 @@ export function SubmissionWorkspace({
                   </small>
                 </span>
               </div>
-
-              {canContinue ? (
-                <button
-                  className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-md border border-brand bg-brand px-4 text-xs font-semibold text-white hover:bg-brand-strong"
-                  type="button"
-                  onClick={onContinue}
-                >
-                  환경 점검으로 이동
-                  <ArrowRight aria-hidden="true" size={15} />
-                </button>
-              ) : (
-                <span className="shrink-0 text-xs font-medium text-muted">
-                  {remainingRequiredCount > 0
-                    ? `필수 자료 ${remainingRequiredCount}개 남음`
-                    : "분석 결과 확인 중"}
-                </span>
-              )}
             </footer>
           </section>
         </div>
       </section>
+
+      <section
+        className="mt-4 flex items-center justify-between gap-6 rounded-lg border border-border bg-surface px-6 py-5 shadow-soft max-sm:items-start max-sm:flex-col"
+        aria-label="다음 단계"
+      >
+        <div>
+          <p className="m-0 text-sm font-bold text-ink">
+            모든 제출 자료 통합 상태
+          </p>
+          <p className="mt-1 text-xs leading-5 text-muted">
+            {canContinue
+              ? "필수 자료 분석이 완료되었습니다. 환경 점검을 진행할 수 있습니다."
+              : remainingRequiredCount > 0
+                ? `필수 자료 ${remainingRequiredCount}개를 더 제출해 주세요.`
+                : "제출된 자료의 분석 결과를 확인하고 있습니다."}
+          </p>
+        </div>
+        {canContinue ? (
+          <button
+            className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-md border border-brand bg-brand px-5 text-sm font-semibold text-white hover:bg-brand-strong"
+            type="button"
+            onClick={() => {
+              if (readiness?.strategyId) onContinue?.(readiness.strategyId);
+            }}
+          >
+            환경 점검으로 이동
+            <ArrowRight aria-hidden="true" size={16} />
+          </button>
+        ) : null}
+      </section>
+
+      {debugEnabled ? (
+        <AnalysisDebugPanel
+          result={debugResult}
+          state={debugState}
+          onRefresh={() => void refreshAnalysisDebug()}
+        />
+      ) : null}
     </main>
   );
 }

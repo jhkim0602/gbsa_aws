@@ -65,6 +65,13 @@ export const mockCompanyOperationsApi: CompanyOperationsApi = {
       (invitation) => invitation.positionId === positionId,
     );
   },
+  async requestApplicantDeletion(invitationId) {
+    const fixture = await loadFixture();
+    const index = fixture.invitations.findIndex(
+      (invitation) => invitation.invitationId === invitationId,
+    );
+    if (index >= 0) fixture.invitations.splice(index, 1);
+  },
   async updatePosition(input) {
     const fixture = await loadFixture();
     const index = fixture.positions.findIndex(

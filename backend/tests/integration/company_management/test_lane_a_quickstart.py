@@ -1,5 +1,5 @@
 from datetime import UTC, datetime, timedelta
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 from uuid import UUID
 
 import pytest
@@ -177,7 +177,11 @@ async def test_lane_a_company_to_consented_applicant_journey() -> None:
         assert invitation_page.json()["items"][0]["applicant_display_name"] == "홍길동"
 
         invitation_url = str(email_sender.messages[0].template_data["invitation_url"])
-        raw_token = parse_qs(urlparse(invitation_url).query)["token"][0]
+        parsed_invitation_url = urlparse(invitation_url)
+        assert parsed_invitation_url.query == ""
+        assert parsed_invitation_url.path.startswith("/access/")
+        raw_token = parsed_invitation_url.path.removeprefix("/access/")
+        assert raw_token
         exchange = await client.post(
             "/v1/applicant/access/exchange",
             headers={"Idempotency-Key": "quickstart-token-exchange"},

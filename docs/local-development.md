@@ -52,7 +52,7 @@ both and goes to the account your credentials name:
 | Speech-to-Text / Text-to-Speech | real GCP | Billed. One streaming STT connection is opened per answer; question PCM is streamed back over the interview WebSocket. |
 | Textract | real AWS | Billed. Needed only for document submission analysis. |
 | MediaConvert | real AWS | The placeholder role ARN fails at job submission; a real ARN is needed to post-process a recording. |
-| SES | LocalStack | Accepted and **discarded** — nothing has a mailbox. Read an invitation link from the API response or the database. |
+| Invitation email | Mailpit SMTP | Delivered to the local mailbox at `http://127.0.0.1:8025`. Production continues to use SES. |
 
 There is no deterministic model substitute. Commit `7d977f7` removed the `local-production`
 runtime that provided one (along with the demo seed), and restoring it means ~1,300 lines that no
@@ -79,7 +79,12 @@ Give Vite the same token in its ignored local settings file:
 ```bash
 # apps/company-console/.env.local
 VITE_LOCAL_COMPANY_TOKEN=local-company-access-token
+VITE_USE_MOCK_DATA=false
 ```
+
+The company console uses the real local API by default. Set `VITE_USE_MOCK_DATA=true` only when
+you intentionally want the browser-only sample positions; invitations created in that mode do not
+reach Mailpit or the local database.
 
 This provider cannot activate in staging or production: any `APP_ENVIRONMENT` other than `local`
 continues to use Cognito. The ids still need to name a company user in your local Postgres; the
@@ -87,13 +92,18 @@ provider authenticates the request but does not seed application data.
 
 ## GCP speech locally
 
-Enable Speech-to-Text and Text-to-Speech in the personal GCP project, then store the service
-account JSON outside the repository. Point the ignored root `.env` at that file:
+Enable Speech-to-Text, Text-to-Speech, and Document AI in the personal GCP project, then store
+the service account JSON outside the repository. Create a Document OCR processor and point the
+ignored root `.env` at that file and processor:
 
 ```bash
 GOOGLE_APPLICATION_CREDENTIALS=$HOME/.config/whyyou/gcp-service-account.json
 STT_PROVIDER=gcp_streaming
 TTS_PROVIDER=gcp_streaming
+DOCUMENT_OCR_PROVIDER=gcp_document_ai
+GCP_DOCUMENT_AI_PROJECT_ID=your-gcp-project-id
+GCP_DOCUMENT_AI_LOCATION=us
+GCP_DOCUMENT_AI_PROCESSOR_ID=your-document-ocr-processor-id
 GCP_TTS_VOICE_NAME=ko-KR-Chirp3-HD-Achernar
 ```
 
@@ -101,6 +111,13 @@ The browser sends 16 kHz mono PCM in roughly 40 ms packets. The API keeps one GC
 stream open until `answer.complete`, persists the combined final transcript once, and sends GCP
 TTS PCM back through the same WebSocket. Set both providers to `aws_legacy` to use the previous
 AWS path without reverting code.
+
+The analysis worker reads the uploaded PDF from local S3-compatible storage and first attempts
+native PDF text extraction inside the worker. Text PDFs continue directly into the existing
+chunking and interview-strategy pipeline without a Document AI call. Image-heavy, scanned, mixed,
+or unreadable PDFs fall back to the configured Document OCR processor. Only those fallback calls
+are billed to the GCP project in `GCP_DOCUMENT_AI_PROJECT_ID`. The same flow runs after deployment;
+"native" means inside the deployed worker process, not only on a developer laptop.
 
 ## No seed data
 

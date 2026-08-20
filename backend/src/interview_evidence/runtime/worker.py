@@ -19,6 +19,7 @@ from interview_evidence.reporting.api import LaneDRuntime
 from interview_evidence.reporting.application.assessment_service import CriterionAssessor
 from interview_evidence.reporting.application.deletion_service import DeletionService
 from interview_evidence.reporting.application.evidence_service import EvidenceService
+from interview_evidence.runtime.document_ai import create_document_extractor
 from interview_evidence.shared.aws_clients.ports import ConsumableQueue
 from interview_evidence.shared.database import RequestScopedDatabase
 from interview_evidence.shared.ids import Clock, new_uuid7
@@ -35,7 +36,6 @@ from interview_evidence.shared.tenant import TenantContext
 from interview_evidence.shared.tracing import configure_worker_tracing
 from interview_evidence.submission_analysis.adapters.search import SearchIndex
 from interview_evidence.submission_analysis.api import LaneBRuntime
-from interview_evidence.workers.analysis.document_extract import DocumentExtractionAdapter
 from interview_evidence.workers.analysis.event_handler import (
     AnalysisRequestedEventHandler,
 )
@@ -390,13 +390,14 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
     if not isinstance(lane_d, LaneDRuntime):
         raise TypeError("production reporting runtime is invalid")
     deletion_service = lane_d.deletion_service
+    document_extractor = create_document_extractor(
+        environment,
+        object_storage=aws.object_storage,
+    )
     analysis_handler = AnalysisJobHandler(
         SubmissionAnalysisPipeline(
             repository=lane_b.repository,
-            extractor=DocumentExtractionAdapter(
-                aws.textract,
-                extractor_version="textract-v1",
-            ),
+            extractor=document_extractor,
             search_index=search_index,
             text_embedder=aws.embedder,
             strategy_model=aws.model,

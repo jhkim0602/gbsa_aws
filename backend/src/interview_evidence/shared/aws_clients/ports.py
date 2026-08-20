@@ -96,6 +96,8 @@ class ObjectStorage(Protocol):
         sha256: str,
     ) -> UploadIntent: ...
 
+    def read_object(self, context: TenantContext, object_key: str) -> bytes: ...
+
 
 class EventQueue(Protocol):
     def publish(

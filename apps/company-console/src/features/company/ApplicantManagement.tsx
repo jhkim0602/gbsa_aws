@@ -3,6 +3,7 @@ import {
   BriefcaseBusiness,
   ClipboardCheck,
   Search,
+  Trash2,
   UserRoundCheck,
   Users,
 } from "lucide-react";
@@ -17,7 +18,10 @@ import {
 import { invitationStatusMeta } from "../hiring/PositionInvitations";
 import { summarizeApplicantPipeline } from "./applicantSummary";
 import type { CompanyInvitation, CompanyOperationsApi } from "./types";
-import { useRecruitingOperations } from "./useRecruitingOperations";
+import {
+  useRecruitingOperations,
+  type PositionedInvitation,
+} from "./useRecruitingOperations";
 
 type StageFilter = "all" | "progress" | "review" | "completed";
 const PAGE_SIZE = 20;
@@ -30,9 +34,26 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
   const [positionFilter, setPositionFilter] = useState("all");
   const [stageFilter, setStageFilter] = useState<StageFilter>("all");
   const [page, setPage] = useState(1);
+  const [hiddenInvitationIds, setHiddenInvitationIds] = useState(
+    () => new Set<string>(),
+  );
+  const [deletionTarget, setDeletionTarget] =
+    useState<PositionedInvitation | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deletionError, setDeletionError] = useState(false);
+  const [deletionNotice, setDeletionNotice] = useState("");
+  const activeInvitations = useMemo(
+    () =>
+      invitations.filter(
+        (invitation) =>
+          invitation.status !== "deleted" &&
+          !hiddenInvitationIds.has(invitation.invitationId),
+      ),
+    [hiddenInvitationIds, invitations],
+  );
   const summary = useMemo(
-    () => summarizeApplicantPipeline(invitations),
-    [invitations],
+    () => summarizeApplicantPipeline(activeInvitations),
+    [activeInvitations],
   );
   const positionCounts = useMemo(
     () =>
@@ -40,17 +61,17 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
         .map((position) => ({
           positionId: position.positionId,
           title: position.title,
-          count: invitations.filter(
+          count: activeInvitations.filter(
             (item) => item.positionId === position.positionId,
           ).length,
         }))
         .filter((position) => position.count > 0)
         .sort((left, right) => right.count - left.count),
-    [invitations, positions],
+    [activeInvitations, positions],
   );
   const visible = useMemo(() => {
     const normalized = deferredQuery.trim().toLocaleLowerCase("ko-KR");
-    return invitations.filter((item) => {
+    return activeInvitations.filter((item) => {
       const matchesQuery =
         !normalized ||
         [
@@ -66,7 +87,7 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
         stageFilter === "all" || applicantStage(item) === stageFilter;
       return matchesQuery && matchesPosition && matchesStage;
     });
-  }, [deferredQuery, invitations, positionFilter, stageFilter]);
+  }, [activeInvitations, deferredQuery, positionFilter, stageFilter]);
   const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   const activePage = Math.min(page, pageCount);
   const pageInvitations = visible.slice(
@@ -79,6 +100,28 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
     setPositionFilter("all");
     setStageFilter("all");
     setPage(1);
+  }
+
+  async function confirmApplicantDeletion() {
+    if (!deletionTarget || !api.requestApplicantDeletion) return;
+    setDeleting(true);
+    setDeletionError(false);
+    try {
+      await api.requestApplicantDeletion(deletionTarget.invitationId);
+      setHiddenInvitationIds((current) => {
+        const next = new Set(current);
+        next.add(deletionTarget.invitationId);
+        return next;
+      });
+      setDeletionNotice(
+        `${deletionTarget.applicantDisplayName || deletionTarget.applicantEmail} 지원자의 삭제를 요청했습니다.`,
+      );
+      setDeletionTarget(null);
+    } catch {
+      setDeletionError(true);
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
@@ -186,6 +229,14 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
       </section>
 
       <section className="overflow-hidden rounded-lg border border-border bg-surface">
+        {deletionNotice ? (
+          <p
+            className="border-b border-border-muted bg-success-soft px-5 py-3 text-[11px] font-semibold text-success"
+            role="status"
+          >
+            {deletionNotice}
+          </p>
+        ) : null}
         <header className="grid grid-cols-[minmax(240px,1fr)_180px_150px_auto] gap-2 border-b border-border-muted p-4 mw-900:grid-cols-2 mw-620:grid-cols-[minmax(0,1fr)]">
           <label className="relative flex items-center">
             <Search
@@ -245,11 +296,12 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
           </button>
         </header>
 
-        <div className="grid grid-cols-[minmax(240px,1.1fr)_minmax(170px,0.8fr)_140px_120px] bg-surface-muted px-5 py-3 text-[9px] font-semibold text-muted mw-720:hidden">
+        <div className="grid grid-cols-[minmax(240px,1.1fr)_minmax(170px,0.8fr)_140px_120px_56px] bg-surface-muted px-5 py-3 text-[9px] font-semibold text-muted mw-720:hidden">
           <span>지원자</span>
           <span>포지션</span>
           <span>현재 상태</span>
           <span>면접 결과</span>
+          <span className="sr-only">관리</span>
         </div>
         {loading ? (
           <div className={ASYNC_STATE} role="status">
@@ -267,37 +319,54 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
                 invitation.applicantEmail.split("@")[0];
               const status = invitationStatusMeta[invitation.status];
               return (
-                <Link
-                  className="grid min-h-16 grid-cols-[minmax(240px,1.1fr)_minmax(170px,0.8fr)_140px_120px] items-center px-5 py-3 hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-brand mw-720:grid-cols-[44px_minmax(0,1fr)_auto] mw-720:gap-x-3 mw-720:gap-y-2"
+                <div
+                  className="grid grid-cols-[minmax(0,1fr)_56px]"
                   key={invitation.invitationId}
-                  to={`/positions/${invitation.positionId}/applicants/${invitation.invitationId}`}
-                  aria-label={`${displayName} 리포트 열기`}
                 >
-                  <span className="flex min-w-0 items-center gap-3 mw-720:contents">
-                    <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-[11px] font-bold text-brand">
-                      {displayName.slice(0, 1)}
-                    </span>
-                    <span className="min-w-0 mw-720:col-[2]">
-                      <strong className="block text-[11px] text-ink">
-                        {displayName}
-                      </strong>
-                      <small className="mt-0.5 block truncate text-[9px] text-muted">
-                        {invitation.applicantEmail}
-                      </small>
-                    </span>
-                  </span>
-                  <span className="truncate text-[10px] font-semibold text-ink-secondary mw-720:col-[2] mw-720:row-[2]">
-                    {invitation.positionTitle}
-                  </span>
-                  <span
-                    className={`w-fit ${INVITATION_STATUS} ${invitationTone(status.tone)} mw-720:col-[3] mw-720:row-[1]`}
+                  <Link
+                    className="grid min-h-16 grid-cols-[minmax(240px,1.1fr)_minmax(170px,0.8fr)_140px_120px] items-center px-5 py-3 hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-brand mw-720:grid-cols-[44px_minmax(0,1fr)_auto] mw-720:gap-x-3 mw-720:gap-y-2"
+                    to={`/positions/${invitation.positionId}/applicants/${invitation.invitationId}`}
+                    aria-label={`${displayName} 리포트 열기`}
                   >
-                    {status.label}
-                  </span>
-                  <span className="text-[10px] text-muted mw-720:col-[3] mw-720:row-[2]">
-                    {invitation.interviewSessionId ? "리포트 확인" : "대기"}
-                  </span>
-                </Link>
+                    <span className="flex min-w-0 items-center gap-3 mw-720:contents">
+                      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-[11px] font-bold text-brand">
+                        {displayName.slice(0, 1)}
+                      </span>
+                      <span className="min-w-0 mw-720:col-[2]">
+                        <strong className="block text-[11px] text-ink">
+                          {displayName}
+                        </strong>
+                        <small className="mt-0.5 block truncate text-[9px] text-muted">
+                          {invitation.applicantEmail}
+                        </small>
+                      </span>
+                    </span>
+                    <span className="truncate text-[10px] font-semibold text-ink-secondary mw-720:col-[2] mw-720:row-[2]">
+                      {invitation.positionTitle}
+                    </span>
+                    <span
+                      className={`w-fit ${INVITATION_STATUS} ${invitationTone(status.tone)} mw-720:col-[3] mw-720:row-[1]`}
+                    >
+                      {status.label}
+                    </span>
+                    <span className="text-[10px] text-muted mw-720:col-[3] mw-720:row-[2]">
+                      {invitation.interviewSessionId ? "리포트 확인" : "대기"}
+                    </span>
+                  </Link>
+                  <button
+                    className="m-2 grid size-10 place-items-center self-center rounded-lg border border-border bg-surface text-muted transition hover:border-danger hover:bg-danger-soft hover:text-danger disabled:cursor-not-allowed disabled:opacity-35"
+                    type="button"
+                    aria-label={`${displayName} 지원자 삭제`}
+                    title="지원자 삭제"
+                    disabled={!api.requestApplicantDeletion}
+                    onClick={() => {
+                      setDeletionError(false);
+                      setDeletionTarget(invitation);
+                    }}
+                  >
+                    <Trash2 size={15} aria-hidden="true" />
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -337,6 +406,58 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
           </footer>
         ) : null}
       </section>
+
+      {deletionTarget ? (
+        <div className="fixed inset-0 z-100 grid place-items-center bg-[rgb(20_25_38_/_46%)] p-6">
+          <section
+            className="w-[min(100%,440px)] rounded-xl border border-border bg-surface p-6 shadow-float"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="applicant-deletion-title"
+          >
+            <h2
+              className="text-[18px] font-bold text-ink"
+              id="applicant-deletion-title"
+            >
+              지원자를 삭제할까요?
+            </h2>
+            <p className="mt-3 text-[12px] leading-6 text-muted">
+              <strong className="text-ink">
+                {deletionTarget.applicantDisplayName ||
+                  deletionTarget.applicantEmail}
+              </strong>
+              님의 초대 정보, 제출 자료, 분석 결과와 면접 기록을 삭제합니다. 이
+              작업은 되돌릴 수 없습니다.
+            </p>
+            {deletionError ? (
+              <p
+                className="mt-3 text-[11px] font-semibold text-danger"
+                role="alert"
+              >
+                삭제 요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.
+              </p>
+            ) : null}
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                className="min-h-10 rounded-lg border border-border bg-surface px-4 text-[11px] font-semibold text-ink-secondary hover:bg-surface-muted disabled:opacity-40"
+                type="button"
+                disabled={deleting}
+                onClick={() => setDeletionTarget(null)}
+              >
+                취소
+              </button>
+              <button
+                className="min-h-10 rounded-lg bg-danger px-4 text-[11px] font-semibold text-white hover:opacity-90 disabled:opacity-40"
+                type="button"
+                disabled={deleting}
+                onClick={() => void confirmApplicantDeletion()}
+              >
+                {deleting ? "삭제 요청 중..." : "삭제"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }

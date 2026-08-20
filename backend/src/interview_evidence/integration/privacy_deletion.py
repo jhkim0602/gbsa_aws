@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from typing import Protocol, cast
 from uuid import UUID
 
@@ -40,11 +41,6 @@ class ManifestTarget(Protocol):
     def resource_id(self) -> str: ...
 
 
-OwnedTarget = (
-    CompanyDeletionTarget | SubmissionDeletionTarget | InterviewDeletionTarget | DeletionTargetSpec
-)
-
-
 class PrivacyDeletionBoundary:
     """Enumerate and execute privacy deletion through lane public interfaces."""
 
@@ -66,16 +62,6 @@ class PrivacyDeletionBoundary:
         self._clock = clock
         self._object_storage = object_storage
         self._metrics = metrics or NullMetricRecorder()
-        self._targets: dict[tuple[str, str, str, str], OwnedTarget] = {}
-
-    @staticmethod
-    def _key(target: ManifestTarget) -> tuple[str, str, str, str]:
-        return (
-            target.owner_lane,
-            target.store,
-            target.target_type,
-            target.resource_id,
-        )
 
     def enumerate(
         self,
@@ -116,7 +102,7 @@ class PrivacyDeletionBoundary:
             context,
             invitation_id=scope_id,
         )
-        owned: tuple[OwnedTarget, ...] = (
+        owned = (
             *company_targets,
             *submission_targets,
             *interview_targets,
@@ -139,16 +125,21 @@ class PrivacyDeletionBoundary:
                     resource_id=target.resource_id,
                 )
             else:
-                spec = target
-            self._targets[self._key(spec)] = target
+                spec = cast(DeletionTargetSpec, target)
             specs.append(spec)
         return tuple(specs)
 
     def execute_company(self, context: TenantContext, target: object) -> bool:
         manifest_target = cast(ManifestTarget, target)
-        owned = self._targets[self._key(manifest_target)]
-        if not isinstance(owned, CompanyDeletionTarget):
+        if manifest_target.owner_lane != "A" or manifest_target.store != "aurora":
             raise PermissionError("manifest target is not owned by Lane A")
+        owned = CompanyDeletionTarget(
+            company_id=context.company_id,
+            owner_lane=manifest_target.owner_lane,
+            store=manifest_target.store,
+            resource_type=manifest_target.target_type,
+            resource_id=UUID(manifest_target.resource_id),
+        )
         verified = self._company.delete_company_target(
             context,
             target=owned,
@@ -158,37 +149,54 @@ class PrivacyDeletionBoundary:
 
     def execute_submission(self, context: TenantContext, target: object) -> bool:
         manifest_target = cast(ManifestTarget, target)
-        owned = self._targets[self._key(manifest_target)]
-        if not isinstance(owned, SubmissionDeletionTarget):
+        if manifest_target.owner_lane != "B":
             raise PermissionError("manifest target is not owned by Lane B")
+        owned = SubmissionDeletionTarget(
+            company_id=context.company_id,
+            owner_lane=manifest_target.owner_lane,
+            store=manifest_target.store,
+            resource_type=manifest_target.target_type,
+            resource_id=manifest_target.resource_id,
+        )
         return self._submission.delete_submission_target(
             context,
             target=owned,
             meta=CommandMeta.create(
-                f"privacy-delete-{manifest_target.resource_id}",
+                _deletion_idempotency_key("submission", manifest_target.resource_id),
                 clock=self._clock,
             ),
         ).verified_absent
 
     def execute_interview(self, context: TenantContext, target: object) -> bool:
         manifest_target = cast(ManifestTarget, target)
-        owned = self._targets[self._key(manifest_target)]
-        if not isinstance(owned, InterviewDeletionTarget):
+        if manifest_target.owner_lane != "C":
             raise PermissionError("manifest target is not owned by Lane C")
+        owned = InterviewDeletionTarget(
+            company_id=context.company_id,
+            owner_lane=manifest_target.owner_lane,
+            store=manifest_target.store,
+            resource_type=manifest_target.target_type,
+            resource_id=manifest_target.resource_id,
+        )
         return self._interview.delete_interview_target(
             context,
             target=owned,
             meta=CommandMeta.create(
-                f"privacy-delete-{manifest_target.resource_id}",
+                _deletion_idempotency_key("interview", manifest_target.resource_id),
                 clock=self._clock,
             ),
         ).verified_absent
 
     def execute_reporting(self, context: TenantContext, target: object) -> bool:
         manifest_target = cast(ManifestTarget, target)
-        owned = self._targets[self._key(manifest_target)]
-        if not isinstance(owned, DeletionTargetSpec):
+        if manifest_target.owner_lane != "D":
             raise PermissionError("manifest target is not owned by Lane D")
+        owned = DeletionTargetSpec(
+            owner_lane=manifest_target.owner_lane,
+            store=manifest_target.store,
+            target_type=manifest_target.target_type,
+            resource_id=manifest_target.resource_id,
+        )
         if owned.store == "s3" and self._object_storage is not None:
             delete_and_verify = getattr(
                 self._object_storage,
@@ -216,3 +224,8 @@ class PrivacyDeletionBoundary:
                 "outcome": "verified_absent" if verified_absent else "retrying",
             },
         )
+
+
+def _deletion_idempotency_key(lane: str, resource_id: str) -> str:
+    digest = hashlib.sha256(resource_id.encode("utf-8")).hexdigest()
+    return f"privacy-delete-{lane}-{digest}"
