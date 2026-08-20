@@ -45,13 +45,17 @@ if not isinstance(raw_values, list) or not all(isinstance(v, str) for v in raw_v
 
 ## 1.2 지금 비어 있는 곳 — 정확히 한 줄
 
-`apps/applicant-interview/src/app/routeAdapters.tsx:213`:
+`apps/applicant-interview/src/app/routeAdapters.tsx`:
 
 ```tsx
 candidate_identity_inputs: {},
 ```
 
 **빈 dict가 들어가므로 오너십은 전원 `CONTEXT_ONLY`이고, `ownership_weight = 0.15`는 항상 0으로 곱해진다.** RAG의 15%가 죽어 있다.
+
+*(2026-08-20: 이 문서가 적었던 `:213`은 낡았다 — `origin/develop` 기준으로 `:256`이다. 이 파일은 자주 움직이므로 줄번호가 아니라 문자열로 grep할 것.)*
+
+이 한 줄을 채우는 것이 오너십 화면 표시(Track 2 §6)의 선행 조건이다. 값이 없으면 표시할 것도 없고 검증할 것도 없다 — 그 조사 결과는 `track-2-handover.md` 5.1에 정리돼 있다(오너십 클래스가 검색 인덱스·`question_source_references`·타임라인 투영 세 곳에서 끊긴다는 것, 그리고 `resolve_source_reference`가 프로덕션에서 호출되지 않는다는 것).
 
 ## 1.3 새로 만드는 것 — contributor 조회
 

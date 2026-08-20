@@ -128,6 +128,16 @@ infrastructure only. The first company comes from a real signup through the cons
 functions (`ensure_local_demo_recruiting`, `ensure_local_demo_review_projections`, …) that were
 removed from every lane's `api/__init__.py` in the same commit.
 
+`scripts/cleanup_test_positions.sql` went with it — the script that dropped every position
+except the seeded demo one so a browser run started from a known roster. Its guard test
+(`backend/tests/integration/migrations/test_cleanup_script_matches_the_schema.py`) outlived the
+script by one commit and was removed on 2026-08-20. **If either is reinstated, restore both**: the
+test existed because the script rots silently, and it had already caught two real breakages — a
+missing `session_checkpoints` (and friends), and `submission_chunks` ordered after the analyses it
+references. Each surfaced as two unrelated-looking browser failures rather than as a cleanup error,
+because every foreign key here is `NO ACTION`, so a parent deleted before its children aborts the
+whole transaction instead of cascading.
+
 ## Why the frontends proxy `/v1`
 
 The backend installs no CORS middleware. In production each CloudFront distribution routes
