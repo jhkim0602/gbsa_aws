@@ -318,6 +318,9 @@ def create_production_runtime(
                 environment.get("GCP_STT_FINAL_TIMEOUT_SECONDS", "8")
             ),
         ),
+        allow_automated_answers=(
+            environment.get("APP_ENVIRONMENT", "").strip().casefold() == "local"
+        ),
     )
     interview_public = InterviewEnginePublic(
         repository=lane_c.repository,

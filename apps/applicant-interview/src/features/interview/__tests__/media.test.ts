@@ -1,6 +1,33 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PcmFrameBatcher } from "../media";
+import { ChunkedRecorder, PcmFrameBatcher } from "../media";
+
+class FakeMediaRecorder extends EventTarget {
+  static instance: FakeMediaRecorder | null = null;
+
+  constructor(_stream: MediaStream) {
+    super();
+    FakeMediaRecorder.instance = this;
+  }
+
+  start() {}
+
+  stop() {
+    this.dispatchEvent(new Event("stop"));
+  }
+
+  emit(blob: Blob) {
+    const event = new Event("dataavailable");
+    Object.defineProperty(event, "data", { value: blob });
+    this.dispatchEvent(event);
+  }
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  FakeMediaRecorder.instance = null;
+});
 
 describe("PcmFrameBatcher", () => {
   it("combines worklet frames into ordered 40ms packets", () => {
@@ -28,5 +55,42 @@ describe("PcmFrameBatcher", () => {
     expect(Array.from(onFrame.mock.calls[0][0] as Int16Array)).toEqual([
       1, 2, 3,
     ]);
+  });
+});
+
+describe("ChunkedRecorder", () => {
+  it("continues sequence numbers and session time across answer recordings", async () => {
+    vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
+    vi.spyOn(performance, "now")
+      .mockReturnValueOnce(1000)
+      .mockReturnValueOnce(3000);
+    const put = vi.fn().mockResolvedValue(undefined);
+    const onChunk = vi.fn().mockResolvedValue(undefined);
+    const recorder = new ChunkedRecorder(
+      "session-id",
+      {
+        put,
+        list: vi.fn().mockResolvedValue([]),
+        removeVerified: vi.fn().mockResolvedValue(undefined),
+      },
+      onChunk,
+      2,
+      5000,
+    );
+
+    recorder.start({} as MediaStream);
+    FakeMediaRecorder.instance?.emit({
+      size: 9,
+      arrayBuffer: async () => new TextEncoder().encode("recording").buffer,
+    } as Blob);
+    await recorder.stop();
+
+    expect(onChunk).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sequence: 3,
+        sessionStartMs: 5000,
+        sessionEndMs: 7000,
+      }),
+    );
   });
 });

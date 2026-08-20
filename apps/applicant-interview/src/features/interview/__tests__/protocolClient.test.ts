@@ -102,6 +102,34 @@ describe("interview protocol client", () => {
     );
   });
 
+  it("sends a local automated text answer with recording progress", () => {
+    const socket = new FakeSocket();
+    const client = new InterviewProtocolClient({
+      sessionId: "00000000-0000-7000-8000-000000000413",
+      socketFactory: () => socket,
+      store: createInterviewSessionStore(),
+      onQuestion: vi.fn(),
+    });
+    client.connect();
+    socket.open();
+
+    client.submitAutomatedAnswer({
+      answerTurnId: "00000000-0000-7000-8000-000000000414",
+      text: "자동 면접 답변입니다.",
+      lastRecordingChunkSequence: 7,
+    });
+
+    expect(JSON.parse(String(socket.sent[1]))).toMatchObject({
+      message_type: "answer.automated",
+      payload: {
+        answer_turn_id: "00000000-0000-7000-8000-000000000414",
+        text: "자동 면접 답변입니다.",
+        last_recording_chunk_sequence: 7,
+        expected_state: "awaiting_answer",
+      },
+    });
+  });
+
   it("applies question and resume messages, preserving text-only degraded mode", () => {
     const socket = new FakeSocket();
     const store = createInterviewSessionStore();

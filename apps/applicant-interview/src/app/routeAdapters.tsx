@@ -1,5 +1,5 @@
 import type { components } from "@iep/contracts/generated/typescript/openapi";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Navigate,
   useNavigate,
@@ -26,6 +26,7 @@ import {
   InterviewSession,
   type RecordingUploadApi,
 } from "../features/interview/InterviewSession";
+import type { AutomatedInterviewMode } from "../features/interview/automation";
 import type { StoredMediaChunk } from "../features/interview/media";
 import {
   SubmissionWorkspace,
@@ -36,6 +37,15 @@ import {
 } from "../features/submissions";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
+const COMPANY_CONSOLE_URL =
+  import.meta.env.VITE_COMPANY_CONSOLE_URL ?? "http://127.0.0.1:5173";
+
+const AUTOMATED_EQUIPMENT_RESULT: EquipmentCheckResult = {
+  camera: { status: "ready" },
+  microphone: { status: "ready" },
+  network: { status: "ready" },
+  overallStatus: "ready",
+};
 
 function idempotencyKey(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -428,6 +438,9 @@ export function InterviewRoute() {
   const strategyIdFromSearch = search.get("strategyId") ?? "";
   const interviewerLevel = parseInterviewerLevel(search.get("level"));
   const roomPreview = import.meta.env.DEV && search.get("preview") === "room";
+  const automationMode = import.meta.env.DEV
+    ? parseAutomationMode(search.get("auto"))
+    : undefined;
   const [resolvedStrategyId, setResolvedStrategyId] =
     useState(strategyIdFromSearch);
   const [strategyLoading, setStrategyLoading] = useState(
@@ -439,6 +452,9 @@ export function InterviewRoute() {
     websocketPath: string;
   } | null>(null);
   const [error, setError] = useState(false);
+  const [sessionStarting, setSessionStarting] = useState(false);
+  const autoStartRequestedRef = useRef(false);
+  const sessionStartPendingRef = useRef(false);
   const strategyId = strategyIdFromSearch || resolvedStrategyId;
 
   useEffect(() => {
@@ -471,6 +487,20 @@ export function InterviewRoute() {
     };
   }, [roomPreview, strategyIdFromSearch]);
 
+  useEffect(() => {
+    if (
+      !automationMode ||
+      !strategyId ||
+      strategyLoading ||
+      session ||
+      autoStartRequestedRef.current
+    ) {
+      return;
+    }
+    autoStartRequestedRef.current = true;
+    void start(AUTOMATED_EQUIPMENT_RESULT, automationMode);
+  }, [automationMode, session, strategyId, strategyLoading]);
+
   if (roomPreview) {
     return (
       <InterviewRoom
@@ -488,11 +518,18 @@ export function InterviewRoute() {
     );
   }
 
-  async function start(result: EquipmentCheckResult) {
+  async function start(
+    result: EquipmentCheckResult,
+    requestedAutomationMode = automationMode,
+  ) {
+    if (sessionStartPendingRef.current) return;
     if (!strategyId) {
       setError(true);
       return;
     }
+    sessionStartPendingRef.current = true;
+    setSessionStarting(true);
+    setError(false);
     try {
       const check = await applicantRequest<
         components["schemas"]["EquipmentCheck"]
@@ -524,6 +561,9 @@ export function InterviewRoute() {
       });
       const nextSearch = new URLSearchParams({ level: interviewerLevel });
       if (strategyId) nextSearch.set("strategyId", strategyId);
+      if (requestedAutomationMode) {
+        nextSearch.set("auto", requestedAutomationMode);
+      }
       navigate(
         {
           pathname: "/interview/session",
@@ -533,6 +573,9 @@ export function InterviewRoute() {
       );
     } catch {
       setError(true);
+      autoStartRequestedRef.current = false;
+      sessionStartPendingRef.current = false;
+      setSessionStarting(false);
     }
   }
 
@@ -554,6 +597,37 @@ export function InterviewRoute() {
   if (!session) {
     return (
       <>
+        {import.meta.env.DEV ? (
+          <section className="mx-auto mt-8 w-[min(calc(100%-48px),920px)] rounded-panel border border-[#cfe0bd] bg-[#f4faee] p-4 text-ink mw-680:w-[min(calc(100%-32px),920px)]">
+            <p className="text-[13px] font-semibold">로컬 자동 면접</p>
+            <p className="mt-1 text-[12px] leading-[1.6] text-muted">
+              환경 점검부터 답변, 결과 화면 이동까지 자동으로 진행합니다.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                className="min-h-10 rounded-panel border border-brand bg-brand px-4 text-[12px] font-semibold text-white"
+                type="button"
+                disabled={sessionStarting}
+                onClick={() => void start(AUTOMATED_EQUIPMENT_RESULT, "fast")}
+              >
+                빠른 자동 면접 실행
+              </button>
+              <button
+                className="min-h-10 rounded-panel border border-border bg-white px-4 text-[12px] font-semibold text-ink"
+                type="button"
+                disabled={sessionStarting}
+                onClick={() => void start(AUTOMATED_EQUIPMENT_RESULT, "speech")}
+              >
+                음성 포함 자동 면접 실행
+              </button>
+            </div>
+            {sessionStarting ? (
+              <p className="mt-2 text-[12px] text-muted" role="status">
+                자동 면접 세션을 준비하고 있습니다.
+              </p>
+            ) : null}
+          </section>
+        ) : null}
         <EquipmentCheck
           api={createBrowserEquipmentCheckApi()}
           onReady={(result) => void start(result)}
@@ -569,7 +643,24 @@ export function InterviewRoute() {
       websocketUrl={resolveWebSocketUrl(session.websocketPath)}
       recordingApi={createRecordingUploadApi(session.sessionId)}
       interviewerLevel={interviewerLevel}
-      onComplete={() => navigate("/interview/complete", { replace: true })}
+      automationMode={automationMode}
+      onComplete={() => {
+        if (automationMode) {
+          const reviewUrl = new URL(
+            `/review/${session.sessionId}?auto=1`,
+            COMPANY_CONSOLE_URL,
+          );
+          window.location.assign(reviewUrl.toString());
+          return;
+        }
+        navigate("/interview/complete", { replace: true });
+      }}
     />
   );
+}
+
+function parseAutomationMode(
+  value: string | null,
+): AutomatedInterviewMode | undefined {
+  return value === "fast" || value === "speech" ? value : undefined;
 }

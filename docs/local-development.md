@@ -112,6 +112,24 @@ stream open until `answer.complete`, persists the combined final transcript once
 TTS PCM back through the same WebSocket. Set both providers to `aws_legacy` to use the previous
 AWS path without reverting code.
 
+## Automated interview locally
+
+The applicant interview environment-check screen exposes two development-only actions:
+
+- **빠른 자동 면접 실행** records a synthetic local video and submits generated Korean text
+  answers without opening STT. Question generation, GCP TTS, interview progression, media upload,
+  worker processing, and report generation still use the normal application path.
+- **음성 포함 자동 면접 실행** sends the checked-in Korean WAV fixture as 16 kHz PCM, so the
+  real GCP streaming STT path is included as well.
+
+Run the API, worker, applicant app, and company console before starting. The automated run skips
+the browser equipment permission prompt, completes each question, then opens
+`http://127.0.0.1:5173/review/{session_id}?auto=1`. That page polls until the worker has created the
+report and timeline. `VITE_COMPANY_CONSOLE_URL` can override the console origin when needed.
+
+Both entry points are local-only: Vite only renders them in development, and the API accepts the
+`answer.automated` WebSocket message only when `APP_ENVIRONMENT=local`.
+
 The analysis worker reads the uploaded PDF from local S3-compatible storage and first attempts
 native PDF text extraction inside the worker. Text PDFs continue directly into the existing
 chunking and interview-strategy pipeline without a Document AI call. Image-heavy, scanned, mixed,

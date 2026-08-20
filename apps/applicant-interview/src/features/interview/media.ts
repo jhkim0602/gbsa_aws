@@ -53,32 +53,48 @@ export class IndexedDbMediaBuffer implements LocalMediaBuffer {
 
 export class ChunkedRecorder {
   private recorder: MediaRecorder | null = null;
-  private sequence = 0;
+  private sequence: number;
   private startedAt = 0;
+  private timesliceMs = 2000;
+  private pendingPersist: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly sessionId: string,
     private readonly buffer: LocalMediaBuffer,
     private readonly onChunk: (chunk: StoredMediaChunk) => Promise<void>,
-  ) {}
+    initialSequence = 0,
+    private readonly initialSessionStartMs = 0,
+  ) {
+    this.sequence = initialSequence;
+  }
 
   start(stream: MediaStream, timesliceMs = 2000): void {
     this.startedAt = performance.now();
+    this.timesliceMs = timesliceMs;
     this.recorder = new MediaRecorder(stream);
     this.recorder.addEventListener("dataavailable", (event) => {
-      void this.persist(event.data);
+      this.pendingPersist = this.pendingPersist.then(() =>
+        this.persist(event.data),
+      );
     });
     this.recorder.start(timesliceMs);
   }
 
-  stop(): void {
-    this.recorder?.stop();
+  async stop(): Promise<void> {
+    const recorder = this.recorder;
+    if (!recorder) return;
+    const stopped = new Promise<void>((resolve) => {
+      recorder.addEventListener("stop", () => resolve(), { once: true });
+    });
+    recorder.stop();
     this.recorder = null;
+    await stopped;
+    await this.pendingPersist;
   }
 
   private async persist(blob: Blob): Promise<void> {
     if (blob.size === 0) return;
-    const start = Math.round(performance.now() - this.startedAt);
+    const elapsed = Math.round(performance.now() - this.startedAt);
     this.sequence += 1;
     const digest = await crypto.subtle.digest(
       "SHA-256",
@@ -93,8 +109,9 @@ export class ChunkedRecorder {
       blob,
       byteSize: blob.size,
       sha256,
-      sessionStartMs: Math.max(0, start - 2000),
-      sessionEndMs: start,
+      sessionStartMs:
+        this.initialSessionStartMs + Math.max(0, elapsed - this.timesliceMs),
+      sessionEndMs: this.initialSessionStartMs + elapsed,
     };
     await this.buffer.put(chunk);
     await this.onChunk(chunk);

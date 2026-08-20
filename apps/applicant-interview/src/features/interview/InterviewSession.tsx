@@ -8,6 +8,15 @@ import {
 } from "react";
 
 import type { InterviewerLevel } from "./Avatar";
+import {
+  automatedAnswer,
+  createAutomatedMedia,
+  delay,
+  loadAutomatedPcm,
+  sendAutomatedPcm,
+  type AutomatedInterviewMode,
+  type AutomatedMedia,
+} from "./automation";
 import { InterviewRoom } from "./InterviewRoom";
 import {
   ChunkedRecorder,
@@ -34,9 +43,13 @@ type ProtocolClient = Pick<
   | "startAnswer"
   | "sendAudioFrame"
   | "repeatQuestion"
+  | "submitAutomatedAnswer"
 >;
 
-type Recorder = Pick<ChunkedRecorder, "start" | "stop">;
+type Recorder = Readonly<{
+  start(stream: MediaStream): void;
+  stop(): void | Promise<void>;
+}>;
 type AudioCapture = Pick<PcmAudioWorkletCapture, "start" | "stop">;
 type AudioPlayer = Pick<
   PcmAudioWorkletPlayer,
@@ -51,9 +64,13 @@ export type InterviewSessionDependencies = Readonly<{
     sessionId: string,
     buffer: LocalMediaBuffer,
     onChunk: (chunk: StoredMediaChunk) => Promise<void>,
+    initialSequence: number,
+    initialSessionStartMs: number,
   ): Recorder;
   createAudioCapture(): AudioCapture;
   createAudioPlayer(): AudioPlayer;
+  createAutomatedMedia(label: string): Promise<AutomatedMedia>;
+  loadAutomatedPcm(): Promise<Int16Array>;
   createProtocolClient(input: {
     sessionId: string;
     equipmentCheckId?: string;
@@ -79,6 +96,7 @@ export function InterviewSession({
   recordingApi,
   interviewerLevel,
   dependencies,
+  automationMode,
   onComplete,
 }: {
   sessionId: string;
@@ -87,6 +105,7 @@ export function InterviewSession({
   recordingApi: RecordingUploadApi;
   interviewerLevel?: InterviewerLevel;
   dependencies?: Partial<InterviewSessionDependencies>;
+  automationMode?: AutomatedInterviewMode;
   onComplete?: () => void;
 }) {
   const store = useMemo(() => createInterviewSessionStore(), []);
@@ -99,6 +118,7 @@ export function InterviewSession({
   const [questionTurnId, setQuestionTurnId] = useState<string | null>(null);
   const [transcript, setTranscript] = useState("");
   const [interviewerSpeaking, setInterviewerSpeaking] = useState(false);
+  const [automationStatus, setAutomationStatus] = useState("");
   const mediaBuffer = useMemo(
     () => dependencies?.mediaBuffer ?? new IndexedDbMediaBuffer(),
     [dependencies?.mediaBuffer],
@@ -114,7 +134,12 @@ export function InterviewSession({
   const audioPlaybackChainRef = useRef<Promise<void>>(Promise.resolve());
   const audioSequenceRef = useRef(0);
   const lastRecordingSequenceRef = useRef(0);
+  const lastRecordingEndMsRef = useRef(0);
   const completionNotifiedRef = useRef(false);
+  const automatedQuestionRef = useRef<string | null>(null);
+  const automatedAnswerIndexRef = useRef(0);
+  const automationRunningRef = useRef(false);
+  const automatedMediaRef = useRef<AutomatedMedia | null>(null);
 
   const resolved = useMemo<InterviewSessionDependencies>(
     () => ({
@@ -125,13 +150,28 @@ export function InterviewSession({
       mediaBuffer,
       createRecorder:
         dependencies?.createRecorder ??
-        ((activeSessionId, buffer, onChunk) =>
-          new ChunkedRecorder(activeSessionId, buffer, onChunk)),
+        ((
+          activeSessionId,
+          buffer,
+          onChunk,
+          initialSequence,
+          initialSessionStartMs,
+        ) =>
+          new ChunkedRecorder(
+            activeSessionId,
+            buffer,
+            onChunk,
+            initialSequence,
+            initialSessionStartMs,
+          )),
       createAudioCapture:
         dependencies?.createAudioCapture ??
         (() => new PcmAudioWorkletCapture()),
       createAudioPlayer:
         dependencies?.createAudioPlayer ?? (() => new PcmAudioWorkletPlayer()),
+      createAutomatedMedia:
+        dependencies?.createAutomatedMedia ?? createAutomatedMedia,
+      loadAutomatedPcm: dependencies?.loadAutomatedPcm ?? loadAutomatedPcm,
       createProtocolClient:
         dependencies?.createProtocolClient ??
         ((input) => new InterviewProtocolClient(input)),
@@ -192,6 +232,7 @@ export function InterviewSession({
     return () => {
       client.disconnect();
       stopMedia(audioCaptureRef, recorderRef, streamRef, answerTurnIdRef);
+      automatedMediaRef.current?.dispose();
       void audioPlayerRef.current?.stop();
     };
   }, [equipmentCheckId, resolved, sessionId, store]);
@@ -214,6 +255,38 @@ export function InterviewSession({
     onComplete?.();
   }, [onComplete, snapshot.state]);
 
+  useEffect(() => {
+    if (
+      !automationMode ||
+      snapshot.connectionState !== "connected" ||
+      snapshot.state !== "awaiting_answer" ||
+      !questionTurnId ||
+      automatedQuestionRef.current === questionTurnId ||
+      automationRunningRef.current
+    ) {
+      return;
+    }
+    automatedQuestionRef.current = questionTurnId;
+    automationRunningRef.current = true;
+    void runAutomatedAnswer()
+      .catch((error: unknown) => {
+        setAutomationStatus(
+          error instanceof Error
+            ? `자동 면접 오류: ${error.message}`
+            : "자동 면접을 계속 진행할 수 없습니다.",
+        );
+        clientRef.current?.disconnect();
+      })
+      .finally(() => {
+        automationRunningRef.current = false;
+      });
+  }, [
+    automationMode,
+    questionTurnId,
+    snapshot.connectionState,
+    snapshot.state,
+  ]);
+
   async function uploadChunk(chunk: StoredMediaChunk): Promise<void> {
     store.getState().bufferChunk({
       sequence: chunk.sequence,
@@ -223,6 +296,10 @@ export function InterviewSession({
     lastRecordingSequenceRef.current = Math.max(
       lastRecordingSequenceRef.current,
       chunk.sequence,
+    );
+    lastRecordingEndMsRef.current = Math.max(
+      lastRecordingEndMsRef.current,
+      chunk.sessionEndMs,
     );
     await recordingApi.upload(chunk);
   }
@@ -256,6 +333,8 @@ export function InterviewSession({
       sessionId,
       mediaBuffer,
       uploadChunk,
+      lastRecordingSequenceRef.current,
+      lastRecordingEndMsRef.current,
     );
     recorderRef.current = recorder;
     recorder.start(stream);
@@ -287,7 +366,7 @@ export function InterviewSession({
   async function completeAnswer(): Promise<void> {
     const answerTurnId = answerTurnIdRef.current;
     if (!answerTurnId) return;
-    recorderRef.current?.stop();
+    await recorderRef.current?.stop();
     recorderRef.current = null;
     await audioCaptureRef.current?.stop();
     audioCaptureRef.current = null;
@@ -304,6 +383,80 @@ export function InterviewSession({
     });
   }
 
+  async function runAutomatedAnswer(): Promise<void> {
+    if (!automationMode) return;
+    await delay(900);
+    const answerIndex = automatedAnswerIndexRef.current;
+    automatedAnswerIndexRef.current += 1;
+    const answer = automatedAnswer(question, answerIndex);
+    setTranscript(answer);
+    setAutomationStatus(
+      automationMode === "speech"
+        ? `음성 자동 답변 ${answerIndex + 1}개를 전송하고 있습니다.`
+        : `빠른 자동 답변 ${answerIndex + 1}개를 처리하고 있습니다.`,
+    );
+
+    const media = await resolved.createAutomatedMedia(answer);
+    automatedMediaRef.current = media;
+    let recorder: Recorder | null = null;
+    let recorderStopped = false;
+    try {
+      streamRef.current = media.stream;
+      const answerTurnId = crypto.randomUUID();
+      answerTurnIdRef.current = answerTurnId;
+      audioSequenceRef.current = 0;
+      audioSendChainRef.current = Promise.resolve();
+      if (automationMode === "speech") {
+        clientRef.current?.startAnswer({ answerTurnId, sampleRateHz: 16000 });
+      }
+
+      recorder = resolved.createRecorder(
+        sessionId,
+        mediaBuffer,
+        uploadChunk,
+        lastRecordingSequenceRef.current,
+        lastRecordingEndMsRef.current,
+      );
+      recorderRef.current = recorder;
+      recorder.start(media.stream);
+
+      if (automationMode === "speech") {
+        const pcm = await resolved.loadAutomatedPcm();
+        await sendAutomatedPcm(pcm, queueAudioFrame);
+      } else {
+        await delay(2200);
+      }
+
+      await recorder.stop();
+      recorderStopped = true;
+      recorderRef.current = null;
+      await audioSendChainRef.current;
+
+      if (automationMode === "speech") {
+        clientRef.current?.completeAnswer({
+          answerTurnId,
+          lastAudioChunkSequence: audioSequenceRef.current,
+          lastRecordingChunkSequence: lastRecordingSequenceRef.current,
+        });
+      } else {
+        clientRef.current?.submitAutomatedAnswer({
+          answerTurnId,
+          text: answer,
+          lastRecordingChunkSequence: lastRecordingSequenceRef.current,
+        });
+      }
+    } finally {
+      if (recorder && !recorderStopped) {
+        await Promise.resolve(recorder.stop()).catch(() => undefined);
+      }
+      recorderRef.current = null;
+      streamRef.current = null;
+      answerTurnIdRef.current = null;
+      media.dispose();
+      automatedMediaRef.current = null;
+    }
+  }
+
   function reconnect(): void {
     clientRef.current?.connect();
     void replayBufferedChunks();
@@ -316,19 +469,29 @@ export function InterviewSession({
   }
 
   return (
-    <InterviewRoom
-      question={question}
-      transcript={transcript}
-      interviewerSpeaking={interviewerSpeaking}
-      state={snapshot.state}
-      connectionState={snapshot.connectionState}
-      textOnly={snapshot.degradedModes.includes("text_only")}
-      interviewerLevel={interviewerLevel}
-      onStartAnswer={() => void startAnswer()}
-      onCompleteAnswer={() => void completeAnswer()}
-      onReconnect={reconnect}
-      onAddExplanation={questionTurnId ? addExplanation : undefined}
-    />
+    <>
+      {automationMode ? (
+        <p
+          className="fixed top-3 left-1/2 z-200 -translate-x-1/2 rounded-full bg-[#243019] px-4 py-2 text-[11px] font-semibold text-white shadow-lg"
+          role="status"
+        >
+          {automationStatus || "자동 면접을 준비하고 있습니다."}
+        </p>
+      ) : null}
+      <InterviewRoom
+        question={question}
+        transcript={transcript}
+        interviewerSpeaking={interviewerSpeaking}
+        state={snapshot.state}
+        connectionState={snapshot.connectionState}
+        textOnly={snapshot.degradedModes.includes("text_only")}
+        interviewerLevel={interviewerLevel}
+        onStartAnswer={() => void startAnswer()}
+        onCompleteAnswer={() => void completeAnswer()}
+        onReconnect={reconnect}
+        onAddExplanation={questionTurnId ? addExplanation : undefined}
+      />
+    </>
   );
 }
 
@@ -338,7 +501,7 @@ async function stopMedia(
   streamRef: MutableRefObject<MediaStream | null>,
   answerTurnIdRef: MutableRefObject<string | null>,
 ): Promise<void> {
-  recorderRef.current?.stop();
+  await recorderRef.current?.stop();
   recorderRef.current = null;
   await audioCaptureRef.current?.stop();
   audioCaptureRef.current = null;

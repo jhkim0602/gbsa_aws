@@ -73,6 +73,15 @@ class AnswerCompletionHandler(Protocol):
     ) -> ServerEnvelope: ...
 
 
+class AutomatedAnswerHandler(Protocol):
+    def complete_automated_answer(
+        self,
+        context: TenantContext,
+        principal: ApplicantPrincipal,
+        envelope: WebSocketEnvelope,
+    ) -> ServerEnvelope: ...
+
+
 class AudioFrameHandler(Protocol):
     def handle_audio(
         self,
@@ -117,11 +126,13 @@ class ProtocolStreamHandler:
         start_handler: SessionStartHandler | None = None,
         answer_handler: AnswerCompletionHandler | None = None,
         audio_handler: AudioFrameHandler | None = None,
+        automated_answer_handler: AutomatedAnswerHandler | None = None,
     ) -> None:
         self._session_service = session_service
         self._start_handler = start_handler
         self._answer_handler = answer_handler
         self._audio_handler = audio_handler
+        self._automated_answer_handler = automated_answer_handler
 
     def authorize_connection(
         self,
@@ -231,6 +242,15 @@ class ProtocolStreamHandler:
                     "answer_turn_id": str(answer_turn_id),
                     "state": "recording",
                 },
+            )
+        if (
+            envelope.message_type == "answer.automated"
+            and self._automated_answer_handler is not None
+        ):
+            return self._automated_answer_handler.complete_automated_answer(
+                context,
+                principal,
+                envelope,
             )
         if envelope.message_type == "answer.complete" and self._answer_handler is not None:
             return self._answer_handler.complete_answer(context, principal, envelope)

@@ -5,7 +5,7 @@
  * so they pass even when the adapter feeds the component a UUID. Only a test that
  * goes through `ReviewRoute` with a real API payload catches that.
  */
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -64,11 +64,9 @@ function stubApi(criterionName: string) {
   );
 }
 
-function renderReview() {
+function renderReview(search = `invitationId=${INVITATION_ID}`) {
   render(
-    <MemoryRouter
-      initialEntries={[`/review/${SESSION_ID}?invitationId=${INVITATION_ID}`]}
-    >
+    <MemoryRouter initialEntries={[`/review/${SESSION_ID}?${search}`]}>
       <Routes>
         <Route path="/review/:sessionId" element={<ReviewRoute />} />
       </Routes>
@@ -111,5 +109,63 @@ describe("ReviewRoute", () => {
     expect(screen.getByText("점수화된 기준 없음")).toBeTruthy();
     expect(screen.getAllByText("판단 근거 없음").length).toBeGreaterThan(0);
     expect(screen.queryByText("0점")).toBeNull();
+  });
+
+  it("polls until an automated interview report is ready", async () => {
+    vi.useFakeTimers();
+    try {
+      let reportRequests = 0;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((input: RequestInfo | URL) => {
+          const url = String(input);
+          if (url.endsWith("/timeline")) {
+            return Promise.resolve(
+              new Response(JSON.stringify(TIMELINE_PAYLOAD), {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+              }),
+            );
+          }
+          reportRequests += 1;
+          const pending = reportRequests === 1;
+          return Promise.resolve(
+            new Response(
+              JSON.stringify(
+                pending
+                  ? { status: "queued", retryable: true, message: null }
+                  : reportPayload("자동 면접 검증"),
+              ),
+              {
+                status: pending ? 202 : 200,
+                headers: { "Content-Type": "application/json" },
+              },
+            ),
+          );
+        }),
+      );
+
+      renderReview("auto=1");
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(
+        screen.getByText(
+          "자동 면접이 끝났습니다. 최종 리포트를 생성하고 있습니다.",
+        ),
+      ).toBeTruthy();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+
+      expect(
+        screen.getByRole("rowheader", { name: "자동 면접 검증" }),
+      ).toBeTruthy();
+      expect(reportRequests).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

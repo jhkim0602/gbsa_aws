@@ -119,6 +119,21 @@ export class InterviewProtocolClient {
     });
   }
 
+  submitAutomatedAnswer(
+    input: Readonly<{
+      answerTurnId: string;
+      text: string;
+      lastRecordingChunkSequence: number;
+    }>,
+  ): void {
+    this.sendEnvelope("answer.automated", {
+      answer_turn_id: input.answerTurnId,
+      text: input.text,
+      last_recording_chunk_sequence: input.lastRecordingChunkSequence,
+      expected_state: "awaiting_answer",
+    });
+  }
+
   startAnswer(
     input: Readonly<{
       answerTurnId: string;

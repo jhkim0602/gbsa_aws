@@ -22,6 +22,7 @@ describe("InterviewSession", () => {
       completeAnswer: vi.fn(),
       sendAudioFrame: vi.fn(),
       repeatQuestion: vi.fn(),
+      submitAutomatedAnswer: vi.fn(),
     };
     const stopTrack = vi.fn();
     const stream = {
@@ -140,6 +141,7 @@ describe("InterviewSession", () => {
       completeAnswer: vi.fn(),
       sendAudioFrame: vi.fn(),
       repeatQuestion: vi.fn(),
+      submitAutomatedAnswer: vi.fn(),
     };
     const dependencies: Partial<InterviewSessionDependencies> = {
       socketFactory: vi.fn(),
@@ -170,5 +172,95 @@ describe("InterviewSession", () => {
     fireEvent.click(await screen.findByRole("button", { name: "다시 연결" }));
     await waitFor(() => expect(upload).toHaveBeenCalledWith(buffered));
     expect(protocol.connect).toHaveBeenCalledTimes(2);
+  });
+
+  it("runs the fast local interview without camera or microphone access", async () => {
+    vi.useFakeTimers();
+    try {
+      const protocol = {
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        startAnswer: vi.fn(),
+        completeAnswer: vi.fn(),
+        sendAudioFrame: vi.fn(),
+        repeatQuestion: vi.fn(),
+        submitAutomatedAnswer: vi.fn(),
+      };
+      const stream = {
+        getTracks: () => [],
+      } as unknown as MediaStream;
+      const mediaDevices = { getUserMedia: vi.fn() };
+      const recorder = {
+        start: vi.fn(),
+        stop: vi.fn().mockResolvedValue(undefined),
+      };
+      const dispose = vi.fn();
+      let onQuestion:
+        | ((question: {
+            questionTurnId: string;
+            text: string;
+            textOnly: boolean;
+          }) => void)
+        | undefined;
+      const dependencies: Partial<InterviewSessionDependencies> = {
+        socketFactory: vi.fn(),
+        mediaDevices,
+        mediaBuffer: {
+          put: vi.fn(),
+          list: vi.fn().mockResolvedValue([]),
+          removeVerified: vi.fn().mockResolvedValue(undefined),
+        },
+        createRecorder: vi.fn(() => recorder),
+        createAudioCapture: vi.fn(),
+        createAutomatedMedia: vi.fn().mockResolvedValue({ stream, dispose }),
+        createProtocolClient: vi.fn((input) => {
+          onQuestion = input.onQuestion;
+          input.store.getState().setConnectionState("connected");
+          input.store.getState().applyServerState({
+            state: "awaiting_answer",
+            serverSequence: 1,
+            lastFinalTurnId: null,
+            lastVerifiedRecordingChunkSequence: 0,
+            degradedModes: [],
+          });
+          return protocol;
+        }),
+      };
+
+      render(
+        <InterviewSession
+          sessionId="00000000-0000-7000-8000-000000000520"
+          equipmentCheckId="00000000-0000-7000-8000-000000000521"
+          websocketUrl="ws://localhost/session"
+          recordingApi={{ upload: vi.fn() }}
+          dependencies={dependencies}
+          automationMode="fast"
+        />,
+      );
+
+      act(() => {
+        onQuestion?.({
+          questionTurnId: "00000000-0000-7000-8000-000000000522",
+          text: "장애 대응 경험을 설명해 주세요.",
+          textOnly: true,
+        });
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(900);
+        await vi.advanceTimersByTimeAsync(2200);
+      });
+
+      expect(mediaDevices.getUserMedia).not.toHaveBeenCalled();
+      expect(protocol.startAnswer).not.toHaveBeenCalled();
+      expect(recorder.start).toHaveBeenCalledWith(stream);
+      expect(protocol.submitAutomatedAnswer).toHaveBeenCalledWith({
+        answerTurnId: expect.any(String),
+        text: expect.stringContaining("장애 대응 경험을 설명해 주세요."),
+        lastRecordingChunkSequence: 0,
+      });
+      expect(dispose).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

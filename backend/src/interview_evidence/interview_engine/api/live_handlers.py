@@ -363,6 +363,40 @@ class LiveInterviewHandler:
             occurred_at=self._clock.now(),
         )
 
+    def complete_automated_answer(
+        self,
+        context: TenantContext,
+        principal: ApplicantPrincipal,
+        envelope: WebSocketEnvelope,
+    ) -> ServerEnvelope:
+        try:
+            answer_turn_id = UUID(str(envelope.payload["answer_turn_id"]))
+        except (KeyError, TypeError, ValueError):
+            return self._error(
+                envelope,
+                code="AUTOMATED_ANSWER_INVALID",
+                message="자동 답변 식별자가 올바르지 않습니다.",
+                retryable=False,
+            )
+        text = str(envelope.payload.get("text", "")).strip()
+        if not text or len(text) > 12_000:
+            return self._error(
+                envelope,
+                code="AUTOMATED_ANSWER_INVALID",
+                message="자동 답변 내용이 비어 있거나 너무 깁니다.",
+                retryable=False,
+            )
+        self.record_streaming_transcript(
+            context,
+            principal,
+            envelope,
+            answer_turn_id=answer_turn_id,
+            text=text,
+            confidence=1.0,
+            last_chunk_sequence=0,
+        )
+        return self.complete_answer(context, principal, envelope)
+
     def _complete_answer_once(
         self,
         context: TenantContext,

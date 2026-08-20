@@ -94,6 +94,7 @@ def create_lane_c_runtime(
     speech_to_text: SpeechToText | None = None,
     text_to_speech: TextToSpeech | None = None,
     websocket_speech: WebSocketSpeechRuntime | None = None,
+    allow_automated_answers: bool = False,
 ) -> LaneCRuntime:
     active_repository = repository
     active_storage = object_storage
@@ -178,6 +179,7 @@ def create_lane_c_runtime(
             start_handler=live_handler,
             answer_handler=live_handler,
             audio_handler=live_handler,
+            automated_answer_handler=(live_handler if allow_automated_answers else None),
         )
     router = create_applicant_interview_router(
         principal_provider=principal_provider,
@@ -220,6 +222,7 @@ def create_lane_c_app(
     speech_to_text: SpeechToText | None = None,
     text_to_speech: TextToSpeech | None = None,
     websocket_speech: WebSocketSpeechRuntime | None = None,
+    allow_automated_answers: bool = False,
 ) -> FastAPI:
     return create_lane_c_runtime(
         principal_provider=principal_provider,
@@ -238,6 +241,7 @@ def create_lane_c_app(
         speech_to_text=speech_to_text,
         text_to_speech=text_to_speech,
         websocket_speech=websocket_speech,
+        allow_automated_answers=allow_automated_answers,
     ).app
 
 
