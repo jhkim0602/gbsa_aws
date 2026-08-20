@@ -5,8 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApplicantRoutes } from "../App";
 import {
   createRecordingUploadApi,
+  interviewRoutePath,
   resolveWebSocketUrl,
   serializeEquipmentComponent,
+  serializeInterviewSessionRequest,
 } from "../routeAdapters";
 
 afterEach(() => {
@@ -17,7 +19,11 @@ describe("applicant feature routes", () => {
   it.each([
     ["/access/token-value", "지원자 면접", "초대 확인"],
     ["/submissions", "지원 자료 제출", "자료 제출"],
-    ["/interview", "면접 환경 점검", "환경 점검"],
+    [
+      "/interview?strategyId=00000000-0000-7000-8000-000000000701",
+      "면접 환경 점검",
+      "환경 점검",
+    ],
   ])(
     "renders %s through the applicant portal shell",
     (path, heading, currentStep) => {
@@ -79,6 +85,25 @@ describe("applicant feature routes", () => {
       sanitized_code: "CAMERA_UNAVAILABLE",
     });
     expect(serialized).not.toHaveProperty("sanitizedCode");
+  });
+
+  it("carries the generated strategy into the interview route", () => {
+    expect(interviewRoutePath("00000000-0000-7000-8000-000000000701")).toBe(
+      "/interview?strategyId=00000000-0000-7000-8000-000000000701",
+    );
+  });
+
+  it("includes the generated strategy in the session creation request", () => {
+    expect(
+      serializeInterviewSessionRequest(
+        "00000000-0000-7000-8000-000000000702",
+        "00000000-0000-7000-8000-000000000701",
+      ),
+    ).toEqual({
+      equipment_check_id: "00000000-0000-7000-8000-000000000702",
+      strategy_id: "00000000-0000-7000-8000-000000000701",
+      acknowledged_partial_analysis: true,
+    });
   });
 
   it("resolves the server websocket path and uploads recording chunks directly", async () => {

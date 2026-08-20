@@ -705,8 +705,9 @@ def create_company_router(
                             deadline_text=format_deadline(issuance.invitation.expires_at),
                             template=template,
                             recipient_address=issuance.invitation.applicant_email,
-                            invitation_url=(
-                                f"{applicant_access_base_url}?token={issuance.token.raw_token}"
+                            invitation_url=_invitation_access_url(
+                                applicant_access_base_url,
+                                issuance.token.raw_token,
                             ),
                             applicant_display_name=issuance.invitation.applicant_display_name,
                         ),
@@ -1036,6 +1037,10 @@ def _position_view(position: Position) -> PositionView:
         row_version=position.row_version,
         created_at=position.created_at,
     )
+
+
+def _invitation_access_url(base_url: str, raw_token: str) -> str:
+    return f"{base_url.rstrip('/')}/{raw_token}"
 
 
 def _interviewer_profile_view(profile: InterviewerProfile) -> InterviewerProfileView:

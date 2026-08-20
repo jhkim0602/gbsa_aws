@@ -137,6 +137,7 @@ export type CompanyOperationsApi = CompanyWorkspaceApi &
     listSubmissions(
       invitationId: string,
     ): Promise<readonly CompanySubmission[]>;
+    requestApplicantDeletion?(invitationId: string): Promise<void>;
     /**
      * Read-only report summaries used for position-level competency analytics.
      * Optional so older API adapters can still render the operational workspace.

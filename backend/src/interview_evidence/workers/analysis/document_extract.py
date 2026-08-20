@@ -12,6 +12,22 @@ class DocumentExtractionError(RuntimeError):
     """Sanitized document extraction failure."""
 
 
+class DocumentExtractor(Protocol):
+    extractor_version: str
+
+    def extract(
+        self,
+        context: TenantContext,
+        source_uri: str,
+    ) -> tuple[DocumentPage, ...]: ...
+
+
+class DocumentContentExtractor(Protocol):
+    extractor_version: str
+
+    def extract_content(self, content: bytes) -> tuple[DocumentPage, ...]: ...
+
+
 @dataclass(frozen=True, slots=True)
 class TextractPage:
     page_number: int

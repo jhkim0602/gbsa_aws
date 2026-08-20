@@ -17,6 +17,53 @@ function respondWith(status: number, body: string, contentType: string) {
 describe("companyRequest", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    localStorage.clear();
+  });
+
+  it("sends the configured local company token when Cognito is absent", async () => {
+    vi.stubEnv("VITE_LOCAL_COMPANY_TOKEN", "local-company-token");
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("{}", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await companyRequest("/v1/me");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/v1/me",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer local-company-token",
+        }),
+      }),
+    );
+  });
+
+  it("keeps the localStorage token fallback when no local env token is set", async () => {
+    vi.stubEnv("VITE_LOCAL_COMPANY_TOKEN", "");
+    localStorage.setItem("iep_company_token", "stored-company-token");
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("{}", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await companyRequest("/v1/me");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/v1/me",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer stored-company-token",
+        }),
+      }),
+    );
   });
 
   it("keeps the server status and detail so callers can tell a conflict apart", async () => {

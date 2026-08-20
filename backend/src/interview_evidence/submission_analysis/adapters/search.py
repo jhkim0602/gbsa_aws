@@ -41,6 +41,27 @@ class SearchCandidate:
     exact_symbol_score: float
 
 
+@dataclass(frozen=True, slots=True)
+class AnalysisDebugDocument:
+    source_id: UUID
+    source_type: str
+    material_type: str | None
+    locator: dict[str, object]
+    text: str
+    embedding_model: str
+    embedding_version: str
+
+
+class AnalysisDebugSearch(Protocol):
+    def list_debug_documents(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+    ) -> tuple[AnalysisDebugDocument, ...]: ...
+
+
 class SearchIndex(Protocol):
     def add(self, document: SearchDocument) -> None: ...
 

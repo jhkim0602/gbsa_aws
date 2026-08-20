@@ -4,6 +4,8 @@
 !.env.example
 *.pem
 *.key
+# Google Cloud service-account exports for the personal WhyYou project.
+whyyou-*.json
 
 # Python
 .venv/

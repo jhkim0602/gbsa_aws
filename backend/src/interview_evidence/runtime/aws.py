@@ -31,7 +31,6 @@ from interview_evidence.shared.aws_clients.production import (
     AwsS3ObjectStorage,
     AwsSesEmailSender,
     AwsSqsQueue,
-    AwsTextract,
     AwsTitanTextEmbedder,
     AwsTranscribeSpeechToText,
     BedrockClient,
@@ -41,7 +40,6 @@ from interview_evidence.shared.aws_clients.production import (
     S3Client,
     SesClient,
     SqsClient,
-    TextractClient,
     TranscribeClient,
 )
 from interview_evidence.shared.operations import (
@@ -56,7 +54,6 @@ from interview_evidence.submission_analysis.adapters.opensearch import (
     AwsOpenSearchIndex,
 )
 from interview_evidence.submission_analysis.adapters.search import SearchIndex
-from interview_evidence.workers.analysis.document_extract import TextractPort
 
 
 class SecretsManagerClient(Protocol):
@@ -90,7 +87,6 @@ class AwsRuntimeDependencies:
     embedder: TextEmbedder
     speech_to_text: SpeechToText
     text_to_speech: TextToSpeech
-    textract: TextractPort
     media_convert: MediaConvertPort
     metrics: MetricRecorder
 
@@ -205,13 +201,6 @@ def create_aws_runtime_dependencies(
         bucket=media_bucket,
         kms_key_id=kms_key_id,
     )
-    textract = AwsTextract(
-        cast(TextractClient, factory("textract")),
-        bucket=source_bucket,
-        object_key=lambda context, object_id: (
-            f"tenants/{context.company_id}/submission-original/{object_id}"
-        ),
-    )
     media_convert = AwsMediaConvert(
         cast(MediaConvertClient, factory("mediaconvert")),
         role_arn=_required(environment, "MEDIACONVERT_ROLE_ARN"),
@@ -241,7 +230,6 @@ def create_aws_runtime_dependencies(
         embedder=embedder,
         speech_to_text=speech_to_text,
         text_to_speech=text_to_speech,
-        textract=textract,
         media_convert=media_convert,
         metrics=metrics,
     )
@@ -360,11 +348,13 @@ def _boto_client(
     region: str,
     endpoint_url: str | None,
 ) -> object:
+    config = Config(ignore_configured_endpoint_urls=endpoint_url is None)
+    if service_name == "s3":
+        config = config.merge(Config(s3={"addressing_style": "path"}))
     kwargs: dict[str, object] = {
         "region_name": region,
+        "config": config,
     }
     if endpoint_url:
         kwargs["endpoint_url"] = endpoint_url
-    if service_name == "s3":
-        kwargs["config"] = Config(s3={"addressing_style": "path"})
     return boto3.client(service_name, **kwargs)

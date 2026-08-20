@@ -571,6 +571,39 @@ describe("company workspace", () => {
     ).toBe("/positions/position-2/applicants/invitation-2");
   });
 
+  it("confirms applicant deletion before removing the row", async () => {
+    const requestApplicantDeletion = vi.fn().mockResolvedValue(undefined);
+    render(
+      <MemoryRouter>
+        <ApplicantManagement
+          api={{ ...operationsApi, requestApplicantDeletion }}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("검토할 지원자")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "검토할 지원자 지원자 삭제" }),
+    );
+    expect(
+      screen.getByRole("heading", { name: "지원자를 삭제할까요?" }),
+    ).toBeTruthy();
+    expect(screen.getByText(/되돌릴 수 없습니다/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "삭제" }));
+
+    await waitFor(() =>
+      expect(requestApplicantDeletion).toHaveBeenCalledWith("invitation-2"),
+    );
+    expect(
+      screen.queryByRole("link", { name: "검토할 지원자 리포트 열기" }),
+    ).toBeNull();
+    expect(screen.getByLabelText("전체 지원자 3명")).toBeTruthy();
+    expect(
+      screen.getByText("검토할 지원자 지원자의 삭제를 요청했습니다."),
+    ).toBeTruthy();
+  });
+
   it("shows applicant progress and opens interview evidence when a session exists", async () => {
     const apiWithSession: CompanyOperationsApi = {
       ...operationsApi,

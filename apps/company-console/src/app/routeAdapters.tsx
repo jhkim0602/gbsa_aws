@@ -331,6 +331,20 @@ const invitationEmailTemplateApi: InvitationEmailTemplateApi = {
 const companyOperationsApi: CompanyOperationsApi = {
   ...companyWorkspaceApi,
   listInvitations: positionInvitationApi.listInvitations,
+  async requestApplicantDeletion(invitationId) {
+    await companyRequest<components["schemas"]["DeletionStatus"]>(
+      "/v1/privacy/deletion-requests",
+      {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey("applicant-deletion") },
+        body: JSON.stringify({
+          scope_type: "invitation",
+          scope_id: invitationId,
+          reason: "company_user_requested_applicant_deletion",
+        }),
+      },
+    );
+  },
   async updatePosition(input) {
     const result = await companyRequest<components["schemas"]["Position"]>(
       `/v1/positions/${input.positionId}`,
@@ -640,7 +654,7 @@ function toApplicantInsight(
 }
 
 const useMockRecruitingData =
-  import.meta.env.DEV && import.meta.env.VITE_USE_MOCK_DATA !== "false";
+  import.meta.env.DEV && import.meta.env.VITE_USE_MOCK_DATA === "true";
 const recruitingOperationsApi = useMockRecruitingData
   ? mockCompanyOperationsApi
   : companyOperationsApi;
