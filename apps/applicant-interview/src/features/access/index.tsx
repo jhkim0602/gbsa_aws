@@ -105,6 +105,15 @@ const ONBOARDING_GRID =
 const DETAIL_ICON =
   "grid size-8 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand";
 
+const INTERVIEW_DATE_FORMATTER = new Intl.DateTimeFormat("ko-KR", {
+  timeZone: "Asia/Seoul",
+  month: "long",
+  day: "numeric",
+  weekday: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 // `.access-consent-list label + label` — every child of the list is a `label`, so
 // `not-first:` is exact.
 const CONSENT_ROW =
@@ -706,13 +715,7 @@ function formatInterviewAt(value?: string | null) {
   if (!value) return "추후 안내";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "추후 안내";
-  return new Intl.DateTimeFormat("ko-KR", {
-    month: "long",
-    day: "numeric",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
+  return INTERVIEW_DATE_FORMATTER.format(date);
 }
 
 function interviewerLabel(preview: ApplicantInvitationPreview | null) {
