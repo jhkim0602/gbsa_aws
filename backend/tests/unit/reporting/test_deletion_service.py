@@ -148,6 +148,63 @@ def test_deletion_executes_child_targets_before_parent_rows() -> None:
     assert executed == ["submission_chunk", "submission_analysis", "submission"]
 
 
+def test_deletion_keeps_invitation_until_lower_priority_targets_verify() -> None:
+    repository = RecordingDeletionRepository()
+    executed: list[str] = []
+    child_verified = False
+
+    def execute_target(_context: TenantContext, target: object) -> bool:
+        target_type = cast(DeletionTargetSpec, target).target_type
+        executed.append(target_type)
+        return child_verified or target_type == "invitation"
+
+    service = DeletionService(
+        cast(ReportingRepository, repository),
+        enumerators=(
+            lambda _context, _scope_type, _scope_id: (
+                DeletionTargetSpec(
+                    "B",
+                    "aurora",
+                    "submission_chunk",
+                    str(INVITATION_ID),
+                ),
+                DeletionTargetSpec("A", "aurora", "invitation", str(INVITATION_ID)),
+            ),
+        ),
+        executors={"A": execute_target, "B": execute_target},
+    )
+    request, _ = service.request(
+        context(),
+        scope_type="invitation",
+        scope_id=INVITATION_ID,
+        reason="company_user_requested_applicant_deletion",
+        policy_snapshot={"retention_days": 180},
+        occurred_at=NOW,
+    )
+
+    first = service.execute(
+        context(),
+        request_id=request.deletion_request_id,
+        occurred_at=NOW,
+    )
+
+    assert executed == ["submission_chunk"]
+    assert first.status is DeletionStatus.RETRYING
+    assert (
+        next(target for target in first.targets if target.target_type == "invitation").attempts == 0
+    )
+
+    child_verified = True
+    completed = service.execute(
+        context(),
+        request_id=request.deletion_request_id,
+        occurred_at=NOW,
+    )
+
+    assert executed == ["submission_chunk", "submission_chunk", "invitation"]
+    assert completed.status is DeletionStatus.COMPLETED
+
+
 def test_deletion_worker_retries_until_every_target_is_verified() -> None:
     repository = RecordingDeletionRepository()
     outbox = RecordingOutbox()

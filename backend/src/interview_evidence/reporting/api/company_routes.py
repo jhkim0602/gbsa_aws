@@ -406,14 +406,20 @@ def create_company_router(
         idempotency_key: IdempotencyKey,
     ) -> dict[str, object]:
         del idempotency_key
-        _, manifest = deletion_service.request(
-            scope.context,
-            scope_type=body.scope_type,
-            scope_id=body.scope_id,
-            reason=body.reason,
-            policy_snapshot={"retention_days": 180},
-            occurred_at=clock.now(),
-        )
+        try:
+            _, manifest = deletion_service.request(
+                scope.context,
+                scope_type=body.scope_type,
+                scope_id=body.scope_id,
+                reason=body.reason,
+                policy_snapshot={"retention_days": 180},
+                occurred_at=clock.now(),
+            )
+        except LookupError as error:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="deletion scope not found",
+            ) from error
         audit.append(
             scope.context,
             action="privacy_deletion.request",

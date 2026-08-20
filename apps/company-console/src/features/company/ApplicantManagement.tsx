@@ -37,6 +37,7 @@ type StageFilter = "all" | "progress" | "review" | "completed";
 type ApplicantDeletionStatus = CompanyDeletionStatus &
   Readonly<{ applicantDisplayName: string }>;
 const PAGE_SIZE = 20;
+const DELETION_STORAGE_KEY = "iep_active_applicant_deletions";
 
 export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
   const { positions, invitations, loading, error } =
@@ -59,7 +60,7 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
   >("success");
   const [deletions, setDeletions] = useState<
     Readonly<Record<string, ApplicantDeletionStatus>>
-  >({});
+  >(loadStoredApplicantDeletions);
   const activeInvitations = useMemo(
     () =>
       invitations.filter(
@@ -119,6 +120,10 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
       ),
     [deletions],
   );
+
+  useEffect(() => {
+    persistActiveApplicantDeletions(deletions);
+  }, [deletions]);
 
   useEffect(() => {
     const getApplicantDeletion = api.getApplicantDeletion;
@@ -631,8 +636,60 @@ function deletionStatusLabel(deletion: CompanyDeletionStatus) {
   if (deletion.status === "completed") return "삭제 완료";
   if (deletion.status === "partially_completed") return "삭제 확인 필요";
   if (deletion.status === "retrying") return "삭제 재시도 중";
-  if (deletion.expectedTargets === 0) return "삭제 준비 중";
-  return `삭제 중 ${deletion.verifiedTargets}/${deletion.expectedTargets}`;
+  if (deletion.expectedTargets === 0 || deletion.verifiedTargets === 0) {
+    return "삭제 준비 중";
+  }
+  const percentage = Math.min(
+    99,
+    Math.round((deletion.verifiedTargets / deletion.expectedTargets) * 100),
+  );
+  return deletion.status === "verifying"
+    ? `삭제 확인 중 ${percentage}%`
+    : `삭제 진행 중 ${percentage}%`;
+}
+
+function loadStoredApplicantDeletions(): Readonly<
+  Record<string, ApplicantDeletionStatus>
+> {
+  try {
+    const stored = localStorage.getItem(DELETION_STORAGE_KEY);
+    if (!stored) return {};
+    const parsed = JSON.parse(stored) as Record<
+      string,
+      ApplicantDeletionStatus
+    >;
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        ([, deletion]) =>
+          typeof deletion?.deletionRequestId === "string" &&
+          typeof deletion?.applicantDisplayName === "string" &&
+          typeof deletion?.expectedTargets === "number" &&
+          typeof deletion?.verifiedTargets === "number" &&
+          isDeletionActive(deletion?.status),
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function persistActiveApplicantDeletions(
+  deletions: Readonly<Record<string, ApplicantDeletionStatus>>,
+) {
+  try {
+    const active = Object.fromEntries(
+      Object.entries(deletions).filter(([, deletion]) =>
+        isDeletionActive(deletion.status),
+      ),
+    );
+    if (Object.keys(active).length === 0) {
+      localStorage.removeItem(DELETION_STORAGE_KEY);
+      return;
+    }
+    localStorage.setItem(DELETION_STORAGE_KEY, JSON.stringify(active));
+  } catch {
+    return;
+  }
 }
 
 function deletionNoticeClass(tone: "success" | "warning" | "danger") {

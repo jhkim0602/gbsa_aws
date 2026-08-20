@@ -6,7 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   ApplicantDetail,
@@ -25,6 +25,10 @@ import type {
   InvitationEmailTemplateState,
   PositionInvitationApi,
 } from "../../hiring";
+
+beforeEach(() => {
+  localStorage.clear();
+});
 
 const api: CompanyWorkspaceApi = {
   getCurrentUser: vi.fn().mockResolvedValue({
@@ -621,7 +625,7 @@ describe("company workspace", () => {
     expect(
       screen.getByRole("link", { name: "검토할 지원자 리포트 열기" }),
     ).toBeTruthy();
-    expect(screen.getByText("삭제 중 0/4")).toBeTruthy();
+    expect(screen.getByText("삭제 준비 중")).toBeTruthy();
     expect(screen.getByLabelText("전체 지원자 4명")).toBeTruthy();
     expect(
       screen.getByText(/실제 삭제가 끝날 때까지 목록에 표시됩니다/),
@@ -650,6 +654,54 @@ describe("company workspace", () => {
     expect(
       screen.getByText("검토할 지원자 지원자의 데이터 삭제를 완료했습니다."),
     ).toBeTruthy();
+  });
+
+  it("restores an active applicant deletion after refresh", async () => {
+    const deleting = {
+      deletionRequestId: "deletion-refresh",
+      status: "deleting",
+      expectedTargets: 569,
+      verifiedTargets: 0,
+    } satisfies CompanyDeletionStatus;
+    const requestApplicantDeletion = vi.fn().mockResolvedValue(deleting);
+    const getApplicantDeletion = vi.fn().mockResolvedValue(deleting);
+    const deletionApi = {
+      ...operationsApi,
+      requestApplicantDeletion,
+      getApplicantDeletion,
+    };
+    const first = render(
+      <MemoryRouter>
+        <ApplicantManagement api={deletionApi} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("검토할 지원자")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "검토할 지원자 지원자 삭제" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "삭제" }));
+    expect(await screen.findByText("삭제 준비 중")).toBeTruthy();
+    first.unmount();
+
+    render(
+      <MemoryRouter>
+        <ApplicantManagement api={deletionApi} />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("삭제 준비 중")).toBeTruthy();
+    await waitFor(() =>
+      expect(getApplicantDeletion).toHaveBeenCalledWith("deletion-refresh"),
+    );
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "검토할 지원자 지원자 삭제 진행 중",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(screen.queryByText("삭제 중 0/569")).toBeNull();
   });
 
   it("shows applicant progress and opens interview evidence when a session exists", async () => {

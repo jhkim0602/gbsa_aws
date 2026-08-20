@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from itertools import groupby
 from uuid import UUID
 
 from interview_evidence.reporting.domain.deletion import (
@@ -56,7 +57,7 @@ _DELETION_TARGET_PRIORITY = {
     "submission": 100,
     "interview_session": 100,
     "report": 100,
-    "invitation": 100,
+    "invitation": 1000,
 }
 
 
@@ -151,20 +152,28 @@ class DeletionService:
             manifest.targets,
             key=lambda target: _DELETION_TARGET_PRIORITY.get(target.target_type, 0),
         )
-        for target in targets:
-            if target.status is TargetStatus.VERIFIED_ABSENT:
-                continue
-            executor = self._executors.get(target.owner_lane)
-            try:
-                verified = executor is not None and executor(context, target)
-            except TimeoutError:
-                verified = False
-            manifest = manifest.record_result(
-                target.target_id,
-                status=(TargetStatus.VERIFIED_ABSENT if verified else TargetStatus.RETRYING),
-                verified_at=occurred_at if verified else None,
-                error_code=None if verified else "TARGET_NOT_VERIFIED",
-            )
+        for _, stage_targets in groupby(
+            targets,
+            key=lambda target: _DELETION_TARGET_PRIORITY.get(target.target_type, 0),
+        ):
+            stage_verified = True
+            for target in stage_targets:
+                if target.status is TargetStatus.VERIFIED_ABSENT:
+                    continue
+                executor = self._executors.get(target.owner_lane)
+                try:
+                    verified = executor is not None and executor(context, target)
+                except TimeoutError:
+                    verified = False
+                stage_verified = stage_verified and verified
+                manifest = manifest.record_result(
+                    target.target_id,
+                    status=(TargetStatus.VERIFIED_ABSENT if verified else TargetStatus.RETRYING),
+                    verified_at=occurred_at if verified else None,
+                    error_code=None if verified else "TARGET_NOT_VERIFIED",
+                )
+            if not stage_verified:
+                break
         return self._repository.update_deletion_manifest(context, request, manifest)
 
     def consume_retention_expired(
