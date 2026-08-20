@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 export type InterviewerLevel = "entry" | "junior" | "senior";
 
@@ -16,6 +16,64 @@ const MOUTH_SEQUENCE: readonly MouthState[] = [
 const MOUTH_FRAME_DURATION_MS = 140;
 const BLINK_DURATION_MS = 140;
 const BLINK_DELAYS_MS = [3200, 4700, 3800] as const;
+const AVATAR_WIDTH = 1536;
+const AVATAR_HEIGHT = 1024;
+
+type MaskArea = {
+  centerX: number;
+  centerY: number;
+  radiusX: number;
+  radiusY: number;
+};
+
+type MaskGroup = {
+  areas: readonly MaskArea[];
+  blur: number;
+};
+
+const FACE_MASKS: Readonly<
+  Record<InterviewerLevel, { eyes: MaskGroup; mouth: MaskGroup }>
+> = {
+  entry: {
+    eyes: {
+      areas: [
+        { centerX: 704, centerY: 312, radiusX: 60, radiusY: 30 },
+        { centerX: 832, centerY: 312, radiusX: 60, radiusY: 30 },
+      ],
+      blur: 8,
+    },
+    mouth: {
+      areas: [{ centerX: 768, centerY: 464, radiusX: 92, radiusY: 44 }],
+      blur: 6,
+    },
+  },
+  junior: {
+    eyes: {
+      areas: [
+        { centerX: 704, centerY: 306, radiusX: 61, radiusY: 31 },
+        { centerX: 832, centerY: 306, radiusX: 61, radiusY: 31 },
+      ],
+      blur: 8,
+    },
+    mouth: {
+      areas: [{ centerX: 768, centerY: 466, radiusX: 96, radiusY: 46 }],
+      blur: 6,
+    },
+  },
+  senior: {
+    eyes: {
+      areas: [
+        { centerX: 704, centerY: 326, radiusX: 62, radiusY: 32 },
+        { centerX: 832, centerY: 326, radiusX: 62, radiusY: 32 },
+      ],
+      blur: 9,
+    },
+    mouth: {
+      areas: [{ centerX: 768, centerY: 486, radiusX: 92, radiusY: 46 }],
+      blur: 6,
+    },
+  },
+};
 
 export const INTERVIEWER_LEVELS: Readonly<
   Record<
@@ -59,6 +117,7 @@ export function Avatar({
 }) {
   const [eyes, setEyes] = useState<EyeState>("open");
   const [mouth, setMouth] = useState<MouthState>("closed");
+  const avatarId = useId().replaceAll(":", "");
 
   useEffect(() => {
     if (textOnly) {
@@ -109,11 +168,9 @@ export function Avatar({
 
   useEffect(() => {
     if (typeof Image === "undefined") return;
-    for (const eyeState of ["open", "closed"] as const) {
-      for (const mouthState of ["closed", "mid", "open"] as const) {
-        const image = new Image();
-        image.src = `/interviewers/${level}_eyes_${eyeState}_mouth_${mouthState}.webp`;
-      }
+    for (const imageSource of avatarImageSources(level)) {
+      const image = new Image();
+      image.src = imageSource;
     }
   }, [level]);
 
@@ -129,7 +186,15 @@ export function Avatar({
   }
 
   const levelInfo = INTERVIEWER_LEVELS[level];
-  const imageSource = `/interviewers/${level}_eyes_${eyes}_mouth_${mouth}.webp`;
+  const maskAreas = FACE_MASKS[level];
+  const eyeMaskId = `${avatarId}-eye-mask`;
+  const eyeBlurId = `${avatarId}-eye-blur`;
+  const mouthMaskId = `${avatarId}-mouth-mask`;
+  const mouthBlurId = `${avatarId}-mouth-blur`;
+  const baseImageSource = avatarImageSource(level, "open", "closed");
+  const closedEyesImageSource = avatarImageSource(level, "closed", "closed");
+  const midMouthImageSource = avatarImageSource(level, "open", "mid");
+  const openMouthImageSource = avatarImageSource(level, "open", "open");
 
   return (
     <figure
@@ -140,15 +205,129 @@ export function Avatar({
       data-eyes={eyes}
       data-mouth={mouth}
     >
-      <img
-        className="h-full w-full object-cover object-center"
-        src={imageSource}
-        alt={`${levelInfo.label} AI 면접관`}
-        decoding="async"
-      />
+      <svg
+        className="h-full w-full"
+        viewBox={`0 0 ${AVATAR_WIDTH} ${AVATAR_HEIGHT}`}
+        preserveAspectRatio="xMidYMid slice"
+        role="img"
+        aria-label={`${levelInfo.label} AI 면접관`}
+        focusable="false"
+      >
+        <defs>
+          <filter
+            id={eyeBlurId}
+            x="0"
+            y="0"
+            width={AVATAR_WIDTH}
+            height={AVATAR_HEIGHT}
+            filterUnits="userSpaceOnUse"
+          >
+            <feGaussianBlur stdDeviation={maskAreas.eyes.blur} />
+          </filter>
+          <filter
+            id={mouthBlurId}
+            x="0"
+            y="0"
+            width={AVATAR_WIDTH}
+            height={AVATAR_HEIGHT}
+            filterUnits="userSpaceOnUse"
+          >
+            <feGaussianBlur stdDeviation={maskAreas.mouth.blur} />
+          </filter>
+          <mask
+            id={eyeMaskId}
+            x="0"
+            y="0"
+            width={AVATAR_WIDTH}
+            height={AVATAR_HEIGHT}
+            maskUnits="userSpaceOnUse"
+          >
+            <rect width={AVATAR_WIDTH} height={AVATAR_HEIGHT} fill="black" />
+            {maskAreas.eyes.areas.map((area, index) => (
+              <ellipse
+                key={index}
+                cx={area.centerX}
+                cy={area.centerY}
+                rx={area.radiusX}
+                ry={area.radiusY}
+                fill="white"
+                filter={`url(#${eyeBlurId})`}
+              />
+            ))}
+          </mask>
+          <mask
+            id={mouthMaskId}
+            x="0"
+            y="0"
+            width={AVATAR_WIDTH}
+            height={AVATAR_HEIGHT}
+            maskUnits="userSpaceOnUse"
+          >
+            <rect width={AVATAR_WIDTH} height={AVATAR_HEIGHT} fill="black" />
+            {maskAreas.mouth.areas.map((area, index) => (
+              <ellipse
+                key={index}
+                cx={area.centerX}
+                cy={area.centerY}
+                rx={area.radiusX}
+                ry={area.radiusY}
+                fill="white"
+                filter={`url(#${mouthBlurId})`}
+              />
+            ))}
+          </mask>
+        </defs>
+        <image
+          data-avatar-layer="base"
+          href={baseImageSource}
+          width={AVATAR_WIDTH}
+          height={AVATAR_HEIGHT}
+        />
+        <image
+          data-avatar-layer="eyes-closed"
+          href={closedEyesImageSource}
+          width={AVATAR_WIDTH}
+          height={AVATAR_HEIGHT}
+          mask={`url(#${eyeMaskId})`}
+          opacity={eyes === "closed" ? 1 : 0}
+        />
+        <image
+          data-avatar-layer="mouth-mid"
+          href={midMouthImageSource}
+          width={AVATAR_WIDTH}
+          height={AVATAR_HEIGHT}
+          mask={`url(#${mouthMaskId})`}
+          opacity={mouth === "mid" ? 1 : 0}
+        />
+        <image
+          data-avatar-layer="mouth-open"
+          href={openMouthImageSource}
+          width={AVATAR_WIDTH}
+          height={AVATAR_HEIGHT}
+          mask={`url(#${mouthMaskId})`}
+          opacity={mouth === "open" ? 1 : 0}
+        />
+      </svg>
       <figcaption className="sr-only">
         {speaking ? "질문을 읽고 있습니다" : "다음 응답을 기다립니다"}
       </figcaption>
     </figure>
   );
+}
+
+function avatarImageSource(
+  level: InterviewerLevel,
+  eyeState: EyeState,
+  mouthState: MouthState,
+) {
+  return `/interviewers/${level}_eyes_${eyeState}_mouth_${mouthState}.webp`;
+}
+
+function avatarImageSources(level: InterviewerLevel) {
+  return [
+    avatarImageSource(level, "open", "closed"),
+    avatarImageSource(level, "closed", "closed"),
+    avatarImageSource(level, "open", "mid"),
+    avatarImageSource(level, "open", "open"),
+  ];
 }

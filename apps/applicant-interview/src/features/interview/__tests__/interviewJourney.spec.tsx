@@ -135,20 +135,37 @@ describe("applicant interview journey", () => {
       );
       const avatar = screen.getByLabelText("AI 면접관 발화 중");
       const image = screen.getByRole("img", { name: "신입 AI 면접관" });
+      const baseLayer = image.querySelector('[data-avatar-layer="base"]');
+      const closedEyesLayer = image.querySelector(
+        '[data-avatar-layer="eyes-closed"]',
+      );
+      const midMouthLayer = image.querySelector(
+        '[data-avatar-layer="mouth-mid"]',
+      );
+      const openMouthLayer = image.querySelector(
+        '[data-avatar-layer="mouth-open"]',
+      );
 
       expect(avatar.getAttribute("data-mouth")).toBe("mid");
-      expect(image.getAttribute("src")).toBe(
-        "/interviewers/entry_eyes_open_mouth_mid.webp",
+      expect(baseLayer?.getAttribute("href")).toBe(
+        "/interviewers/entry_eyes_open_mouth_closed.webp",
       );
+      expect(midMouthLayer?.getAttribute("opacity")).toBe("1");
+      expect(openMouthLayer?.getAttribute("opacity")).toBe("0");
+      expect(closedEyesLayer?.getAttribute("opacity")).toBe("0");
 
       act(() => vi.advanceTimersByTime(140));
       expect(avatar.getAttribute("data-mouth")).toBe("open");
+      expect(midMouthLayer?.getAttribute("opacity")).toBe("0");
+      expect(openMouthLayer?.getAttribute("opacity")).toBe("1");
 
       act(() => vi.advanceTimersByTime(3060));
       expect(avatar.getAttribute("data-eyes")).toBe("closed");
+      expect(closedEyesLayer?.getAttribute("opacity")).toBe("1");
 
       act(() => vi.advanceTimersByTime(140));
       expect(avatar.getAttribute("data-eyes")).toBe("open");
+      expect(closedEyesLayer?.getAttribute("opacity")).toBe("0");
 
       rerender(
         <Avatar
