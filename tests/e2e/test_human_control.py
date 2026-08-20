@@ -6,7 +6,6 @@ from interview_evidence.reporting.api.company_routes import LaneDRuntime
 from interview_evidence.reporting.application.review_service import ReviewService
 from interview_evidence.reporting.domain.review import Decision
 from interview_evidence.shared.tenant import ActorType
-
 from tests.e2e.support import run_thin_journey
 
 ROOT = Path(__file__).parents[2]

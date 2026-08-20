@@ -6,6 +6,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from interview_evidence.shared.submission_materials import (
+    DEFAULT_SUBMISSION_REQUIREMENTS,
+    SubmissionRequirement,
+    normalize_submission_requirements,
+)
+
 
 class InvitationStateError(ValueError):
     """Raised for invalid or stale invitation state transitions."""
@@ -96,6 +102,7 @@ class Invitation(BaseModel):
     applicant_id: UUID
     applicant_email_normalized: str = Field(min_length=3, max_length=320)
     applicant_display_name: str = Field(min_length=1, max_length=200)
+    submission_requirements: tuple[SubmissionRequirement, ...] = DEFAULT_SUBMISSION_REQUIREMENTS
     token_hash: str = Field(min_length=64, max_length=64, pattern=r"^[a-f0-9]{64}$")
     expires_at: datetime
     status: InvitationStatus = InvitationStatus.INVITED
@@ -107,6 +114,14 @@ class Invitation(BaseModel):
     @classmethod
     def normalize_email(cls, value: str) -> str:
         return value.strip().lower()
+
+    @field_validator("submission_requirements")
+    @classmethod
+    def validate_submission_requirements(
+        cls,
+        value: tuple[SubmissionRequirement, ...],
+    ) -> tuple[SubmissionRequirement, ...]:
+        return normalize_submission_requirements(value)
 
     @property
     def applicant_email(self) -> str:
@@ -123,6 +138,7 @@ class Invitation(BaseModel):
         applicant_id: UUID,
         applicant_email: str,
         applicant_display_name: str,
+        submission_requirements: tuple[SubmissionRequirement, ...],
         token_hash: str,
         expires_at: datetime,
     ) -> Invitation:
@@ -134,6 +150,7 @@ class Invitation(BaseModel):
             applicant_id=applicant_id,
             applicant_email_normalized=applicant_email,
             applicant_display_name=applicant_display_name,
+            submission_requirements=submission_requirements,
             token_hash=token_hash,
             expires_at=expires_at,
         )

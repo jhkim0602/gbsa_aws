@@ -79,7 +79,19 @@ export const companyWorkspaceApi: CompanyWorkspaceApi = {
   },
 };
 
-type PositionResponse = components["schemas"]["Position"];
+type PositionResponse = components["schemas"]["Position"] & {
+  submission_requirements: Array<{
+    material_type:
+      | "resume"
+      | "cover_letter"
+      | "career_description"
+      | "projects"
+      | "portfolio";
+    required: boolean;
+    enabled: boolean;
+    instructions?: string | null;
+  }>;
+};
 
 function toCompanyPosition(position: PositionResponse) {
   return {
@@ -88,8 +100,18 @@ function toCompanyPosition(position: PositionResponse) {
     description: position.description,
     roleType: position.role_type,
     headcount: position.headcount,
+    interviewCapacity: position.interview_capacity,
+    interviewAt: position.interview_at,
     recruitmentStartAt: position.recruitment_start_at,
     recruitmentEndAt: position.recruitment_end_at,
+    submissionRequirements: position.submission_requirements.map(
+      (requirement) => ({
+        materialType: requirement.material_type,
+        required: requirement.required,
+        enabled: requirement.enabled,
+        instructions: requirement.instructions,
+      }),
+    ),
     status: position.status,
     rowVersion: position.row_version,
     createdAt: position.created_at,

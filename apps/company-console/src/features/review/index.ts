@@ -1,5 +1,3 @@
-import "./review.css";
-
 export { buildCaptionTrack } from "./captions";
 export { buildEvidenceContext } from "./evidenceContext";
 export { HumanReview } from "./HumanReview";

@@ -1,7 +1,5 @@
 import { useState } from "react";
 
-import "./interview.css";
-
 export type EquipmentStatus = "ready" | "warning" | "failed";
 
 export type EquipmentComponentResult = Readonly<{
@@ -19,6 +17,63 @@ export type EquipmentCheckResult = Readonly<{
 export type EquipmentCheckApi = {
   check(): Promise<EquipmentCheckResult>;
 };
+
+// `.applicant-content > .interview-shell:not(.interview-room)` (0,3,0) outranks
+// `.applicant-content > main:not(.interview-room)` (0,2,1) in shell.css, so the 920px /
+// 56px-88px block wins at every width. Same string as InterviewComplete.
+const SHELL =
+  "mx-auto w-[min(calc(100%-48px),920px)] bg-canvas py-[56px] pb-[88px] text-ink" +
+  " mw-680:w-[min(calc(100%-32px),920px)] mw-680:py-[38px] mw-680:pb-[64px]";
+
+const EYEBROW =
+  "mb-2 font-[ui-monospace,SFMono-Regular,Consolas,monospace] text-[11px]" +
+  " font-semibold text-muted";
+
+// `.interview-header > p:not(.interview-brand)` is (0,2,1), which outranks
+// `.interview-header > .equipment-assurance` (0,2,0) despite coming first, so the assurance
+// line has always rendered with the sibling paragraph's 9px margin and muted color rather
+// than its own `margin-top: 3px` / `--applicant-text`. Kept as it renders.
+const HEADER_COPY =
+  "mt-[9px] max-w-[620px] text-[14px] leading-[1.65] text-muted";
+
+const PREVIEW =
+  "group grid min-h-[220px] place-items-center rounded-panel border border-border" +
+  " bg-surface shadow-soft data-[status=ready]:border-[#82d39a]" +
+  " data-[status=ready]:bg-[#f0fff4] mw-680:min-h-[180px]";
+
+const PREVIEW_LABEL =
+  "font-[ui-monospace,SFMono-Regular,Consolas,monospace] text-[11px] tracking-normal" +
+  " text-subtle group-data-[status=ready]:text-success";
+
+const PANEL =
+  "grid content-center rounded-panel border border-border bg-surface px-[18px] py-3" +
+  " shadow-soft";
+
+const ROW =
+  "grid min-h-[62px] grid-cols-[10px_1fr] items-center gap-3 border-b border-b-border" +
+  " last:border-b-0";
+
+const STATUS_DOT =
+  "size-2 rounded-full bg-border data-[status=ready]:bg-success" +
+  " data-[status=warning]:bg-[#bf8700] data-[status=failed]:bg-danger";
+
+const STATUS_TEXT =
+  "text-[12px] font-medium text-muted data-[status=ready]:text-success" +
+  " data-[status=warning]:text-warning data-[status=failed]:text-danger";
+
+const NOTICE =
+  "mt-3 rounded-panel border border-[#dfe2ff] bg-brand-soft px-[13px] py-[11px]" +
+  " text-[12px] leading-[1.55] text-muted";
+
+// `.interview-actions button`; the color trio lives on each variant so no two conflicting
+// utilities ever land on the same element.
+const ACTION_BUTTON =
+  "inline-flex min-h-11 items-center justify-center rounded-panel border px-4" +
+  " text-[13px] font-[650] disabled:opacity-45 mw-680:flex-[1_1_0]";
+
+const BUTTON_SECONDARY = `${ACTION_BUTTON} border-border bg-surface text-ink`;
+
+const BUTTON_PRIMARY = `${ACTION_BUTTON} border-brand bg-brand text-white`;
 
 const LABELS = {
   camera: {
@@ -58,37 +113,46 @@ export function EquipmentCheck({
   }
 
   return (
-    <main className="interview-shell equipment-screen">
-      <header className="interview-header">
-        <p className="interview-brand">STEP 2 OF 4</p>
-        <h1>면접 환경 점검</h1>
-        <p>카메라, 마이크, 네트워크 상태를 확인합니다.</p>
-        <p className="equipment-assurance">
+    <main className={SHELL}>
+      <header className="mb-6">
+        <p className={EYEBROW}>STEP 2 OF 4</p>
+        <h1 className="text-[26px] leading-[1.35] tracking-normal mw-680:text-[22px]">
+          면접 환경 점검
+        </h1>
+        <p className={HEADER_COPY}>
+          카메라, 마이크, 네트워크 상태를 확인합니다.
+        </p>
+        <p className={HEADER_COPY}>
           기술 문제는 면접 평가에 영향을 주지 않습니다.
         </p>
       </header>
 
-      <section className="equipment-workspace">
+      <section className="grid grid-cols-[minmax(180px,0.75fr)_minmax(280px,1.25fr)] gap-3 mw-680:grid-cols-[1fr]">
         <div
-          className="equipment-preview"
+          className={PREVIEW}
           data-status={result?.camera.status ?? "unknown"}
           aria-label="카메라 미리보기 상태"
         >
-          <span aria-hidden="true">
+          <span className={PREVIEW_LABEL} aria-hidden="true">
             {result?.camera.status === "ready" ? "LIVE" : "NO SIGNAL"}
           </span>
         </div>
-        <div className="equipment-panel" aria-live="polite">
+        <div className={PANEL} aria-live="polite">
           {(["camera", "microphone", "network"] as const).map((component) => (
-            <div className="equipment-row" key={component}>
+            <div className={ROW} key={component}>
               <span
-                className="equipment-status-dot"
+                className={STATUS_DOT}
                 data-status={result?.[component].status ?? "unknown"}
                 aria-hidden="true"
               />
-              <div>
-                <span>{LABELS[component].ready.split(" ")[0]}</span>
-                <strong data-status={result?.[component].status ?? "unknown"}>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[14px] font-semibold">
+                  {LABELS[component].ready.split(" ")[0]}
+                </span>
+                <strong
+                  className={STATUS_TEXT}
+                  data-status={result?.[component].status ?? "unknown"}
+                >
                   {result
                     ? LABELS[component][result[component].status]
                     : "점검 전"}
@@ -99,16 +163,16 @@ export function EquipmentCheck({
         </div>
       </section>
 
-      <p className="equipment-notice">
+      <p className={NOTICE}>
         브라우저 권한은 장치 점검과 면접 진행에만 사용됩니다.
       </p>
-      <div className="interview-actions">
-        <button type="button" className="button-secondary" onClick={check}>
+      <div className="mt-4 flex justify-end gap-2 mw-680:w-full">
+        <button type="button" className={BUTTON_SECONDARY} onClick={check}>
           {checking ? "점검 중" : "장치 점검"}
         </button>
         <button
           type="button"
-          className="button-primary"
+          className={BUTTON_PRIMARY}
           disabled={!result || result.overallStatus === "failed"}
           onClick={() => result && onReady(result)}
         >

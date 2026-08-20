@@ -1,5 +1,5 @@
 import type { components } from "@iep/contracts/generated/typescript/openapi";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Navigate,
   useNavigate,
@@ -9,10 +9,15 @@ import {
 
 import { ApplicantAccess, type ApplicantAccessApi } from "../features/access";
 import {
+  INTERVIEWER_LEVELS,
+  type InterviewerLevel,
+} from "../features/interview/Avatar";
+import {
   EquipmentCheck,
   createBrowserEquipmentCheckApi,
   type EquipmentCheckResult,
 } from "../features/interview/EquipmentCheck";
+import { InterviewRoom } from "../features/interview/InterviewRoom";
 import {
   InterviewSession,
   type RecordingUploadApi,
@@ -20,6 +25,8 @@ import {
 import type { StoredMediaChunk } from "../features/interview/media";
 import {
   SubmissionWorkspace,
+  type SubmissionMaterialId,
+  type SubmissionWorkspaceData,
   type SubmissionWorkspaceApi,
 } from "../features/submissions";
 
@@ -165,7 +172,7 @@ async function sha256(file: File) {
 }
 
 const submissionApi: SubmissionWorkspaceApi = {
-  async uploadDocument(file) {
+  async uploadDocument(file, materialId) {
     const digest = await sha256(file);
     const intent = await applicantRequest<
       components["schemas"]["UploadIntent"]
@@ -173,7 +180,7 @@ const submissionApi: SubmissionWorkspaceApi = {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey("upload-intent") },
       body: JSON.stringify({
-        source_type: "pdf",
+        source_type: documentSourceType(materialId),
         filename: file.name,
         media_type: file.type || "application/pdf",
         byte_size: file.size,
@@ -188,14 +195,19 @@ const submissionApi: SubmissionWorkspaceApi = {
     await applicantRequest("/v1/applicant/submissions", {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey("submission") },
-      body: JSON.stringify({ source_type: "pdf", upload_id: intent.upload_id }),
+      body: JSON.stringify({
+        material_type: toApiMaterialType(materialId),
+        source_type: documentSourceType(materialId),
+        upload_id: intent.upload_id,
+      }),
     });
   },
-  async registerRepository(url) {
+  async registerRepository(url, materialId) {
     await applicantRequest("/v1/applicant/submissions", {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey("repository") },
       body: JSON.stringify({
+        material_type: toApiMaterialType(materialId),
         source_type: "public_git",
         public_url: url,
         candidate_identity_inputs: {},
@@ -212,7 +224,53 @@ const submissionApi: SubmissionWorkspaceApi = {
       impactSummary: readiness.impact_summary ?? undefined,
     };
   },
+  async getWorkspace() {
+    const workspace = await applicantRequest<{
+      position_title: string;
+      requirements: Array<{
+        material_type: string;
+        required: boolean;
+        enabled: boolean;
+        instructions: string | null;
+      }>;
+      submissions: Array<{ material_type: string; status: string }>;
+    }>("/v1/applicant/submission-workspace");
+    return {
+      positionTitle: workspace.position_title,
+      requirements: workspace.requirements.map((requirement) => ({
+        id: fromApiMaterialType(requirement.material_type),
+        required: requirement.required,
+        enabled: requirement.enabled,
+        instructions: requirement.instructions ?? undefined,
+      })),
+      submissions: workspace.submissions.map((submission) => ({
+        materialId: fromApiMaterialType(submission.material_type),
+        status: submission.status,
+      })),
+    };
+  },
 };
+
+function toApiMaterialType(materialId: SubmissionMaterialId) {
+  return materialId.replaceAll("-", "_");
+}
+
+function fromApiMaterialType(materialType: string): SubmissionMaterialId {
+  return materialType.replaceAll("_", "-") as SubmissionMaterialId;
+}
+
+function documentSourceType(materialId: SubmissionMaterialId) {
+  if (materialId === "resume") return "resume";
+  if (materialId === "cover-letter") return "cover_letter";
+  return "pdf";
+}
+
+function parseInterviewerLevel(value: string | null): InterviewerLevel {
+  if (value && value in INTERVIEWER_LEVELS) {
+    return value as InterviewerLevel;
+  }
+  return "entry";
+}
 
 export function ApplicantHomeRoute() {
   return <Navigate replace to="/access" />;
@@ -232,9 +290,39 @@ export function AccessRoute() {
 
 export function SubmissionsRoute() {
   const navigate = useNavigate();
+  const [workspace, setWorkspace] = useState<SubmissionWorkspaceData | null>(
+    null,
+  );
+  const [loadFailed, setLoadFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    submissionApi
+      .getWorkspace()
+      .then((result) => {
+        if (active) setWorkspace(result);
+      })
+      .catch(() => {
+        if (active) setLoadFailed(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (loadFailed) {
+    return <p role="alert">포지션의 제출 자료 설정을 불러오지 못했습니다.</p>;
+  }
+  if (!workspace) {
+    return <p role="status">제출 자료를 불러오는 중입니다.</p>;
+  }
+
   return (
     <SubmissionWorkspace
       api={submissionApi}
+      positionTitle={workspace.positionTitle}
+      requirements={workspace.requirements}
+      submittedMaterials={workspace.submissions}
       onContinue={() => navigate("/interview")}
     />
   );
@@ -244,12 +332,30 @@ export function InterviewRoute() {
   const [search] = useSearchParams();
   const navigate = useNavigate();
   const strategyId = search.get("strategyId") ?? "";
+  const interviewerLevel = parseInterviewerLevel(search.get("level"));
   const [session, setSession] = useState<{
     sessionId: string;
     equipmentCheckId: string;
     websocketPath: string;
   } | null>(null);
   const [error, setError] = useState(false);
+
+  if (import.meta.env.DEV && search.get("preview") === "room") {
+    return (
+      <InterviewRoom
+        question="안녕하세요. 서비스 백엔드와 관련해 가장 대표적인 프로젝트 한 가지를 설명해 주시겠어요?"
+        state="awaiting_answer"
+        connectionState="connected"
+        textOnly={false}
+        interviewerLevel={interviewerLevel}
+        initialElapsedSeconds={9 * 60 + 55}
+        onStartAnswer={() => undefined}
+        onCompleteAnswer={() => undefined}
+        onReconnect={() => undefined}
+        onAddExplanation={() => undefined}
+      />
+    );
+  }
 
   async function start(result: EquipmentCheckResult) {
     try {
@@ -280,12 +386,12 @@ export function InterviewRoute() {
         equipmentCheckId: check.equipment_check_id,
         websocketPath: session.websocket_path,
       });
+      const nextSearch = new URLSearchParams({ level: interviewerLevel });
+      if (strategyId) nextSearch.set("strategyId", strategyId);
       navigate(
         {
           pathname: "/interview/session",
-          search: strategyId
-            ? `?strategyId=${encodeURIComponent(strategyId)}`
-            : "",
+          search: nextSearch.toString(),
         },
         { replace: true },
       );
@@ -311,6 +417,7 @@ export function InterviewRoute() {
       equipmentCheckId={session.equipmentCheckId}
       websocketUrl={resolveWebSocketUrl(session.websocketPath)}
       recordingApi={createRecordingUploadApi(session.sessionId)}
+      interviewerLevel={interviewerLevel}
       onComplete={() => navigate("/interview/complete", { replace: true })}
     />
   );

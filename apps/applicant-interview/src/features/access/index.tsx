@@ -1,7 +1,5 @@
 import { type FormEvent, useState } from "react";
 
-import "./access.css";
-
 export type ConsentPurpose =
   "document_analysis" | "recording" | "ai_assessment";
 
@@ -31,6 +29,62 @@ export type ApplicantAccessApi = {
 };
 
 type Step = "exchange" | "identity" | "consent" | "ready";
+
+// `.applicant-content > .access-screen` set a 560px max, but it lost to
+// `.applicant-content > main:not(.interview-room)` in shell.css on specificity (0,2,0 vs
+// 0,2,1), so this screen has always rendered at `--applicant-content-width` (960px) with
+// shell.css's 72px/104px block padding. Kept as it renders.
+const SHELL =
+  "mx-auto w-[min(calc(100%-48px),var(--applicant-content-width))] pt-[72px] pb-[104px]" +
+  " mw-600:w-[min(calc(100%-32px),var(--applicant-content-width))]" +
+  " mw-600:pt-12 mw-600:pb-[72px]";
+
+// `.access-primary-panel`, `.access-process`, `.access-form-panel`, `.access-ready`
+const PANEL = "rounded-panel border border-border bg-surface shadow-soft";
+
+// `.access-eyebrow` and `.access-section-heading > p` — no sibling rule outranks them.
+const EYEBROW =
+  "mb-2 font-[ui-monospace,SFMono-Regular,Consolas,monospace] text-[11px]" +
+  " tracking-normal text-muted";
+
+// `.access-panel-label` (0,1,0) loses `font-size`/`line-height`/`color` to the later
+// `.access-primary-panel p` (0,1,1), so this label renders at 14px/1.65, not 11px. Only its
+// margin, mono family and letter-spacing survive. Kept as it renders.
+const PANEL_LABEL =
+  "mb-2 font-[ui-monospace,SFMono-Regular,Consolas,monospace] text-[14px]" +
+  " leading-[1.65] tracking-normal text-muted";
+
+// The same label inside `.access-ready` additionally loses its `margin: 0 0 8px` to
+// `.access-ready > p` (0,1,1), which lands 10px/22px on it. Kept as it renders.
+const READY_LABEL =
+  "mt-2.5 mb-[22px] font-[ui-monospace,SFMono-Regular,Consolas,monospace] text-[14px]" +
+  " leading-[1.65] tracking-normal text-muted";
+
+// `.access-heading > p:last-child, .access-form-description, .access-primary-panel p,
+//  .access-process li p, .access-ready > p`
+const BODY_COPY = "text-[14px] leading-[1.65] text-muted";
+
+const PRIMARY_ACTION =
+  "inline-flex min-h-10 items-center justify-center rounded-panel border border-brand" +
+  " bg-brand px-[18px] font-[650] text-white shadow-[0_1px_0_rgb(27_31_36_/_5%)]" +
+  " disabled:border-border disabled:bg-surface-strong disabled:text-subtle" +
+  " disabled:shadow-none";
+
+// `.access-form-panel input:not([type="checkbox"])` — only the identity fields match, the
+// consent checkboxes are excluded by the `:not()`.
+const FORM_INPUT =
+  "w-full min-h-11 rounded-panel border border-border bg-surface px-3 py-[7px] text-ink";
+
+// `.access-process li > span`
+const PROCESS_INDEX =
+  "grid size-[22px] place-items-center rounded-full border border-border bg-surface" +
+  " font-[ui-monospace,SFMono-Regular,Consolas,monospace] text-[10px] text-muted";
+
+// `.access-consent-list label + label` — every child of the list is a `label`, so
+// `not-first:` is exact.
+const CONSENT_ROW =
+  "grid cursor-pointer grid-cols-[18px_1fr] items-start gap-3 px-4 py-[14px]" +
+  " not-first:border-t not-first:border-t-border";
 
 const PURPOSES: Array<{ value: ConsentPurpose; label: string }> = [
   { value: "document_analysis", label: "문서 분석" },
@@ -150,36 +204,48 @@ export function ApplicantAccess({
   }
 
   return (
-    <main className="access-screen">
-      <header className="access-heading">
-        <p className="access-eyebrow">{copy.eyebrow}</p>
-        <h1>{copy.title}</h1>
-        <p>{copy.description}</p>
+    <main className={SHELL}>
+      <header className="mb-7">
+        <p className={EYEBROW}>{copy.eyebrow}</p>
+        <h1 className="text-[26px] leading-[1.3] tracking-normal mw-600:text-[23px]">
+          {copy.title}
+        </h1>
+        <p className={`mt-2 ${BODY_COPY}`}>{copy.description}</p>
       </header>
 
       {error && (
-        <p className="access-alert" role="alert">
+        <p
+          className="mb-4 rounded-panel border border-[#f1b5b5] bg-[#fdecec] px-[14px] py-3 text-[13px] text-danger"
+          role="alert"
+        >
           {error}
         </p>
       )}
 
       {step === "exchange" && (
         <>
-          <section className="access-primary-panel">
-            <div className="access-invitation-mark" aria-hidden="true">
+          <section
+            className={`grid grid-cols-[44px_1fr] gap-[18px] p-7 mw-600:grid-cols-[38px_1fr] mw-600:gap-[14px] mw-600:px-5 mw-600:py-[22px] ${PANEL}`}
+          >
+            <div
+              className="grid size-11 place-items-center rounded-panel border border-border bg-surface font-[ui-monospace,SFMono-Regular,Consolas,monospace] text-[15px] font-bold text-brand mw-600:size-[38px]"
+              aria-hidden="true"
+            >
               IE
             </div>
-            <div className="access-invitation-copy">
-              <p className="access-panel-label">면접 초대</p>
-              <h2>면접 초대가 도착했습니다</h2>
-              <p>
+            <div>
+              <p className={PANEL_LABEL}>면접 초대</p>
+              <h2 className="text-[20px] tracking-normal">
+                면접 초대가 도착했습니다
+              </h2>
+              <p className={`mt-2.5 ${BODY_COPY}`}>
                 초대 확인 후 제출 자료와 면접 처리 범위를 직접 확인할 수
                 있습니다. AI는 질문과 평가 초안을 만들지만 최종 결정은 기업의
                 사람이 수행합니다.
               </p>
             </div>
             <button
-              className="access-primary-action"
+              className={`col-span-full mt-1.5 w-full ${PRIMARY_ACTION}`}
               type="button"
               disabled={pending}
               onClick={() => void exchange()}
@@ -188,18 +254,32 @@ export function ApplicantAccess({
             </button>
           </section>
 
-          <section className="access-process" aria-labelledby="process-title">
-            <div className="access-section-heading">
-              <p>PROCESS</p>
-              <h2 id="process-title">진행 과정</h2>
+          <section
+            className={`mt-4 px-6 py-[22px] mw-600:p-5 ${PANEL}`}
+            aria-labelledby="process-title"
+          >
+            <div>
+              <p className={EYEBROW}>PROCESS</p>
+              <h2 id="process-title" className="text-[16px] tracking-normal">
+                진행 과정
+              </h2>
             </div>
-            <ol>
+            <ol className="mt-[18px] grid gap-[14px]">
               {PROCESS.map((item, index) => (
-                <li key={item.title}>
-                  <span aria-hidden="true">{index + 1}</span>
+                <li
+                  key={item.title}
+                  className="grid grid-cols-[24px_1fr] items-start gap-3"
+                >
+                  <span className={PROCESS_INDEX} aria-hidden="true">
+                    {index + 1}
+                  </span>
                   <div>
-                    <strong>{item.title}</strong>
-                    <p>{item.description}</p>
+                    <strong className="block text-[14px] font-semibold">
+                      {item.title}
+                    </strong>
+                    <p className="mt-[3px] text-[12px] leading-[1.65] text-muted">
+                      {item.description}
+                    </p>
                   </div>
                 </li>
               ))}
@@ -209,27 +289,29 @@ export function ApplicantAccess({
       )}
 
       {step === "identity" && (
-        <section className="access-form-panel">
-          <div className="access-section-heading">
-            <p>STEP 1 OF 2</p>
-            <h2>본인 확인</h2>
+        <section className={`p-7 mw-600:p-5 ${PANEL}`}>
+          <div>
+            <p className={EYEBROW}>STEP 1 OF 2</p>
+            <h2 className="text-[16px] tracking-normal">본인 확인</h2>
           </div>
-          <p className="access-form-description">
+          <p className={`mt-2.5 mb-6 ${BODY_COPY}`}>
             초대받은 이름과 기업이 안내한 확인 값을 입력해 주세요.
           </p>
-          <form onSubmit={verify}>
-            <label>
+          <form className="grid gap-4" onSubmit={verify}>
+            <label className="grid gap-[7px] text-[13px] font-semibold">
               <span>이름</span>
               <input
+                className={FORM_INPUT}
                 required
                 autoComplete="name"
                 value={displayName}
                 onChange={(event) => setDisplayName(event.target.value)}
               />
             </label>
-            <label>
+            <label className="grid gap-[7px] text-[13px] font-semibold">
               <span>확인 값</span>
               <input
+                className={FORM_INPUT}
                 required
                 autoComplete="one-time-code"
                 value={verificationValue}
@@ -237,7 +319,7 @@ export function ApplicantAccess({
               />
             </label>
             <button
-              className="access-primary-action"
+              className={PRIMARY_ACTION}
               type="submit"
               disabled={pending || !displayName.trim() || !verificationValue}
             >
@@ -248,29 +330,40 @@ export function ApplicantAccess({
       )}
 
       {step === "consent" && (
-        <section className="access-form-panel">
-          <div className="access-section-heading">
-            <p>STEP 2 OF 2</p>
-            <h2>개인정보 및 면접 처리 동의</h2>
+        <section className={`p-7 mw-600:p-5 ${PANEL}`}>
+          <div>
+            <p className={EYEBROW}>STEP 2 OF 2</p>
+            <h2 className="text-[16px] tracking-normal">
+              개인정보 및 면접 처리 동의
+            </h2>
           </div>
           {policy && (
-            <section className="access-policy" aria-label="동의 정책">
-              <p>{policy.aiRole}</p>
-              <p>{policy.recordingNotice}</p>
-              <dl>
-                <div>
-                  <dt>보관기간</dt>
-                  <dd>{policy.retentionDays}일</dd>
+            <section
+              className="my-5 rounded-panel border border-[#dfe2ff] bg-brand-soft p-4"
+              aria-label="동의 정책"
+            >
+              <p className="mb-2 text-[13px] leading-[1.55]">{policy.aiRole}</p>
+              <p className="mb-2 text-[13px] leading-[1.55]">
+                {policy.recordingNotice}
+              </p>
+              <dl className="mt-[14px] grid gap-2">
+                <div className="grid grid-cols-[76px_1fr] gap-3 mw-600:grid-cols-[1fr] mw-600:gap-[3px]">
+                  <dt className="text-[12px] text-muted">보관기간</dt>
+                  <dd className="text-[12px] leading-[1.5]">
+                    {policy.retentionDays}일
+                  </dd>
                 </div>
-                <div>
-                  <dt>삭제 방법</dt>
-                  <dd>{policy.deletionMethod}</dd>
+                <div className="grid grid-cols-[76px_1fr] gap-3 mw-600:grid-cols-[1fr] mw-600:gap-[3px]">
+                  <dt className="text-[12px] text-muted">삭제 방법</dt>
+                  <dd className="text-[12px] leading-[1.5]">
+                    {policy.deletionMethod}
+                  </dd>
                 </div>
               </dl>
             </section>
           )}
-          <form className="access-consent-form" onSubmit={consent}>
-            <div className="access-consent-list">
+          <form className="grid gap-4" onSubmit={consent}>
+            <div className="grid overflow-hidden rounded-panel border border-border">
               {(
                 policy?.processingPurposes ??
                 PURPOSES.map((item) => ({
@@ -279,22 +372,27 @@ export function ApplicantAccess({
                   description: "",
                 }))
               ).map(({ purpose, title, description }) => (
-                <label key={purpose}>
+                <label key={purpose} className={CONSENT_ROW}>
                   <input
+                    className="mt-0.5 size-4 accent-brand"
                     type="checkbox"
                     aria-label={title}
                     checked={accepted.includes(purpose)}
                     onChange={() => togglePurpose(purpose)}
                   />
                   <span>
-                    <strong>{title}</strong>
-                    {description && <small>{description}</small>}
+                    <strong className="block text-[14px]">{title}</strong>
+                    {description && (
+                      <small className="mt-[3px] block text-[12px] leading-[1.5] font-normal text-muted">
+                        {description}
+                      </small>
+                    )}
                   </span>
                 </label>
               ))}
             </div>
             <button
-              className="access-primary-action"
+              className={PRIMARY_ACTION}
               type="submit"
               disabled={
                 pending ||
@@ -309,15 +407,25 @@ export function ApplicantAccess({
       )}
 
       {step === "ready" && (
-        <section className="access-ready" role="status">
-          <span className="access-ready-mark" aria-hidden="true">
+        <section
+          className={`px-7 py-9 text-center mw-600:p-5 ${PANEL}`}
+          role="status"
+        >
+          <span
+            className="mx-auto mb-4 grid size-[42px] place-items-center rounded-full bg-success-soft text-[20px] font-bold text-success"
+            aria-hidden="true"
+          >
             ✓
           </span>
-          <p className="access-panel-label">ACCESS VERIFIED</p>
-          <h2>면접 준비를 시작할 수 있습니다.</h2>
-          <p>다음 단계에서 면접 질문 준비에 사용할 자료를 제출합니다.</p>
+          <p className={READY_LABEL}>ACCESS VERIFIED</p>
+          <h2 className="text-[20px] tracking-normal">
+            면접 준비를 시작할 수 있습니다.
+          </h2>
+          <p className={`mt-2.5 mb-[22px] ${BODY_COPY}`}>
+            다음 단계에서 면접 질문 준비에 사용할 자료를 제출합니다.
+          </p>
           <button
-            className="access-primary-action"
+            className={`w-full ${PRIMARY_ACTION}`}
             type="button"
             onClick={onContinue}
           >
@@ -326,7 +434,7 @@ export function ApplicantAccess({
         </section>
       )}
 
-      <p className="access-footnote">
+      <p className="mt-[18px] text-center text-[12px] leading-[1.6] text-muted">
         기술 장애와 비언어적 특성은 역량 Evidence로 사용되지 않습니다.
       </p>
     </main>

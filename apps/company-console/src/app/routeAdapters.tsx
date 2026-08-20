@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  Link,
   Navigate,
   useNavigate,
   useParams,
@@ -8,6 +9,7 @@ import {
 
 import {
   beginCompanyLogin,
+  beginCompanySignup,
   completeCompanyLogin,
   getCompanyAccessToken,
 } from "../features/company/cognitoAuth";
@@ -38,6 +40,25 @@ import {
   companyWorkspaceApi,
   idempotencyKey,
 } from "./api/companyClient";
+import {
+  ASYNC_STATE,
+  PAGE_EYEBROW_IN_HEADER,
+  PAGE_HEADER,
+  PAGE_HEADER_TEXT,
+  PAGE_HEADER_TITLE,
+} from "./styles/primitives";
+
+const AUTH_PAGE = "grid min-h-screen place-items-center bg-surface-muted p-6";
+const AUTH_PANEL =
+  "grid w-[min(100%,400px)] gap-4 rounded-lg border border-border bg-white p-7 shadow-float";
+// `.auth-panel p` — every paragraph in the panel, including the status and error lines.
+const AUTH_TEXT = "text-[13px] leading-[1.6] text-muted";
+const AUTH_PRIMARY_ACTION =
+  "min-h-[38px] rounded-lg border border-brand bg-brand font-[650] text-white" +
+  " hover:bg-brand-strong";
+const BRAND_MARK =
+  "grid size-9 flex-[0_0_36px] place-items-center rounded-panel bg-brand text-[12px]" +
+  " font-extrabold text-white";
 
 const hiringApi: HiringWorkspaceApi = {
   async createPosition(input) {
@@ -51,8 +72,20 @@ const hiringApi: HiringWorkspaceApi = {
           description: input.description,
           role_type: input.roleType,
           headcount: input.headcount,
+          interview_capacity: input.interviewCapacity,
+          interview_at: input.interviewAt
+            ? new Date(input.interviewAt).toISOString()
+            : undefined,
           recruitment_start_at: input.recruitmentStartAt,
           recruitment_end_at: input.recruitmentEndAt,
+          submission_requirements: input.submissionRequirements.map(
+            (requirement) => ({
+              material_type: requirement.materialType,
+              required: requirement.required,
+              enabled: requirement.enabled,
+              instructions: null,
+            }),
+          ),
         }),
       },
     );
@@ -292,8 +325,20 @@ const companyOperationsApi: CompanyOperationsApi = {
           description: input.description,
           role_type: input.roleType ?? null,
           headcount: input.headcount ?? null,
+          interview_capacity: input.interviewCapacity ?? null,
+          interview_at: input.interviewAt
+            ? new Date(input.interviewAt).toISOString()
+            : null,
           recruitment_start_at: input.recruitmentStartAt ?? null,
           recruitment_end_at: input.recruitmentEndAt ?? null,
+          submission_requirements: input.submissionRequirements.map(
+            (requirement) => ({
+              material_type: requirement.materialType,
+              required: requirement.required,
+              enabled: requirement.enabled,
+              instructions: requirement.instructions ?? null,
+            }),
+          ),
           status: input.status,
         }),
       },
@@ -304,8 +349,30 @@ const companyOperationsApi: CompanyOperationsApi = {
       description: result.description,
       roleType: result.role_type,
       headcount: result.headcount,
+      interviewCapacity: result.interview_capacity,
+      interviewAt: result.interview_at,
       recruitmentStartAt: result.recruitment_start_at,
       recruitmentEndAt: result.recruitment_end_at,
+      submissionRequirements: (
+        result as typeof result & {
+          submission_requirements: Array<{
+            material_type:
+              | "resume"
+              | "cover_letter"
+              | "career_description"
+              | "projects"
+              | "portfolio";
+            required: boolean;
+            enabled: boolean;
+            instructions?: string | null;
+          }>;
+        }
+      ).submission_requirements.map((requirement) => ({
+        materialType: requirement.material_type,
+        required: requirement.required,
+        enabled: requirement.enabled,
+        instructions: requirement.instructions,
+      })),
       status: result.status,
       rowVersion: result.row_version,
       createdAt: result.created_at,
@@ -351,6 +418,37 @@ const companyOperationsApi: CompanyOperationsApi = {
       interviewDurationMinutes: version.interview_duration_minutes,
       // Versions published before the difficulty toggle existed omit the field.
       interviewLevel: version.interview_level ?? "junior",
+    }));
+  },
+  async listSubmissions(invitationId) {
+    const result = await companyRequest<
+      Array<{
+        submission_id: string;
+        material_type:
+          | "resume"
+          | "cover_letter"
+          | "career_description"
+          | "projects"
+          | "portfolio";
+        source_type: string;
+        original_filename: string | null;
+        source_url: string | null;
+        status: string;
+        failure_code: string | null;
+        impact_summary: string | null;
+        created_at: string;
+      }>
+    >(`/v1/company/invitations/${invitationId}/submissions`);
+    return result.map((submission) => ({
+      submissionId: submission.submission_id,
+      materialType: submission.material_type,
+      sourceType: submission.source_type,
+      originalFilename: submission.original_filename,
+      sourceUrl: submission.source_url,
+      status: submission.status,
+      failureCode: submission.failure_code,
+      impactSummary: submission.impact_summary,
+      createdAt: submission.created_at,
     }));
   },
   publishCriteria: hiringApi.publishCriteria,
@@ -530,16 +628,19 @@ export function ReviewRoute() {
   return (
     <>
       {!report || !timeline ? (
-        <section className="review-workspace">
-          <header className="page-header">
+        <section className="min-w-0">
+          {/* `.review-workspace .page-header { display: none }` under `@media print`. */}
+          <header className={`${PAGE_HEADER} print:hidden`}>
             <div>
-              <p className="page-eyebrow">Interview evidence</p>
-              <h1>지원자 검토</h1>
-              <p>AI 분석과 실제 답변 구간을 불러오고 있습니다.</p>
+              <p className={PAGE_EYEBROW_IN_HEADER}>Interview evidence</p>
+              <h1 className={PAGE_HEADER_TITLE}>지원자 검토</h1>
+              <p className={PAGE_HEADER_TEXT}>
+                AI 분석과 실제 답변 구간을 불러오고 있습니다.
+              </p>
             </div>
           </header>
-          <div className="async-state" role={error ? "alert" : "status"}>
-            <p>
+          <div className={ASYNC_STATE} role={error ? "alert" : "status"}>
+            <p className="text-[12px]">
               {error
                 ? "리포트를 불러올 수 없습니다. 잠시 후 다시 시도해 주세요."
                 : "리포트와 영상 타임라인을 불러오는 중입니다."}
@@ -646,21 +747,93 @@ export function CompanyLoginRoute() {
   }
 
   return (
-    <main className="auth-page">
-      <section className="auth-panel">
-        <span className="company-brand__mark" aria-hidden="true">
+    <main className={AUTH_PAGE}>
+      <section className={AUTH_PANEL}>
+        <span className={BRAND_MARK} aria-hidden="true">
           G
         </span>
         <h1>기업 로그인</h1>
-        <p>기업 계정으로 로그인해 채용 포지션과 지원자 검토를 시작합니다.</p>
+        <p className={AUTH_TEXT}>
+          기업 계정으로 로그인해 채용 포지션과 지원자 검토를 시작합니다.
+        </p>
         {AUTH_CONFIG ? (
-          <button type="button" onClick={() => void login()}>
-            Cognito로 로그인
+          <button
+            className={AUTH_PRIMARY_ACTION}
+            type="button"
+            onClick={() => void login()}
+          >
+            로그인
           </button>
         ) : (
-          <p role="status">로컬 개발 인증을 사용하고 있습니다.</p>
+          <p className={AUTH_TEXT} role="status">
+            로컬 개발 인증을 사용하고 있습니다.
+          </p>
         )}
-        {error && <p role="alert">로그인을 시작할 수 없습니다.</p>}
+        <p className={`${AUTH_TEXT} text-center`}>
+          처음 이용하시나요?{" "}
+          <Link className="font-[650] text-brand" to="/auth/signup">
+            회원가입
+          </Link>
+        </p>
+        {error && (
+          <p className={AUTH_TEXT} role="alert">
+            로그인을 시작할 수 없습니다.
+          </p>
+        )}
+      </section>
+    </main>
+  );
+}
+
+export function CompanySignupRoute() {
+  const [error, setError] = useState(false);
+
+  async function signup() {
+    if (!AUTH_CONFIG) return;
+    try {
+      await beginCompanySignup(AUTH_CONFIG, {
+        sessionStorage,
+        navigate: (location) => window.location.assign(location),
+      });
+    } catch {
+      setError(true);
+    }
+  }
+
+  return (
+    <main className={AUTH_PAGE}>
+      <section className={AUTH_PANEL}>
+        <span className={BRAND_MARK} aria-hidden="true">
+          G
+        </span>
+        <h1>기업 회원가입</h1>
+        <p className={AUTH_TEXT}>
+          기업 계정을 만들고 바로 채용 운영을 시작하세요.
+        </p>
+        {AUTH_CONFIG ? (
+          <button
+            className={AUTH_PRIMARY_ACTION}
+            type="button"
+            onClick={() => void signup()}
+          >
+            기업 계정 만들기
+          </button>
+        ) : (
+          <p className={AUTH_TEXT} role="status">
+            배포된 데모 환경에서 회원가입할 수 있습니다.
+          </p>
+        )}
+        <p className={`${AUTH_TEXT} text-center`}>
+          이미 계정이 있나요?{" "}
+          <Link className="font-[650] text-brand" to="/auth/login">
+            로그인
+          </Link>
+        </p>
+        {error && (
+          <p className={AUTH_TEXT} role="alert">
+            회원가입을 시작할 수 없습니다.
+          </p>
+        )}
       </section>
     </main>
   );
@@ -692,13 +865,13 @@ export function CompanyAuthCallbackRoute() {
   }, [navigate, search]);
 
   return (
-    <main className="auth-page">
-      <section className="auth-panel">
-        <span className="company-brand__mark" aria-hidden="true">
+    <main className={AUTH_PAGE}>
+      <section className={AUTH_PANEL}>
+        <span className={BRAND_MARK} aria-hidden="true">
           G
         </span>
         <h1>기업 로그인 확인</h1>
-        <p role={error ? "alert" : "status"}>
+        <p className={AUTH_TEXT} role={error ? "alert" : "status"}>
           {error
             ? "로그인 응답을 확인할 수 없습니다."
             : "기업 계정 로그인을 확인하고 있습니다."}

@@ -21,7 +21,6 @@ from interview_evidence.shared.tenant import TenantContext
 from interview_evidence.submission_analysis.application.public import (
     SubmissionAnalysisPublic,
 )
-
 from tests.e2e.support import run_thin_journey
 
 

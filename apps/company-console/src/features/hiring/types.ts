@@ -2,6 +2,15 @@ export type RequirementType = "required" | "preferred";
 
 /** How deep the AI interviewer digs. Mirrors the InterviewLevel contract enum. */
 export type InterviewLevel = "entry" | "junior" | "senior";
+export type SubmissionMaterialId =
+  "resume" | "cover_letter" | "career_description" | "projects" | "portfolio";
+
+export type SubmissionRequirementDraft = {
+  materialType: SubmissionMaterialId;
+  label: string;
+  description: string;
+  required: boolean;
+};
 
 export const interviewLevelLabels: Record<
   InterviewLevel,
@@ -81,8 +90,15 @@ export type HiringWorkspaceApi = Readonly<{
     description: string;
     roleType?: string;
     headcount?: number;
+    interviewCapacity?: number;
+    interviewAt?: string;
     recruitmentStartAt?: string;
     recruitmentEndAt?: string;
+    submissionRequirements: ReadonlyArray<{
+      materialType: SubmissionMaterialId;
+      required: boolean;
+      enabled: boolean;
+    }>;
   }): Promise<{ positionId: string }>;
   publishCriteria(
     positionId: string,
@@ -90,21 +106,35 @@ export type HiringWorkspaceApi = Readonly<{
   ): Promise<{ versionId: string }>;
 }>;
 
-export type HiringStep = "position" | "criteria" | "complete";
+export type PositionHiringStep = "position" | "application";
+
+export type CriteriaHiringStep = "evaluation" | "interview";
+
+export type HiringStep = PositionHiringStep | CriteriaHiringStep | "complete";
 
 export type HiringDraft = {
   title: string;
   description: string;
+  descriptionCompleted: boolean;
   roleType: string;
+  techStack: string[];
   headcount: number;
+  interviewCapacity: number;
+  interviewAt: string;
   recruitmentStartAt: string;
   recruitmentEndAt: string;
+  submissionRequirements: SubmissionRequirementDraft[];
   jobRequirements: JobRequirementDraft[];
   criteria: CriterionDraft[];
   prohibitedTopics: string;
   interviewDurationMinutes: number;
   interviewLevel: InterviewLevel;
 };
+
+export type HiringDraftUpdater = <K extends keyof HiringDraft>(
+  key: K,
+  value: HiringDraft[K],
+) => void;
 
 export type HiringResourceIds = {
   positionId: string;
@@ -143,10 +173,46 @@ export function createRequirementDraft(index: number): JobRequirementDraft {
 export const initialHiringDraft: HiringDraft = {
   title: "",
   description: "",
+  descriptionCompleted: false,
   roleType: "개발",
+  techStack: [],
   headcount: 1,
+  interviewCapacity: 1,
+  interviewAt: "",
   recruitmentStartAt: "",
   recruitmentEndAt: "",
+  submissionRequirements: [
+    {
+      materialType: "resume",
+      label: "이력서",
+      description: "경력과 주요 역량",
+      required: true,
+    },
+    {
+      materialType: "cover_letter",
+      label: "자기소개서",
+      description: "지원 동기와 직무 적합성",
+      required: true,
+    },
+    {
+      materialType: "career_description",
+      label: "경력기술서",
+      description: "프로젝트별 역할과 성과",
+      required: false,
+    },
+    {
+      materialType: "projects",
+      label: "대표 프로젝트",
+      description: "공개 Git 저장소",
+      required: false,
+    },
+    {
+      materialType: "portfolio",
+      label: "포트폴리오",
+      description: "주요 결과물과 작업 과정",
+      required: false,
+    },
+  ],
   jobRequirements: [createRequirementDraft(1)],
   criteria: [createCriterionDraft(1)],
   prohibitedTopics: "가족관계, 출신지역, 혼인·임신 여부, 외모",

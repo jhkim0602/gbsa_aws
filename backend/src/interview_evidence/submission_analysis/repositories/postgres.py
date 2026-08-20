@@ -28,6 +28,7 @@ from sqlalchemy.orm import (
     mapped_column,
 )
 
+from interview_evidence.shared.submission_materials import SubmissionMaterialType
 from interview_evidence.shared.tenant import TenantContext, require_tenant_context
 from interview_evidence.submission_analysis.domain.git_analysis import (
     CandidateCodeUnit,
@@ -94,6 +95,7 @@ class SubmissionRow(Base):
     submission_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     invitation_id: Mapped[UUID] = mapped_column(Uuid)
     applicant_id: Mapped[UUID] = mapped_column(Uuid)
+    material_type: Mapped[str] = mapped_column(String(40))
     source_type: Mapped[str] = mapped_column(String(30))
     source_uri: Mapped[str] = mapped_column(String(4096))
     original_filename: Mapped[str | None] = mapped_column(String(255))
@@ -572,6 +574,7 @@ class SqlAlchemySubmissionRepository:
                 company_id=submission.company_id,
                 invitation_id=submission.invitation_id,
                 applicant_id=submission.applicant_id,
+                material_type=submission.material_type.value,
                 source_type=submission.source_type.value,
                 source_uri=submission.source_uri,
                 original_filename=submission.original_filename,
@@ -1414,6 +1417,7 @@ class SqlAlchemySubmissionRepository:
             company_id=row.company_id,
             invitation_id=row.invitation_id,
             applicant_id=row.applicant_id,
+            material_type=SubmissionMaterialType(row.material_type),
             source_type=SourceType(row.source_type),
             source_uri=row.source_uri,
             original_filename=row.original_filename,

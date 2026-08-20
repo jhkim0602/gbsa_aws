@@ -11,8 +11,13 @@ from interview_evidence.shared.security.principals import (
     PrincipalNotFoundError,
     PrincipalProvider,
 )
+from interview_evidence.shared.submission_materials import (
+    SubmissionMaterialType,
+    SubmissionRequirement,
+)
 from interview_evidence.shared.tenant import ActorType, TenantContext
 from interview_evidence.submission_analysis.application.authorization import (
+    SubmissionAuthorization,
     SubmissionAuthorizationDenied,
     SubmissionAuthorizationPort,
 )
@@ -51,6 +56,7 @@ class UploadIntentView(BaseModel):
 class SubmissionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    material_type: SubmissionMaterialType
     source_type: SourceType
     upload_id: UUID | None = None
     public_url: str | None = None
@@ -74,7 +80,10 @@ class SubmissionView(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     submission_id: UUID
+    material_type: SubmissionMaterialType
     source_type: str
+    original_filename: str | None
+    source_url: str | None
     status: str
     failure_code: str | None
     impact_summary: str | None
@@ -92,11 +101,21 @@ class AnalysisReadinessView(BaseModel):
     impact_summary: str | None = None
 
 
+class SubmissionWorkspaceView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    position_id: UUID
+    position_title: str
+    requirements: list[SubmissionRequirement]
+    submissions: list[SubmissionView]
+
+
 class ApplicantScope(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     principal: ApplicantPrincipal
     context: TenantContext
+    authorization: SubmissionAuthorization
 
 
 def create_applicant_submission_router(
@@ -131,10 +150,14 @@ def create_applicant_submission_router(
             trace_id=request.headers.get("x-trace-id") or str(effective_request_id),
         )
         try:
-            authorization.authorize(context, principal)
+            submission_authorization = authorization.authorize(context, principal)
         except SubmissionAuthorizationDenied as error:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN) from error
-        return ApplicantScope(principal=principal, context=context)
+        return ApplicantScope(
+            principal=principal,
+            context=context,
+            authorization=submission_authorization,
+        )
 
     IdempotencyKey = Annotated[
         str,
@@ -186,6 +209,23 @@ def create_applicant_submission_router(
         )
 
     @router.get(
+        "/applicant/submission-workspace",
+        response_model=SubmissionWorkspaceView,
+        operation_id="getApplicantSubmissionWorkspace",
+    )
+    def get_submission_workspace(scope: Scope) -> SubmissionWorkspaceView:
+        submissions = service.list_submissions(
+            scope.context,
+            scope.principal.applicant_id,
+        )
+        return SubmissionWorkspaceView(
+            position_id=scope.authorization.position_id,
+            position_title=scope.authorization.position_title,
+            requirements=list(scope.authorization.requirements),
+            submissions=[_submission_view(submission) for submission in submissions],
+        )
+
+    @router.get(
         "/applicant/submissions",
         response_model=list[SubmissionView],
         operation_id="listApplicantSubmissions",
@@ -212,8 +252,10 @@ def create_applicant_submission_router(
                 submission = service.register_file_submission(
                     scope.context,
                     scope.principal,
+                    material_type=body.material_type,
                     source_type=body.source_type,
                     upload_id=body.upload_id,
+                    requirements=scope.authorization.requirements,
                     idempotency_key=idempotency_key,
                 )
             else:
@@ -221,9 +263,11 @@ def create_applicant_submission_router(
                 submission = service.register_public_submission(
                     scope.context,
                     scope.principal,
+                    material_type=body.material_type,
                     source_type=body.source_type,
                     public_url=body.public_url,
                     candidate_identity_inputs=body.candidate_identity_inputs,
+                    requirements=scope.authorization.requirements,
                     idempotency_key=idempotency_key,
                 )
         except (SubmissionValidationError, ValueError) as error:
@@ -237,8 +281,20 @@ def create_applicant_submission_router(
             resource_type="submission",
             resource_id=submission.submission_id,
             result="accepted",
-            metadata={"source_type": submission.source_type.value},
+            metadata={
+                "source_type": submission.source_type.value,
+                "material_type": submission.material_type.value,
+            },
         )
+        if service.required_materials_submitted(
+            scope.context,
+            scope.principal,
+            scope.authorization.requirements,
+        ):
+            authorization.mark_required_materials_submitted(
+                scope.context,
+                scope.principal,
+            )
         return _submission_view(submission)
 
     @router.get(
@@ -247,7 +303,11 @@ def create_applicant_submission_router(
         operation_id="getApplicantAnalysisStatus",
     )
     def get_analysis_status(scope: Scope) -> AnalysisReadinessView:
-        readiness = service.readiness(scope.context, scope.principal)
+        readiness = service.readiness(
+            scope.context,
+            scope.principal,
+            scope.authorization.requirements,
+        )
         return AnalysisReadinessView(
             overall_status=readiness.overall_status,
             submissions=[_submission_view(submission) for submission in readiness.submissions],
@@ -263,7 +323,14 @@ def create_applicant_submission_router(
 def _submission_view(submission: Submission) -> SubmissionView:
     return SubmissionView(
         submission_id=submission.submission_id,
+        material_type=submission.material_type,
         source_type=submission.source_type.value,
+        original_filename=submission.original_filename,
+        source_url=(
+            submission.source_uri
+            if submission.source_type in {SourceType.PUBLIC_GIT, SourceType.PUBLIC_URL}
+            else None
+        ),
         status=submission.status.value,
         failure_code=submission.failure_code,
         impact_summary=submission.impact_summary,

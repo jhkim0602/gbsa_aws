@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from interview_evidence.shared.submission_materials import SubmissionMaterialType
+
 
 class SubmissionStateError(ValueError):
     """Raised when submission or analysis state transitions are invalid."""
@@ -74,6 +76,7 @@ class Submission(BaseModel):
     company_id: UUID
     invitation_id: UUID
     applicant_id: UUID
+    material_type: SubmissionMaterialType
     source_type: SourceType
     source_uri: str = Field(min_length=1, max_length=4096)
     original_filename: str | None = Field(default=None, max_length=255)
@@ -86,6 +89,23 @@ class Submission(BaseModel):
     impact_summary: str | None = Field(default=None, max_length=2000)
     created_at: datetime
     row_version: int = Field(default=1, ge=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def infer_legacy_material_type(cls, value: object) -> object:
+        if not isinstance(value, dict) or value.get("material_type") is not None:
+            return value
+        source_type = value.get("source_type")
+        inferred = SubmissionMaterialType.RESUME
+        if isinstance(source_type, str):
+            # `SourceType` is a `StrEnum`, so keying by `.value` matches a raw payload
+            # string directly; anything unrecognised falls back to `RESUME` as before.
+            inferred = {
+                SourceType.PUBLIC_GIT.value: SubmissionMaterialType.PROJECTS,
+                SourceType.COVER_LETTER.value: SubmissionMaterialType.COVER_LETTER,
+                SourceType.RESUME.value: SubmissionMaterialType.RESUME,
+            }.get(source_type, inferred)
+        return {**value, "material_type": inferred}
 
     @model_validator(mode="after")
     def file_and_url_metadata_are_consistent(self) -> Submission:
@@ -101,6 +121,13 @@ class Submission(BaseModel):
             or self.media_type is None
         ):
             raise ValueError("file submissions require integrity metadata")
+        if (
+            self.material_type is SubmissionMaterialType.PROJECTS
+            and self.source_type is not SourceType.PUBLIC_GIT
+        ):
+            raise ValueError("project submissions require a public Git source")
+        if self.material_type is not SubmissionMaterialType.PROJECTS and not is_file:
+            raise ValueError("document submission materials require a file source")
         if self.candidate_identity_inputs is not None:
             if self.source_type is not SourceType.PUBLIC_GIT:
                 raise ValueError("candidate identity inputs are only valid for public Git")

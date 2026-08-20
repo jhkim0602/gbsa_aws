@@ -299,6 +299,29 @@ def test_cognito_bedrock_and_polly_adapters_translate_aws_responses() -> None:
     assert any(call[0] == "put_object" for call in s3.calls)
 
 
+def test_cognito_self_signup_principal_gets_stable_tenant_ids() -> None:
+    cognito = RecordingClient(
+        {
+            "get_user": {
+                "Username": "self-signup-subject",
+                "UserAttributes": [
+                    {"Name": "sub", "Value": "self-signup-subject"},
+                    {"Name": "email", "Value": "recruiter@example.com"},
+                ],
+            }
+        }
+    )
+    provider = AwsCognitoPrincipalProvider(cognito)
+
+    first = provider.get_company_principal("token")
+    second = provider.get_company_principal("token")
+
+    assert first.company_id == second.company_id
+    assert first.company_user_id == second.company_user_id
+    assert first.company_id != first.company_user_id
+    assert first.email == "recruiter@example.com"
+
+
 def test_bedrock_tenant_scope_does_not_break_the_anthropic_schema() -> None:
     """A Messages body rejects unknown top-level fields, so the tenant goes in metadata."""
     bedrock = RecordingClient({"invoke_model": {"body": io.BytesIO(b'{"content":[]}')}})

@@ -23,6 +23,23 @@
               $ref: ../../root.yaml#/components/schemas/UploadIntent
       default:
         $ref: ../../root.yaml#/components/responses/Error
+/applicant/submission-workspace:
+  get:
+    operationId: getApplicantSubmissionWorkspace
+    x-owner-lane: B
+    tags:
+    - Submission
+    security:
+    - ApplicantSession: []
+    responses:
+      '200':
+        description: Position-scoped submission requirements and current submissions
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/SubmissionWorkspace
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
 /applicant/submissions:
   get:
     operationId: listApplicantSubmissions
@@ -34,6 +51,32 @@
     responses:
       '200':
         description: Current applicant submission statuses
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: ../../root.yaml#/components/schemas/SubmissionView
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/company/invitations/{invitation_id}/submissions:
+  get:
+    operationId: listCompanyApplicantSubmissions
+    x-owner-lane: B
+    tags:
+    - Submission
+    security:
+    - CompanyBearer: []
+    parameters:
+    - name: invitation_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: Submitted applicant materials for recruiter review
         content:
           application/json:
             schema:

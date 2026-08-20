@@ -8,6 +8,13 @@ import {
 } from "react";
 
 import {
+  BUTTON_PRIMARY,
+  BUTTON_SECONDARY,
+  BUTTON_SECONDARY_DANGER,
+  formAlertClass,
+  ICON_BUTTON,
+} from "../../app/styles/primitives";
+import {
   CriteriaStep,
   initialHiringDraft,
   toCriteriaConfiguration,
@@ -18,6 +25,48 @@ import type {
   CompanyOperationsApi,
   CompanyPosition,
 } from "./types";
+
+const BACKDROP =
+  "fixed inset-0 z-100 grid place-items-center bg-[rgb(20_25_38_/_46%)] p-6" +
+  " mw-720:items-end mw-720:p-0";
+// At 720px the sheet drops its side and bottom borders and squares off its bottom corners.
+const MODAL =
+  "flex max-h-[calc(100vh-48px)] flex-col overflow-hidden rounded-lg border" +
+  " border-border bg-surface shadow-[0_24px_72px_rgb(20_25_38_/_20%)]" +
+  " mw-720:w-full mw-720:max-h-[92vh] mw-720:rounded-b-none mw-720:border-x-0" +
+  " mw-720:border-b-0";
+const MODAL_WIDTH = {
+  standard: "w-[min(680px,100%)]",
+  large: "w-[min(1080px,100%)]",
+} as const;
+const MODAL_HEADER =
+  "flex items-start justify-between gap-5 border-b border-border p-[18px_20px]";
+const MODAL_BODY = "overflow-y-auto";
+
+/*
+ * `.position-modal-form fieldset { padding: 0; border: 0; margin: 0 }` is exactly what
+ * preflight already applies, so the fieldset carries no class.
+ */
+const FORM_GRID =
+  "grid grid-cols-2 gap-4 p-5 mw-720:grid-cols-[minmax(0,1fr)]" +
+  " mw-720:p-[18px_16px]";
+const FORM_LABEL = "grid min-w-0 gap-[7px]";
+const FORM_LABEL_TEXT = "text-[12px] font-[650]";
+// `--color-link` resolves to `--color-brand`, so `focus:border-brand` is the same colour.
+const FIELD_BASE =
+  "w-full min-w-0 rounded-md border border-border bg-surface text-[13px]" +
+  " text-ink focus:border-brand focus:outline-2 focus:outline-offset-1" +
+  " focus:outline-[color-mix(in_srgb,var(--color-link)_18%,transparent)]";
+const FIELD_CONTROL = `${FIELD_BASE} min-h-[42px] px-[11px]`;
+const FIELD_TEXTAREA = `${FIELD_BASE} min-h-[118px] resize-y p-[11px] leading-[1.55]`;
+const FORM_WIDE = "col-[1/-1] mw-720:col-[1]";
+const FORM_NOTE = "mx-5 mb-[14px] text-[11px] text-muted";
+
+const MODAL_ACTIONS =
+  "flex min-h-[66px] items-center justify-end gap-[9px] border-t border-border" +
+  " bg-surface-muted p-[13px_20px] mw-720:flex-col mw-720:items-stretch" +
+  " mw-720:p-[13px_16px] mw-720:[&_button]:w-full";
+const LOCKED = "inline-flex items-center gap-[7px] text-[12px] text-muted";
 
 export function PositionQuickEditModal({
   open,
@@ -69,8 +118,11 @@ export function PositionQuickEditModal({
         description: form.description.trim(),
         roleType: form.roleType || null,
         headcount: form.headcount || null,
+        interviewCapacity: form.interviewCapacity || null,
+        interviewAt: form.interviewAt || null,
         recruitmentStartAt: form.recruitmentStartAt || null,
         recruitmentEndAt: form.recruitmentEndAt || null,
+        submissionRequirements: position.submissionRequirements,
         status,
         rowVersion: position.rowVersion,
       });
@@ -97,7 +149,6 @@ export function PositionQuickEditModal({
       onClose={onClose}
     >
       <form
-        className="position-modal-form"
         onSubmit={(event) =>
           void savePosition(
             event,
@@ -107,10 +158,11 @@ export function PositionQuickEditModal({
         }
       >
         <fieldset disabled={closed || saving}>
-          <div className="position-modal-form__grid">
-            <label className="position-modal-form__wide">
-              <span>포지션명</span>
+          <div className={FORM_GRID}>
+            <label className={`${FORM_LABEL} ${FORM_WIDE}`}>
+              <span className={FORM_LABEL_TEXT}>포지션명</span>
               <input
+                className={FIELD_CONTROL}
                 autoFocus
                 required
                 maxLength={200}
@@ -123,9 +175,10 @@ export function PositionQuickEditModal({
                 }
               />
             </label>
-            <label>
-              <span>직무</span>
+            <label className={FORM_LABEL}>
+              <span className={FORM_LABEL_TEXT}>직무</span>
               <select
+                className={FIELD_CONTROL}
                 value={form.roleType}
                 onChange={(event) =>
                   setForm((current) => ({
@@ -140,9 +193,10 @@ export function PositionQuickEditModal({
                 <option value="제품·기획">제품·기획</option>
               </select>
             </label>
-            <label>
-              <span>채용 인원</span>
+            <label className={FORM_LABEL}>
+              <span className={FORM_LABEL_TEXT}>채용 인원</span>
               <input
+                className={FIELD_CONTROL}
                 type="number"
                 min={1}
                 max={10000}
@@ -155,9 +209,40 @@ export function PositionQuickEditModal({
                 }
               />
             </label>
-            <label>
-              <span>모집 시작일</span>
+            <label className={FORM_LABEL}>
+              <span className={FORM_LABEL_TEXT}>면접 정원</span>
               <input
+                className={FIELD_CONTROL}
+                type="number"
+                min={1}
+                max={10000}
+                value={form.interviewCapacity}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    interviewCapacity: Number(event.target.value),
+                  }))
+                }
+              />
+            </label>
+            <label className={FORM_LABEL}>
+              <span className={FORM_LABEL_TEXT}>면접 시각</span>
+              <input
+                className={FIELD_CONTROL}
+                type="datetime-local"
+                value={form.interviewAt}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    interviewAt: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label className={FORM_LABEL}>
+              <span className={FORM_LABEL_TEXT}>모집 시작일</span>
+              <input
+                className={FIELD_CONTROL}
                 type="date"
                 value={form.recruitmentStartAt}
                 onChange={(event) =>
@@ -168,9 +253,10 @@ export function PositionQuickEditModal({
                 }
               />
             </label>
-            <label>
-              <span>모집 종료일</span>
+            <label className={FORM_LABEL}>
+              <span className={FORM_LABEL_TEXT}>모집 종료일</span>
               <input
+                className={FIELD_CONTROL}
                 type="date"
                 min={form.recruitmentStartAt || undefined}
                 value={form.recruitmentEndAt}
@@ -182,9 +268,10 @@ export function PositionQuickEditModal({
                 }
               />
             </label>
-            <label className="position-modal-form__wide">
-              <span>포지션 설명</span>
+            <label className={`${FORM_LABEL} ${FORM_WIDE}`}>
+              <span className={FORM_LABEL_TEXT}>포지션 설명</span>
               <textarea
+                className={FIELD_TEXTAREA}
                 required
                 rows={5}
                 maxLength={20000}
@@ -201,31 +288,31 @@ export function PositionQuickEditModal({
         </fieldset>
 
         {!periodValid ? (
-          <p className="form-alert" role="alert">
+          <p className={formAlertClass("modalForm")} role="alert">
             모집 종료일은 시작일 이후여야 합니다.
           </p>
         ) : null}
         {error ? (
-          <p className="form-alert" role="alert">
+          <p className={formAlertClass("modalForm")} role="alert">
             {error}
           </p>
         ) : null}
         {!hasCriteria && position.status === "draft" ? (
-          <p className="position-modal-form__note">
+          <p className={FORM_NOTE}>
             면접 기준을 저장한 뒤 채용을 확정할 수 있습니다.
           </p>
         ) : null}
 
-        <footer className="position-modal-actions">
+        <footer className={MODAL_ACTIONS}>
           {closed ? (
-            <span className="position-settings__locked">
+            <span className={LOCKED}>
               <LockKeyhole size={15} aria-hidden="true" />
               마감된 포지션은 수정할 수 없습니다.
             </span>
           ) : (
             <>
               <button
-                className="button-secondary"
+                className={BUTTON_SECONDARY}
                 type="submit"
                 disabled={saving || !periodValid}
               >
@@ -234,7 +321,7 @@ export function PositionQuickEditModal({
               </button>
               {position.status === "draft" ? (
                 <button
-                  className="button-primary"
+                  className={BUTTON_PRIMARY}
                   type="button"
                   disabled={saving || !periodValid || !hasCriteria}
                   onClick={(event) =>
@@ -246,7 +333,7 @@ export function PositionQuickEditModal({
                 </button>
               ) : (
                 <button
-                  className="button-secondary is-danger"
+                  className={BUTTON_SECONDARY_DANGER}
                   type="button"
                   disabled={saving}
                   onClick={(event) =>
@@ -326,7 +413,7 @@ export function CriteriaEditModal({
       onClose={onClose}
     >
       {error ? (
-        <p className="form-alert" role="alert">
+        <p className={formAlertClass("modalBody")} role="alert">
           {error}
         </p>
       ) : null}
@@ -334,6 +421,7 @@ export function CriteriaEditModal({
         draft={draft}
         submitting={saving}
         submitLabel="변경 저장"
+        variant="modal"
         update={update}
         onSubmit={(event) => void saveCriteria(event)}
       />
@@ -354,15 +442,16 @@ function ModalShell({
   onClose(): void;
   children: ReactNode;
 }) {
+  const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const frame = window.requestAnimationFrame(() => {
-      const autofocus = document.querySelector<HTMLElement>(
-        ".position-modal [autofocus]",
-      );
+      // Scoped to the dialog now that `.position-modal` is gone from the markup.
+      const autofocus =
+        dialogRef.current?.querySelector<HTMLElement>("[autofocus]");
       (autofocus ?? closeButtonRef.current)?.focus();
     });
     function closeOnEscape(event: KeyboardEvent) {
@@ -378,27 +467,35 @@ function ModalShell({
 
   return (
     <div
-      className="position-modal-backdrop"
+      className={BACKDROP}
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
       <section
-        className={`position-modal is-${size}`}
+        ref={dialogRef}
+        className={`${MODAL} ${MODAL_WIDTH[size]}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="position-modal-title"
         aria-describedby="position-modal-description"
       >
-        <header className="position-modal__header">
+        <header className={MODAL_HEADER}>
           <div>
-            <h2 id="position-modal-title">{title}</h2>
-            <p id="position-modal-description">{description}</p>
+            <h2 className="text-[17px]" id="position-modal-title">
+              {title}
+            </h2>
+            <p
+              className="mt-1 text-[12px] text-muted"
+              id="position-modal-description"
+            >
+              {description}
+            </p>
           </div>
           <button
             ref={closeButtonRef}
-            className="icon-button"
+            className={ICON_BUTTON}
             type="button"
             title="닫기"
             aria-label={`${title} 닫기`}
@@ -407,7 +504,7 @@ function ModalShell({
             <X size={18} aria-hidden="true" />
           </button>
         </header>
-        <div className="position-modal__body">{children}</div>
+        <div className={MODAL_BODY}>{children}</div>
       </section>
     </div>
   );
@@ -437,9 +534,29 @@ function positionForm(position: CompanyPosition) {
     description: position.description,
     roleType: position.roleType ?? "개발",
     headcount: position.headcount ?? 1,
+    interviewCapacity: position.interviewCapacity ?? 1,
+    interviewAt: toDateTimeLocalValue(position.interviewAt),
     recruitmentStartAt: position.recruitmentStartAt ?? "",
     recruitmentEndAt: position.recruitmentEndAt ?? "",
+    submissionRequirements: position.submissionRequirements.map(
+      (requirement) => ({
+        materialType: requirement.materialType,
+        label: requirement.materialType,
+        description: "",
+        required: requirement.required,
+      }),
+    ),
   };
+}
+
+function toDateTimeLocalValue(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const localTime = new Date(
+    date.getTime() - date.getTimezoneOffset() * 60_000,
+  );
+  return localTime.toISOString().slice(0, 16);
 }
 
 function criterionDraft(
@@ -486,7 +603,9 @@ function criterionDraft(
         },
       ];
   return {
+    ...initialHiringDraft,
     ...positionForm(position),
+    descriptionCompleted: true,
     jobRequirements,
     criteria: criterionRows,
     prohibitedTopics: criteria.prohibitedTopics.join(", "),

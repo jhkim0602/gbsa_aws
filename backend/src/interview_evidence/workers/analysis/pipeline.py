@@ -277,6 +277,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     content_hash=chunk.chunk_hash,
                     embedding_model=self._text_embedder.model_id,
                     embedding_version="titan-v2",
+                    material_type=submission.material_type.value,
                 )
             )
             candidates.append(

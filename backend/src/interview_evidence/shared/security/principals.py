@@ -16,6 +16,7 @@ class CompanyPrincipal(BaseModel):
     company_id: UUID
     company_user_id: UUID
     identity_subject: str = Field(min_length=1, max_length=512)
+    email: str | None = Field(default=None, min_length=3, max_length=320)
 
 
 class ApplicantPrincipal(BaseModel):

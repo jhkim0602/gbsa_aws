@@ -11,7 +11,6 @@ from interview_evidence.submission_analysis.api import LaneBRuntime
 from interview_evidence.submission_analysis.application.public import (
     SubmissionAnalysisPublic,
 )
-
 from tests.e2e.support import (
     SECOND_COMPANY_ID,
     SECOND_COMPANY_TOKEN,

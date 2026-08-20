@@ -1,4 +1,12 @@
 import type { InterviewLevel } from "../hiring/types";
+import type { SubmissionMaterialId } from "../hiring/types";
+
+export type CompanySubmissionRequirement = Readonly<{
+  materialType: SubmissionMaterialId;
+  required: boolean;
+  enabled: boolean;
+  instructions?: string | null;
+}>;
 
 export type CompanyUser = Readonly<{
   companyUserId: string;
@@ -13,8 +21,11 @@ export type CompanyPosition = Readonly<{
   description: string;
   roleType?: string | null;
   headcount?: number | null;
+  interviewCapacity?: number | null;
+  interviewAt?: string | null;
   recruitmentStartAt?: string | null;
   recruitmentEndAt?: string | null;
+  submissionRequirements: readonly CompanySubmissionRequirement[];
   status: string;
   rowVersion: number;
   createdAt: string;
@@ -26,8 +37,11 @@ export type CompanyPositionUpdate = Readonly<{
   description: string;
   roleType?: string | null;
   headcount?: number | null;
+  interviewCapacity?: number | null;
+  interviewAt?: string | null;
   recruitmentStartAt?: string | null;
   recruitmentEndAt?: string | null;
+  submissionRequirements: readonly CompanySubmissionRequirement[];
   status: "draft" | "active" | "closed";
   rowVersion: number;
 }>;
@@ -114,4 +128,19 @@ export type CompanyOperationsApi = CompanyWorkspaceApi &
       positionId: string,
       input: import("../hiring").CriteriaConfiguration,
     ): Promise<{ versionId: string }>;
+    listSubmissions(
+      invitationId: string,
+    ): Promise<readonly CompanySubmission[]>;
   }>;
+
+export type CompanySubmission = Readonly<{
+  submissionId: string;
+  materialType: SubmissionMaterialId;
+  sourceType: string;
+  originalFilename?: string | null;
+  sourceUrl?: string | null;
+  status: string;
+  failureCode?: string | null;
+  impactSummary?: string | null;
+  createdAt: string;
+}>;

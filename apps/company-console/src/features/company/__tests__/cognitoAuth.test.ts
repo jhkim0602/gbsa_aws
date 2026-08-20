@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   beginCompanyLogin,
+  beginCompanySignup,
   completeCompanyLogin,
   type CompanyAuthConfig,
 } from "../cognitoAuth";
@@ -35,6 +36,21 @@ describe("Cognito company authentication", () => {
     expect(location).not.toContain(
       session.getItem("iep_company_pkce_verifier") ?? "missing",
     );
+  });
+
+  it("opens the Cognito self-registration screen with the same PKCE protection", async () => {
+    const session = memoryStorage();
+    const location = await beginCompanySignup(config, {
+      sessionStorage: session,
+      navigate: vi.fn(),
+    });
+    const url = new URL(location);
+
+    expect(url.pathname).toBe("/signup");
+    expect(url.searchParams.get("response_type")).toBe("code");
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(url.searchParams.get("code_challenge")).toBeTruthy();
+    expect(session.getItem("iep_company_oauth_state")).toBeTruthy();
   });
 
   it("validates state and exchanges the code before storing the access token", async () => {

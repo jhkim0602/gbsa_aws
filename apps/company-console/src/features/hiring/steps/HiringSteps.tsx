@@ -1,37 +1,24 @@
-import {
-  Check,
-  CheckCircle2,
-  ChevronDown,
-  Clock3,
-  Plus,
-  Settings2,
-  Trash2,
-} from "lucide-react";
-import type { FormEvent } from "react";
+import { Check, CheckCircle2, FileText } from "lucide-react";
+import { useRef, type FormEvent } from "react";
 
-import { Field, FormActions, FormSection } from "../components/FormPrimitives";
+import { formAlertClass } from "../../../app/styles/primitives";
 import {
-  createCriterionDraft,
-  createRequirementDraft,
-  interviewLevelLabels,
-  type CriterionDraft,
-  type HiringDraft,
-  type InterviewLevel,
-  type JobRequirementDraft,
+  Field,
+  formInputClass,
+  FormActions,
+  FormSection,
+  type FormVariant,
+} from "../components/FormPrimitives";
+import { RoleCategoryField } from "../role-selector/RoleCategoryField";
+import { TechStackCombobox } from "../tech-stack-combobox";
+import type {
+  CriteriaHiringStep,
+  HiringDraft,
+  PositionHiringStep,
 } from "../types";
-
-const interviewLevelOptions = ["entry", "junior", "senior"] as const;
-
-const roleOptions = [
-  { value: "개발", label: "개발", description: "백엔드·프론트엔드·모바일" },
-  { value: "데이터", label: "데이터", description: "데이터·AI·분석" },
-  {
-    value: "인프라·보안",
-    label: "인프라·보안",
-    description: "클라우드·DevOps·보안",
-  },
-  { value: "제품·기획", label: "제품·기획", description: "PM·PO·서비스 기획" },
-] as const;
+import { ApplicantMaterials } from "./ApplicantMaterials";
+import { EvaluationDesigner } from "./EvaluationDesigner";
+import { InterviewDesigner } from "./InterviewDesigner";
 
 type StepProps = {
   draft: HiringDraft;
@@ -39,162 +26,346 @@ type StepProps = {
   submitLabel?: string;
   update<K extends keyof HiringDraft>(key: K, value: HiringDraft[K]): void;
   onSubmit(event: FormEvent): void;
+  onBack?: () => void;
 };
 
-export function PositionStep(props: StepProps) {
-  const { draft, submitting, update, onSubmit } = props;
+const positionDescriptionMaxLength = 2000;
+
+const positionDescriptionExample = `포지션 상세
+
+## Build the Next Version
+현재 회사 리브랜딩 및 홈페이지 개편이 진행 중입니다.
+이에 최신 현황을 먼저 공유드립니다.
+
+빌드잇(Buildit)은 지난 10년간 단 한 차례의 외부 투자 없이도,
+국내 주요 대기업들과 함께 엔터프라이즈 솔루션을 개발하며 성장해온 기술 중심 기업입니다.
+
+최근 빌드잇은 AI가 산업의 본질을 바꾸는 지금을 기회로 삼아,
+AI 중심 소프트웨어 기업으로의 전략적 전환을 단계별로 진행 중입니다.
+이에 따라 사업 구조와 조직 운영 방식을 새롭게 재정비하고 있습니다.
+
+빌드잇은 현재 두 개의 사업 영역을 중심으로 향후 3년의 성장 기반을 구축하고 있습니다.
+• Enterprise Business : 엔터프라이즈 솔루션 프로젝트 수행
+• AI Agent Business : AI Agent 기반 프로세스 자동화 솔루션 제품화
+
+이 변화는 단순한 확장이 아닌, 회사의 정체성을 다시 정의하는 AI 중심 리브랜딩 과정입니다.
+자율, 책임, 성장, 연결이라는 핵심 가치를 기반으로 업무 방식과 개발 문화를 새롭게 설계하고 있습니다.
+
+지금은 빌드잇이 가장 역동적으로 변화하는 시기입니다.
+다음 버전의 빌드잇을 함께 '릴리즈'할 동료를 찾고 있습니다.
+
+주요업무
+
+[담당 포지션]
+Junior Product Engineer (Backend 중심)
+
+작은 팀에서 Backend 개발을 중심으로 서버 API, 비즈니스 로직 및 데이터 처리 기능 구현과 개선에 참여하고,
+Frontend 영역까지 경험을 확장하는 역할
+
+(기술 환경은 공고 하단 SW 개발팀 주요 기술 스택 참고)`;
+
+// `.hiring-panel .position-config-section > header` outranks `.form-section > header`'s
+// `display:none`, so these sections keep their headers — see FormPrimitives.
+const POSITION_BASICS_GRID =
+  "grid items-end gap-6" +
+  " grid-cols-[minmax(260px,1.5fr)_minmax(150px,0.75fr)_minmax(150px,0.75fr)]" +
+  " mw-780:grid-cols-[minmax(0,1fr)]";
+
+const TECH_STACK =
+  "mt-3 w-full max-w-[860px] [justify-self:start] border-t border-border-muted pt-7" +
+  " mw-780:max-w-none";
+
+const DESCRIPTION_EDITOR =
+  "overflow-hidden rounded-md border border-border bg-surface" +
+  " focus-within:border-brand focus-within:shadow-[0_0_0_3px_#5966ce1a]";
+
+// `border: 0` and `border-radius: 0` come free from Preflight, and `font-family: inherit`
+// from its `textarea { font: inherit }`.
+const DESCRIPTION_TEXTAREA =
+  "block min-h-[390px] w-full resize-y bg-surface p-6 text-[13px] leading-[1.85]" +
+  " whitespace-pre-wrap text-ink outline-0 placeholder:text-subtle" +
+  " mw-620:min-h-[330px] mw-620:px-[14px] mw-620:py-[18px] mw-620:text-[12px]";
+
+const EDITOR_ACTION =
+  "inline-flex min-h-[30px] items-center gap-1.5 rounded-sm border border-border" +
+  " bg-surface px-2.5 text-[10px] font-semibold text-ink-secondary" +
+  " hover:border-brand hover:bg-brand-soft hover:text-brand";
+
+// `:hover:not(:disabled)` only sets border and text, so a completed button keeps its green
+// fill on hover; `.is-complete` is declared after the hover rule at lower specificity, so
+// the hover border/text still win over it.
+const EDITOR_DONE =
+  "inline-flex min-h-7 items-center gap-[5px] rounded-sm border px-[9px] text-[9px]" +
+  " font-semibold hover:not-disabled:border-brand hover:not-disabled:text-brand" +
+  " disabled:cursor-not-allowed disabled:opacity-45";
+
+const COMPLETION =
+  "grid min-h-[470px] content-center justify-items-center px-7 py-[50px] text-center";
+
+export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
+  const { draft, stage, submitting, update, onSubmit, onBack } = props;
   const periodValid =
     !draft.recruitmentStartAt ||
     !draft.recruitmentEndAt ||
     draft.recruitmentEndAt >= draft.recruitmentStartAt;
-  const ready = Boolean(
-    draft.title.trim() &&
-    draft.description.trim() &&
-    draft.roleType &&
-    draft.headcount > 0 &&
-    draft.recruitmentStartAt &&
-    draft.recruitmentEndAt &&
-    periodValid,
-  );
+  const readyByStage: Record<PositionHiringStep, boolean> = {
+    position: Boolean(
+      draft.title.trim() &&
+      draft.description.trim() &&
+      draft.descriptionCompleted &&
+      draft.roleType &&
+      draft.recruitmentStartAt &&
+      draft.recruitmentEndAt &&
+      periodValid,
+    ),
+    application: draft.submissionRequirements.some(
+      (requirement) => requirement.required,
+    ),
+  };
 
   return (
-    <form className="workspace-form" onSubmit={onSubmit}>
-      <FormSection
-        eyebrow="01 · Position"
-        title="어떤 사람을 찾고 있나요?"
-        description="한 번에 필요한 정보만 결정하면 다음 설정에 자동으로 이어집니다."
-      >
-        <section className="position-decision">
-          <span className="position-decision__number">1</span>
-          <div>
-            <h4>어떤 직무를 채용하나요?</h4>
-            <p>가장 가까운 직무를 선택하고 포지션 이름을 적어주세요.</p>
-          </div>
-          <Field label="포지션명">
-            <input
-              required
-              maxLength={200}
-              value={draft.title}
-              placeholder="예: 백엔드 플랫폼 엔지니어"
-              onChange={(event) => update("title", event.target.value)}
+    <form className="grid" onSubmit={onSubmit}>
+      {stage === "position" ? (
+        <>
+          <FormSection
+            eyebrow="01 · 기본 정보"
+            title="포지션명과 모집 기간"
+            description="지원자에게 보이는 포지션 이름과 공고 운영 기간을 설정합니다."
+          >
+            <div className={POSITION_BASICS_GRID}>
+              <Field label="포지션명">
+                <input
+                  autoFocus
+                  className={formInputClass()}
+                  required
+                  maxLength={200}
+                  value={draft.title}
+                  placeholder="예: 백엔드 플랫폼 엔지니어"
+                  onChange={(event) => update("title", event.target.value)}
+                />
+              </Field>
+              <Field label="모집 시작일">
+                <input
+                  className={formInputClass()}
+                  required
+                  type="date"
+                  value={draft.recruitmentStartAt}
+                  onChange={(event) =>
+                    update("recruitmentStartAt", event.target.value)
+                  }
+                />
+              </Field>
+              <Field label="모집 종료일">
+                <input
+                  className={formInputClass()}
+                  required
+                  type="date"
+                  min={draft.recruitmentStartAt || undefined}
+                  value={draft.recruitmentEndAt}
+                  onChange={(event) =>
+                    update("recruitmentEndAt", event.target.value)
+                  }
+                />
+              </Field>
+            </div>
+            {!periodValid ? (
+              <p className={formAlertClass()} role="alert">
+                모집 종료일은 시작일 이후로 선택해 주세요.
+              </p>
+            ) : null}
+          </FormSection>
+
+          <FormSection
+            eyebrow="02 · 직무와 기술"
+            title="직무와 주요 기술 스택"
+            description="직무와 기술 환경을 함께 설정해 면접 질문과 평가 기준의 방향을 정합니다."
+          >
+            <RoleCategoryField
+              value={draft.roleType}
+              onChange={(value, suggestedTitle) => {
+                update("roleType", value);
+                if (suggestedTitle) update("title", suggestedTitle);
+              }}
             />
-          </Field>
-          <fieldset className="role-choice-grid">
-            <legend>직무</legend>
-            {roleOptions.map((option) => (
-              <button
-                key={option.value}
-                className={draft.roleType === option.value ? "is-selected" : ""}
-                type="button"
-                aria-pressed={draft.roleType === option.value}
-                onClick={() => update("roleType", option.value)}
+            <div className={TECH_STACK}>
+              <Field
+                label="주요 기술 스택"
+                variant="prominent"
+                hint="검색하거나 목록에 없는 기술을 직접 입력할 수 있습니다."
               >
-                <strong>{option.label}</strong>
-                <small>{option.description}</small>
-              </button>
-            ))}
-          </fieldset>
-        </section>
+                <TechStackCombobox
+                  className="min-h-16 gap-2 px-3 py-3"
+                  value={draft.techStack}
+                  onChange={(value) => update("techStack", value)}
+                  placeholder="예: Java, Spring Boot, AWS"
+                />
+              </Field>
+            </div>
+          </FormSection>
 
-        <section className="position-decision">
-          <span className="position-decision__number">2</span>
-          <div>
-            <h4>얼마나, 언제까지 채용할까요?</h4>
-            <p>운영 현황과 캘린더에 그대로 반영되는 값이에요.</p>
-          </div>
-          <div className="field-grid field-grid--three">
-            <Field label="채용 인원">
-              <input
-                type="number"
-                min={1}
-                max={10000}
-                value={draft.headcount}
-                onChange={(event) =>
-                  update("headcount", Number(event.target.value))
-                }
-              />
-            </Field>
-            <Field label="모집 시작일">
-              <input
-                required
-                type="date"
-                value={draft.recruitmentStartAt}
-                onChange={(event) =>
-                  update("recruitmentStartAt", event.target.value)
-                }
-              />
-            </Field>
-            <Field label="모집 종료일">
-              <input
-                required
-                type="date"
-                min={draft.recruitmentStartAt || undefined}
-                value={draft.recruitmentEndAt}
-                onChange={(event) =>
-                  update("recruitmentEndAt", event.target.value)
-                }
-              />
-            </Field>
-          </div>
-          {!periodValid ? (
-            <p className="form-alert" role="alert">
-              모집 종료일은 시작일 이후로 선택해 주세요.
-            </p>
-          ) : null}
-        </section>
-
-        <section className="position-decision">
-          <span className="position-decision__number">3</span>
-          <div>
-            <h4>이 역할이 맡을 일을 알려주세요.</h4>
-            <p>지원자와 평가 질문 생성에 필요한 업무·책임 범위를 적어주세요.</p>
-          </div>
-          <Field label="역할 범위">
-            <textarea
-              aria-label="포지션 설명"
-              required
-              rows={7}
-              maxLength={20000}
+          <FormSection
+            eyebrow="03 · 공고 본문"
+            title="포지션 상세"
+            description="회사 소개, 포지션 배경과 주요 업무를 하나의 본문으로 구성합니다."
+          >
+            <PositionDescriptionEditor
               value={draft.description}
-              placeholder={
-                "예) 결제 트래픽을 안정적으로 처리하는 API를 설계하고,\n장애 원인을 분석해 운영 품질을 개선합니다."
+              completed={draft.descriptionCompleted}
+              onChange={(value) => {
+                update("description", value);
+                if (draft.descriptionCompleted) {
+                  update("descriptionCompleted", false);
+                }
+              }}
+              onCompletedChange={(completed) =>
+                update("descriptionCompleted", completed)
               }
-              onChange={(event) => update("description", event.target.value)}
             />
-            <span className="field-character-count" aria-live="polite">
-              {draft.description.length} / 20000
-            </span>
-          </Field>
-        </section>
-      </FormSection>
+          </FormSection>
+        </>
+      ) : null}
+
+      {stage === "application" ? (
+        <ApplicantMaterials draft={draft} update={update} />
+      ) : null}
+
       <FormActions
         submitting={submitting}
-        disabled={!ready}
-        label="포지션 만들기"
+        disabled={!readyByStage[stage]}
+        label="다음"
+        onBack={onBack}
       />
     </form>
   );
 }
 
-export function CriteriaStep(props: StepProps) {
+function PositionDescriptionEditor({
+  value,
+  completed,
+  onChange,
+  onCompletedChange,
+}: {
+  value: string;
+  completed: boolean;
+  onChange: (value: string) => void;
+  onCompletedChange: (completed: boolean) => void;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  function insertExample() {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? value.length;
+    const end = textarea?.selectionEnd ?? start;
+    const before = value.slice(0, start);
+    const after = value.slice(end);
+    const prefix = before && !before.endsWith("\n\n") ? "\n\n" : "";
+    const suffix = after && !after.startsWith("\n\n") ? "\n\n" : "";
+    const inserted = `${prefix}${positionDescriptionExample}${suffix}`;
+    const nextValue = `${before}${inserted}${after}`.slice(
+      0,
+      positionDescriptionMaxLength,
+    );
+    const nextCursor = Math.min(
+      before.length + inserted.length,
+      positionDescriptionMaxLength,
+    );
+
+    onChange(nextValue);
+    const restoreSelection = () => {
+      textarea?.focus();
+      textarea?.setSelectionRange(nextCursor, nextCursor);
+    };
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(restoreSelection);
+    } else {
+      restoreSelection();
+    }
+  }
+
+  return (
+    <div className={DESCRIPTION_EDITOR}>
+      <header className="flex min-h-12 items-center justify-between gap-4 border-b border-border bg-surface-muted px-[14px]">
+        <div className="flex items-center gap-[9px]">
+          <strong className="text-[11px] font-[650]">포지션 상세</strong>
+          <span className="text-[9px] text-success">지원자 공개</span>
+        </div>
+        <button
+          aria-label="포지션 상세 예시 적용"
+          className={EDITOR_ACTION}
+          type="button"
+          onClick={insertExample}
+        >
+          <FileText aria-hidden="true" size={15} />
+          예시 적용
+        </button>
+      </header>
+      <textarea
+        ref={textareaRef}
+        aria-label="포지션 설명"
+        className={DESCRIPTION_TEXTAREA}
+        required
+        maxLength={positionDescriptionMaxLength}
+        value={value}
+        placeholder={
+          "포지션 상세\n\n## Build the Next Version\n회사가 지금 해결하려는 문제와 변화의 배경을 작성해 주세요.\n\n주요업무\n\n[담당 포지션]\n역할과 책임 범위를 자유롭게 작성해 주세요."
+        }
+        onChange={(event) => {
+          onChange(event.target.value);
+        }}
+      />
+      <footer className="flex min-h-10 items-center justify-between border-t border-border-muted bg-surface-muted px-[14px] text-[9px] text-subtle">
+        <output className="font-mono" aria-live="polite">
+          {value.length} / {positionDescriptionMaxLength}
+        </output>
+        <button
+          aria-label="포지션 상세 작성 완료"
+          aria-pressed={completed}
+          className={`${EDITOR_DONE} ${
+            completed
+              ? "border-[#1e9e634d] bg-success-soft text-success"
+              : "border-border bg-surface text-muted"
+          }`}
+          disabled={!value.trim()}
+          type="button"
+          onClick={() => onCompletedChange(true)}
+        >
+          <Check aria-hidden="true" size={12} />
+          작성 완료
+        </button>
+      </footer>
+    </div>
+  );
+}
+
+/*
+ * `CriteriaStep` is the one step the criteria-edit modal renders too, and the modal has no
+ * `.hiring-panel` ancestor — so the form controls and the action bar keep their unscoped boxes
+ * there. A descendant selector picked that up implicitly; as utilities the caller declares it.
+ */
+export function CriteriaStep(
+  props: StepProps & {
+    stage?: CriteriaHiringStep;
+    variant?: Extract<FormVariant, "wizard" | "modal">;
+  },
+) {
   const {
     draft,
+    stage,
     submitting,
-    submitLabel = "평가기준 게시",
+    submitLabel,
+    variant = "wizard",
     update,
     onSubmit,
+    onBack,
   } = props;
-  const weightTotal = draft.criteria.reduce(
-    (total, criterion) => total + criterion.weight,
-    0,
-  );
-  const ready =
+  const requirementsReady =
     draft.jobRequirements.length > 0 &&
-    draft.criteria.length > 0 &&
     draft.jobRequirements.every(
       (requirement) =>
         requirement.statement.trim() && requirement.criterionCode,
-    ) &&
+    );
+  const criteriaReady =
+    draft.criteria.length > 0 &&
     draft.criteria.every(
       (criterion) =>
         criterion.name.trim() &&
@@ -205,423 +376,31 @@ export function CriteriaStep(props: StepProps) {
         criterion.abstainGuidance.trim() &&
         criterion.commonQuestions.trim(),
     );
-
-  function updateRequirement(id: string, patch: Partial<JobRequirementDraft>) {
-    update(
-      "jobRequirements",
-      draft.jobRequirements.map((requirement) =>
-        requirement.id === id ? { ...requirement, ...patch } : requirement,
-      ),
-    );
-  }
-
-  function updateCriterion(id: string, patch: Partial<CriterionDraft>) {
-    update(
-      "criteria",
-      draft.criteria.map((criterion) =>
-        criterion.id === id ? { ...criterion, ...patch } : criterion,
-      ),
-    );
-  }
+  const ready = !stage
+    ? requirementsReady && criteriaReady
+    : stage === "evaluation"
+      ? requirementsReady && criteriaReady
+      : draft.headcount > 0 &&
+        draft.interviewCapacity > 0 &&
+        Boolean(draft.interviewAt) &&
+        !Number.isNaN(Date.parse(draft.interviewAt)) &&
+        draft.interviewDurationMinutes >= 10 &&
+        Boolean(draft.prohibitedTopics.trim());
 
   return (
-    <form className="workspace-form" onSubmit={onSubmit}>
-      <FormSection
-        eyebrow="02 · Requirements"
-        title="직무 요구사항"
-        description="채용공고의 필수·우대사항을 적고 확인할 평가기준에 연결합니다."
-      >
-        <div className="requirement-list">
-          {draft.jobRequirements.map((requirement, index) => (
-            <div className="requirement-row" key={requirement.id}>
-              <Field label={`구분 ${index + 1}`}>
-                <select
-                  value={requirement.requirementType}
-                  onChange={(event) =>
-                    updateRequirement(requirement.id, {
-                      requirementType: event.target.value as
-                        "required" | "preferred",
-                    })
-                  }
-                >
-                  <option value="required">필수</option>
-                  <option value="preferred">우대</option>
-                </select>
-              </Field>
-              <Field label={`요구사항 ${index + 1}`}>
-                <input
-                  required
-                  value={requirement.statement}
-                  placeholder="예: ECS 운영 장애 대응 경험"
-                  onChange={(event) =>
-                    updateRequirement(requirement.id, {
-                      statement: event.target.value,
-                    })
-                  }
-                />
-              </Field>
-              <Field label={`중요도 ${index + 1}`}>
-                <select
-                  value={requirement.priority}
-                  onChange={(event) =>
-                    updateRequirement(requirement.id, {
-                      priority: Number(event.target.value),
-                    })
-                  }
-                >
-                  <option value={1}>높음</option>
-                  <option value={2}>중간</option>
-                  <option value={3}>보통</option>
-                  <option value={4}>낮음</option>
-                  <option value={5}>참고</option>
-                </select>
-              </Field>
-              <Field label={`연결 평가기준 ${index + 1}`}>
-                <select
-                  value={requirement.criterionCode}
-                  onChange={(event) =>
-                    updateRequirement(requirement.id, {
-                      criterionCode: event.target.value,
-                    })
-                  }
-                >
-                  {draft.criteria.map((criterion, criterionIndex) => (
-                    <option key={criterion.id} value={criterion.code}>
-                      {criterion.name || `평가기준 ${criterionIndex + 1}`}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <button
-                aria-label={`요구사항 ${index + 1} 삭제`}
-                className="icon-button"
-                disabled={draft.jobRequirements.length === 1}
-                title="요구사항 삭제"
-                type="button"
-                onClick={() =>
-                  update(
-                    "jobRequirements",
-                    draft.jobRequirements.filter(
-                      (item) => item.id !== requirement.id,
-                    ),
-                  )
-                }
-              >
-                <Trash2 size={16} aria-hidden="true" />
-              </button>
-            </div>
-          ))}
-        </div>
-        <button
-          className="button-secondary compact-command"
-          type="button"
-          onClick={() => {
-            const next = draft.jobRequirements.length + 1;
-            update("jobRequirements", [
-              ...draft.jobRequirements,
-              {
-                ...createRequirementDraft(next),
-                criterionCode: draft.criteria[0]?.code ?? `CRITERION_${next}`,
-              },
-            ]);
-          }}
-        >
-          <Plus size={16} aria-hidden="true" />
-          요구사항 추가
-        </button>
-      </FormSection>
-
-      <FormSection
-        eyebrow="03 · Criteria"
-        title="평가기준과 검증 가이드"
-        description="지원자의 실제 답변에서 무엇을 확인하고 어떻게 더 물을지 정합니다."
-      >
-        <div className="criterion-summary" aria-live="polite">
-          <span>{draft.criteria.length}개 평가기준</span>
-          <strong>가중치 합계 {weightTotal}</strong>
-        </div>
-        <div className="criterion-list">
-          {draft.criteria.map((criterion, index) => (
-            <section className="criterion-editor" key={criterion.id}>
-              <header>
-                <div>
-                  <span>평가기준 {index + 1}</span>
-                  <strong>{criterion.name || "이름을 입력하세요"}</strong>
-                </div>
-                <button
-                  aria-label={`평가기준 ${index + 1} 삭제`}
-                  className="icon-button"
-                  disabled={draft.criteria.length === 1}
-                  title="평가기준 삭제"
-                  type="button"
-                  onClick={() => {
-                    const remaining = draft.criteria.filter(
-                      (item) => item.id !== criterion.id,
-                    );
-                    update("criteria", remaining);
-                    update(
-                      "jobRequirements",
-                      draft.jobRequirements.map((requirement) =>
-                        requirement.criterionCode === criterion.code
-                          ? {
-                              ...requirement,
-                              criterionCode: remaining[0]?.code ?? "",
-                            }
-                          : requirement,
-                      ),
-                    );
-                  }}
-                >
-                  <Trash2 size={16} aria-hidden="true" />
-                </button>
-              </header>
-              <div className="field-grid">
-                <Field label={`평가기준 이름 ${index + 1}`}>
-                  <input
-                    required
-                    value={criterion.name}
-                    placeholder="예: 운영 문제 해결"
-                    onChange={(event) =>
-                      updateCriterion(criterion.id, {
-                        name: event.target.value,
-                      })
-                    }
-                  />
-                </Field>
-                <Field label={`설명 ${index + 1}`}>
-                  <input
-                    value={criterion.description}
-                    placeholder="이 기준이 확인하는 역량"
-                    onChange={(event) =>
-                      updateCriterion(criterion.id, {
-                        description: event.target.value,
-                      })
-                    }
-                  />
-                </Field>
-                <Field label={`가중치 ${index + 1}`}>
-                  <input
-                    min={0}
-                    type="number"
-                    value={criterion.weight}
-                    onChange={(event) =>
-                      updateCriterion(criterion.id, {
-                        weight: Number(event.target.value),
-                      })
-                    }
-                  />
-                </Field>
-              </div>
-              <label className="binary-control">
-                <input
-                  checked={criterion.required}
-                  type="checkbox"
-                  onChange={(event) =>
-                    updateCriterion(criterion.id, {
-                      required: event.target.checked,
-                    })
-                  }
-                />
-                필수 평가기준
-              </label>
-              <details className="criterion-advanced">
-                <summary>
-                  <span>
-                    <Settings2 size={15} aria-hidden="true" />
-                    질문·검증 가이드 세부 설정
-                  </span>
-                  <small>권장 기본값 적용됨</small>
-                  <ChevronDown size={16} aria-hidden="true" />
-                </summary>
-                <div className="criterion-advanced__body">
-                  <div className="evidence-rule-grid">
-                    <Field
-                      label={`확인할 요소 ${index + 1}`}
-                      hint="한 줄에 하나씩 입력합니다."
-                    >
-                      <textarea
-                        required
-                        rows={4}
-                        value={criterion.observableDimensions}
-                        placeholder={
-                          "실제 장애 상황\n원인 분석\n직접 수행한 복구\n재발 방지"
-                        }
-                        onChange={(event) =>
-                          updateCriterion(criterion.id, {
-                            observableDimensions: event.target.value,
-                          })
-                        }
-                      />
-                    </Field>
-                    <Field label={`좋은 답변 신호 ${index + 1}`}>
-                      <textarea
-                        required
-                        rows={4}
-                        value={criterion.strongAnswerSignals}
-                        placeholder="본인 행동과 판단 근거가 구체적임"
-                        onChange={(event) =>
-                          updateCriterion(criterion.id, {
-                            strongAnswerSignals: event.target.value,
-                          })
-                        }
-                      />
-                    </Field>
-                    <Field label={`추가 확인 신호 ${index + 1}`}>
-                      <textarea
-                        required
-                        rows={4}
-                        value={criterion.weakAnswerSignals}
-                        placeholder="팀 활동이나 결과만 언급함"
-                        onChange={(event) =>
-                          updateCriterion(criterion.id, {
-                            weakAnswerSignals: event.target.value,
-                          })
-                        }
-                      />
-                    </Field>
-                    <Field label={`꼬리질문 방향 ${index + 1}`}>
-                      <textarea
-                        required
-                        rows={4}
-                        value={criterion.followUpDirections}
-                        placeholder={"본인이 직접 수행한 행동\n복구 우선순위"}
-                        onChange={(event) =>
-                          updateCriterion(criterion.id, {
-                            followUpDirections: event.target.value,
-                          })
-                        }
-                      />
-                    </Field>
-                  </div>
-                  <div className="field-grid field-grid--three">
-                    <Field label={`최대 꼬리질문 ${index + 1}`}>
-                      <input
-                        max={3}
-                        min={0}
-                        type="number"
-                        value={criterion.maxFollowUps}
-                        onChange={(event) =>
-                          updateCriterion(criterion.id, {
-                            maxFollowUps: Number(event.target.value),
-                          })
-                        }
-                      />
-                    </Field>
-                    <Field label={`시간 예산(초) ${index + 1}`}>
-                      <input
-                        max={1800}
-                        min={60}
-                        step={30}
-                        type="number"
-                        value={criterion.timeBudgetSeconds}
-                        onChange={(event) =>
-                          updateCriterion(criterion.id, {
-                            timeBudgetSeconds: Number(event.target.value),
-                          })
-                        }
-                      />
-                    </Field>
-                  </div>
-                  <Field label={`판단 유보 기준 ${index + 1}`}>
-                    <textarea
-                      required
-                      rows={2}
-                      value={criterion.abstainGuidance}
-                      onChange={(event) =>
-                        updateCriterion(criterion.id, {
-                          abstainGuidance: event.target.value,
-                        })
-                      }
-                    />
-                  </Field>
-                  <Field
-                    label={`공통 질문 ${index + 1}`}
-                    hint="한 줄에 질문 하나를 입력합니다."
-                  >
-                    <textarea
-                      required
-                      rows={3}
-                      value={criterion.commonQuestions}
-                      placeholder="운영 장애를 해결한 경험을 설명해 주세요."
-                      onChange={(event) =>
-                        updateCriterion(criterion.id, {
-                          commonQuestions: event.target.value,
-                        })
-                      }
-                    />
-                  </Field>
-                </div>
-              </details>
-            </section>
-          ))}
-        </div>
-        <button
-          className="button-secondary compact-command"
-          type="button"
-          onClick={() => {
-            const next = draft.criteria.length + 1;
-            update("criteria", [...draft.criteria, createCriterionDraft(next)]);
-          }}
-        >
-          <Plus size={16} aria-hidden="true" />
-          평가기준 추가
-        </button>
-      </FormSection>
-
-      <FormSection
-        eyebrow="04 · Interview policy"
-        title="면접 운영"
-        description="면접 시간과 질문하면 안 되는 주제를 정합니다."
-      >
-        <div className="field-grid">
-          <Field label="면접 시간(분)">
-            <div className="input-with-icon">
-              <Clock3 size={14} aria-hidden="true" />
-              <input
-                required
-                type="number"
-                min={10}
-                max={120}
-                value={draft.interviewDurationMinutes}
-                onChange={(event) =>
-                  update("interviewDurationMinutes", Number(event.target.value))
-                }
-              />
-            </div>
-          </Field>
-          <Field
-            label="면접 난이도"
-            hint={interviewLevelLabels[draft.interviewLevel].hint}
-          >
-            <select
-              value={draft.interviewLevel}
-              onChange={(event) =>
-                update("interviewLevel", event.target.value as InterviewLevel)
-              }
-            >
-              {interviewLevelOptions.map((level) => (
-                <option key={level} value={level}>
-                  {interviewLevelLabels[level].name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="금지 주제" hint="쉼표로 구분합니다.">
-            <input
-              required
-              value={draft.prohibitedTopics}
-              placeholder="가족, 외모"
-              onChange={(event) =>
-                update("prohibitedTopics", event.target.value)
-              }
-            />
-          </Field>
-        </div>
-      </FormSection>
+    <form className="grid" onSubmit={onSubmit}>
+      {!stage || stage === "evaluation" ? (
+        <EvaluationDesigner draft={draft} update={update} variant={variant} />
+      ) : null}
+      {!stage || stage === "interview" ? (
+        <InterviewDesigner draft={draft} update={update} />
+      ) : null}
       <FormActions
         submitting={submitting}
         disabled={!ready}
-        label={submitLabel}
+        label={submitLabel ?? (stage === "interview" ? "포지션 게시" : "다음")}
+        variant={variant}
+        onBack={onBack}
       />
     </form>
   );
@@ -633,16 +412,21 @@ export function CompletionState({
   onOpenPosition?: () => void;
 }) {
   return (
-    <div className="completion-state">
-      <span aria-hidden="true">
+    <div className={COMPLETION}>
+      <span
+        className="grid size-14 place-items-center rounded-[50%] bg-success-soft text-success"
+        aria-hidden="true"
+      >
         <CheckCircle2 size={25} />
       </span>
-      <p>Criteria published</p>
-      <h2>채용 기준을 게시했습니다.</h2>
-      <small>
+      <p className="mt-[18px] mb-1 font-mono text-[9px] uppercase text-success">
+        Criteria published
+      </p>
+      <h2 className="text-[20px]">채용 기준을 게시했습니다.</h2>
+      <small className="mt-2 text-[10px] text-muted">
         게시된 기준은 이 포지션의 지원자 면접에 동일하게 적용됩니다.
       </small>
-      <div>
+      <div className="mt-[22px] flex flex-wrap justify-center gap-2 [&>span]:inline-flex [&>span]:items-center [&>span]:gap-[5px] [&>span]:rounded-full [&>span]:bg-success-soft [&>span]:px-2 [&>span]:py-[5px] [&>span]:text-[9px] [&>span]:text-success">
         <span>
           <Check size={13} aria-hidden="true" />
           필수·우대 요구사항 연결
@@ -658,7 +442,7 @@ export function CompletionState({
       </div>
       {onOpenPosition ? (
         <button
-          className="button-primary"
+          className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-brand bg-brand px-[18px] text-[14px] font-semibold text-white shadow-soft hover:not-disabled:bg-brand-strong"
           type="button"
           onClick={onOpenPosition}
         >

@@ -181,20 +181,20 @@ resource "aws_cognito_user_pool" "company" {
   mfa_configuration        = "OPTIONAL"
 
   /**
-   * The tenant the token belongs to, carried by the identity rather than inferred.
+   * Explicit tenant identifiers for administrator-provisioned users.
    *
    * `AwsCognitoPrincipalProvider.get_company_principal` reads `custom:company_id` and
-   * `custom:company_user_id` from GetUser and raises PrincipalNotFoundError when either is
-   * absent -- so a pool without these two attributes authenticates a user successfully and
-   * then rejects every API call as an unknown principal. That is the whole authenticated
-   * surface, failing identically for a wrong password and a correct one.
+   * `custom:company_user_id` from GetUser when they are present. Self-signup users do not
+   * receive them; the API derives stable identifiers from the immutable Cognito subject and
+   * creates that user's isolated demo tenant on first access.
    *
    * They are declared here and not added later on purpose: Cognito allows no new custom
    * attribute on an existing pool and no change to one, so the only fix after an apply is
    * to replace the pool and every user in it.
    *
-   * `required = false` because admin_create_user supplies them, and a required custom
-   * attribute would additionally have to be writable at self-signup, which is disabled.
+   * `required = false` because self-signup users receive deterministic tenant identifiers
+   * from their immutable Cognito subject in the API. Administrator-provisioned users may
+   * still carry these attributes for an explicitly assigned tenant.
    */
   schema {
     name                     = "company_id"
@@ -236,7 +236,7 @@ resource "aws_cognito_user_pool" "company" {
   }
 
   admin_create_user_config {
-    allow_admin_create_user_only = true
+    allow_admin_create_user_only = false
   }
 
   user_attribute_update_settings {
@@ -291,8 +291,8 @@ resource "aws_cognito_user_pool_client" "company" {
     "custom:company_user_id",
   ]
 
-  # Nothing self-service writes these: users are created by an administrator, and a token
-  # holder that could rewrite `custom:company_id` could move itself into another tenant.
+  # Self-registration never writes these. Administrator-provisioned users may receive an
+  # explicit tenant assignment, but a token holder must never be able to rewrite it.
   write_attributes = ["email"]
 
   token_validity_units {
@@ -336,9 +336,8 @@ resource "aws_cognito_user_pool_client" "e2e" {
   # exchange a password unauthenticated; the admin variant requires signed IAM credentials.
   explicit_auth_flows = ["ALLOW_ADMIN_USER_PASSWORD_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
 
-  # The same two attributes the console client reads, because the token this client mints is
-  # resolved by the same `AwsCognitoPrincipalProvider.get_company_principal` -- which reads
-  # them from the GetUser response and fails if either is absent.
+  # The same two attributes the console client reads, so an administrator-provisioned test
+  # user keeps its explicit tenant assignment.
   read_attributes  = ["email", "email_verified", "custom:company_id", "custom:company_user_id"]
   write_attributes = ["email"]
 

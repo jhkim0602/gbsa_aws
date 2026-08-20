@@ -45,6 +45,7 @@ describe("applicant interview journey", () => {
         state="awaiting_answer"
         connectionState="connected"
         textOnly={false}
+        interviewerLevel="junior"
         onStartAnswer={onStartAnswer}
         onCompleteAnswer={onCompleteAnswer}
         onReconnect={onReconnect}
@@ -54,6 +55,15 @@ describe("applicant interview journey", () => {
 
     expect(
       screen.getByText("AI가 질문을 진행하며 최종 판단은 사람이 합니다."),
+    ).toBeTruthy();
+    expect(screen.getByRole("img", { name: "주니어 AI 면접관" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "화면 옵션" }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "작은 창(PiP)으로 보기" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "화면 옵션" }));
+    expect(
+      screen.getByRole("menuitem", { name: "분할 화면으로 보기" }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "답변 시작" }));
     expect(onStartAnswer).toHaveBeenCalledOnce();

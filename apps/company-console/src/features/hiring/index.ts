@@ -1,5 +1,3 @@
-import "./hiring.css";
-
 export { HiringWorkspace } from "./HiringWorkspace";
 export { toCriteriaConfiguration } from "./HiringWorkspace";
 export {

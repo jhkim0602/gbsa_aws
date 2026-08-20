@@ -7,6 +7,11 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from interview_evidence.shared.email_templates import InvitationEmailTemplate
+from interview_evidence.shared.submission_materials import (
+    DEFAULT_SUBMISSION_REQUIREMENTS,
+    SubmissionRequirement,
+    normalize_submission_requirements,
+)
 
 
 class StalePositionVersionError(ValueError):
@@ -118,8 +123,11 @@ class Position(BaseModel):
     description: str = Field(min_length=1, max_length=20_000)
     role_type: str | None = Field(default=None, max_length=100)
     headcount: int | None = Field(default=None, ge=1, le=10_000)
+    interview_capacity: int | None = Field(default=None, ge=1, le=10_000)
+    interview_at: datetime | None = None
     recruitment_start_at: date | None = None
     recruitment_end_at: date | None = None
+    submission_requirements: tuple[SubmissionRequirement, ...] = DEFAULT_SUBMISSION_REQUIREMENTS
     created_by: UUID
     status: PositionStatus = PositionStatus.DRAFT
     # None means this position inherits the company-wide invitation email template.
@@ -139,6 +147,14 @@ class Position(BaseModel):
             raise ValueError("recruitment_end_at must not be before recruitment_start_at")
         return value
 
+    @field_validator("submission_requirements")
+    @classmethod
+    def validate_submission_requirements(
+        cls,
+        value: tuple[SubmissionRequirement, ...],
+    ) -> tuple[SubmissionRequirement, ...]:
+        return normalize_submission_requirements(value)
+
     def activate(self, *, expected_version: int) -> Position:
         if expected_version != self.row_version:
             raise StalePositionVersionError("stale position version")
@@ -154,8 +170,11 @@ class Position(BaseModel):
         description: str,
         role_type: str | None,
         headcount: int | None,
+        interview_capacity: int | None,
+        interview_at: datetime | None,
         recruitment_start_at: date | None,
         recruitment_end_at: date | None,
+        submission_requirements: tuple[SubmissionRequirement, ...],
         status: PositionStatus,
     ) -> Position:
         if expected_version != self.row_version:
@@ -176,8 +195,11 @@ class Position(BaseModel):
                     "description",
                     "role_type",
                     "headcount",
+                    "interview_capacity",
+                    "interview_at",
                     "recruitment_start_at",
                     "recruitment_end_at",
+                    "submission_requirements",
                     "status",
                     "row_version",
                 }
@@ -186,8 +208,11 @@ class Position(BaseModel):
             description=description,
             role_type=role_type,
             headcount=headcount,
+            interview_capacity=interview_capacity,
+            interview_at=interview_at,
             recruitment_start_at=recruitment_start_at,
             recruitment_end_at=recruitment_end_at,
+            submission_requirements=submission_requirements,
             status=status,
             row_version=self.row_version + 1,
         )
