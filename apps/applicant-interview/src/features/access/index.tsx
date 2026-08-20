@@ -105,15 +105,28 @@ const ONBOARDING_GRID =
 const DETAIL_ICON =
   "grid size-8 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand";
 
-const INTERVIEW_DATE_FORMATTER = new Intl.DateTimeFormat("ko-KR", {
-  timeZone: "Asia/Seoul",
-  month: "long",
-  day: "numeric",
-  weekday: "short",
-  hour: "numeric",
-  minute: "2-digit",
-  hourCycle: "h12",
-});
+const INTERVIEW_DATE_FORMATTER = new Intl.DateTimeFormat(
+  "en-US-u-ca-gregory-nu-latn",
+  {
+    timeZone: "Asia/Seoul",
+    month: "numeric",
+    day: "numeric",
+    weekday: "short",
+    hour: "numeric",
+    minute: "2-digit",
+    hourCycle: "h23",
+  },
+);
+
+const WEEKDAY_LABELS: Record<string, string> = {
+  Sun: "일",
+  Mon: "월",
+  Tue: "화",
+  Wed: "수",
+  Thu: "목",
+  Fri: "금",
+  Sat: "토",
+};
 
 // `.access-consent-list label + label` — every child of the list is a `label`, so
 // `not-first:` is exact.
@@ -722,7 +735,12 @@ function formatInterviewAt(value?: string | null) {
       part.value,
     ]),
   );
-  return `${parts.month} ${parts.day}일 (${parts.weekday}) ${parts.dayPeriod} ${parts.hour.padStart(2, "0")}:${parts.minute}`;
+  const hour = Number(parts.hour);
+  const weekday = WEEKDAY_LABELS[parts.weekday];
+  if (!Number.isInteger(hour) || !weekday) return "추후 안내";
+  const dayPeriod = hour < 12 ? "오전" : "오후";
+  const displayHour = String(hour % 12 || 12).padStart(2, "0");
+  return `${parts.month}월 ${parts.day}일 (${weekday}) ${dayPeriod} ${displayHour}:${parts.minute}`;
 }
 
 function interviewerLabel(preview: ApplicantInvitationPreview | null) {
