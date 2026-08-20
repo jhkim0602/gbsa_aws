@@ -21,6 +21,7 @@ import {
   PositionOperations,
   type CompanyApplicantInsight,
   type CompanyApplicantReport,
+  type CompanyDeletionStatus,
   type CompanyOperationsApi,
 } from "../features/company";
 import {
@@ -332,18 +333,24 @@ const companyOperationsApi: CompanyOperationsApi = {
   ...companyWorkspaceApi,
   listInvitations: positionInvitationApi.listInvitations,
   async requestApplicantDeletion(invitationId) {
-    await companyRequest<components["schemas"]["DeletionStatus"]>(
-      "/v1/privacy/deletion-requests",
-      {
-        method: "POST",
-        headers: { "Idempotency-Key": idempotencyKey("applicant-deletion") },
-        body: JSON.stringify({
-          scope_type: "invitation",
-          scope_id: invitationId,
-          reason: "company_user_requested_applicant_deletion",
-        }),
-      },
-    );
+    const result = await companyRequest<
+      components["schemas"]["DeletionStatus"]
+    >("/v1/privacy/deletion-requests", {
+      method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey("applicant-deletion") },
+      body: JSON.stringify({
+        scope_type: "invitation",
+        scope_id: invitationId,
+        reason: "company_user_requested_applicant_deletion",
+      }),
+    });
+    return toCompanyDeletionStatus(result);
+  },
+  async getApplicantDeletion(deletionRequestId) {
+    const result = await companyRequest<
+      components["schemas"]["DeletionStatus"]
+    >(`/v1/privacy/deletion-requests/${deletionRequestId}`);
+    return toCompanyDeletionStatus(result);
   },
   async updatePosition(input) {
     const result = await companyRequest<components["schemas"]["Position"]>(
@@ -534,6 +541,17 @@ const companyOperationsApi: CompanyOperationsApi = {
   },
   publishCriteria: hiringApi.publishCriteria,
 };
+
+function toCompanyDeletionStatus(
+  result: components["schemas"]["DeletionStatus"],
+): CompanyDeletionStatus {
+  return {
+    deletionRequestId: result.deletion_request_id,
+    status: result.status,
+    expectedTargets: result.expected_targets,
+    verifiedTargets: result.verified_targets,
+  };
+}
 
 function toCompanyPersona(value: unknown) {
   if (!value || typeof value !== "object") return undefined;

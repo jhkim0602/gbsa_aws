@@ -6,6 +6,7 @@ export { ApplicantDetail } from "./ApplicantDetail";
 export type {
   CompanyCriterionVersion,
   CompanyApplicantCriterionScore,
+  CompanyDeletionStatus,
   CompanyApplicantInsight,
   CompanyApplicantReport,
   CompanyInvitation,

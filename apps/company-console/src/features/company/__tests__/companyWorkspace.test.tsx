@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
@@ -9,6 +15,7 @@ import {
   CompanyPositions,
   PositionOperations,
   type CompanyApplicantReport,
+  type CompanyDeletionStatus,
   type CompanyInvitation,
   type CompanyOperationsApi,
   type CompanyWorkspaceApi,
@@ -571,12 +578,28 @@ describe("company workspace", () => {
     ).toBe("/positions/position-2/applicants/invitation-2");
   });
 
-  it("confirms applicant deletion before removing the row", async () => {
-    const requestApplicantDeletion = vi.fn().mockResolvedValue(undefined);
+  it("keeps an applicant visible until asynchronous deletion completes", async () => {
+    let resolveDeletion: ((status: CompanyDeletionStatus) => void) | undefined;
+    const requestApplicantDeletion = vi.fn().mockResolvedValue({
+      deletionRequestId: "deletion-1",
+      status: "deleting",
+      expectedTargets: 4,
+      verifiedTargets: 0,
+    } satisfies CompanyDeletionStatus);
+    const getApplicantDeletion = vi.fn().mockImplementation(
+      () =>
+        new Promise<CompanyDeletionStatus>((resolve) => {
+          resolveDeletion = resolve;
+        }),
+    );
     render(
       <MemoryRouter>
         <ApplicantManagement
-          api={{ ...operationsApi, requestApplicantDeletion }}
+          api={{
+            ...operationsApi,
+            requestApplicantDeletion,
+            getApplicantDeletion,
+          }}
         />
       </MemoryRouter>,
     );
@@ -596,11 +619,36 @@ describe("company workspace", () => {
       expect(requestApplicantDeletion).toHaveBeenCalledWith("invitation-2"),
     );
     expect(
-      screen.queryByRole("link", { name: "검토할 지원자 리포트 열기" }),
-    ).toBeNull();
+      screen.getByRole("link", { name: "검토할 지원자 리포트 열기" }),
+    ).toBeTruthy();
+    expect(screen.getByText("삭제 중 0/4")).toBeTruthy();
+    expect(screen.getByLabelText("전체 지원자 4명")).toBeTruthy();
+    expect(
+      screen.getByText(/실제 삭제가 끝날 때까지 목록에 표시됩니다/),
+    ).toBeTruthy();
+    await waitFor(() =>
+      expect(getApplicantDeletion).toHaveBeenCalledWith("deletion-1"),
+    );
+
+    await act(async () => {
+      resolveDeletion?.({
+        deletionRequestId: "deletion-1",
+        status: "completed",
+        expectedTargets: 4,
+        verifiedTargets: 4,
+      });
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("link", {
+          name: "검토할 지원자 리포트 열기",
+        }),
+      ).toBeNull(),
+    );
     expect(screen.getByLabelText("전체 지원자 3명")).toBeTruthy();
     expect(
-      screen.getByText("검토할 지원자 지원자의 삭제를 요청했습니다."),
+      screen.getByText("검토할 지원자 지원자의 데이터 삭제를 완료했습니다."),
     ).toBeTruthy();
   });
 

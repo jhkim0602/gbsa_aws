@@ -19,6 +19,7 @@ from interview_evidence.reporting.api import LaneDRuntime
 from interview_evidence.reporting.application.assessment_service import CriterionAssessor
 from interview_evidence.reporting.application.deletion_service import DeletionService
 from interview_evidence.reporting.application.evidence_service import EvidenceService
+from interview_evidence.reporting.domain.deletion import DeletionStatus
 from interview_evidence.runtime.document_ai import create_document_extractor
 from interview_evidence.shared.aws_clients.ports import ConsumableQueue
 from interview_evidence.shared.database import RequestScopedDatabase
@@ -304,11 +305,14 @@ class DeletionRequestedEventHandler:
                 policy_snapshot=dict(event.payload["policy_snapshot"]),
                 occurred_at=self._clock.now(),
             )
-        return self._service.execute(
+        manifest = self._service.execute(
             context,
             request_id=UUID(str(event.payload["deletion_request_id"])),
             occurred_at=self._clock.now(),
         )
+        if manifest.status is not DeletionStatus.COMPLETED:
+            raise TimeoutError("deletion targets remain unverified")
+        return manifest
 
 
 def create_worker_runtime(

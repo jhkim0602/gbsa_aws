@@ -7,7 +7,13 @@ import {
   UserRoundCheck,
   Users,
 } from "lucide-react";
-import { useDeferredValue, useMemo, useState, type ReactNode } from "react";
+import {
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { Link } from "react-router-dom";
 
 import {
@@ -17,13 +23,19 @@ import {
 } from "../../app/styles/primitives";
 import { invitationStatusMeta } from "../hiring/PositionInvitations";
 import { summarizeApplicantPipeline } from "./applicantSummary";
-import type { CompanyInvitation, CompanyOperationsApi } from "./types";
+import type {
+  CompanyDeletionStatus,
+  CompanyInvitation,
+  CompanyOperationsApi,
+} from "./types";
 import {
   useRecruitingOperations,
   type PositionedInvitation,
 } from "./useRecruitingOperations";
 
 type StageFilter = "all" | "progress" | "review" | "completed";
+type ApplicantDeletionStatus = CompanyDeletionStatus &
+  Readonly<{ applicantDisplayName: string }>;
 const PAGE_SIZE = 20;
 
 export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
@@ -42,6 +54,12 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
   const [deleting, setDeleting] = useState(false);
   const [deletionError, setDeletionError] = useState(false);
   const [deletionNotice, setDeletionNotice] = useState("");
+  const [deletionNoticeTone, setDeletionNoticeTone] = useState<
+    "success" | "warning" | "danger"
+  >("success");
+  const [deletions, setDeletions] = useState<
+    Readonly<Record<string, ApplicantDeletionStatus>>
+  >({});
   const activeInvitations = useMemo(
     () =>
       invitations.filter(
@@ -94,6 +112,114 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
     (activePage - 1) * PAGE_SIZE,
     activePage * PAGE_SIZE,
   );
+  const activeDeletionRequests = useMemo(
+    () =>
+      Object.entries(deletions).filter(([, deletion]) =>
+        isDeletionActive(deletion.status),
+      ),
+    [deletions],
+  );
+
+  useEffect(() => {
+    const getApplicantDeletion = api.getApplicantDeletion;
+    if (!getApplicantDeletion || activeDeletionRequests.length === 0) {
+      return;
+    }
+    let active = true;
+    let polling = false;
+
+    async function pollDeletionProgress() {
+      if (polling) return;
+      polling = true;
+      const updates = await Promise.all(
+        activeDeletionRequests.map(async ([invitationId, deletion]) => {
+          try {
+            const progress = await getApplicantDeletion!(
+              deletion.deletionRequestId,
+            );
+            return { invitationId, deletion, progress };
+          } catch {
+            return null;
+          }
+        }),
+      );
+      polling = false;
+      if (!active) return;
+
+      const completed = updates.filter(
+        (update) => update?.progress.status === "completed",
+      );
+      const partiallyCompleted = updates.filter(
+        (update) => update?.progress.status === "partially_completed",
+      );
+      setDeletions((current) => {
+        let next = current;
+        for (const update of updates) {
+          if (!update) continue;
+          const existing = current[update.invitationId];
+          if (
+            !existing ||
+            existing.deletionRequestId !== update.progress.deletionRequestId
+          ) {
+            continue;
+          }
+          if (
+            existing.status === update.progress.status &&
+            existing.expectedTargets === update.progress.expectedTargets &&
+            existing.verifiedTargets === update.progress.verifiedTargets
+          ) {
+            continue;
+          }
+          if (next === current) next = { ...current };
+          next = {
+            ...next,
+            [update.invitationId]: {
+              ...update.progress,
+              applicantDisplayName: existing.applicantDisplayName,
+            },
+          };
+        }
+        return next;
+      });
+
+      if (completed.length > 0) {
+        setHiddenInvitationIds((current) => {
+          const next = new Set(current);
+          for (const update of completed) {
+            if (update) next.add(update.invitationId);
+          }
+          return next;
+        });
+        const latest = completed.at(-1);
+        if (latest) {
+          setDeletionNoticeTone("success");
+          setDeletionNotice(
+            `${latest.deletion.applicantDisplayName} 지원자의 데이터 삭제를 완료했습니다.`,
+          );
+        }
+      } else if (partiallyCompleted.length > 0) {
+        const latest = partiallyCompleted.at(-1);
+        if (latest) {
+          setDeletionNoticeTone("danger");
+          setDeletionNotice(
+            `${latest.deletion.applicantDisplayName} 지원자의 일부 데이터를 삭제하지 못했습니다. 다시 시도해 주세요.`,
+          );
+        }
+      } else if (updates.every((update) => update === null)) {
+        setDeletionNoticeTone("warning");
+        setDeletionNotice(
+          "삭제는 진행 중이지만 현재 상태 확인이 지연되고 있습니다.",
+        );
+      }
+    }
+
+    void pollDeletionProgress();
+    const timer = window.setInterval(() => void pollDeletionProgress(), 1500);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [activeDeletionRequests, api]);
 
   function resetFilters() {
     setQuery("");
@@ -107,15 +233,34 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
     setDeleting(true);
     setDeletionError(false);
     try {
-      await api.requestApplicantDeletion(deletionTarget.invitationId);
-      setHiddenInvitationIds((current) => {
-        const next = new Set(current);
-        next.add(deletionTarget.invitationId);
-        return next;
-      });
-      setDeletionNotice(
-        `${deletionTarget.applicantDisplayName || deletionTarget.applicantEmail} 지원자의 삭제를 요청했습니다.`,
+      const applicantDisplayName =
+        deletionTarget.applicantDisplayName || deletionTarget.applicantEmail;
+      const progress = await api.requestApplicantDeletion(
+        deletionTarget.invitationId,
       );
+      setDeletions((current) => ({
+        ...current,
+        [deletionTarget.invitationId]: {
+          ...progress,
+          applicantDisplayName,
+        },
+      }));
+      if (progress.status === "completed") {
+        setHiddenInvitationIds((current) => {
+          const next = new Set(current);
+          next.add(deletionTarget.invitationId);
+          return next;
+        });
+        setDeletionNoticeTone("success");
+        setDeletionNotice(
+          `${applicantDisplayName} 지원자의 데이터 삭제를 완료했습니다.`,
+        );
+      } else {
+        setDeletionNoticeTone("warning");
+        setDeletionNotice(
+          `${applicantDisplayName} 지원자의 삭제 요청을 접수했습니다. 실제 삭제가 끝날 때까지 목록에 표시됩니다.`,
+        );
+      }
       setDeletionTarget(null);
     } catch {
       setDeletionError(true);
@@ -231,7 +376,7 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
       <section className="overflow-hidden rounded-lg border border-border bg-surface">
         {deletionNotice ? (
           <p
-            className="border-b border-border-muted bg-success-soft px-5 py-3 text-[11px] font-semibold text-success"
+            className={`border-b border-border-muted px-5 py-3 text-[11px] font-semibold ${deletionNoticeClass(deletionNoticeTone)}`}
             role="status"
           >
             {deletionNotice}
@@ -318,15 +463,22 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
                 invitation.applicantDisplayName ||
                 invitation.applicantEmail.split("@")[0];
               const status = invitationStatusMeta[invitation.status];
+              const deletion = deletions[invitation.invitationId];
+              const deletionActive = deletion
+                ? isDeletionActive(deletion.status)
+                : false;
+              const deletionNeedsAttention =
+                deletion?.status === "partially_completed";
               return (
                 <div
                   className="grid grid-cols-[minmax(0,1fr)_56px]"
                   key={invitation.invitationId}
                 >
                   <Link
-                    className="grid min-h-16 grid-cols-[minmax(240px,1.1fr)_minmax(170px,0.8fr)_140px_120px] items-center px-5 py-3 hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-brand mw-720:grid-cols-[44px_minmax(0,1fr)_auto] mw-720:gap-x-3 mw-720:gap-y-2"
+                    className={`grid min-h-16 grid-cols-[minmax(240px,1.1fr)_minmax(170px,0.8fr)_140px_120px] items-center px-5 py-3 hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-brand mw-720:grid-cols-[44px_minmax(0,1fr)_auto] mw-720:gap-x-3 mw-720:gap-y-2 ${deletionActive ? "pointer-events-none opacity-60" : ""}`}
                     to={`/positions/${invitation.positionId}/applicants/${invitation.invitationId}`}
                     aria-label={`${displayName} 리포트 열기`}
+                    aria-disabled={deletionActive}
                   >
                     <span className="flex min-w-0 items-center gap-3 mw-720:contents">
                       <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-[11px] font-bold text-brand">
@@ -345,20 +497,28 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
                       {invitation.positionTitle}
                     </span>
                     <span
-                      className={`w-fit ${INVITATION_STATUS} ${invitationTone(status.tone)} mw-720:col-[3] mw-720:row-[1]`}
+                      className={`w-fit ${INVITATION_STATUS} ${invitationTone(
+                        deletionActive || deletionNeedsAttention
+                          ? "attention"
+                          : status.tone,
+                      )} mw-720:col-[3] mw-720:row-[1]`}
                     >
-                      {status.label}
+                      {deletion ? deletionStatusLabel(deletion) : status.label}
                     </span>
                     <span className="text-[10px] text-muted mw-720:col-[3] mw-720:row-[2]">
-                      {invitation.interviewSessionId ? "리포트 확인" : "대기"}
+                      {deletionActive
+                        ? "완료 확인 중"
+                        : invitation.interviewSessionId
+                          ? "리포트 확인"
+                          : "대기"}
                     </span>
                   </Link>
                   <button
                     className="m-2 grid size-10 place-items-center self-center rounded-lg border border-border bg-surface text-muted transition hover:border-danger hover:bg-danger-soft hover:text-danger disabled:cursor-not-allowed disabled:opacity-35"
                     type="button"
-                    aria-label={`${displayName} 지원자 삭제`}
-                    title="지원자 삭제"
-                    disabled={!api.requestApplicantDeletion}
+                    aria-label={`${displayName} 지원자 ${deletionActive ? "삭제 진행 중" : "삭제"}`}
+                    title={deletionActive ? "삭제 진행 중" : "지원자 삭제"}
+                    disabled={!api.requestApplicantDeletion || deletionActive}
                     onClick={() => {
                       setDeletionError(false);
                       setDeletionTarget(invitation);
@@ -427,7 +587,8 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
                   deletionTarget.applicantEmail}
               </strong>
               님의 초대 정보, 제출 자료, 분석 결과와 면접 기록을 삭제합니다. 이
-              작업은 되돌릴 수 없습니다.
+              작업은 백그라운드에서 진행되며 완료 전까지 목록에 표시됩니다. 삭제
+              완료 후에는 되돌릴 수 없습니다.
             </p>
             {deletionError ? (
               <p
@@ -460,6 +621,24 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
       ) : null}
     </div>
   );
+}
+
+function isDeletionActive(status: CompanyDeletionStatus["status"]) {
+  return status !== "completed" && status !== "partially_completed";
+}
+
+function deletionStatusLabel(deletion: CompanyDeletionStatus) {
+  if (deletion.status === "completed") return "삭제 완료";
+  if (deletion.status === "partially_completed") return "삭제 확인 필요";
+  if (deletion.status === "retrying") return "삭제 재시도 중";
+  if (deletion.expectedTargets === 0) return "삭제 준비 중";
+  return `삭제 중 ${deletion.verifiedTargets}/${deletion.expectedTargets}`;
+}
+
+function deletionNoticeClass(tone: "success" | "warning" | "danger") {
+  if (tone === "danger") return "bg-danger-soft text-danger";
+  if (tone === "warning") return "bg-warning-soft text-warning";
+  return "bg-success-soft text-success";
 }
 
 function SummaryMetric({

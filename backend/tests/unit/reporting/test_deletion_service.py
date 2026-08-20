@@ -2,12 +2,19 @@ from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID
 
+import pytest
 from interview_evidence.reporting.application.deletion_service import (
     DeletionService,
     DeletionTargetSpec,
 )
-from interview_evidence.reporting.domain.deletion import DeletionManifest, DeletionRequest
+from interview_evidence.reporting.domain.deletion import (
+    DeletionManifest,
+    DeletionRequest,
+    DeletionStatus,
+)
 from interview_evidence.reporting.repositories.postgres import ReportingRepository
+from interview_evidence.runtime.worker import DeletionRequestedEventHandler
+from interview_evidence.shared.ids import FrozenClock
 from interview_evidence.shared.messaging.outbox import Outbox, OutboxEvent
 from interview_evidence.shared.tenant import ActorType, TenantContext
 
@@ -139,3 +146,44 @@ def test_deletion_executes_child_targets_before_parent_rows() -> None:
     )
 
     assert executed == ["submission_chunk", "submission_analysis", "submission"]
+
+
+def test_deletion_worker_retries_until_every_target_is_verified() -> None:
+    repository = RecordingDeletionRepository()
+    outbox = RecordingOutbox()
+    verification_ready = False
+
+    def execute_target(_context: TenantContext, _target: object) -> bool:
+        return verification_ready
+
+    service = DeletionService(
+        cast(ReportingRepository, repository),
+        enumerators=(
+            lambda _context, _scope_type, _scope_id: (
+                DeletionTargetSpec("A", "aurora", "invitation", str(INVITATION_ID)),
+            ),
+        ),
+        executors={"A": execute_target},
+        outbox=cast(Outbox, outbox),
+    )
+    service.request(
+        context(),
+        scope_type="invitation",
+        scope_id=INVITATION_ID,
+        reason="company_user_requested_applicant_deletion",
+        policy_snapshot={"retention_days": 180},
+        occurred_at=NOW,
+    )
+    handler = DeletionRequestedEventHandler(service, FrozenClock(NOW))
+
+    with pytest.raises(TimeoutError, match="remain unverified"):
+        handler(context(), outbox.events[0])
+
+    assert repository.saved is not None
+    assert repository.saved[1].status is DeletionStatus.RETRYING
+
+    verification_ready = True
+    manifest = handler(context(), outbox.events[0])
+
+    assert isinstance(manifest, DeletionManifest)
+    assert manifest.status is DeletionStatus.COMPLETED

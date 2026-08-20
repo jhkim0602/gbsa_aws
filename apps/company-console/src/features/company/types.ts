@@ -123,6 +123,20 @@ export type CompanyInvitation = Readonly<{
   interviewSessionId?: string | null;
 }>;
 
+export type CompanyDeletionStatus = Readonly<{
+  deletionRequestId: string;
+  status:
+    | "requested"
+    | "enumerating"
+    | "deleting"
+    | "verifying"
+    | "retrying"
+    | "partially_completed"
+    | "completed";
+  expectedTargets: number;
+  verifiedTargets: number;
+}>;
+
 export type CompanyOperationsApi = CompanyWorkspaceApi &
   Readonly<{
     listInvitations(positionId: string): Promise<readonly CompanyInvitation[]>;
@@ -137,7 +151,12 @@ export type CompanyOperationsApi = CompanyWorkspaceApi &
     listSubmissions(
       invitationId: string,
     ): Promise<readonly CompanySubmission[]>;
-    requestApplicantDeletion?(invitationId: string): Promise<void>;
+    requestApplicantDeletion?(
+      invitationId: string,
+    ): Promise<CompanyDeletionStatus>;
+    getApplicantDeletion?(
+      deletionRequestId: string,
+    ): Promise<CompanyDeletionStatus>;
     /**
      * Read-only report summaries used for position-level competency analytics.
      * Optional so older API adapters can still render the operational workspace.

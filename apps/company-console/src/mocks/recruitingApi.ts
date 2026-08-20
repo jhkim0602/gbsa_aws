@@ -71,6 +71,20 @@ export const mockCompanyOperationsApi: CompanyOperationsApi = {
       (invitation) => invitation.invitationId === invitationId,
     );
     if (index >= 0) fixture.invitations.splice(index, 1);
+    return {
+      deletionRequestId: `mock-deletion-${invitationId}`,
+      status: "completed",
+      expectedTargets: 1,
+      verifiedTargets: 1,
+    };
+  },
+  async getApplicantDeletion(deletionRequestId) {
+    return {
+      deletionRequestId,
+      status: "completed",
+      expectedTargets: 1,
+      verifiedTargets: 1,
+    };
   },
   async updatePosition(input) {
     const fixture = await loadFixture();
