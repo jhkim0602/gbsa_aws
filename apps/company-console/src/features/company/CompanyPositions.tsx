@@ -27,7 +27,7 @@ import { useRecruitingOperations } from "./useRecruitingOperations";
 type Filter = "all" | "active" | "draft";
 
 const LIST_COLUMNS =
-  "grid-cols-[minmax(230px,1.7fr)_76px_minmax(138px,0.9fr)_72px_78px_minmax(120px,0.8fr)_16px]";
+  "grid-cols-[minmax(0,1.7fr)_minmax(62px,0.55fr)_minmax(108px,0.9fr)_minmax(46px,0.45fr)_minmax(52px,0.45fr)_minmax(90px,0.8fr)_14px]";
 
 export function CompanyPositions({ api }: { api: CompanyOperationsApi }) {
   const { positions, invitations, loading, error } =
@@ -111,7 +111,7 @@ export function CompanyPositions({ api }: { api: CompanyOperationsApi }) {
               </p>
             </div>
             <nav
-              className="flex rounded-lg bg-surface-muted p-1"
+              className="flex w-max shrink-0 rounded-lg bg-surface-muted p-1"
               aria-label="포지션 상태 필터"
             >
               {(
@@ -123,7 +123,7 @@ export function CompanyPositions({ api }: { api: CompanyOperationsApi }) {
               ).map(([value, label]) => (
                 <button
                   key={value}
-                  className={`inline-flex min-h-8 flex-1 items-center justify-center gap-1.5 rounded-md px-3 text-[10px] font-semibold ${
+                  className={`inline-flex min-h-8 flex-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-3 text-[10px] font-semibold ${
                     filter === value
                       ? "bg-surface text-brand shadow-sm"
                       : "text-muted"
@@ -152,7 +152,7 @@ export function CompanyPositions({ api }: { api: CompanyOperationsApi }) {
           ) : visible.length ? (
             <div>
               <div
-                className={`grid ${LIST_COLUMNS} gap-3 border-b border-border-muted bg-surface-muted px-5 py-2.5 text-[8px] font-semibold tracking-[0.02em] text-muted mw-860:hidden`}
+                className={`grid ${LIST_COLUMNS} gap-3 border-b border-border-muted bg-surface-muted px-5 py-2.5 text-[8px] font-semibold tracking-[0.02em] text-muted mw-1180:hidden`}
                 aria-hidden="true"
               >
                 <span>포지션</span>
@@ -200,7 +200,7 @@ function PositionListRow({
     : 0;
   return (
     <Link
-      className={`group grid ${LIST_COLUMNS} min-h-[86px] items-center gap-3 px-5 py-3 text-inherit not-first:border-t not-first:border-border-muted hover:bg-[#fafaff] focus-visible:outline-2 focus-visible:outline-brand mw-860:grid-cols-[minmax(0,1fr)_auto] mw-860:gap-x-3`}
+      className={`group grid w-full min-w-0 overflow-hidden ${LIST_COLUMNS} min-h-[86px] items-center gap-3 px-5 py-3 text-inherit not-first:border-t not-first:border-border-muted hover:bg-[#fafaff] focus-visible:outline-2 focus-visible:outline-brand mw-1180:grid-cols-[minmax(0,1fr)_auto] mw-1180:gap-x-3`}
       to={`/positions/${position.positionId}`}
       aria-label={`${position.title} 포지션 열기`}
     >
@@ -219,25 +219,27 @@ function PositionListRow({
       </span>
 
       <span
-        className={`${STATUS_BADGE} ${STATUS_BADGE_TONE[statusTone(position.status)]}`}
+        className={`${STATUS_BADGE} justify-center whitespace-nowrap ${STATUS_BADGE_TONE[statusTone(position.status)]}`}
       >
         {statusLabel(position.status)}
       </span>
 
-      <span className="grid gap-1 text-[9px] text-muted mw-860:col-[1/-1] mw-860:ml-12 mw-860:grid-cols-2">
-        <span className="inline-flex items-center gap-1.5">
-          <CalendarDays size={12} aria-hidden="true" />
-          {formatRecruitmentPeriod(position)}
+      <span className="grid min-w-0 gap-1 text-[9px] text-muted mw-1180:col-[1/-1] mw-1180:ml-12 mw-1180:grid-cols-2">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <CalendarDays className="shrink-0" size={12} aria-hidden="true" />
+          <span className="truncate">{formatRecruitmentPeriod(position)}</span>
         </span>
-        <span className="inline-flex items-center gap-1.5">
-          <CalendarClock size={12} aria-hidden="true" />
-          {formatInterviewAt(position.interviewAt)}
+        <span className="flex min-w-0 items-center gap-1.5">
+          <CalendarClock className="shrink-0" size={12} aria-hidden="true" />
+          <span className="truncate">
+            {formatInterviewAt(position.interviewAt)}
+          </span>
         </span>
       </span>
 
       <ListFact label="지원자" value={`${applicantCount}명`} />
       <ListFact label="채용 목표" value={target ? `${target}명` : "미설정"} />
-      <span className="hidden gap-4 text-[9px] text-muted mw-860:col-[1/-1] mw-860:ml-12 mw-860:flex">
+      <span className="hidden gap-4 text-[9px] text-muted mw-1180:col-[1] mw-1180:row-[3] mw-1180:ml-12 mw-1180:flex">
         <span>
           지원자 <b className="ml-1 font-mono text-ink">{applicantCount}명</b>
         </span>
@@ -249,13 +251,13 @@ function PositionListRow({
         </span>
       </span>
 
-      <span className="grid min-w-0 gap-1.5 mw-860:col-[1/-1] mw-860:ml-12">
-        <span className="flex items-center justify-between text-[8px] text-muted">
+      <span className="grid min-w-0 gap-1.5 mw-1180:col-[2] mw-1180:row-[3] mw-1180:min-w-[170px] mw-1180:grid-cols-[auto_96px] mw-1180:items-center mw-1180:gap-2 mw-620:col-[1/-1] mw-620:row-[4] mw-620:ml-12 mw-620:min-w-0 mw-620:grid-cols-[auto_minmax(80px,1fr)]">
+        <span className="flex items-center justify-between text-[8px] text-muted mw-1180:gap-1 mw-1180:whitespace-nowrap">
           <span>목표 대비</span>
           <b className="font-mono text-ink">{progress}%</b>
         </span>
         <span
-          className="h-1.5 overflow-hidden rounded-full bg-surface-strong"
+          className="h-1.5 overflow-hidden rounded-full bg-surface-strong mw-1180:h-1"
           role="progressbar"
           aria-label={`${position.title} 지원 현황 ${progress}%`}
           aria-valuemin={0}
@@ -270,7 +272,7 @@ function PositionListRow({
       </span>
 
       <ArrowRight
-        className="text-subtle group-hover:text-brand mw-860:hidden"
+        className="text-subtle group-hover:text-brand mw-1180:hidden"
         size={15}
         aria-hidden="true"
       />
@@ -304,7 +306,7 @@ function PositionMetric({
 
 function ListFact({ label, value }: { label: string; value: string }) {
   return (
-    <span className="text-right mw-860:col-auto mw-860:hidden">
+    <span className="whitespace-nowrap text-right mw-1180:col-auto mw-1180:hidden">
       <small className="sr-only">{label}</small>
       <b className="font-mono text-[11px] text-ink-secondary">{value}</b>
     </span>

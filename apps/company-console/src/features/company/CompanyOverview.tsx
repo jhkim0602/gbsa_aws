@@ -4,12 +4,8 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  CircleAlert,
   ClipboardCheck,
-  FileCheck2,
-  PlayCircle,
   Plus,
-  ScanSearch,
   Video,
 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
@@ -18,8 +14,6 @@ import { Link } from "react-router-dom";
 import {
   ASYNC_STATE,
   BUTTON_PRIMARY,
-  INVITATION_STATUS,
-  invitationTone,
   PAGE_CONTENT,
   PAGE_HEADER,
   PAGE_HEADER_TEXT,
@@ -69,7 +63,7 @@ const METRIC_TONE = {
 } as const;
 
 const TOP_GRID =
-  "grid grid-cols-[minmax(0,3fr)_minmax(230px,1fr)] items-start gap-[14px]" +
+  "grid grid-cols-[minmax(0,3fr)_minmax(230px,1fr)] items-stretch gap-[14px]" +
   " mw-860:grid-cols-[minmax(0,1fr)]";
 const POSITION_SUMMARY =
   "flex flex-wrap gap-2 border-b border-b-border-muted bg-surface-muted px-[15px] py-3";
@@ -87,28 +81,37 @@ const ROW_STATS =
   " mw-760:col-[2/-1] mw-760:w-full mw-760:min-w-0 mw-760:grid-cols-4";
 
 const CALENDAR_WEEK =
-  "grid grid-cols-7 border-b border-border-muted bg-surface-muted px-2 py-2";
-const CALENDAR_GRID = "grid grid-cols-7 p-2";
-const CALENDAR_DAY =
-  "grid min-h-[54px] content-start gap-1 border-r border-b border-border-muted" +
-  " p-1 nth-[7n]:border-r-0";
-const CALENDAR_EVENT_TONE = {
-  start: "bg-[#dfe5ff] text-[#4250b5]",
-  interview: "bg-[#dff5ea] text-[#16774b]",
-  end: "bg-[#fff0da] text-[#a45c08]",
-} as const;
+  "grid grid-cols-7 border-b border-border-muted bg-surface-muted px-2 py-1.5";
+const CALENDAR_RANGE_TONES = [
+  "bg-[#6675dc] text-white",
+  "bg-[#9b72d2] text-white",
+  "bg-[#3f8dbd] text-white",
+] as const;
+const CALENDAR_LEGEND_TONES = [
+  "bg-[#6675dc]",
+  "bg-[#9b72d2]",
+  "bg-[#3f8dbd]",
+] as const;
 
 const ACTIVITY_ROW =
-  "group grid min-h-[68px] grid-cols-[38px_minmax(150px,0.8fr)_minmax(220px,1.4fr)_minmax(130px,0.8fr)_auto_16px]" +
-  " items-center gap-3 px-4 py-3 text-inherit" +
+  "group grid min-h-10 grid-cols-[60px_minmax(150px,0.8fr)_minmax(220px,1.35fr)_minmax(150px,0.85fr)_64px]" +
+  " items-center gap-3 px-4 py-2 text-inherit" +
   " not-first:border-t not-first:border-t-border-muted hover:bg-surface-muted" +
-  " mw-860:grid-cols-[38px_minmax(0,1fr)_auto_16px]";
+  " mw-860:grid-cols-[52px_minmax(0,1fr)_auto]";
 const ACTIVITY_TONE = {
-  neutral: "bg-surface-strong text-muted",
-  progress: "bg-[#edf5ff] text-[#3478d4]",
-  success: "bg-success-soft text-success",
-  warning: "bg-warning-soft text-warning",
+  neutral: "bg-subtle",
+  progress: "bg-[#3478d4]",
+  success: "bg-success",
+  warning: "bg-warning",
 } as const;
+const ACTIVITY_STATUS_TONE: Record<string, string> = {
+  neutral: "text-muted",
+  progress: "text-brand",
+  ready: "text-brand",
+  completed: "text-success",
+  attention: "text-warning",
+  muted: "text-subtle",
+};
 
 const EMPTY =
   "flex min-h-22 items-center justify-center gap-[11px] p-[18px] text-left text-muted";
@@ -142,8 +145,8 @@ export function CompanyOverview({ api }: { api: CompanyOperationsApi }) {
     }
     return grouped;
   }, [invitations]);
-  const calendarEvents = useMemo(
-    () => buildCalendarEvents(positions),
+  const calendarRanges = useMemo(
+    () => buildCalendarRanges(positions),
     [positions],
   );
   const applicantActivities = useMemo(
@@ -263,13 +266,13 @@ export function CompanyOverview({ api }: { api: CompanyOperationsApi }) {
 
               <RecruitmentCalendar
                 month={calendarMonth}
-                events={calendarEvents}
+                ranges={calendarRanges}
                 onMonthChange={setCalendarMonth}
               />
             </div>
 
             <section className={OVERVIEW_PANEL} aria-live="polite">
-              <header className={SECTION_HEADER}>
+              <header className="flex min-h-12 items-center justify-between gap-4 border-b border-border-muted px-4 py-2">
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className={SECTION_HEADER_TITLE}>지원자 실시간 로그</h2>
@@ -291,6 +294,16 @@ export function CompanyOverview({ api }: { api: CompanyOperationsApi }) {
 
               {applicantActivities.length ? (
                 <div className="grid [content-visibility:auto]">
+                  <div
+                    className="grid grid-cols-[60px_minmax(150px,0.8fr)_minmax(220px,1.35fr)_minmax(150px,0.85fr)_64px] gap-3 border-b border-border-muted bg-surface-muted px-4 py-1.5 font-mono text-[7px] tracking-[0.06em] text-muted uppercase mw-860:hidden"
+                    aria-hidden="true"
+                  >
+                    <span>Event</span>
+                    <span>Applicant</span>
+                    <span>Activity</span>
+                    <span>Position</span>
+                    <span>Status</span>
+                  </div>
                   {applicantActivities.map((activity) => (
                     <ApplicantActivityRow
                       key={activity.invitation.invitationId}
@@ -422,56 +435,66 @@ function PositionRowStat({ label, value }: { label: string; value: number }) {
   );
 }
 
-type CalendarEvent = Readonly<{
+type CalendarRange = Readonly<{
   id: string;
-  dateKey: string;
-  kind: "start" | "interview" | "end";
-  label: string;
+  startKey: string;
+  endKey: string;
+  interviewKey: string | null;
+  toneIndex: number;
   position: CompanyPosition;
+}>;
+
+type CalendarRangeSegment = Readonly<{
+  range: CalendarRange;
+  startColumn: number;
+  span: number;
+  lane: number;
+  startsHere: boolean;
 }>;
 
 function RecruitmentCalendar({
   month,
-  events,
+  ranges,
   onMonthChange,
 }: {
   month: Date;
-  events: readonly CalendarEvent[];
+  ranges: readonly CalendarRange[];
   onMonthChange(month: Date): void;
 }) {
-  const days = calendarDays(month);
-  const eventsByDate = useMemo(() => {
-    const grouped = new Map<string, CalendarEvent[]>();
-    for (const event of events) {
-      const group = grouped.get(event.dateKey) ?? [];
-      group.push(event);
-      grouped.set(event.dateKey, group);
-    }
-    return grouped;
-  }, [events]);
+  const weeks = useMemo(() => calendarWeeks(month), [month]);
+  const visibleRanges = useMemo(() => ranges.slice(0, 3), [ranges]);
+  const interviewDates = useMemo(
+    () =>
+      new Set(
+        visibleRanges.flatMap((range) =>
+          range.interviewKey ? [range.interviewKey] : [],
+        ),
+      ),
+    [visibleRanges],
+  );
   const todayKey = toDateKey(new Date());
 
   return (
-    <section className={OVERVIEW_PANEL} aria-label="채용 일정 캘린더">
-      <header className="flex min-h-[61px] items-center justify-between gap-3 border-b border-border-muted px-3 py-3">
-        <div>
-          <h2 className={SECTION_HEADER_TITLE}>채용 캘린더</h2>
-          <p className="mt-1 text-[8px] text-muted">모집·면접 주요 일정</p>
-        </div>
+    <section
+      className={`${OVERVIEW_PANEL} grid h-full grid-rows-[auto_auto_minmax(0,1fr)_auto]`}
+      aria-label="채용 일정 캘린더"
+    >
+      <header className="flex min-h-8 items-center justify-between gap-1 border-b border-border-muted px-2 py-1">
+        <h2 className="whitespace-nowrap text-[10px] text-ink">채용 캘린더</h2>
         <div className="flex items-center gap-1">
           <button
-            className="grid size-7 place-items-center rounded-md border border-border bg-surface text-muted hover:text-brand"
+            className="grid size-5 place-items-center rounded border border-border bg-surface text-muted hover:text-brand"
             type="button"
             aria-label="이전 달"
             onClick={() => onMonthChange(addMonths(month, -1))}
           >
             <ChevronLeft size={13} aria-hidden="true" />
           </button>
-          <strong className="min-w-16 text-center font-mono text-[10px] text-ink">
+          <strong className="min-w-12 text-center font-mono text-[8px] text-ink">
             {formatMonth(month)}
           </strong>
           <button
-            className="grid size-7 place-items-center rounded-md border border-border bg-surface text-muted hover:text-brand"
+            className="grid size-5 place-items-center rounded border border-border bg-surface text-muted hover:text-brand"
             type="button"
             aria-label="다음 달"
             onClick={() => onMonthChange(addMonths(month, 1))}
@@ -491,58 +514,107 @@ function RecruitmentCalendar({
           </span>
         ))}
       </div>
-      <div className={CALENDAR_GRID}>
-        {days.map((day) => {
-          const dateKey = toDateKey(day);
-          const dayEvents = eventsByDate.get(dateKey) ?? [];
-          const inMonth = day.getMonth() === month.getMonth();
-          return (
-            <div
-              className={`${CALENDAR_DAY} ${inMonth ? "bg-surface" : "bg-surface-muted/60"}`}
-              key={dateKey}
-            >
-              <time
-                className={`grid size-4 place-items-center rounded-full text-[8px] ${
-                  dateKey === todayKey
-                    ? "bg-brand font-bold text-white"
-                    : inMonth
-                      ? "text-ink-secondary"
-                      : "text-subtle"
-                }`}
-                dateTime={dateKey}
-              >
-                {day.getDate()}
-              </time>
-              <div className="grid gap-0.5">
-                {dayEvents.slice(0, 3).map((event) => (
-                  <Link
-                    className={`block min-h-3 truncate rounded-[2px] px-1 text-[7px] font-semibold leading-3 ${CALENDAR_EVENT_TONE[event.kind]}`}
-                    key={event.id}
-                    title={`${event.position.title} · ${event.label}`}
-                    aria-label={`${event.position.title} ${event.label}`}
-                    to={`/positions/${event.position.positionId}`}
-                  >
-                    {event.label}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          );
-        })}
+      <div className="grid min-h-0 grid-rows-6">
+        {weeks.map((week) => (
+          <CalendarWeekRow
+            key={toDateKey(week[0])}
+            week={week}
+            month={month}
+            ranges={visibleRanges}
+            interviewDates={interviewDates}
+            todayKey={todayKey}
+          />
+        ))}
       </div>
-      <footer className="flex flex-wrap gap-x-3 gap-y-1 border-t border-border-muted px-3 py-2.5 text-[8px] text-muted">
-        <CalendarLegend tone="bg-[#6675dc]" label="모집 시작" />
-        <CalendarLegend tone="bg-[#28a66f]" label="면접" />
-        <CalendarLegend tone="bg-[#d78b2c]" label="모집 마감" />
+      <footer className="flex min-h-7 items-center gap-2 overflow-x-auto border-t border-border-muted px-3 py-1.5 text-[7px] text-muted">
+        {visibleRanges.map((range) => (
+          <CalendarLegend
+            key={range.id}
+            tone={CALENDAR_LEGEND_TONES[range.toneIndex]}
+            label={shortPositionTitle(range.position.title)}
+          />
+        ))}
+        <span className="ml-auto inline-flex shrink-0 items-center gap-1">
+          <i className="size-1.5 rounded-full bg-success" /> 면접일
+        </span>
       </footer>
     </section>
+  );
+}
+
+function CalendarWeekRow({
+  week,
+  month,
+  ranges,
+  interviewDates,
+  todayKey,
+}: {
+  week: readonly Date[];
+  month: Date;
+  ranges: readonly CalendarRange[];
+  interviewDates: ReadonlySet<string>;
+  todayKey: string;
+}) {
+  const segments = buildWeekSegments(week, ranges);
+  return (
+    <div className="relative grid min-h-[36px] grid-cols-7 border-b border-border-muted last:border-b-0">
+      {week.map((day) => {
+        const dateKey = toDateKey(day);
+        const inMonth = day.getMonth() === month.getMonth();
+        return (
+          <div
+            className={`relative min-w-0 border-r border-border-muted px-1 pt-1 last:border-r-0 ${inMonth ? "bg-surface" : "bg-surface-muted/60"}`}
+            key={dateKey}
+          >
+            <time
+              className={`grid size-3.5 place-items-center rounded-full text-[7px] ${
+                dateKey === todayKey
+                  ? "bg-brand font-bold text-white"
+                  : inMonth
+                    ? "text-ink-secondary"
+                    : "text-subtle"
+              }`}
+              dateTime={dateKey}
+            >
+              {day.getDate()}
+            </time>
+            {interviewDates.has(dateKey) ? (
+              <i
+                className="absolute top-1 right-1 size-1.5 rounded-full bg-success ring-1 ring-white"
+                title={`${day.getMonth() + 1}월 ${day.getDate()}일 면접`}
+                aria-label={`${day.getMonth() + 1}월 ${day.getDate()}일 면접`}
+              />
+            ) : null}
+          </div>
+        );
+      })}
+      <div className="pointer-events-none absolute inset-x-0 top-[19px] grid grid-cols-7 grid-rows-[repeat(3,6px)] gap-y-px">
+        {segments.map((segment) => (
+          <Link
+            className={`pointer-events-auto block h-[6px] truncate px-0.5 text-[5px] font-bold leading-[6px] ${CALENDAR_RANGE_TONES[segment.range.toneIndex]}`}
+            key={`${segment.range.id}-${toDateKey(week[0])}`}
+            style={{
+              gridColumn: `${segment.startColumn + 1} / span ${segment.span}`,
+              gridRow: segment.lane + 1,
+            }}
+            title={`${segment.range.position.title} · ${formatRange(segment.range.startKey, segment.range.endKey)}`}
+            aria-label={`${segment.range.position.title} 모집 기간 ${formatRange(segment.range.startKey, segment.range.endKey)}`}
+            to={`/positions/${segment.range.position.positionId}`}
+          >
+            {segment.startsHere
+              ? shortPositionTitle(segment.range.position.title)
+              : ""}
+          </Link>
+        ))}
+      </div>
+    </div>
   );
 }
 
 function CalendarLegend({ tone, label }: { tone: string; label: string }) {
   return (
     <span className="inline-flex items-center gap-1">
-      <i className={`h-1.5 w-3 rounded-[2px] ${tone}`} /> {label}
+      <i className={`h-1.5 w-3 ${tone}`} /> {label}
     </span>
   );
 }
@@ -563,55 +635,39 @@ function ApplicantActivityRow({ activity }: { activity: ApplicantActivity }) {
       to={`/positions/${invitation.positionId}/applicants/${invitation.invitationId}`}
       aria-label={`${displayApplicant(invitation)} ${activity.title}`}
     >
-      <span
-        className={`grid size-[38px] place-items-center rounded-[11px] ${ACTIVITY_TONE[activity.tone]}`}
-        aria-hidden="true"
-      >
-        <ActivityIcon status={invitation.status} />
+      <span className="inline-flex items-center gap-1.5 font-mono text-[8px] text-muted">
+        <i
+          className={`size-1.5 shrink-0 rounded-full ${ACTIVITY_TONE[activity.tone]}`}
+          aria-hidden="true"
+        />
+        EVT-{String(invitation.rowVersion).padStart(3, "0")}
       </span>
-      <span className="grid min-w-0 gap-0.5">
-        <strong className="truncate text-[11px] text-ink">
+      <span className="flex min-w-0 items-baseline gap-2">
+        <strong className="shrink-0 truncate text-[10px] text-ink">
           {displayApplicant(invitation)}
         </strong>
-        <small className="truncate text-[8px] text-muted">
+        <small className="min-w-0 truncate text-[7px] text-muted">
           {invitation.applicantEmail}
         </small>
       </span>
-      <span className="grid min-w-0 gap-0.5 mw-860:col-[2/4] mw-860:row-[2]">
-        <strong className="truncate text-[10px] text-ink-secondary">
+      <span className="flex min-w-0 items-baseline gap-2 mw-860:col-[2/4] mw-860:row-[2]">
+        <strong className="shrink-0 truncate text-[9px] text-ink-secondary">
           {activity.title}
         </strong>
-        <small className="truncate text-[8px] text-muted">
+        <small className="min-w-0 truncate text-[7px] text-muted mw-860:hidden">
           {activity.detail}
         </small>
       </span>
-      <span className="truncate text-[9px] text-muted mw-860:hidden">
+      <span className="truncate text-[8px] text-muted mw-860:hidden">
         {invitation.positionTitle}
       </span>
-      <span className={`${INVITATION_STATUS} ${invitationTone(status.tone)}`}>
+      <span
+        className={`justify-self-start whitespace-nowrap text-[8px] font-semibold ${ACTIVITY_STATUS_TONE[status.tone] ?? "text-muted"}`}
+      >
         {status.label}
       </span>
-      <ArrowRight
-        className="text-subtle group-hover:text-brand"
-        size={14}
-        aria-hidden="true"
-      />
     </Link>
   );
-}
-
-function ActivityIcon({ status }: { status: CompanyInvitationStatus }) {
-  if (status === "interviewing") return <PlayCircle size={18} />;
-  if (status === "completed" || status === "reviewed") {
-    return <CheckCircle2 size={18} />;
-  }
-  if (status === "materials_submitted" || status === "analyzing") {
-    return <FileCheck2 size={18} />;
-  }
-  if (status === "interrupted" || status === "expired") {
-    return <CircleAlert size={18} />;
-  }
-  return <ScanSearch size={18} />;
 }
 
 function DashboardEmpty({
@@ -632,39 +688,54 @@ function DashboardEmpty({
   );
 }
 
-function buildCalendarEvents(
+function buildCalendarRanges(
   positions: readonly CompanyPosition[],
-): CalendarEvent[] {
-  return positions.flatMap((position) => {
-    const items: CalendarEvent[] = [];
-    if (position.recruitmentStartAt) {
-      items.push({
-        id: `${position.positionId}-start`,
-        dateKey: position.recruitmentStartAt,
-        kind: "start",
-        label: "시작",
-        position,
-      });
-    }
-    if (position.interviewAt) {
-      items.push({
-        id: `${position.positionId}-interview`,
-        dateKey: toDateKey(new Date(position.interviewAt)),
-        kind: "interview",
-        label: "면접",
-        position,
-      });
-    }
-    if (position.recruitmentEndAt) {
-      items.push({
-        id: `${position.positionId}-end`,
-        dateKey: position.recruitmentEndAt,
-        kind: "end",
-        label: "마감",
-        position,
-      });
-    }
-    return items;
+): CalendarRange[] {
+  return positions
+    .flatMap((position, index) => {
+      const startKey = position.recruitmentStartAt;
+      const endKey = position.recruitmentEndAt;
+      if (!startKey || !endKey) return [];
+      return [
+        {
+          id: position.positionId,
+          startKey: startKey <= endKey ? startKey : endKey,
+          endKey: startKey <= endKey ? endKey : startKey,
+          interviewKey: position.interviewAt
+            ? toDateKey(new Date(position.interviewAt))
+            : null,
+          toneIndex: index % CALENDAR_RANGE_TONES.length,
+          position,
+        },
+      ];
+    })
+    .sort((left, right) => left.startKey.localeCompare(right.startKey));
+}
+
+function buildWeekSegments(
+  week: readonly Date[],
+  ranges: readonly CalendarRange[],
+): CalendarRangeSegment[] {
+  const weekKeys = week.map(toDateKey);
+  const weekStart = weekKeys[0];
+  const weekEnd = weekKeys[weekKeys.length - 1];
+  return ranges.flatMap((range, lane) => {
+    if (range.endKey < weekStart || range.startKey > weekEnd) return [];
+    const segmentStart =
+      range.startKey < weekStart ? weekStart : range.startKey;
+    const segmentEnd = range.endKey > weekEnd ? weekEnd : range.endKey;
+    const startColumn = weekKeys.indexOf(segmentStart);
+    const endColumn = weekKeys.indexOf(segmentEnd);
+    if (startColumn < 0 || endColumn < startColumn) return [];
+    return [
+      {
+        range,
+        startColumn,
+        span: endColumn - startColumn + 1,
+        lane,
+        startsHere: segmentStart === range.startKey,
+      },
+    ];
   });
 }
 
@@ -785,6 +856,13 @@ function calendarDays(month: Date) {
   );
 }
 
+function calendarWeeks(month: Date) {
+  const days = calendarDays(month);
+  return Array.from({ length: 6 }, (_, index) =>
+    days.slice(index * 7, index * 7 + 7),
+  );
+}
+
 function toDateKey(value: Date) {
   const year = value.getFullYear();
   const month = String(value.getMonth() + 1).padStart(2, "0");
@@ -797,6 +875,16 @@ function formatMonth(value: Date) {
     year: "numeric",
     month: "2-digit",
   }).format(value);
+}
+
+function formatRange(startKey: string, endKey: string) {
+  const [, startMonth, startDay] = startKey.split("-");
+  const [, endMonth, endDay] = endKey.split("-");
+  return `${Number(startMonth)}.${Number(startDay)}–${Number(endMonth)}.${Number(endDay)}`;
+}
+
+function shortPositionTitle(title: string) {
+  return title.split(/\s+/)[0] || title;
 }
 
 function formatClock(value: string) {
