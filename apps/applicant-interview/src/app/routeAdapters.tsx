@@ -436,6 +436,7 @@ export function InterviewRoute() {
   const [search] = useSearchParams();
   const navigate = useNavigate();
   const strategyIdFromSearch = search.get("strategyId") ?? "";
+  const sessionIdFromSearch = search.get("sessionId") ?? "";
   const interviewerLevel = parseInterviewerLevel(search.get("level"));
   const roomPreview = import.meta.env.DEV && search.get("preview") === "room";
   const automationMode = import.meta.env.DEV
@@ -448,9 +449,12 @@ export function InterviewRoute() {
   );
   const [session, setSession] = useState<{
     sessionId: string;
-    equipmentCheckId: string;
+    equipmentCheckId?: string;
     websocketPath: string;
   } | null>(null);
+  const [sessionRestoring, setSessionRestoring] = useState(
+    Boolean(sessionIdFromSearch) && !roomPreview,
+  );
   const [error, setError] = useState(false);
   const [sessionStarting, setSessionStarting] = useState(false);
   const autoStartRequestedRef = useRef(false);
@@ -488,10 +492,39 @@ export function InterviewRoute() {
   }, [roomPreview, strategyIdFromSearch]);
 
   useEffect(() => {
+    if (roomPreview || !sessionIdFromSearch) {
+      setSessionRestoring(false);
+      return;
+    }
+    let active = true;
+    setSessionRestoring(true);
+    applicantRequest<unknown>(
+      `/v1/applicant/interview-sessions/${sessionIdFromSearch}/resume`,
+    )
+      .then(() => {
+        if (!active) return;
+        setSession({
+          sessionId: sessionIdFromSearch,
+          websocketPath: `/v1/applicant/interview-sessions/${sessionIdFromSearch}/stream`,
+        });
+      })
+      .catch(() => {
+        if (active) setError(true);
+      })
+      .finally(() => {
+        if (active) setSessionRestoring(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [roomPreview, sessionIdFromSearch]);
+
+  useEffect(() => {
     if (
       !automationMode ||
       !strategyId ||
       strategyLoading ||
+      sessionRestoring ||
       session ||
       autoStartRequestedRef.current
     ) {
@@ -499,7 +532,13 @@ export function InterviewRoute() {
     }
     autoStartRequestedRef.current = true;
     void start(AUTOMATED_EQUIPMENT_RESULT, automationMode);
-  }, [automationMode, session, strategyId, strategyLoading]);
+  }, [
+    automationMode,
+    session,
+    sessionRestoring,
+    strategyId,
+    strategyLoading,
+  ]);
 
   if (roomPreview) {
     return (
@@ -561,6 +600,7 @@ export function InterviewRoute() {
       });
       const nextSearch = new URLSearchParams({ level: interviewerLevel });
       if (strategyId) nextSearch.set("strategyId", strategyId);
+      nextSearch.set("sessionId", session.interview_session_id);
       if (requestedAutomationMode) {
         nextSearch.set("auto", requestedAutomationMode);
       }
@@ -579,7 +619,7 @@ export function InterviewRoute() {
     }
   }
 
-  if (strategyLoading) {
+  if (strategyLoading || sessionRestoring) {
     return <p role="status">면접 전략을 불러오는 중입니다.</p>;
   }
 

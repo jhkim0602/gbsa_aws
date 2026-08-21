@@ -11,6 +11,9 @@ from uuid import UUID
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field
 
+from interview_evidence.interview_engine.application.question_generator import (
+    QuestionGenerationUnavailable,
+)
 from interview_evidence.interview_engine.application.session_service import (
     SessionApplicationService,
 )
@@ -193,6 +196,7 @@ class ProtocolStreamHandler:
                     "last_verified_recording_chunk_sequence": (
                         snapshot.last_verified_recording_chunk_sequence
                     ),
+                    "last_recording_end_ms": snapshot.last_recording_end_ms,
                     "allowed_client_messages": ["session.resume"],
                     "degraded_modes": list(snapshot.degraded_modes),
                 },
@@ -527,6 +531,8 @@ def create_interview_websocket_router(
                     response = await _execute_transaction_async(
                         database, partial(handler.handle, context, principal, envelope)
                     )
+                except QuestionGenerationUnavailable as error:
+                    response = _question_generation_error(envelope, error)
                 except (ValueError, TypeError, SpeechProviderError):
                     response = _invalid_message(session_id)
                 await publish_handler_response(response)
@@ -586,6 +592,26 @@ def _invalid_message(session_id: UUID) -> ServerEnvelope:
             "message": "메시지 형식이 올바르지 않습니다.",
             "retryable": False,
             "current_sequence": 0,
+        },
+    )
+
+
+def _question_generation_error(
+    envelope: WebSocketEnvelope,
+    error: QuestionGenerationUnavailable,
+) -> ServerEnvelope:
+    return ServerEnvelope(
+        message_type="error",
+        session_id=envelope.session_id,
+        sequence=envelope.sequence,
+        idempotency_key=f"server:{envelope.idempotency_key}",
+        correlation_id=envelope.correlation_id,
+        sent_at=datetime.now(UTC),
+        payload={
+            "code": "QUESTION_GENERATION_UNAVAILABLE",
+            "message": "다음 질문을 준비하지 못했습니다. 잠시 후 다시 시도합니다.",
+            "retryable": error.retryable,
+            "current_sequence": envelope.sequence,
         },
     )
 

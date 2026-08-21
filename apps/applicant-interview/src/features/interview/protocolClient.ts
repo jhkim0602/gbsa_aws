@@ -23,6 +23,12 @@ type Question = Readonly<{
   textOnly: boolean;
 }>;
 
+export type InterviewProtocolError = Readonly<{
+  code: string;
+  message: string;
+  retryable: boolean;
+}>;
+
 type Envelope = Readonly<{
   protocol_version: "1.0";
   message_type: string;
@@ -56,6 +62,7 @@ export class InterviewProtocolClient {
       onQuestionAudioChunk?(chunk: ArrayBuffer): void;
       onQuestionAudioEnd?(): void;
       onQuestionAudioError?(): void;
+      onError?(error: InterviewProtocolError): void;
     }>,
   ) {}
 
@@ -86,11 +93,15 @@ export class InterviewProtocolClient {
           snapshot.lastVerifiedRecordingChunkSequence,
       });
     };
-    socket.onclose = () => {
+    const markDisconnected = () => {
+      if (this.socket !== socket) return;
+      this.socket = null;
       this.options.store.getState().setConnectionState("reconnecting");
     };
+    socket.onclose = markDisconnected;
     socket.onerror = () => {
-      this.options.store.getState().setConnectionState("reconnecting");
+      markDisconnected();
+      if (socket.readyState === 0 || socket.readyState === 1) socket.close();
     };
     socket.onmessage = (event) => {
       this.handleServerMessage(event.data);
@@ -218,6 +229,14 @@ export class InterviewProtocolClient {
       if (snapshot) {
         this.options.store.getState().applyResumeSnapshot(snapshot);
       }
+      const pendingQuestion = parsePendingQuestion(envelope.payload.pending_turn);
+      if (pendingQuestion) this.options.onQuestion(pendingQuestion);
+      return;
+    }
+
+    if (envelope.message_type === "error") {
+      const error = parseProtocolError(envelope.payload);
+      if (error) this.options.onError?.(error);
       return;
     }
 
@@ -358,6 +377,7 @@ function parseServerState(
         ? null
         : readString(payload.last_final_turn_id),
     lastVerifiedRecordingChunkSequence,
+    lastRecordingEndMs: readInteger(payload.last_recording_end_ms) ?? 0,
     degradedModes: Array.isArray(payload.degraded_modes)
       ? payload.degraded_modes.filter(
           (mode): mode is string => typeof mode === "string",
@@ -373,6 +393,27 @@ function parseQuestion(payload: Record<string, unknown>): Question | null {
     return null;
   }
   return { questionTurnId, text, textOnly: payload.text_only };
+}
+
+function parsePendingQuestion(value: unknown): Question | null {
+  if (!isRecord(value) || value.speaker !== "interviewer") return null;
+  const questionTurnId = readString(value.turn_id);
+  const text = readString(value.text);
+  if (!questionTurnId || !text) return null;
+  return {
+    questionTurnId,
+    text,
+    textOnly: typeof value.text_only === "boolean" ? value.text_only : true,
+  };
+}
+
+function parseProtocolError(
+  payload: Record<string, unknown>,
+): InterviewProtocolError | null {
+  const code = readString(payload.code);
+  const message = readString(payload.message);
+  if (!code || !message || typeof payload.retryable !== "boolean") return null;
+  return { code, message, retryable: payload.retryable };
 }
 
 function parseQuestionAudioFormat(

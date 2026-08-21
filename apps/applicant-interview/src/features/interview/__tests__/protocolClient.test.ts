@@ -102,6 +102,87 @@ describe("interview protocol client", () => {
     );
   });
 
+  it("restores the pending question and reports retryable server errors", () => {
+    const socket = new FakeSocket();
+    const onQuestion = vi.fn();
+    const onError = vi.fn();
+    const client = new InterviewProtocolClient({
+      sessionId: "00000000-0000-7000-8000-000000000415",
+      socketFactory: () => socket,
+      store: createInterviewSessionStore(),
+      onQuestion,
+      onError,
+    });
+    client.connect();
+    socket.open();
+
+    socket.serverMessage({
+      protocol_version: "1.0",
+      message_type: "resume.snapshot",
+      session_id: "00000000-0000-7000-8000-000000000415",
+      sequence: 6,
+      idempotency_key: "server-resume-0002",
+      correlation_id: "00000000-0000-7000-8000-000000000416",
+      sent_at: "2026-08-21T10:00:00Z",
+      payload: {
+        state: "awaiting_answer",
+        server_sequence: 6,
+        last_final_turn_id: "00000000-0000-7000-8000-000000000417",
+        pending_turn: {
+          turn_id: "00000000-0000-7000-8000-000000000417",
+          speaker: "interviewer",
+          status: "final",
+          text: "복구된 질문입니다.",
+          text_only: true,
+        },
+        last_verified_recording_chunk_sequence: 3,
+        degraded_modes: ["text_only"],
+      },
+    });
+    socket.serverMessage({
+      protocol_version: "1.0",
+      message_type: "error",
+      session_id: "00000000-0000-7000-8000-000000000415",
+      sequence: 6,
+      idempotency_key: "server-error-0001",
+      correlation_id: "00000000-0000-7000-8000-000000000418",
+      sent_at: "2026-08-21T10:00:01Z",
+      payload: {
+        code: "QUESTION_GENERATION_UNAVAILABLE",
+        message: "다음 질문을 준비하지 못했습니다.",
+        retryable: true,
+      },
+    });
+
+    expect(onQuestion).toHaveBeenCalledWith({
+      questionTurnId: "00000000-0000-7000-8000-000000000417",
+      text: "복구된 질문입니다.",
+      textOnly: true,
+    });
+    expect(onError).toHaveBeenCalledWith({
+      code: "QUESTION_GENERATION_UNAVAILABLE",
+      message: "다음 질문을 준비하지 못했습니다.",
+      retryable: true,
+    });
+  });
+
+  it("keeps an intentional disconnect in the disconnected state", () => {
+    const socket = new FakeSocket();
+    const store = createInterviewSessionStore();
+    const client = new InterviewProtocolClient({
+      sessionId: "00000000-0000-7000-8000-000000000419",
+      socketFactory: () => socket,
+      store,
+      onQuestion: vi.fn(),
+    });
+    client.connect();
+    socket.open();
+
+    client.disconnect();
+
+    expect(store.getState().connectionState).toBe("disconnected");
+  });
+
   it("sends a local automated text answer with recording progress", () => {
     const socket = new FakeSocket();
     const client = new InterviewProtocolClient({

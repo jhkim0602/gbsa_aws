@@ -19,6 +19,9 @@ from interview_evidence.interview_engine.api.websocket import (
     WebSocketEnvelope,
     create_interview_websocket_router,
 )
+from interview_evidence.interview_engine.application.question_generator import (
+    QuestionGenerationUnavailable,
+)
 from interview_evidence.main import create_app
 from interview_evidence.shared.security.principals import (
     ApplicantPrincipal,
@@ -101,6 +104,21 @@ class FakeProtocolHandler:
             message_type="transcript.final",
             payload={"answer_turn_id": str(answer_turn_id), "text": text},
         )
+
+
+class TemporarilyUnavailableProtocolHandler(FakeProtocolHandler):
+    def handle(
+        self,
+        context: TenantContext,
+        principal: ApplicantPrincipal,
+        envelope: WebSocketEnvelope,
+    ) -> ServerEnvelope:
+        if envelope.message_type == "answer.automated":
+            raise QuestionGenerationUnavailable(
+                "question generation is temporarily unavailable",
+                retryable=True,
+            )
+        return super().handle(context, principal, envelope)
 
 
 class FakeRecognitionSession(SpeechRecognitionSession):
@@ -189,6 +207,38 @@ def test_websocket_streams_partial_caption_then_persists_final_transcript() -> N
             assert websocket.receive_json()["message_type"] == "question.ready"
 
     assert handler.saved_transcript == "안녕하세요 반갑습니다"
+
+
+def test_question_generation_failure_keeps_websocket_available_for_retry() -> None:
+    handler = TemporarilyUnavailableProtocolHandler()
+    router = create_interview_websocket_router(
+        principal_provider=FakePrincipalProvider(),
+        handler=handler,  # type: ignore[arg-type]
+    )
+    app = create_app([router])
+
+    with TestClient(app) as client:
+        client.cookies.set("iep_applicant_session", "applicant-session")
+        with client.websocket_connect(
+            f"/v1/applicant/interview-sessions/{SESSION_ID}/stream"
+        ) as websocket:
+            websocket.send_json(
+                _envelope(
+                    "answer.automated",
+                    "answer-automated-0001",
+                    payload={
+                        "answer_turn_id": str(ANSWER_ID),
+                        "text": "자동 답변입니다.",
+                    },
+                )
+            )
+            failure = websocket.receive_json()
+            assert failure["message_type"] == "error"
+            assert failure["payload"]["code"] == "QUESTION_GENERATION_UNAVAILABLE"
+            assert failure["payload"]["retryable"] is True
+
+            websocket.send_json(_envelope("answer.start", "answer-start-0002"))
+            assert websocket.receive_json()["message_type"] == "answer.started"
 
 
 def _envelope(

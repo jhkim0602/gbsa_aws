@@ -60,6 +60,7 @@ describe("automated interview completion", () => {
       </MemoryRouter>,
     );
 
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     fireEvent.click(
       await screen.findByRole("button", { name: "자동 면접 완료" }),
     );

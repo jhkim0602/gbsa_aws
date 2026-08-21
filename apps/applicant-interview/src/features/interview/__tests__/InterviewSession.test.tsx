@@ -493,6 +493,115 @@ describe("InterviewSession", () => {
     }
   });
 
+  it("retries the same automated answer after a retryable server error", async () => {
+    vi.useFakeTimers();
+    try {
+      let onQuestion:
+        | ((question: {
+            questionTurnId: string;
+            text: string;
+            textOnly: boolean;
+          }) => void)
+        | undefined;
+      let onError:
+        | ((error: {
+            code: string;
+            message: string;
+            retryable: boolean;
+          }) => void)
+        | undefined;
+      const protocol = {
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        startAnswer: vi.fn(),
+        completeAnswer: vi.fn(),
+        sendAudioFrame: vi.fn(),
+        repeatQuestion: vi.fn(),
+        submitAutomatedAnswer: vi.fn(),
+      };
+      const stream = {
+        getTracks: () => [],
+      } as unknown as MediaStream;
+      const dependencies: Partial<InterviewSessionDependencies> = {
+        socketFactory: vi.fn(),
+        mediaDevices: { getUserMedia: vi.fn() },
+        mediaBuffer: {
+          put: vi.fn(),
+          list: vi.fn().mockResolvedValue([]),
+          removeVerified: vi.fn().mockResolvedValue(undefined),
+        },
+        createRecorder: vi.fn(() => ({
+          start: vi.fn(),
+          stop: vi.fn().mockResolvedValue(undefined),
+        })),
+        createAudioCapture: vi.fn(),
+        createAutomatedMedia: vi.fn().mockResolvedValue({
+          stream,
+          dispose: vi.fn(),
+        }),
+        createProtocolClient: vi.fn((input) => {
+          onQuestion = input.onQuestion;
+          onError = input.onError;
+          input.store.getState().setConnectionState("connected");
+          input.store.getState().applyServerState({
+            state: "awaiting_answer",
+            serverSequence: 1,
+            lastFinalTurnId: null,
+            lastVerifiedRecordingChunkSequence: 0,
+            degradedModes: [],
+          });
+          return protocol;
+        }),
+      };
+
+      render(
+        <InterviewSession
+          sessionId="00000000-0000-7000-8000-000000000540"
+          equipmentCheckId="00000000-0000-7000-8000-000000000541"
+          websocketUrl="ws://localhost/session"
+          recordingApi={{ upload: vi.fn() }}
+          dependencies={dependencies}
+          automationMode="fast"
+        />,
+      );
+
+      act(() => {
+        onQuestion?.({
+          questionTurnId: "00000000-0000-7000-8000-000000000542",
+          text: "재시도할 질문입니다.",
+          textOnly: true,
+        });
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3100);
+      });
+      const firstAnswer = protocol.submitAutomatedAnswer.mock.calls[0]?.[0].text;
+
+      act(() => {
+        onError?.({
+          code: "QUESTION_GENERATION_UNAVAILABLE",
+          message: "다음 질문을 준비하지 못했습니다.",
+          retryable: true,
+        });
+      });
+      expect(screen.getByText(/5초 후 다시 시도합니다/)).toBeTruthy();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3100);
+      });
+
+      expect(protocol.submitAutomatedAnswer).toHaveBeenCalledTimes(2);
+      expect(protocol.submitAutomatedAnswer.mock.calls[1]?.[0].text).toBe(
+        firstAnswer,
+      );
+      expect(protocol.disconnect).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("retries the same fast interview question after reconnecting", async () => {
     vi.useFakeTimers();
     try {

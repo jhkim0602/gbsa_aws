@@ -79,6 +79,7 @@ class InterviewResumeView(BaseModel):
     last_final_turn_id: UUID | None
     pending_turn: dict[str, object] | None
     last_verified_recording_chunk_sequence: int
+    last_recording_end_ms: int
     degraded_modes: tuple[str, ...]
 
 
