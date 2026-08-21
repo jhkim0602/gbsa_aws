@@ -12,6 +12,7 @@ from interview_evidence.reporting.application.assessment_service import (
 )
 from interview_evidence.reporting.application.evidence_service import EvidenceService
 from interview_evidence.reporting.domain.report import (
+    COMMUNICATION_SEPARATED_CONFIG_VERSION,
     AssessmentState,
     Evidence,
     EvidenceRangeError,
@@ -200,7 +201,7 @@ class ReportGenerator:
             kind=ReportKind.AI_ORIGINAL,
             model_version="bedrock-model-v1",
             prompt_version="report-prompt-v1",
-            config_version="report-config-v1",
+            config_version=COMMUNICATION_SEPARATED_CONFIG_VERSION,
             status=(
                 ReportStatus.READY if all(item.evidence for item in items) else ReportStatus.PARTIAL
             ),

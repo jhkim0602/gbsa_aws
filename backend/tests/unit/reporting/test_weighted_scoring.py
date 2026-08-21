@@ -8,6 +8,7 @@ whose number changes after the company edits a weight.
 from uuid import UUID
 
 from interview_evidence.reporting.domain.report import (
+    COMMUNICATION_SEPARATED_CONFIG_VERSION,
     AssessmentState,
     AxisAssessment,
     Report,
@@ -64,7 +65,11 @@ def item(
     )
 
 
-def report(items: tuple[ReportItem, ...]) -> Report:
+def report(
+    items: tuple[ReportItem, ...],
+    *,
+    config_version: str = "c",
+) -> Report:
     return Report(
         report_id=REPORT_ID,
         company_id=COMPANY_ID,
@@ -74,7 +79,7 @@ def report(items: tuple[ReportItem, ...]) -> Report:
         kind=ReportKind.AI_ORIGINAL,
         model_version="m",
         prompt_version="p",
-        config_version="c",
+        config_version=config_version,
         status=ReportStatus.READY,
         summary="요약",
         created_at=__import__("datetime").datetime(2026, 8, 20, tzinfo=__import__("datetime").UTC),
@@ -158,6 +163,33 @@ def test_a_criterion_score_applies_its_axis_weights() -> None:
     # 0.75*90 + 0.25*60 = 82.5 -> 82 (round-half-to-even, matching the previous behaviour)
     assert scored.average_score == 82
     assert scored.axis_aggregate.denominator == 1.0
+
+
+def test_new_reports_separate_communication_from_competency_scoring() -> None:
+    scored = item(
+        1,
+        axes=(axis("correctness", 90), axis("communication", 30)),
+        axis_weights={"correctness": 50.0, "communication": 50.0},
+    )
+    separated = report(
+        (scored,),
+        config_version=COMMUNICATION_SEPARATED_CONFIG_VERSION,
+    )
+
+    assert scored.average_score == 60
+    assert scored.competency_score == 90
+    assert separated.overall_score == 90
+    assert separated.communication_score == 30
+
+
+def test_legacy_reports_keep_communication_in_their_original_score() -> None:
+    scored = item(
+        1,
+        axes=(axis("correctness", 90), axis("communication", 30)),
+        axis_weights={"correctness": 50.0, "communication": 50.0},
+    )
+
+    assert report((scored,)).overall_score == 60
 
 
 def test_a_report_score_applies_its_criterion_weights() -> None:

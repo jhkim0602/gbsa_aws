@@ -112,9 +112,11 @@ ASSESSMENT_AXES: Final[tuple[AssessmentAxis, ...]] = (
         key=AssessmentAxisKey.COMMUNICATION.value,
         label=ASSESSMENT_AXIS_LABELS[AssessmentAxisKey.COMMUNICATION.value],
         guidance=(
-            "듣는 사람이 따라올 수 있게 설명하는지 봅니다. 순서가 있는지, 모르는 것을 "
-            "모른다고 말하는지, 질문의 요지를 놓치지 않는지 확인합니다. 유창함이 아니라 "
-            "전달이 되는지를 봅니다."
+            "제한된 시간 안에 듣는 사람이 따라올 수 있도록 핵심을 구조적으로 설명하는지 "
+            "봅니다. 짧아도 질문에 직접 답하고 근거가 명확하면 높게 평가하며, 길어도 순서와 "
+            "필요한 근거가 분명하면 감점하지 않습니다. 장황하게 핵심을 벗어나거나 질문과 "
+            "무관한 답변은 낮게 평가합니다. 답변이 너무 짧아 구조를 판단할 수 없으면 낮은 "
+            "점수가 아니라 null로 두며, 긴장·말더듬·일시적인 침묵 자체는 감점하지 않습니다."
         ),
     ),
 )
@@ -183,6 +185,8 @@ _SYSTEM_PROMPT: Final = """\
    일부만 확인되면 partially_confirmed, 사람이 더 물어야 하면 needs_follow_up,
    판단할 답변 자체가 없으면 insufficient_evidence입니다.
 8. 개인 신상, 가족, 종교, 정치, 출신 지역, 나이, 성별은 평가에 반영하지 않습니다.
+9. communication은 답변 전달 방식만 별도로 평가합니다. communication 점수를 기술 정확성,
+   깊이, CS 기본기, 본인 기여 점수에 섞거나 중복 반영하지 않습니다.
 
 평가 기준선:
 {depth_guidance}

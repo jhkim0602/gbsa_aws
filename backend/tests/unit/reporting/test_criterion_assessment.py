@@ -274,3 +274,19 @@ def test_every_axis_the_prompt_offers_is_one_the_parser_will_accept() -> None:
 
     # A prompt that advertises an axis the parser rejects would drop that score silently.
     assert len(parsed.axis_scores) == len(ASSESSMENT_AXES)
+
+
+def test_communication_is_scored_as_delivery_not_answer_length() -> None:
+    prompt = build_assessment_prompt(
+        CriterionAssessor(StubModel(verdict())).prompt_for(InterviewLevel.JUNIOR),
+        criterion_id=CRITERION_ID,
+        criterion_name="장애 대응 판단",
+        criterion_text="장애 상황에서 대안을 비교할 수 있다.",
+        answers=(answer(),),
+        model_config_version="report-config-v2",
+    )
+
+    system = str(prompt["system"])
+    assert "짧아도 질문에 직접 답하고 근거가 명확하면" in system
+    assert "긴장·말더듬·일시적인 침묵 자체는 감점하지 않습니다" in system
+    assert "communication 점수를 기술 정확성" in system
