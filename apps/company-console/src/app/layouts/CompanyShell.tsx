@@ -212,6 +212,8 @@ export function CompanyShell() {
             className={NAV_ITEM}
             href={applicantAppUrl}
             aria-label="지원자 화면"
+            target="_blank"
+            rel="noreferrer"
           >
             <ExternalLink size={18} strokeWidth={1.8} aria-hidden="true" />
             <span>지원자 화면</span>
@@ -324,7 +326,12 @@ export function CompanyShell() {
             <strong className="text-[14px]">{pageTitle}</strong>
           </div>
           <div className={TOPBAR_ACTIONS}>
-            <a href={applicantAppUrl} className={TOPBAR_APPLICANT}>
+            <a
+              href={applicantAppUrl}
+              className={TOPBAR_APPLICANT}
+              target="_blank"
+              rel="noreferrer"
+            >
               지원자 화면
               <ExternalLink size={14} aria-hidden="true" />
             </a>

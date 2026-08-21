@@ -30,5 +30,14 @@ describe("CompanyShell", () => {
     expect(navigation.getAttribute("aria-hidden")).toBeNull();
     expect(navigation.className).not.toContain("invisible");
     expect(shell.className).toContain("grid-cols-[224px_minmax(0,1fr)]");
+
+    const applicantLinks = screen.getAllByRole("link", {
+      name: "지원자 화면",
+    });
+    expect(applicantLinks).toHaveLength(2);
+    applicantLinks.forEach((link) => {
+      expect(link.getAttribute("target")).toBe("_blank");
+      expect(link.getAttribute("rel")).toContain("noreferrer");
+    });
   });
 });

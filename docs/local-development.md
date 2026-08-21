@@ -123,6 +123,21 @@ stream open until `answer.complete`, persists the combined final transcript once
 TTS PCM back through the same WebSocket. Set both speech providers to `aws_legacy` to use the
 previous AWS speech path without reverting code.
 
+## Backfill existing AI-assistant reports
+
+Reports created before the recruiting-assistant projection existed, or before switching the
+embedding provider, do not belong to the current vector search space. The UI distinguishes this
+state from a position that has no final reports. Backfill only the missing/current-provider
+projections with:
+
+```bash
+make assistant-backfill
+```
+
+The command is idempotent. It skips reports that already have documents for the configured
+`EMBEDDING_PROVIDER` model and version, and replaces stale-provider projections using deterministic
+document ids.
+
 ## Automated interview locally
 
 The applicant interview environment-check screen exposes two development-only actions:

@@ -9,12 +9,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
-import type {
-  ChatMessage,
-  Citation,
-  PositionRow,
-  RagAnswer,
-} from "../types";
+import type { ChatMessage, Citation, PositionRow, RagAnswer } from "../types";
 
 export function MessageList({
   messages,
@@ -37,6 +32,16 @@ export function MessageList({
         <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f5f5f3] px-3 py-1.5 text-[8px] font-medium text-muted">
           <LockKeyhole size={10} aria-hidden="true" />
           분석 범위 · {scopeLabel}
+        </span>
+      </div>
+      <div
+        className="mx-auto mb-7 flex max-w-[620px] items-center justify-center gap-2 rounded-xl border border-[#e7e7e3] bg-[#fafaf8] px-3 py-2 text-center text-[9px] leading-[1.55] text-muted"
+        role="status"
+      >
+        <LockKeyhole size={11} className="shrink-0" aria-hidden="true" />
+        <span>
+          현재 대화의 데이터 검색 범위는 {scopeLabel}로 고정되었습니다. 다른
+          범위를 검색하려면 새 채팅을 시작하세요.
         </span>
       </div>
       <div className="grid gap-9">
@@ -120,7 +125,7 @@ function AssistantMessage({
           ) : (
             <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-1 text-[8px] font-semibold text-success">
               <Check size={9} aria-hidden="true" />
-              {answer.citations.length}개 소스 검색 완료
+              {sourceStatus(answer)}
             </span>
           )}
           {answer.degradedMode ? (
@@ -137,8 +142,7 @@ function AssistantMessage({
               key={`${index}-${paragraph}`}
             >
               {paragraph}
-              {answer.streaming &&
-              index === answer.paragraphs.length - 1 ? (
+              {answer.streaming && index === answer.paragraphs.length - 1 ? (
                 <span
                   className="ml-0.5 inline-block h-[1.1em] w-[2px] animate-pulse translate-y-[2px] bg-ink"
                   aria-hidden="true"
@@ -233,6 +237,17 @@ function AssistantMessage({
       </div>
     </article>
   );
+}
+
+function sourceStatus(answer: RagAnswer) {
+  if (answer.degradedMode !== "no_sources") {
+    return `${answer.citations.length}개 소스 검색 완료`;
+  }
+  const reportCount = answer.positionRows.reduce(
+    (count, position) => count + position.reportCount,
+    0,
+  );
+  return reportCount ? "검색 인덱스 준비 안 됨" : "검색할 리포트 없음";
 }
 
 function PositionComparison({ rows }: { rows: readonly PositionRow[] }) {

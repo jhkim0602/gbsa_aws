@@ -93,9 +93,7 @@ class ReportSearchProjector:
                 f"평가 완료 기준: {len(report.scored_items)}/{len(report.items)}",
                 f"종합 요약: {report.summary}",
                 "평가 항목: "
-                + ", ".join(
-                    item.criterion_name or str(item.criterion_id) for item in report.items
-                ),
+                + ", ".join(item.criterion_name or str(item.criterion_id) for item in report.items),
             )
         )
         return self._document(
@@ -200,7 +198,7 @@ class ReportSearchProjector:
             text=text,
             embedding=self._embedder.embed(context, text, dimensions=1024),
             embedding_model=self._embedder.model_id,
-            embedding_version="titan-v2",
+            embedding_version=self._embedder.embedding_version,
             created_at=report.created_at,
             metadata=metadata,
         )
@@ -237,6 +235,8 @@ class AssistantSearchService:
             context,
             query=normalized,
             query_vector=self._embedder.embed(context, normalized, dimensions=1024),
+            embedding_model=self._embedder.model_id,
+            embedding_version=self._embedder.embedding_version,
             position_id=query.position_id,
             allowed_position_ids=query.allowed_position_ids,
             limit=query.limit,
@@ -296,10 +296,7 @@ class AssistantAnswerService:
                 sources=sources,
                 degraded_mode="generation_unavailable",
             )
-        sources_by_id = {
-            source.assistant_document_id: source
-            for source in sources
-        }
+        sources_by_id = {source.assistant_document_id: source for source in sources}
         cited = tuple(
             sources_by_id[source_id]
             for source_id in dict.fromkeys(verdict.source_ids)

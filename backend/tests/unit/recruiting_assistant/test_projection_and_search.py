@@ -148,6 +148,7 @@ def test_report_projection_is_idempotent_and_searchable_by_position() -> None:
     assert tuple(item.assistant_document_id for item in first) == tuple(
         item.assistant_document_id for item in second
     )
+    assert {item.embedding_version for item in first} == {embedder.embedding_version}
     assert {result.document_type for result in results} == {
         "report_summary",
         "report_criterion",
@@ -206,6 +207,34 @@ def test_search_never_crosses_company_or_position_scope() -> None:
     assert all(result.position_id == POSITION_ID for result in company_results)
 
 
+def test_search_excludes_documents_from_a_different_embedding_space() -> None:
+    class OtherEmbedding(StaticTextEmbedder):
+        model_id = "other-embedding"
+        embedding_version = "other-v1"
+
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    indexed_embedder = StaticTextEmbedder(_vector())
+    query_embedder = OtherEmbedding(_vector())
+
+    with Session(engine) as session:
+        repository = SQLAlchemyAssistantDocumentRepository(session)
+        ReportSearchProjector(repository, indexed_embedder).project(
+            _context(),
+            position_id=POSITION_ID,
+            position_title="백엔드 엔지니어",
+            applicant_id=APPLICANT_ID,
+            applicant_display_name="김민준",
+            report=_report(),
+        )
+        results = AssistantSearchService(repository, query_embedder).search(
+            _context(),
+            AssistantSearchQuery(query="ECS 장애", position_id=POSITION_ID),
+        )
+
+    assert results == ()
+
+
 def test_assistant_documents_are_deleted_and_verified_by_invitation() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -222,10 +251,7 @@ def test_assistant_documents_are_deleted_and_verified_by_invitation() -> None:
             report=_report(),
         )
         ids = repository.list_document_ids_for_invitation(_context(), INVITATION_ID)
-        verified = [
-            repository.delete_and_verify(_context(), document_id)
-            for document_id in ids
-        ]
+        verified = [repository.delete_and_verify(_context(), document_id) for document_id in ids]
 
     assert set(ids) == {document.assistant_document_id for document in documents}
     assert verified == [True, True]
@@ -260,9 +286,7 @@ def test_rag_answer_only_returns_source_ids_that_were_actually_retrieved() -> No
         )
 
     assert "ECS 장애 원인" in answer.answer
-    assert tuple(source.assistant_document_id for source in answer.sources) == (
-        model.source_id,
-    )
+    assert tuple(source.assistant_document_id for source in answer.sources) == (model.source_id,)
     assert answer.degraded_mode is None
     assert model.calls[0]["temperature"] == 0.1
 

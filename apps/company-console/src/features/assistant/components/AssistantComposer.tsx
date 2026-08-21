@@ -8,11 +8,7 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
-import type {
-  FormEvent,
-  KeyboardEvent,
-  ReactNode,
-} from "react";
+import type { FormEvent, KeyboardEvent, ReactNode } from "react";
 
 const COMPOSER_WRAP =
   "relative z-10 bg-gradient-to-t from-white via-white to-transparent" +
@@ -94,7 +90,7 @@ export function AssistantComposer({
               </span>
               {scopeLocked ? (
                 <span className="text-[8px] text-muted mw-620:hidden">
-                  이 대화에 범위가 고정되었습니다
+                  범위 고정됨 · 변경하려면 새 채팅
                 </span>
               ) : null}
             </div>

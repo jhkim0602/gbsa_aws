@@ -1,10 +1,4 @@
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  within,
-} from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -71,70 +65,68 @@ const api: CompanyOperationsApi = {
 };
 
 const assistantResponse = {
-    scope: "company",
-    positionId: null,
-    answer:
-      "김민준 지원자의 시스템 설계 근거가 확인됩니다.\n\n최종 판단 전 기준별 원문 근거를 함께 검토해 주세요.",
-    degradedMode: null,
-    sources: [
-      {
-        sourceId: "source-1",
-        positionId: "position-1",
-        applicantId: "applicant-1",
-        invitationId: "invitation-1",
-        reportId: "report-1",
-        reportItemId: null,
-        criterionId: null,
-        documentType: "report_summary",
-        excerpt: "구체적인 시스템 설계 근거가 확인됩니다.",
-        score: 0.96,
-        scoreComponents: { vector: 0.97, lexical: 0.94 },
-        metadata: { overall_score: 87 },
-      },
-      {
-        sourceId: "source-2",
-        positionId: "position-1",
-        applicantId: "applicant-1",
-        invitationId: "invitation-1",
-        reportId: "report-1",
-        reportItemId: "item-1",
-        criterionId: "system-design",
-        documentType: "report_criterion",
-        excerpt: "트래픽 증가 상황의 확장 전략을 설명했습니다.",
-        score: 0.91,
-        scoreComponents: { vector: 0.92, lexical: 0.89 },
-        metadata: { criterion_name: "시스템 설계", score: 87 },
-      },
-      {
-        sourceId: "source-3",
-        positionId: "position-1",
-        applicantId: "applicant-1",
-        invitationId: "invitation-1",
-        reportId: "report-1",
-        reportItemId: "item-2",
-        criterionId: "evidence",
-        documentType: "report_criterion",
-        excerpt: "답변에 연결된 면접 근거가 확인되었습니다.",
-        score: 0.88,
-        scoreComponents: { vector: 0.9, lexical: 0.83 },
-        metadata: { criterion_name: "근거 구체성", score: 84 },
-      },
-    ],
-  } as const;
+  scope: "company",
+  positionId: null,
+  answer:
+    "김민준 지원자의 시스템 설계 근거가 확인됩니다.\n\n최종 판단 전 기준별 원문 근거를 함께 검토해 주세요.",
+  degradedMode: null,
+  sources: [
+    {
+      sourceId: "source-1",
+      positionId: "position-1",
+      applicantId: "applicant-1",
+      invitationId: "invitation-1",
+      reportId: "report-1",
+      reportItemId: null,
+      criterionId: null,
+      documentType: "report_summary",
+      excerpt: "구체적인 시스템 설계 근거가 확인됩니다.",
+      score: 0.96,
+      scoreComponents: { vector: 0.97, lexical: 0.94 },
+      metadata: { overall_score: 87 },
+    },
+    {
+      sourceId: "source-2",
+      positionId: "position-1",
+      applicantId: "applicant-1",
+      invitationId: "invitation-1",
+      reportId: "report-1",
+      reportItemId: "item-1",
+      criterionId: "system-design",
+      documentType: "report_criterion",
+      excerpt: "트래픽 증가 상황의 확장 전략을 설명했습니다.",
+      score: 0.91,
+      scoreComponents: { vector: 0.92, lexical: 0.89 },
+      metadata: { criterion_name: "시스템 설계", score: 87 },
+    },
+    {
+      sourceId: "source-3",
+      positionId: "position-1",
+      applicantId: "applicant-1",
+      invitationId: "invitation-1",
+      reportId: "report-1",
+      reportItemId: "item-2",
+      criterionId: "evidence",
+      documentType: "report_criterion",
+      excerpt: "답변에 연결된 면접 근거가 확인되었습니다.",
+      score: 0.88,
+      scoreComponents: { vector: 0.9, lexical: 0.83 },
+      metadata: { criterion_name: "근거 구체성", score: 84 },
+    },
+  ],
+} as const;
 
 const assistantApi: RecruitingAssistantApi = {
   answerQuestion: vi.fn().mockResolvedValue(assistantResponse),
-  streamAnswer: vi
-    .fn()
-    .mockImplementation(async (_request, handlers) => {
-      handlers.onStart?.({ archivedScope: false });
-      const first = "김민준 지원자의 시스템 설계 근거가 확인됩니다. ";
-      const second = "최종 판단 전 기준별 원문 근거를 함께 검토해 주세요.";
-      handlers.onDelta?.(first, first);
-      handlers.onDelta?.(second, `${first}${second}`);
-      handlers.onSources?.(assistantResponse.sources);
-      return assistantResponse;
-    }),
+  streamAnswer: vi.fn().mockImplementation(async (_request, handlers) => {
+    handlers.onStart?.({ archivedScope: false });
+    const first = "김민준 지원자의 시스템 설계 근거가 확인됩니다. ";
+    const second = "최종 판단 전 기준별 원문 근거를 함께 검토해 주세요.";
+    handlers.onDelta?.(first, first);
+    handlers.onDelta?.(second, `${first}${second}`);
+    handlers.onSources?.(assistantResponse.sources);
+    return assistantResponse;
+  }),
 };
 
 describe("AI recruiting assistant", () => {
@@ -175,6 +167,12 @@ describe("AI recruiting assistant", () => {
     expect(
       await screen.findByText("분석 범위 · 백엔드 플랫폼 엔지니어"),
     ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /현재 대화의 데이터 검색 범위는 백엔드 플랫폼 엔지니어로 고정되었습니다/,
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("범위 고정됨 · 변경하려면 새 채팅")).toBeTruthy();
     expect(screen.getByText("3개 소스 검색 완료")).toBeTruthy();
     expect(assistantApi.streamAnswer).toHaveBeenCalledWith(
       {
@@ -185,6 +183,41 @@ describe("AI recruiting assistant", () => {
       },
       expect.any(Object),
     );
+  });
+
+  it("distinguishes a missing search projection from a missing report", async () => {
+    const noSourcesResponse = {
+      scope: "position" as const,
+      positionId: "position-1",
+      answer:
+        "현재 선택한 범위의 최종 리포트에서 질문을 뒷받침할 근거를 찾지 못했습니다.",
+      degradedMode: "no_sources",
+      sources: [],
+    };
+    const noSourcesApi: RecruitingAssistantApi = {
+      answerQuestion: vi.fn().mockResolvedValue(noSourcesResponse),
+      streamAnswer: vi.fn().mockResolvedValue(noSourcesResponse),
+    };
+    render(
+      <MemoryRouter>
+        <AiRecruitingAssistant api={api} assistantApi={noSourcesApi} />
+      </MemoryRouter>,
+    );
+
+    const scope = await screen.findByRole("combobox", { name: "분석 범위" });
+    fireEvent.change(scope, { target: { value: "position-1" } });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "현재 범위에서 근거가 구체적인 지원자를 정리해줘.",
+      }),
+    );
+
+    expect(await screen.findByText("검색 인덱스 준비 안 됨")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "백엔드 플랫폼 엔지니어에 최종 리포트 1건은 있지만 AI 검색 인덱스에 아직 반영되지 않았습니다.",
+      ),
+    ).toBeTruthy();
   });
 
   it("shows professional RAG evidence and an inline applicant report", async () => {
@@ -210,9 +243,7 @@ describe("AI recruiting assistant", () => {
     expect(screen.getByText("검색 일치도 96%")).toBeTruthy();
     expect(screen.queryByRole("link")).toBeNull();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "간단 리포트 보기" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "간단 리포트 보기" }));
 
     const dialog = await screen.findByRole("dialog");
     expect(
@@ -291,10 +322,7 @@ describe("AI recruiting assistant", () => {
     };
     render(
       <MemoryRouter>
-        <AiRecruitingAssistant
-          api={archivedApi}
-          assistantApi={assistantApi}
-        />
+        <AiRecruitingAssistant api={archivedApi} assistantApi={assistantApi} />
       </MemoryRouter>,
     );
 
@@ -307,9 +335,7 @@ describe("AI recruiting assistant", () => {
       }),
     ).toBeTruthy();
     fireEvent.change(scope, { target: { value: "position-closed" } });
-    expect(
-      await screen.findByText("읽기 전용 과거 채용 분석"),
-    ).toBeTruthy();
+    expect(await screen.findByText("읽기 전용 과거 채용 분석")).toBeTruthy();
     expect(
       screen.getByText(
         "지난 데이터 엔지니어 채용 · 모집 종료에서 시작하는 대화",
@@ -321,22 +347,20 @@ describe("AI recruiting assistant", () => {
     let finishStream: (() => void) | undefined;
     const streamingApi: RecruitingAssistantApi = {
       answerQuestion: assistantApi.answerQuestion,
-      streamAnswer: vi
-        .fn()
-        .mockImplementation(async (_request, handlers) => {
-          const first = "첫 번째 근거 문장이 스트리밍됩니다. ";
-          handlers.onDelta?.(first, first);
-          await new Promise<void>((resolve) => {
-            finishStream = resolve;
-          });
-          const second = "검증된 근거를 확인했습니다.";
-          handlers.onDelta?.(second, `${first}${second}`);
-          handlers.onSources?.(assistantResponse.sources);
-          return {
-            ...assistantResponse,
-            answer: `${first}${second}`,
-          };
-        }),
+      streamAnswer: vi.fn().mockImplementation(async (_request, handlers) => {
+        const first = "첫 번째 근거 문장이 스트리밍됩니다. ";
+        handlers.onDelta?.(first, first);
+        await new Promise<void>((resolve) => {
+          finishStream = resolve;
+        });
+        const second = "검증된 근거를 확인했습니다.";
+        handlers.onDelta?.(second, `${first}${second}`);
+        handlers.onSources?.(assistantResponse.sources);
+        return {
+          ...assistantResponse,
+          answer: `${first}${second}`,
+        };
+      }),
     };
     render(
       <MemoryRouter>

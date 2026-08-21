@@ -69,6 +69,8 @@ class AssistantDocumentRepository(Protocol):
         *,
         query: str,
         query_vector: tuple[float, ...],
+        embedding_model: str,
+        embedding_version: str,
         position_id: UUID | None,
         allowed_position_ids: tuple[UUID, ...] | None,
         limit: int,
@@ -147,6 +149,8 @@ class SQLAlchemyAssistantDocumentRepository:
         *,
         query: str,
         query_vector: tuple[float, ...],
+        embedding_model: str,
+        embedding_version: str,
         position_id: UUID | None,
         allowed_position_ids: tuple[UUID, ...] | None,
         limit: int,
@@ -166,11 +170,11 @@ class SQLAlchemyAssistantDocumentRepository:
         statement = select(AssistantRetrievalDocumentRow).where(
             AssistantRetrievalDocumentRow.company_id == tenant.company_id,
             AssistantRetrievalDocumentRow.deleted_at.is_(None),
+            AssistantRetrievalDocumentRow.embedding_model == embedding_model,
+            AssistantRetrievalDocumentRow.embedding_version == embedding_version,
         )
         if position_id is not None:
-            statement = statement.where(
-                AssistantRetrievalDocumentRow.position_id == position_id
-            )
+            statement = statement.where(AssistantRetrievalDocumentRow.position_id == position_id)
         elif allowed_position_ids is not None:
             statement = statement.where(
                 AssistantRetrievalDocumentRow.position_id.in_(allowed_position_ids)
@@ -208,13 +212,9 @@ class SQLAlchemyAssistantDocumentRepository:
         for row in self._session.scalars(statement).all():
             vector_score = _cosine(tuple(row.embedding), query_vector)
             row_terms = {
-                term.casefold()
-                for term in row.search_text.replace("_", " ").split()
-                if term
+                term.casefold() for term in row.search_text.replace("_", " ").split() if term
             }
-            lexical_score = (
-                len(query_terms & row_terms) / len(query_terms) if query_terms else 0.0
-            )
+            lexical_score = len(query_terms & row_terms) / len(query_terms) if query_terms else 0.0
             candidates.append(
                 self._result(
                     row,
