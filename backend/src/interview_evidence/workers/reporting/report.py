@@ -118,23 +118,23 @@ class ReportGenerator:
                     )
                 )
                 continue
-            candidate = Evidence(
-                evidence_id=new_uuid7(occurred_at),
-                company_id=context.company_id,
-                report_item_id=report_item_id,
-                criterion_id=criterion.criterion_id,
-                competency_model_version_id=competency_model_version_id,
-                answer_turn_id=criterion.answer_turn_id,
-                transcript_segment_id=criterion.transcript.transcript_segment_id,
-                video_start_ms=criterion.video_start_ms,
-                video_end_ms=criterion.video_end_ms,
-                observation=criterion.observation,
-                rationale="최종 답변의 자막과 유효 영상 구간에 직접 연결됨",
-                sufficiency=Sufficiency.DIRECT,
-                generation_version="report-v1",
-                created_at=occurred_at,
-            )
             try:
+                candidate = Evidence(
+                    evidence_id=new_uuid7(occurred_at),
+                    company_id=context.company_id,
+                    report_item_id=report_item_id,
+                    criterion_id=criterion.criterion_id,
+                    competency_model_version_id=competency_model_version_id,
+                    answer_turn_id=criterion.answer_turn_id,
+                    transcript_segment_id=criterion.transcript.transcript_segment_id,
+                    video_start_ms=criterion.video_start_ms,
+                    video_end_ms=criterion.video_end_ms,
+                    observation=criterion.observation,
+                    rationale="최종 답변의 자막과 유효 영상 구간에 직접 연결됨",
+                    sufficiency=Sufficiency.DIRECT,
+                    generation_version="report-v1",
+                    created_at=occurred_at,
+                )
                 valid = self._evidence_service.validate(
                     context,
                     evidence=candidate,

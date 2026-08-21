@@ -306,6 +306,12 @@ class ReportRequestedEventHandler:
                 # rather than trying to build an Evidence range out of nothing.
                 answer_turn_id=turn.turn_id if turn is not None else None,
                 transcript=transcripts[turn.turn_id] if turn is not None else None,
+                video_start_ms=(
+                    transcripts[turn.turn_id].session_start_ms if turn is not None else 0
+                ),
+                video_end_ms=(
+                    transcripts[turn.turn_id].session_end_ms if turn is not None else 0
+                ),
                 weight=criterion_item.weight,
             )
             for criterion_item in criterion.criteria
