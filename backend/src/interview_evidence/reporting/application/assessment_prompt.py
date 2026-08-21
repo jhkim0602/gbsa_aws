@@ -31,6 +31,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from interview_evidence.shared.assessment_axes import (
+    ASSESSMENT_AXIS_KEY_SET,
+    ASSESSMENT_AXIS_LABELS,
+    AssessmentAxisKey,
+)
 from interview_evidence.shared.interview_level import (
     DEFAULT_INTERVIEW_LEVEL,
     InterviewLevel,
@@ -53,6 +58,10 @@ class AssessmentAxis(BaseModel):
     answers are read, not what a company values -- which criterion gets asked is where
     the company's judgement lives. Each axis carries the prose the model is given, since
     what separates a 40 from an 80 on "깊이" cannot be said with a number.
+
+    ``key`` and ``label`` come from ``shared.assessment_axes`` because Lane A validates the
+    per-company weights against the same key set; only ``guidance`` is local, because only
+    this module renders it into a prompt.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -64,8 +73,8 @@ class AssessmentAxis(BaseModel):
 
 ASSESSMENT_AXES: Final[tuple[AssessmentAxis, ...]] = (
     AssessmentAxis(
-        key="correctness",
-        label="정확성",
+        key=AssessmentAxisKey.CORRECTNESS.value,
+        label=ASSESSMENT_AXIS_LABELS[AssessmentAxisKey.CORRECTNESS.value],
         guidance=(
             "답변의 기술적 사실이 맞는지 봅니다. 용어를 정확히 쓰는지, 인과를 뒤집어 "
             "말하지 않는지, 근거 없이 단정하지 않는지 확인합니다. 틀린 내용을 자신 있게 "
@@ -73,8 +82,8 @@ ASSESSMENT_AXES: Final[tuple[AssessmentAxis, ...]] = (
         ),
     ),
     AssessmentAxis(
-        key="depth",
-        label="깊이",
+        key=AssessmentAxisKey.DEPTH.value,
+        label=ASSESSMENT_AXIS_LABELS[AssessmentAxisKey.DEPTH.value],
         guidance=(
             "'무엇을 했다'에서 멈추는지, '왜 그렇게 했고 대안은 무엇이었는지'까지 "
             "내려가는지 봅니다. 한 겹 더 물었을 때 설명이 이어지면 높게, 표면 용어만 "
@@ -82,8 +91,8 @@ ASSESSMENT_AXES: Final[tuple[AssessmentAxis, ...]] = (
         ),
     ),
     AssessmentAxis(
-        key="fundamentals",
-        label="CS 기본기",
+        key=AssessmentAxisKey.FUNDAMENTALS.value,
+        label=ASSESSMENT_AXIS_LABELS[AssessmentAxisKey.FUNDAMENTALS.value],
         guidance=(
             "자료구조·알고리즘·네트워크·운영체제·데이터베이스·동시성 같은 기반 지식이 "
             "답변에 실제로 쓰이는지 봅니다. 지원자가 먼저 꺼낸 개념만 평가하고, 면접에서 "
@@ -91,8 +100,8 @@ ASSESSMENT_AXES: Final[tuple[AssessmentAxis, ...]] = (
         ),
     ),
     AssessmentAxis(
-        key="ownership",
-        label="본인 기여",
+        key=AssessmentAxisKey.OWNERSHIP.value,
+        label=ASSESSMENT_AXIS_LABELS[AssessmentAxisKey.OWNERSHIP.value],
         guidance=(
             "본인이 한 일과 팀이 한 일을 구분해 말하는지 봅니다. 'we'로 뭉개지 않고 "
             "자기 판단과 실수를 말할 수 있으면 높게 봅니다. 기여를 부풀린 흔적이 보이면 "
@@ -100,8 +109,8 @@ ASSESSMENT_AXES: Final[tuple[AssessmentAxis, ...]] = (
         ),
     ),
     AssessmentAxis(
-        key="communication",
-        label="설명력",
+        key=AssessmentAxisKey.COMMUNICATION.value,
+        label=ASSESSMENT_AXIS_LABELS[AssessmentAxisKey.COMMUNICATION.value],
         guidance=(
             "듣는 사람이 따라올 수 있게 설명하는지 봅니다. 순서가 있는지, 모르는 것을 "
             "모른다고 말하는지, 질문의 요지를 놓치지 않는지 확인합니다. 유창함이 아니라 "
@@ -109,6 +118,28 @@ ASSESSMENT_AXES: Final[tuple[AssessmentAxis, ...]] = (
         ),
     ),
 )
+
+
+def _axes_cover_every_shared_key() -> None:
+    """Fail at import if a shared key has no guidance, or guidance has no shared key.
+
+    The key set moved to ``shared`` so Lane A can validate weights against it, which
+    creates a way for the two to disagree: a key added there and not here would be a
+    weight a recruiter can set on an axis no prompt scores, and an axis defined here and
+    not there would be a score Lane A refuses to weight. Both are silent -- the number
+    just comes out wrong -- so this is checked once, at import, rather than trusted.
+    """
+    defined = {axis.key for axis in ASSESSMENT_AXES}
+    if defined != ASSESSMENT_AXIS_KEY_SET:
+        raise RuntimeError(
+            "assessment axis definitions and shared axis keys disagree: "
+            f"only in prompt {sorted(defined - ASSESSMENT_AXIS_KEY_SET)}, "
+            f"only in shared {sorted(ASSESSMENT_AXIS_KEY_SET - defined)}"
+        )
+
+
+_axes_cover_every_shared_key()
+
 
 #: Shape the model must return. Kept beside the prompt so the two cannot drift.
 OUTPUT_SCHEMA: Final[Mapping[str, Any]] = {
@@ -210,7 +241,10 @@ class AxisScore(BaseModel):
     @field_validator("axis")
     @classmethod
     def _known_axis(cls, value: str) -> str:
-        if value not in {axis.key for axis in ASSESSMENT_AXES}:
+        # The shared key set, not `ASSESSMENT_AXES`, so that a model returning an axis and a
+        # company weighting one are refused by the same rule. `_axes_cover_every_shared_key`
+        # keeps the two in step.
+        if value not in ASSESSMENT_AXIS_KEY_SET:
             raise ValueError(f"unknown assessment axis: {value}")
         return value
 

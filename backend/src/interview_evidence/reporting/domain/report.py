@@ -1,9 +1,17 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
+
+from interview_evidence.reporting.domain.scoring import (
+    Aggregate,
+    Entry,
+    aggregate,
+    weights_for,
+)
 
 
 class AssessmentState(StrEnum):
@@ -133,17 +141,44 @@ class ReportItem:
     #: How the model scored each axis. Empty for reports generated before scoring
     #: existed, which the reviewer UI reads as "no scores on this report".
     axis_assessments: tuple[AxisAssessment, ...] = ()
+    #: What this criterion counted for in the report score, snapshotted from the published
+    #: version. Frozen here rather than read back from the version, so a company changing its
+    #: weights cannot silently restate a report a reviewer has already acted on.
+    criterion_weight: float = 1.0
+    #: What each axis counted for within this criterion, keyed by ``shared.assessment_axes``.
+    #: Empty means equal weight -- which is what reports generated before weights existed were
+    #: actually scored with, so reading it that way reproduces their numbers rather than
+    #: rewriting them.
+    axis_weights: Mapping[str, float] = field(default_factory=dict)
+
+    @property
+    def axis_aggregate(self) -> Aggregate:
+        """The criterion's score with its divisor and per-axis arithmetic.
+
+        Callers that only want the number use :attr:`average_score`; the reviewer's calculator
+        needs the rest, because "78" and "78 out of the 70% we could judge" are different
+        claims and only one of them is honest.
+        """
+        keys = [axis.axis for axis in self.axis_assessments]
+        weights = weights_for(keys, self.axis_weights)
+        return aggregate(
+            [
+                Entry(key=axis.axis, score=axis.score, weight=weight)
+                for axis, weight in zip(self.axis_assessments, weights, strict=True)
+            ]
+        )
 
     @property
     def average_score(self) -> int | None:
-        """Mean of the axes that could be judged, or None when none could.
+        """Weighted mean of the axes that could be judged, or None when none could.
 
-        Unscored axes are left out rather than counted as zero, so a criterion where only
-        one axis was observable reports that axis honestly instead of being dragged toward
-        a failure by the four the interview never reached.
+        Kept under this name because it is published as ``score`` on the report item and read
+        by the console; only the arithmetic changed. Unscored axes are left out of both the
+        numerator and the divisor rather than counted as zero, so a criterion where only one
+        axis was observable reports that axis honestly instead of being dragged toward a
+        failure by the four the interview never reached.
         """
-        scored = [axis.score for axis in self.axis_assessments if axis.score is not None]
-        return round(sum(scored) / len(scored)) if scored else None
+        return self.axis_aggregate.score
 
     def __post_init__(self) -> None:
         if (
@@ -186,17 +221,36 @@ class Report:
         return tuple(item for item in self.items if item.average_score is not None)
 
     @property
-    def overall_score(self) -> int | None:
-        """Mean across the criteria that could be scored, or None when none could.
+    def criterion_aggregate(self) -> Aggregate:
+        """The report's score with its divisor and per-criterion arithmetic.
 
-        This is explicitly not a hiring score. It says nothing about the criteria the
-        interview never reached, which is why the reviewer UI shows it beside the
-        unscored count, and the constitution reserves the decision itself for a person.
+        Keyed by criterion id rather than name: two criteria may share a name, and the
+        calculator resolves the id back to the item a reviewer clicks through to.
         """
-        scored = [
-            item.average_score for item in self.scored_items if item.average_score is not None
-        ]
-        return round(sum(scored) / len(scored)) if scored else None
+        return aggregate(
+            [
+                Entry(
+                    key=str(item.criterion_id),
+                    score=item.average_score,
+                    weight=item.criterion_weight,
+                )
+                for item in self.items
+            ]
+        )
+
+    @property
+    def overall_score(self) -> int | None:
+        """Weighted mean across the criteria that could be scored, or None when none could.
+
+        Weighted by ``ReportItem.criterion_weight``, the share the company assigned each
+        criterion when the version was published. That is the whole point of the field: before
+        this, ``weight`` was stored, edited in the wizard, and read by nothing.
+
+        This is still explicitly not a hiring score. It says nothing about the criteria the
+        interview never reached -- which is why the reviewer UI shows it beside the unscored
+        count and the divisor -- and the constitution reserves the decision for a person.
+        """
+        return self.criterion_aggregate.score
 
     def __post_init__(self) -> None:
         if self.version < 1:

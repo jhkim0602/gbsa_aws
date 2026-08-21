@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from interview_evidence.company_management.application.deletion_targets import (
     CompanyDeletionReceipt,
@@ -81,6 +81,11 @@ class CriterionVersionSnapshot(BaseModel):
     prohibited_topics: tuple[str, ...]
     interview_duration_minutes: int
     interview_level: InterviewLevel
+    #: Per-axis weights the report aggregation applies, keyed by ``shared.assessment_axes``.
+    #: Empty means equal weight. Travels on the snapshot so Lane D never reads Lane A's
+    #: domain, and so the numbers a report freezes came from the published version rather
+    #: than from whatever the company has configured by the time the report is generated.
+    axis_weights: dict[str, float] = Field(default_factory=dict)
     persona_definition: dict[str, object]
     published_at: datetime
 
@@ -354,6 +359,7 @@ class CompanyManagementPublic:
             prohibited_topics=version.prohibited_topics,
             interview_duration_minutes=version.interview_duration_minutes,
             interview_level=version.interview_level,
+            axis_weights=dict(version.axis_weights),
             persona_definition=version.persona_definition,
             published_at=version.published_at,
         )

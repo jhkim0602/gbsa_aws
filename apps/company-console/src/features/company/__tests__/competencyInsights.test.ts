@@ -44,10 +44,24 @@ describe("configured competency weights", () => {
   it("uses the criterion version pinned to the invitation", () => {
     const [weighted] = applyConfiguredWeights([insight], [version]);
 
-    expect(weighted.overallScore).toBe(87);
     expect(weighted.criteria.map((criterion) => criterion.weight)).toEqual([
       65, 35,
     ]);
+  });
+
+  it("leaves the overall score to the server, which froze the weights it used", () => {
+    // This used to recompute the score here (65/35 over 90/82 gives 87). The report generator
+    // now does the weighting and stores the weights it used in `reports.scoring_inputs`, so
+    // recomputing in the browser would undo that freeze: a company adjusting its weights would
+    // change a number a reviewer already acted on.
+    //
+    // It would also disagree with the server whenever the join is partial. It matches on
+    // `code === criterionId` -- a code against a UUID, which never matches in production -- and
+    // falls through to `name === criterionName`, so a renamed criterion drops out and the
+    // browser would average over a subset while the report averaged over all of it.
+    const [weighted] = applyConfiguredWeights([insight], [version]);
+
+    expect(weighted.overallScore).toBe(insight.overallScore);
   });
 
   it("does not rewrite scores when the pinned version is unavailable", () => {

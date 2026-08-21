@@ -68,15 +68,20 @@ export function ReviewWorkspace({
     [timeline.entries],
   );
 
+  /**
+   * Record a reviewer overruling the AI's assessment, with the reason they gave.
+   *
+   * The reason used to be the fixed string "기업 검토자가 평가 상태를 수정함". The API had always
+   * accepted a real one, so every override in the audit trail said the same thing — which is the
+   * same as recording nothing. A reviewer disagreeing with a score is exactly the case where the
+   * next person needs to know why.
+   */
   function overrideAssessment(
     reportItemId: string,
     assessmentState: AssessmentState,
+    reason: string,
   ) {
-    void api.overrideAssessment(
-      reportItemId,
-      assessmentState,
-      "기업 검토자가 평가 상태를 수정함",
-    );
+    void api.overrideAssessment(reportItemId, assessmentState, reason);
   }
 
   return (

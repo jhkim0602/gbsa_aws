@@ -31,6 +31,51 @@ export const interviewLevelLabels: Record<
   },
 };
 
+/**
+ * The five axes every answer is scored on. Mirrors `shared/assessment_axes.py`, which is where
+ * the backend keeps them so Lane A can validate weights against the same set Lane D scores
+ * with.
+ *
+ * These are *채점축* — how an engineering answer is read. They are fixed: a company cannot add
+ * one, because each axis carries the guidance the scoring prompt is built from. What a company
+ * varies is *평가기준*, of which there is no limit, and the weight each axis carries here.
+ */
+export const assessmentAxisKeys = [
+  "correctness",
+  "depth",
+  "fundamentals",
+  "ownership",
+  "communication",
+] as const;
+
+export type AssessmentAxisKey = (typeof assessmentAxisKeys)[number];
+
+export const assessmentAxisLabels: Record<AssessmentAxisKey, string> = {
+  correctness: "정확성",
+  depth: "깊이",
+  fundamentals: "CS 기본기",
+  ownership: "본인 기여",
+  communication: "설명력",
+};
+
+/**
+ * Weight per axis, all five always present and totalling 100.
+ *
+ * Same rule as the criterion weights, so one slider means one share on both screens. The API
+ * accepts an omitted mapping as "equal weight" for versions published before weights existed,
+ * but refuses a partial one — no reading of the absent keys is anything but a silently wrong
+ * score. The wizard therefore always holds all five and always sends all five.
+ */
+export type AxisWeightDraft = Record<AssessmentAxisKey, number>;
+
+export const defaultAxisWeights: AxisWeightDraft = {
+  correctness: 20,
+  depth: 20,
+  fundamentals: 20,
+  ownership: 20,
+  communication: 20,
+};
+
 export type JobRequirementDraft = {
   id: string;
   requirementType: RequirementType;
@@ -83,6 +128,7 @@ export type CriteriaConfiguration = Readonly<{
   prohibitedTopics: string[];
   interviewDurationMinutes: number;
   interviewLevel: InterviewLevel;
+  axisWeights: AxisWeightDraft;
   personaDefinition: {
     name: string;
     tone: InterviewerTone;
@@ -135,6 +181,7 @@ export type HiringDraft = {
   prohibitedTopics: string;
   interviewDurationMinutes: number;
   interviewLevel: InterviewLevel;
+  axisWeights: AxisWeightDraft;
   interviewerName: string;
   interviewerTone: InterviewerTone;
   interviewerVoiceId: string;
@@ -227,6 +274,7 @@ export const initialHiringDraft: HiringDraft = {
   prohibitedTopics: "가족관계, 출신지역, 혼인·임신 여부, 외모",
   interviewDurationMinutes: 30,
   interviewLevel: "junior",
+  axisWeights: { ...defaultAxisWeights },
   interviewerName: "실무형 면접관",
   interviewerTone: "analytical",
   interviewerVoiceId: "Seoyeon",

@@ -24,6 +24,7 @@ function axis(overrides: Partial<AxisAssessment> = {}): AxisAssessment {
     score: 78,
     rationale: "재시도 폭주를 원인으로 정확히 짚었습니다.",
     quotedEvidenceIds: ["ev-1"],
+    weight: null,
     ...overrides,
   };
 }
@@ -53,6 +54,10 @@ function item(overrides: Partial<ReviewReportItem> = {}): ReviewReportItem {
     averageScore: 78,
     axisAssessments: [axis()],
     evidence: [evidence()],
+    // Equal weight, which is what a report generated before weights existed carries. The axis
+    // averages then reduce to the plain mean these tests were written against.
+    criterionWeight: 1,
+    axisBreakdown: null,
     ...overrides,
   };
 }
@@ -63,6 +68,7 @@ function report(overrides: Partial<ReviewReport> = {}): ReviewReport {
     status: "ready",
     overallScore: 78,
     unscoredCriteriaCount: 0,
+    scoringBreakdown: null,
     items: [item()],
     ...overrides,
   };
@@ -226,5 +232,114 @@ describe("report scoring", () => {
     expect(
       screen.getByRole("tab", { name: "기준별 평가", selected: true }),
     ).toBeTruthy();
+  });
+
+  it("renders the divisor, not only the score", () => {
+    // The whole reason the breakdown travels. "74" cannot say that a quarter of the interview
+    // is missing from it; "55.7 ÷ 0.75" can, and a reviewer can redo the arithmetic by hand.
+    renderReport(
+      report({
+        overallScore: 74,
+        unscoredCriteriaCount: 1,
+        scoringBreakdown: {
+          numerator: 55.7,
+          denominator: 0.75,
+          contributions: [
+            {
+              key: "criterion-1",
+              score: 85,
+              weight: 30,
+              normalizedWeight: 0.3,
+              contribution: 25.5,
+              criterionName: "시스템 설계",
+              assessmentState: "confirmed",
+              reason: null,
+            },
+          ],
+          exclusions: [],
+        },
+      }),
+    );
+
+    const sheet = screen.getByRole("tabpanel");
+    expect(sheet.textContent).toContain("합 55.7 ÷ 0.75");
+    expect(sheet.textContent).toContain("가중치 75%만 반영");
+    expect(screen.getByText("시스템 설계")).toBeTruthy();
+    expect(screen.getByText("30%")).toBeTruthy();
+    expect(screen.getByText("25.5")).toBeTruthy();
+  });
+
+  it("names every excluded criterion with the reason it was excluded", () => {
+    // Without the reason, "기준 D (25%)" tells a reviewer a quarter of the interview is missing
+    // from the number but not why, and the divisor appears from nowhere.
+    renderReport(
+      report({
+        overallScore: 80,
+        unscoredCriteriaCount: 1,
+        scoringBreakdown: {
+          numerator: 60,
+          denominator: 0.75,
+          contributions: [
+            {
+              key: "criterion-1",
+              score: 80,
+              weight: 75,
+              normalizedWeight: 0.75,
+              contribution: 60,
+              criterionName: "장애 대응 판단",
+              assessmentState: "confirmed",
+              reason: null,
+            },
+          ],
+          exclusions: [
+            {
+              key: "criterion-2",
+              weight: 25,
+              normalizedWeight: 0.25,
+              criterionName: "협업 경험",
+              assessmentState: "insufficient_evidence",
+              reason: "이 기준을 확인할 답변이 면접에서 나오지 않았음",
+            },
+          ],
+        },
+      }),
+    );
+
+    const sheet = screen.getByRole("tabpanel");
+    expect(sheet.textContent).toContain("점수에서 제외된 기준");
+    expect(sheet.textContent).toContain(
+      "협업 경험 — 이 기준을 확인할 답변이 면접에서 나오지 않았음",
+    );
+  });
+
+  it("shows no calculator at all on a report generated before the arithmetic was recorded", () => {
+    // An empty calculator reading "0 ÷ 0" would look like a finding. Saying nothing is accurate.
+    renderReport(report({ scoringBreakdown: null }));
+
+    expect(screen.queryByText("이 점수가 나온 계산")).toBeNull();
+    expect(screen.getByRole("tabpanel").textContent).toContain("기준 1개 평균");
+  });
+
+  it("weights the axis averages by criterion so they agree with the report score", () => {
+    // An unweighted axis average beside a weighted report score would leave a reviewer with two
+    // numbers and no way to tell which one the company's configuration produced.
+    renderReport(
+      report({
+        items: [
+          item({
+            criterionWeight: 90,
+            axisAssessments: [axis({ score: 90 })],
+          }),
+          item({
+            reportItemId: "item-2",
+            criterionWeight: 10,
+            axisAssessments: [axis({ score: 10 })],
+          }),
+        ],
+      }),
+    );
+
+    // 0.9*90 + 0.1*10 = 82. A plain mean would have printed 50.
+    expect(screen.getByText("82점")).toBeTruthy();
   });
 });

@@ -200,6 +200,11 @@ class CompetencyModelVersionRow(Base):
     prohibited_topics: Mapped[list[str]] = mapped_column(JSON)
     interview_duration_minutes: Mapped[int] = mapped_column(Integer)
     interview_level: Mapped[str] = mapped_column(String(20))
+    #: Per-axis weights, keyed by ``shared.assessment_axes``. JSON rather than five columns
+    #: because they are read and written as one unit with their version and never queried
+    #: across versions. The empty-object default is what every version published before
+    #: weights existed carries, and the domain reads it as equal weight.
+    axis_weights: Mapped[dict[str, float]] = mapped_column(JSON, server_default="{}")
     persona_definition: Mapped[dict[str, object]] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(30))
     row_version: Mapped[int] = mapped_column(Integer)
@@ -691,6 +696,7 @@ class SqlAlchemyCompanyRepository:
                 prohibited_topics=list(version.prohibited_topics),
                 interview_duration_minutes=version.interview_duration_minutes,
                 interview_level=version.interview_level.value,
+                axis_weights=dict(version.axis_weights),
                 persona_definition=version.persona_definition,
                 status=version.status.value,
                 row_version=version.row_version,
@@ -833,6 +839,9 @@ class SqlAlchemyCompanyRepository:
                 prohibited_topics=tuple(row.prohibited_topics),
                 interview_duration_minutes=row.interview_duration_minutes,
                 interview_level=InterviewLevel(row.interview_level),
+                # A legacy row can hold SQL NULL rather than `{}` if it predates the column
+                # default, and the domain reads an empty mapping as equal weight either way.
+                axis_weights=dict(row.axis_weights or {}),
                 persona_definition=row.persona_definition,
                 status=CompetencyModelStatus(row.status),
                 row_version=row.row_version,

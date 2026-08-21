@@ -25,6 +25,7 @@ from interview_evidence.reporting.application.timeline_service import (
 from interview_evidence.reporting.domain.deletion import DeletionManifest
 from interview_evidence.reporting.domain.report import Report
 from interview_evidence.reporting.domain.review import Decision, HumanReview, ReviewType
+from interview_evidence.reporting.domain.scoring import Aggregate
 from interview_evidence.reporting.repositories.postgres import (
     ReportingRepository,
     TenantScopedReportingNotFound,
@@ -87,6 +88,80 @@ def _review_view(review: HumanReview) -> dict[str, object]:
     }
 
 
+def _aggregate_view(aggregate: Aggregate) -> dict[str, object]:
+    """One level of the score's arithmetic, in the shape the calculator renders.
+
+    ``numerator`` and ``denominator`` travel even though the contributions imply them, because
+    the calculator shows ``55.7 ÷ 0.75 = 74`` and a client re-deriving those two numbers could
+    round them differently from the score sitting next to them.
+    """
+    return {
+        "numerator": aggregate.numerator,
+        "denominator": aggregate.denominator,
+        "contributions": [
+            {
+                "key": contribution.key,
+                "score": contribution.score,
+                "weight": contribution.weight,
+                "normalized_weight": contribution.normalized_weight,
+                "contribution": contribution.contribution,
+            }
+            for contribution in aggregate.contributions
+        ],
+        # Carries weight but no score. Without these the divisor appears from nowhere.
+        "exclusions": [
+            {
+                "key": exclusion.key,
+                "weight": exclusion.weight,
+                "normalized_weight": exclusion.normalized_weight,
+            }
+            for exclusion in aggregate.exclusions
+        ],
+    }
+
+
+def _scoring_breakdown_view(report: Report) -> dict[str, object]:
+    """The report score's arithmetic, with each excluded criterion's reason attached.
+
+    The reason is the point of joining these here: "기준 D (25%) — 제외" tells a reviewer a
+    quarter of the interview is missing from the number but not why, and the item already knows
+    (``uncertainty`` and ``assessment_state``).
+    """
+    reasons: dict[str, dict[str, object]] = {
+        str(item.criterion_id): {
+            "criterion_name": item.criterion_name,
+            "assessment_state": item.assessment_state.value,
+            "reason": item.uncertainty,
+        }
+        for item in report.items
+    }
+    aggregate = report.criterion_aggregate
+    return {
+        "numerator": aggregate.numerator,
+        "denominator": aggregate.denominator,
+        "contributions": [
+            {
+                "key": contribution.key,
+                "score": contribution.score,
+                "weight": contribution.weight,
+                "normalized_weight": contribution.normalized_weight,
+                "contribution": contribution.contribution,
+                **reasons.get(contribution.key, {}),
+            }
+            for contribution in aggregate.contributions
+        ],
+        "exclusions": [
+            {
+                "key": exclusion.key,
+                "weight": exclusion.weight,
+                "normalized_weight": exclusion.normalized_weight,
+                **reasons.get(exclusion.key, {}),
+            }
+            for exclusion in aggregate.exclusions
+        ],
+    }
+
+
 def _report_view(report: Report, reviews: tuple[HumanReview, ...]) -> dict[str, object]:
     return {
         "report_id": report.report_id,
@@ -98,6 +173,11 @@ def _report_view(report: Report, reviews: tuple[HumanReview, ...]) -> dict[str, 
         # Sent beside the score so a reviewer reading 82 also sees that three criteria
         # were never scored, instead of reading it as a verdict on the whole interview.
         "unscored_criteria_count": len(report.items) - len(report.scored_items),
+        # The arithmetic behind `overall_score`, so the console can render it rather than assert
+        # it. `denominator` is the part that cannot be inferred: 82 out of the whole interview
+        # and 82 out of the 70% of it that could be judged are different claims, and only the
+        # divisor distinguishes them.
+        "scoring_breakdown": _scoring_breakdown_view(report),
         "items": [
             {
                 "report_item_id": item.report_item_id,
@@ -109,6 +189,11 @@ def _report_view(report: Report, reviews: tuple[HumanReview, ...]) -> dict[str, 
                 "uncertainty": item.uncertainty,
                 "follow_up_question": item.follow_up_question,
                 "average_score": item.average_score,
+                # What this criterion counted for, and the same arithmetic one level down: the
+                # reviewer opening a criterion asks the same "why this number" question the
+                # report score already answers.
+                "criterion_weight": item.criterion_weight,
+                "axis_breakdown": _aggregate_view(item.axis_aggregate),
                 "axis_assessments": [
                     {
                         "axis": axis.axis,
@@ -116,6 +201,7 @@ def _report_view(report: Report, reviews: tuple[HumanReview, ...]) -> dict[str, 
                         "score": axis.score,
                         "rationale": axis.rationale,
                         "quoted_evidence_ids": list(axis.quoted_evidence_ids),
+                        "weight": item.axis_weights.get(axis.axis),
                     }
                     for axis in item.axis_assessments
                 ],

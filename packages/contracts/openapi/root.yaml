@@ -615,6 +615,54 @@ components:
       - junior
       - senior
       default: junior
+    AssessmentAxisWeights:
+      description: 'How much each of the five scoring axes counts toward a criterion''s
+        score.
+
+        Either omitted/empty, meaning equal weight, or naming every axis and totalling
+        100 --
+
+        the same rule the criterion weights follow, so one slider means one share on
+        both
+
+        screens. A partial mapping is refused: reading the absent keys as zero drops
+        those
+
+        axes out of the score and reading them as one adds incomparable scales, and
+        neither is
+
+        visible to the reviewer. A weight of zero is allowed and means the axis is
+        not looked
+
+        at for this position. Versions published before weights existed carry an empty
+        mapping,
+
+        which is how their reports were actually scored.
+
+        '
+      type: object
+      additionalProperties: false
+      properties:
+        correctness:
+          type: number
+          minimum: 0
+          maximum: 100
+        depth:
+          type: number
+          minimum: 0
+          maximum: 100
+        fundamentals:
+          type: number
+          minimum: 0
+          maximum: 100
+        ownership:
+          type: number
+          minimum: 0
+          maximum: 100
+        communication:
+          type: number
+          minimum: 0
+          maximum: 100
     CompetencyModelVersionCreate:
       type: object
       additionalProperties: false
@@ -647,6 +695,8 @@ components:
           maximum: 120
         interview_level:
           $ref: '#/components/schemas/InterviewLevel'
+        axis_weights:
+          $ref: '#/components/schemas/AssessmentAxisWeights'
         persona_definition:
           $ref: '#/components/schemas/InterviewerPersonaDefinition'
     CompetencyModelVersion:
@@ -695,6 +745,8 @@ components:
           maximum: 120
         interview_level:
           $ref: '#/components/schemas/InterviewLevel'
+        axis_weights:
+          $ref: '#/components/schemas/AssessmentAxisWeights'
         persona_definition:
           $ref: '#/components/schemas/InterviewerPersonaDefinition'
         status:
@@ -822,6 +874,43 @@ components:
           - string
           - 'null'
           format: uuid
+        overall_score:
+          description: 'The weighted report score, so a position''s applicant list
+            can rank on it.
+
+            Null until a report exists, and null when nothing in it could be scored
+            - never
+
+            zero, which would sort an applicant who could not be assessed below one
+            who
+
+            answered badly.
+
+            '
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          maximum: 100
+        scored_criteria_count:
+          description: 'How many of the position''s criteria the score covers. Read
+            beside the score,
+
+            because two applicants whose interviews reached different criteria do not
+            have
+
+            comparable numbers and a ranked column has to be able to say so.
+
+            '
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+        total_criteria_count:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
     InvitationPage:
       type: object
       additionalProperties: false
@@ -1690,6 +1779,137 @@ components:
           items:
             type: string
             format: uuid
+        weight:
+          description: 'What this axis counted for in the criterion score, frozen when
+            the
+
+            report was generated. Absent on reports scored before weights existed,
+            which
+
+            counted every axis equally.
+
+            '
+          type:
+          - number
+          - 'null'
+          minimum: 0
+    ScoreContribution:
+      description: 'One scored entry''s arithmetic, in the form the reviewer''s calculator
+        renders.
+
+        normalized_weight is the share of the whole configuration rather than of what
+        survived,
+
+        so the contributions add up to numerator and the shortfall against 1.0 is visible
+        as
+
+        denominator.
+
+        '
+      type: object
+      additionalProperties: false
+      required:
+      - key
+      - score
+      - weight
+      - normalized_weight
+      - contribution
+      properties:
+        key:
+          description: Criterion id at report level, axis key at criterion level.
+          type: string
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        weight:
+          type: number
+          minimum: 0
+        normalized_weight:
+          type: number
+          minimum: 0
+          maximum: 1
+        contribution:
+          description: normalized_weight x score.
+          type: number
+        criterion_name:
+          type: string
+        assessment_state:
+          $ref: '#/components/schemas/AssessmentState'
+        reason:
+          type: string
+    ScoreExclusion:
+      description: 'An entry that carried weight but could not be scored, so it is
+        absent from both
+
+        the numerator and the divisor. Reported rather than dropped: without it the
+        divisor
+
+        appears from nowhere, and a reviewer cannot see that a quarter of the interview
+        is
+
+        missing from the number.
+
+        '
+      type: object
+      additionalProperties: false
+      required:
+      - key
+      - weight
+      - normalized_weight
+      properties:
+        key:
+          type: string
+        weight:
+          type: number
+          minimum: 0
+        normalized_weight:
+          type: number
+          minimum: 0
+          maximum: 1
+        criterion_name:
+          type: string
+        assessment_state:
+          $ref: '#/components/schemas/AssessmentState'
+        reason:
+          description: Why this entry could not be scored, taken from the report item''s
+            uncertainty.
+          type: string
+    ScoreBreakdown:
+      description: 'The arithmetic behind a score, so the console renders it rather
+        than asserts it.
+
+        denominator is the part that cannot be inferred from the number alone: 82 out
+        of the
+
+        whole interview and 82 out of the 70% of it that could be judged are different
+        claims.
+
+        '
+      type: object
+      additionalProperties: false
+      required:
+      - numerator
+      - denominator
+      - contributions
+      - exclusions
+      properties:
+        numerator:
+          type: number
+        denominator:
+          description: Sum of the normalized weights that were actually scored. Below
+            1.0 whenever something was excluded.
+          type: number
+          minimum: 0
+          maximum: 1
+        contributions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScoreContribution'
+        exclusions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScoreExclusion'
     ReportItemView:
       type: object
       additionalProperties: false
@@ -1740,13 +1960,31 @@ components:
           items:
             $ref: '#/components/schemas/AxisAssessmentView'
         average_score:
-          description: Mean of this item's scored axes. Unscored axes are left out
-            rather than counted as zero.
+          description: 'Weighted mean of this item''s scored axes. Unscored axes are
+            left out of both
+
+            the numerator and the divisor rather than counted as zero.
+
+            '
           type:
           - integer
           - 'null'
           minimum: 0
           maximum: 100
+        criterion_weight:
+          description: 'What this criterion counted for in the report score, frozen
+            when the report
+
+            was generated. 1 on reports scored before weights existed, which counted
+            every
+
+            criterion equally.
+
+            '
+          type: number
+          minimum: 0
+        axis_breakdown:
+          $ref: '#/components/schemas/ScoreBreakdown'
     ReportView:
       type: object
       additionalProperties: false
@@ -1778,10 +2016,21 @@ components:
           items:
             $ref: '#/components/schemas/ReportItemView'
         overall_score:
-          description: Mean across the criteria that could be scored. Explicitly not
-            a hiring score - it says nothing about the criteria the interview never
-            reached, which is why the console shows it beside unscored_criteria_count
-            and the final decision stays with a person.
+          description: 'Weighted mean across the criteria that could be scored, using
+            the weights
+
+            the company published and the report froze. Explicitly not a hiring score
+            - it says
+
+            nothing about the criteria the interview never reached, which is why the
+            console shows
+
+            it beside unscored_criteria_count and scoring_breakdown.denominator, and
+            the final
+
+            decision stays with a person.
+
+            '
           type:
           - integer
           - 'null'
@@ -1792,6 +2041,8 @@ components:
             what overall_score does not cover.
           type: integer
           minimum: 0
+        scoring_breakdown:
+          $ref: '#/components/schemas/ScoreBreakdown'
         ai_original_immutable:
           type: boolean
           const: true

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
@@ -36,12 +37,21 @@ from interview_evidence.shared.tenant import TenantContext
 
 @dataclass(frozen=True, slots=True)
 class CriterionInput:
+    """One criterion to report on, with the answer that addressed it -- if there was one.
+
+    ``answer_turn_id`` and ``transcript`` are ``None`` when the interview never produced an
+    answer for this criterion. That is not an error and must not be dropped: the criterion still
+    carries ``weight``, so leaving it out of the report would shrink the divisor the score is
+    read against without saying so. It becomes an ``insufficient_evidence`` item instead, which
+    the report aggregate excludes with its weight visible.
+    """
+
     criterion_id: UUID
     observation: str
-    answer_turn_id: UUID
-    transcript: TranscriptSegment
-    video_start_ms: int
-    video_end_ms: int
+    answer_turn_id: UUID | None
+    transcript: TranscriptSegment | None
+    video_start_ms: int = 0
+    video_end_ms: int = 0
     criterion_name: str = ""
     #: What the criterion asks for, so the scorer judges the answer against the company's
     #: own wording rather than against a generic idea of a good answer.
@@ -49,6 +59,9 @@ class CriterionInput:
     #: The question the applicant was actually answering. Without it a terse answer reads
     #: as evasive when it may have been exactly what was asked for.
     question: str = ""
+    #: What this criterion counts for in the report score, from the published version. Defaults
+    #: to 1.0 so a caller that does not pass weights produces the plain mean this used to be.
+    weight: float = 1.0
 
 
 class ReportGenerator:
@@ -78,11 +91,32 @@ class ReportGenerator:
         occurred_at: datetime,
         interview_level: InterviewLevel = DEFAULT_INTERVIEW_LEVEL,
         model_config_version: str = "report-config-v1",
+        axis_weights: Mapping[str, float] | None = None,
     ) -> Report:
         report_id = new_uuid7(occurred_at)
         items: list[ReportItem] = []
         for criterion in criteria:
             report_item_id = new_uuid7(occurred_at)
+            state = AssessmentState.INSUFFICIENT_EVIDENCE
+            evidence: tuple[Evidence, ...] = ()
+            uncertainty = "유효한 영상·자막 Evidence가 부족함"
+            if criterion.answer_turn_id is None or criterion.transcript is None:
+                # The interview never reached this criterion. Reported rather than omitted:
+                # it carries weight, and a criterion missing from the report would shrink the
+                # divisor without appearing anywhere a reviewer could see it.
+                uncertainty = "이 기준을 확인할 답변이 면접에서 나오지 않았음"
+                items.append(
+                    self._unscored_item(
+                        criterion,
+                        report_id=report_id,
+                        report_item_id=report_item_id,
+                        company_id=context.company_id,
+                        competency_model_version_id=competency_model_version_id,
+                        uncertainty=uncertainty,
+                        axis_weights=axis_weights,
+                    )
+                )
+                continue
             candidate = Evidence(
                 evidence_id=new_uuid7(occurred_at),
                 company_id=context.company_id,
@@ -109,9 +143,7 @@ class ReportGenerator:
                     events=events,
                 )
             except (EvidenceRangeError, ValueError):
-                state = AssessmentState.INSUFFICIENT_EVIDENCE
-                evidence: tuple[Evidence, ...] = ()
-                uncertainty = "유효한 영상·자막 Evidence가 부족함"
+                pass
             else:
                 state = AssessmentState.CONFIRMED
                 evidence = (valid,)
@@ -152,6 +184,11 @@ class ReportGenerator:
                     axis_assessments=(
                         assessment.axis_assessments if assessment is not None else ()
                     ),
+                    # Snapshotted onto the item, not looked up when the score is read. The
+                    # version these came from can be superseded or deleted, and a reviewer must
+                    # still be able to see why the number is what it is.
+                    criterion_weight=criterion.weight,
+                    axis_weights=dict(axis_weights or {}),
                 )
             )
         report = Report(
@@ -173,6 +210,43 @@ class ReportGenerator:
         )
         return self._repository.save_report(context, report)
 
+    @staticmethod
+    def _unscored_item(
+        criterion: CriterionInput,
+        *,
+        report_id: UUID,
+        report_item_id: UUID,
+        company_id: UUID,
+        competency_model_version_id: UUID,
+        uncertainty: str,
+        axis_weights: Mapping[str, float] | None,
+    ) -> ReportItem:
+        """A criterion the interview never reached, reported with its weight intact.
+
+        No Evidence, so no axis scores and nothing for the model to read -- offering it an empty
+        payload would invite it to invent a judgement. What matters is that the item exists:
+        ``Report.criterion_aggregate`` then excludes it *and reports its weight*, so the divisor
+        the reviewer sees accounts for the part of the interview that did not happen.
+        """
+        return ReportItem(
+            report_item_id=report_item_id,
+            company_id=company_id,
+            report_id=report_id,
+            criterion_id=criterion.criterion_id,
+            criterion_name=criterion.criterion_name,
+            competency_model_version_id=competency_model_version_id,
+            assessment_state=AssessmentState.INSUFFICIENT_EVIDENCE,
+            observation=criterion.observation,
+            rationale="면접에서 이 기준을 확인할 답변이 나오지 않아 채점하지 않음",
+            sufficiency="insufficient",
+            uncertainty=uncertainty,
+            evidence=(),
+            follow_up_question=None,
+            axis_assessments=(),
+            criterion_weight=criterion.weight,
+            axis_weights=dict(axis_weights or {}),
+        )
+
     def _assess(
         self,
         context: TenantContext,
@@ -188,8 +262,12 @@ class ReportGenerator:
         missing or overlapped a technical failure cannot be played back, so a score citing
         it would be one the reviewer has no way to check.
         """
-        if self._assessor is None or not evidence:
+        # No transcript means no answer, and Evidence cannot exist without one -- but the type
+        # allows the combination, so it is refused here rather than dereferenced. A scorer given
+        # an empty answer would be invited to invent a judgement.
+        if self._assessor is None or not evidence or criterion.transcript is None:
             return None
+        transcript = criterion.transcript
         return self._assessor.assess(
             context,
             criterion_id=criterion.criterion_id,
@@ -199,7 +277,7 @@ class ReportGenerator:
                 AnswerForAssessment(
                     evidence_id=item.evidence_id,
                     question=criterion.question,
-                    answer_text=criterion.transcript.text,
+                    answer_text=transcript.text,
                     video_start_ms=item.video_start_ms,
                     video_end_ms=item.video_end_ms,
                 )

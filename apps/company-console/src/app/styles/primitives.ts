@@ -155,10 +155,15 @@ export const RECIPIENT_AVATAR =
   " bg-surface-muted text-[13px] font-bold text-ink-secondary mw-680:size-9";
 
 /**
- * `.invitation-table` — the roster table in `PositionInvitations` and the list in
- * `ApplicantManagement`. Below 680px it stops being a table and becomes a stack of cards:
- * the head is visually hidden, each row is a bordered box, and each cell prints its own
- * `data-label` through `::before`. Cells that carry their own label in the copy suppress it.
+ * `.invitation-table` — the roster table in `PositionInvitations`.
+ *
+ * It used to be shared with the list in `ApplicantManagement`, which is why the cell rules are
+ * indexed by column position rather than named. That screen no longer uses any of these, so the
+ * indices now describe one table and can change with it.
+ *
+ * Below 680px it stops being a table and becomes a stack of cards: the head is visually hidden,
+ * each row is a bordered box, and each cell prints its own `data-label` through `::before`.
+ * Cells that carry their own label in the copy suppress it.
  *
  * The `td`/`th` rules are declared twice (components.css then hiring.css); only the winning
  * half is reproduced. The cell rules are per-position, so they live on the `td`, not here.
@@ -197,17 +202,32 @@ export const INVITATION_TABLE_IDENTITY_TEXT = "grid min-w-0 gap-0.5";
 export const INVITATION_TABLE_NAME = "truncate text-[13px] mw-680:max-w-full";
 export const INVITATION_TABLE_EMAIL = "mt-0.5 text-[11px] text-muted";
 /**
- * `td:nth-child(N)` — how the card stacks below 680px. Both tables are five columns wide and
- * share the layout, so this is indexed by column rather than duplicated per table. Cells
- * whose copy already reads as its own label suppress the `data-label` prefix.
+ * `td:nth-child(N)` — how the card stacks below 680px, indexed by column.
+ *
+ * Six columns: 지원자 / 종합 점수 / 현재 상태 / 진행 단계 / 링크 만료 / 작업. The score sits second
+ * because a recruiter ranking a position scans it before anything else. Cells whose copy already
+ * reads as its own label suppress the `data-label` prefix; the score keeps its label, since
+ * "82점 · 3/4" on its own does not say what it counts.
  */
 export const INVITATION_TABLE_CELL_AT = [
   INVITATION_TABLE_IDENTITY,
+  `${INVITATION_TABLE_CELL} mw-680:justify-start`,
   `${INVITATION_TABLE_CELL} mw-680:justify-start mw-680:before:hidden`,
   `${INVITATION_TABLE_CELL} mw-680:col-[1/-1] mw-680:flex-col mw-680:items-stretch`,
   `${INVITATION_TABLE_CELL} mw-680:col-[1]`,
   `${INVITATION_TABLE_CELL} mw-680:col-[2] mw-680:justify-end mw-680:before:hidden`,
 ] as const;
+/** The score cell's two lines: the number, and the coverage it was taken over. */
+export const INVITATION_SCORE =
+  "grid gap-0.5 mw-680:grid mw-680:justify-items-end";
+export const INVITATION_SCORE_VALUE =
+  "font-mono text-[13px] font-bold text-ink";
+export const INVITATION_SCORE_UNSCORED = "font-mono text-[11px] text-subtle";
+export const INVITATION_SCORE_COVERAGE = "font-mono text-[9px] text-subtle";
+/** The sortable score header, which is a button so keyboard users can reach the sort. */
+export const INVITATION_SORT_BUTTON =
+  "inline-flex items-center gap-1 font-mono text-[11px] font-medium text-muted" +
+  " hover:text-brand aria-[sort]:text-brand";
 /** `.invitation-applicant-link` */
 export const INVITATION_APPLICANT_LINK =
   "hover:text-brand hover:underline hover:underline-offset-[3px]";

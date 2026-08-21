@@ -9,7 +9,13 @@ export {
 export { InvitationEmailEditor } from "./InvitationEmailEditor";
 export { InvitationEmailSettings } from "./InvitationEmailSettings";
 export { CriteriaStep } from "./steps/HiringSteps";
-export { initialHiringDraft, interviewLevelLabels } from "./types";
+export {
+  assessmentAxisKeys,
+  assessmentAxisLabels,
+  defaultAxisWeights,
+  initialHiringDraft,
+  interviewLevelLabels,
+} from "./types";
 export type {
   InvitationApplicant,
   InvitationStatus,
@@ -24,6 +30,8 @@ export type {
 } from "./invitationEmailTemplate";
 export type {
   CriteriaConfiguration,
+  AssessmentAxisKey,
+  AxisWeightDraft,
   HiringDraft,
   HiringWorkspaceApi,
   InterviewLevel,

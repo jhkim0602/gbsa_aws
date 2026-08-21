@@ -14,6 +14,13 @@ class CompanyReviewProjection:
     report_id: UUID | None
     report_status: str
     human_decision_status: str | None
+    #: The weighted score and how much of the configuration it covers, so Lane A's invitation
+    #: list can rank on it without reading Lane D's domain. The counts travel with the score
+    #: because a ranked column of numbers taken over different subsets of the criteria is a
+    #: comparison that does not hold, and the screen has to be able to say so.
+    overall_score: int | None = None
+    scored_criteria_count: int = 0
+    total_criteria_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +56,9 @@ class ReportingCompanyBoundary:
             report_id=projection.report_id,
             report_status=projection.report_status,
             human_decision_status=projection.human_decision_status,
+            overall_score=projection.overall_score,
+            scored_criteria_count=projection.scored_criteria_count,
+            total_criteria_count=projection.total_criteria_count,
         )
 
     def get_deletion_progress(

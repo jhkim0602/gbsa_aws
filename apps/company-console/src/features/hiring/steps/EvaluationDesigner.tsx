@@ -3,8 +3,12 @@ import { Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { ICON_BUTTON } from "../../../app/styles/primitives";
 import type { FormVariant } from "../components/FormPrimitives";
 import {
+  assessmentAxisKeys,
+  assessmentAxisLabels,
   createCriterionDraft,
   createRequirementDraft,
+  type AssessmentAxisKey,
+  type AxisWeightDraft,
   type CriterionDraft,
   type HiringDraft,
   type HiringDraftUpdater,
@@ -55,6 +59,16 @@ const WEIGHT_RANGE =
 const WEIGHT_INPUT =
   "h-9 w-full rounded-md border border-border bg-white px-2 text-right font-mono" +
   " text-[11px] text-ink outline-none focus:border-brand";
+
+// The scoring axes are their own block rather than a row inside a criterion: they apply to
+// every criterion at once, so putting them beside one would read as belonging to it.
+const AXIS_BLOCK = "grid gap-5 border-t border-border pt-7";
+const AXIS_LIST = "grid gap-1";
+// Fixed label column so five sliders line up and none of them shifts while one is dragged.
+const AXIS_ROW =
+  "grid grid-cols-[92px_minmax(0,1fr)_58px] items-center gap-4" +
+  " border-b border-border-muted py-1.5 last:border-b-0 mw-620:grid-cols-[76px_minmax(0,1fr)_52px]";
+const AXIS_LABEL = "text-[11px] text-ink";
 
 const ADD_BUTTON =
   "inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-md border" +
@@ -173,7 +187,7 @@ export function EvaluationDesigner({
           </h3>
           <p className={DESCRIPTION}>
             필수·우대 자격요건을 입력하고 면접 결과에 반영할 가중치를
-            설정하세요. 입력한 자격요건은 내부 평가축으로 자동 사용됩니다.
+            설정하세요. 입력한 자격요건은 내부 평가기준으로 자동 사용됩니다.
           </p>
         </div>
         <strong className={TOTAL}>
@@ -294,8 +308,127 @@ export function EvaluationDesigner({
         <Plus aria-hidden="true" size={15} />
         자격요건 추가
       </button>
+
+      <ScoringAxisWeights
+        weights={draft.axisWeights}
+        onChange={(weights) => update("axisWeights", weights)}
+      />
     </section>
   );
+}
+
+/**
+ * The five axes every answer is scored on, and how much each counts here.
+ *
+ * Separate from the criteria above, and deliberately not editable per criterion: the axes
+ * describe how an engineering answer is *read*, and what this company values is already
+ * expressed by which 평가기준 exist and what they weigh against each other. A recruiter cannot
+ * add or remove an axis, because each one carries the guidance the scoring prompt is built
+ * from — see `shared/assessment_axes.py`.
+ *
+ * Weights are percentages totalling 100, on the same rule as the criteria, and dragging one
+ * redistributes the rest so the number on the slider is always the share it carries.
+ */
+function ScoringAxisWeights({
+  weights,
+  onChange,
+}: {
+  weights: AxisWeightDraft;
+  onChange: (weights: AxisWeightDraft) => void;
+}) {
+  const total = assessmentAxisKeys.reduce((sum, key) => sum + weights[key], 0);
+
+  function setWeight(key: AssessmentAxisKey, requested: number) {
+    onChange(rebalanceAxisWeights(weights, key, requested));
+  }
+
+  return (
+    <section className={AXIS_BLOCK} aria-labelledby="scoring-axis-title">
+      <header className={HEADER}>
+        <div className="min-w-0">
+          <span className={EYEBROW}>채점축</span>
+          <h3 className={TITLE} id="scoring-axis-title">
+            답변을 읽는 다섯 가지 축
+          </h3>
+          <p className={DESCRIPTION}>
+            위 평가기준은 모두 아래 다섯 축으로 채점됩니다. 축은 추가·삭제할 수
+            없고, 이 포지션에서 어느 축을 더 볼지 비중만 조절합니다. 0으로 두면
+            그 축은 보지 않습니다.
+          </p>
+        </div>
+        <strong className={TOTAL}>
+          <span className="text-[9px] font-semibold">비중 합계</span>
+          <span className="font-mono text-[15px]">{total}</span>
+        </strong>
+      </header>
+
+      <div className={AXIS_LIST}>
+        {assessmentAxisKeys.map((key) => (
+          <div className={AXIS_ROW} key={key}>
+            <span className={AXIS_LABEL}>{assessmentAxisLabels[key]}</span>
+            <input
+              aria-label={`${assessmentAxisLabels[key]} 비중`}
+              className={WEIGHT_RANGE}
+              max={100}
+              min={0}
+              step={5}
+              type="range"
+              value={weights[key]}
+              onChange={(event) => setWeight(key, Number(event.target.value))}
+            />
+            <input
+              aria-label={`${assessmentAxisLabels[key]} 비중 직접 입력`}
+              className={WEIGHT_INPUT}
+              max={100}
+              min={0}
+              type="number"
+              value={weights[key]}
+              onChange={(event) => setWeight(key, Number(event.target.value))}
+            />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Set one axis to the requested share and spread the remainder over the other four.
+ *
+ * Mirrors `rebalanceWeights` for the criteria: the untouched axes keep their ratios to each
+ * other and are only scaled, so nudging 깊이 up does not flatten a weighting the recruiter
+ * already shaped. The total stays 100, which is what the domain requires
+ * (`axis_weights_name_every_scoring_axis`).
+ */
+function rebalanceAxisWeights(
+  weights: AxisWeightDraft,
+  changed: AssessmentAxisKey,
+  requested: number,
+): AxisWeightDraft {
+  const changedWeight = Math.round(Math.min(100, Math.max(0, requested || 0)));
+  const others = assessmentAxisKeys.filter((key) => key !== changed);
+  const currentTotal = others.reduce(
+    (sum, key) => sum + Math.max(0, weights[key]),
+    0,
+  );
+  const remaining = 100 - changedWeight;
+  const shares = others.map((key) =>
+    currentTotal > 0
+      ? Math.max(0, weights[key]) / currentTotal
+      : 1 / others.length,
+  );
+  const distributed = shares.map((share) => Math.floor(share * remaining));
+  let leftover = remaining - distributed.reduce((sum, value) => sum + value, 0);
+  for (let index = 0; leftover > 0; index = (index + 1) % distributed.length) {
+    distributed[index] += 1;
+    leftover -= 1;
+  }
+
+  const next = { ...weights, [changed]: changedWeight } as AxisWeightDraft;
+  others.forEach((key, index) => {
+    next[key] = distributed[index];
+  });
+  return next;
 }
 
 function RequirementKind({
