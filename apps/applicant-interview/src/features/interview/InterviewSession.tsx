@@ -508,7 +508,7 @@ export function InterviewSession({
     <>
       {automationMode ? (
         <p
-          className="fixed top-3 left-1/2 z-200 -translate-x-1/2 rounded-full bg-[#243019] px-4 py-2 text-[11px] font-semibold text-white shadow-lg"
+          className="fixed top-3 left-1/2 z-200 -translate-x-1/2 rounded-full bg-brand-strong px-4 py-2 text-[11px] font-semibold text-white shadow-lg"
           role="status"
         >
           {automationStatus || "자동 면접을 준비하고 있습니다."}

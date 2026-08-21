@@ -25,7 +25,7 @@ import type { ConnectionState, InterviewState } from "./sessionStore";
 // `interview-shell` is gone: both rules naming it are gated on `:not(.interview-room)`, which
 // this element always matches away, so it never applied here.
 const SHELL =
-  "interview-room min-h-screen w-full max-w-none bg-[#f7f9fc] px-4 py-5" +
+  "interview-room min-h-screen w-full max-w-none bg-canvas px-4 py-5" +
   " text-slate-950 sm:px-6 lg:px-10 lg:py-8";
 
 const CANDIDATE_PANEL =
@@ -54,7 +54,7 @@ const HEADER_PILL =
 // `absolute`, and Tailwind emits `.relative` after `.absolute`, so sharing one would pin both
 // to `relative` and unstick the PiP overlay.
 const AVATAR_FRAME =
-  "overflow-hidden rounded-lg border-2 border-[#9fc76d] bg-slate-200";
+  "overflow-hidden rounded-lg border-2 border-brand/45 bg-brand-soft";
 
 const QUESTION_OVERLAY =
   "pointer-events-none absolute bottom-5 left-1/2 z-20" +
@@ -63,7 +63,7 @@ const QUESTION_OVERLAY =
 
 const NOTICE = "rounded-lg border px-4 py-3 text-sm";
 const NOTICE_AMBER = "border-amber-200 bg-amber-50 text-amber-900";
-const NOTICE_BLUE = "border-blue-200 bg-blue-50 text-blue-800";
+const NOTICE_BLUE = "border-brand/25 bg-brand-soft text-brand-strong";
 
 const FOOTER_ACTION =
   "inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200" +
@@ -242,7 +242,7 @@ export function InterviewRoom({
       <div className="mx-auto flex min-h-[calc(100vh-40px)] max-w-[1720px] flex-col gap-5 lg:min-h-[calc(100vh-64px)]">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2.5">
-            <span className="inline-flex h-10 items-center rounded-full bg-[#8fbc58] px-5 text-sm font-bold text-white shadow-sm">
+            <span className="inline-flex h-10 items-center rounded-full bg-brand px-5 text-sm font-bold text-white shadow-sm">
               LIVE INTERVIEW
             </span>
             <span className="inline-flex min-h-10 items-center rounded-full border border-slate-200 bg-white px-4 text-sm font-medium text-slate-500">
@@ -255,9 +255,7 @@ export function InterviewRoom({
             >
               <span
                 className={`h-2.5 w-2.5 rounded-full ${
-                  connectionState === "connected"
-                    ? "bg-[#8fbc58]"
-                    : "bg-amber-500"
+                  connectionState === "connected" ? "bg-brand" : "bg-amber-500"
                 }`}
                 aria-hidden="true"
               />
@@ -266,7 +264,7 @@ export function InterviewRoom({
             <span
               className={`${HEADER_PILL} font-mono text-sm font-bold text-slate-800`}
             >
-              <Clock3 className="size-4 text-[#82ad4e]" aria-hidden="true" />
+              <Clock3 className="size-4 text-brand" aria-hidden="true" />
               {formatElapsedTime(elapsedSeconds)}
             </span>
           </div>
@@ -308,7 +306,7 @@ export function InterviewRoom({
               />
               <div className={STAGE_LABEL} title={levelInfo.description}>
                 <span
-                  className="h-2 w-2 rounded-full bg-[#8fbc58]"
+                  className="h-2 w-2 rounded-full bg-brand"
                   aria-hidden="true"
                 />
                 {levelInfo.shortLabel} 면접관
@@ -348,7 +346,7 @@ export function InterviewRoom({
             aria-labelledby="current-question"
           >
             <h1 id="current-question" className="text-sm leading-6">
-              <span className="mr-2 font-bold text-[#79a943]">
+              <span className="mr-2 font-bold text-brand-strong">
                 {levelInfo.shortLabel}
               </span>
               <span className="font-semibold text-slate-900">{question}</span>
@@ -420,7 +418,7 @@ export function InterviewRoom({
             ) : null}
             <button
               type="button"
-              className="grid size-11 place-items-center rounded-lg bg-[#8fbc58] text-white shadow-sm transition hover:bg-[#7da94a]"
+              className="grid size-11 place-items-center rounded-lg bg-brand text-white shadow-sm transition hover:bg-brand-strong"
               aria-label="자막 보기"
               title="자막 보기"
               aria-pressed={captionsVisible}

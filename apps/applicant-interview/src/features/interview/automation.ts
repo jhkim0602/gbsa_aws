@@ -30,15 +30,15 @@ export async function createAutomatedMedia(
   let frame = 0;
   const draw = () => {
     frame += 1;
-    context.fillStyle = "#eef4e7";
+    context.fillStyle = "#f2f3ff";
     context.fillRect(0, 0, canvas.width, canvas.height);
-    context.fillStyle = "#547735";
+    context.fillStyle = "#4653bd";
     context.font = "bold 26px sans-serif";
     context.fillText("LOCAL AUTOMATED INTERVIEW", 42, 82);
-    context.fillStyle = "#243019";
+    context.fillStyle = "#1a1f36";
     context.font = "18px sans-serif";
     wrapText(context, label, 42, 132, 550, 30);
-    context.fillStyle = "#82ad4e";
+    context.fillStyle = "#5966ce";
     context.beginPath();
     context.arc(52 + (frame % 520), 316, 8, 0, Math.PI * 2);
     context.fill();
