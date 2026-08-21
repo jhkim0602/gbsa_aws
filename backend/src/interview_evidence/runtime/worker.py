@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from functools import partial
 from typing import Protocol, cast
 from uuid import UUID
 
@@ -77,9 +78,17 @@ class WorkerRuntime:
     def run_once(self) -> int:
         if self.database is None:
             return self._run_without_transaction()
+        completed = self._run_in_transaction(self.dispatcher.dispatch_once)
+        for consumer in self.consumers:
+            completed += self._run_in_transaction(partial(consumer.consume_once, max_messages=1))
+        return completed
+
+    def _run_in_transaction(self, operation: Callable[[], int]) -> int:
+        if self.database is None:
+            return operation()
         token = self.database.begin_scope()
         try:
-            completed = self._run_without_transaction()
+            completed = operation()
             self.database.session.commit()
             return completed
         except BaseException:

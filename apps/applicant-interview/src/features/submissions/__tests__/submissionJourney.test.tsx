@@ -205,6 +205,37 @@ describe("SubmissionWorkspace", () => {
     ).toBeTruthy();
   });
 
+  it("shows when completed materials are waiting for the interview strategy", async () => {
+    const api: SubmissionWorkspaceApi = {
+      uploadDocument: vi.fn(),
+      registerRepository: vi.fn(),
+      getReadiness: vi.fn().mockResolvedValue({
+        overallStatus: "ready",
+        interviewReady: false,
+        materialStatuses: { resume: "ready" },
+      }),
+      getWorkspace: vi.fn(),
+    };
+
+    render(
+      <SubmissionWorkspace
+        api={api}
+        requirements={[{ id: "resume", required: true, enabled: true }]}
+        submittedMaterials={[{ materialId: "resume", status: "ready" }]}
+      />,
+    );
+
+    expect(
+      await screen.findByText(
+        "자료 분석은 완료됐습니다. 면접 질문과 꼬리질문 전략을 생성하고 있습니다.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("면접 전략 생성 중")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "환경 점검으로 이동" }),
+    ).toBeNull();
+  });
+
   it("shows local analysis output in the developer panel", async () => {
     const getAnalysisDebug = vi.fn().mockResolvedValue({
       analyses: [

@@ -9,7 +9,13 @@ import {
   RefreshCw,
   X,
 } from "lucide-react";
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 export type AnalysisReadiness = {
   overallStatus: "waiting" | "analyzing" | "ready" | "partial" | "failed";
@@ -116,6 +122,7 @@ type ConfiguredMaterial = MaterialDefinition &
 
 const MAX_PROJECT_URLS = 3;
 const READINESS_POLL_INTERVAL_MS = 2_000;
+const STRATEGY_POLL_INTERVAL_MS = 500;
 
 const MATERIAL_DEFINITIONS: Record<SubmissionMaterialId, MaterialDefinition> = {
   resume: {
@@ -775,27 +782,49 @@ export function SubmissionWorkspace({
   const [readiness, setReadiness] = useState<AnalysisReadiness | null>(null);
   const [debugResult, setDebugResult] = useState<unknown>(null);
   const [debugState, setDebugState] = useState<RequestState>("idle");
+  const readinessRequestVersionRef = useRef(0);
 
   const refreshReadiness = useCallback(async () => {
+    const requestVersion = ++readinessRequestVersionRef.current;
     try {
-      setReadiness(await api.getReadiness());
+      const nextReadiness = await api.getReadiness();
+      if (requestVersion === readinessRequestVersionRef.current) {
+        setReadiness(nextReadiness);
+      }
     } catch {
-      setReadiness(null);
+      if (requestVersion === readinessRequestVersionRef.current) {
+        setReadiness(null);
+      }
     }
   }, [api]);
+  const strategyPreparing =
+    readiness?.interviewReady === false &&
+    (readiness.overallStatus === "ready" ||
+      readiness.overallStatus === "partial");
   const readinessSettled =
     readiness?.interviewReady === true || readiness?.overallStatus === "failed";
+  const readinessPollInterval = strategyPreparing
+    ? STRATEGY_POLL_INTERVAL_MS
+    : READINESS_POLL_INTERVAL_MS;
   const debugEnabled =
     import.meta.env.DEV && api.getAnalysisDebug !== undefined;
 
   useEffect(() => {
     if (readinessSettled) return;
-    void refreshReadiness();
-    const intervalId = window.setInterval(() => {
-      void refreshReadiness();
-    }, READINESS_POLL_INTERVAL_MS);
-    return () => window.clearInterval(intervalId);
-  }, [readinessSettled, refreshReadiness]);
+    let cancelled = false;
+    let timeoutId: number | undefined;
+    const poll = async () => {
+      await refreshReadiness();
+      if (!cancelled) {
+        timeoutId = window.setTimeout(poll, readinessPollInterval);
+      }
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    };
+  }, [readinessPollInterval, readinessSettled, refreshReadiness]);
 
   const activeMaterial =
     configuredMaterials.find((material) => material.id === selectedMaterial) ??
@@ -1179,7 +1208,9 @@ export function SubmissionWorkspace({
               ? "필수 자료 분석이 완료되었습니다. 환경 점검을 진행할 수 있습니다."
               : remainingRequiredCount > 0
                 ? `필수 자료 ${remainingRequiredCount}개를 더 제출해 주세요.`
-                : "제출된 자료의 분석 결과를 확인하고 있습니다."}
+                : strategyPreparing
+                  ? "자료 분석은 완료됐습니다. 면접 질문과 꼬리질문 전략을 생성하고 있습니다."
+                  : "제출된 자료를 분석하고 있습니다. 완료되면 자동으로 다음 단계가 표시됩니다."}
           </p>
         </div>
         {canContinue ? (
@@ -1193,6 +1224,14 @@ export function SubmissionWorkspace({
             환경 점검으로 이동
             <ArrowRight aria-hidden="true" size={16} />
           </button>
+        ) : remainingRequiredCount === 0 ? (
+          <div
+            className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-md border border-border bg-surface-muted px-4 text-xs font-semibold text-muted"
+            role="status"
+          >
+            <RefreshCw aria-hidden="true" className="animate-spin" size={15} />
+            {strategyPreparing ? "면접 전략 생성 중" : "자료 분석 중"}
+          </div>
         ) : null}
       </section>
 
