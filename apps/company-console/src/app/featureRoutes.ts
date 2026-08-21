@@ -1,6 +1,7 @@
 import type { RouteObject } from "react-router-dom";
 
 import {
+  AiRecruitingAssistantRoute,
   ApplicantDetailRoute,
   ApplicantManagementRoute,
   CompanyAuthCallbackRoute,
@@ -30,6 +31,7 @@ export const companyRouteObjects: RouteObject[] = [
         Component: PositionOperationsRoute,
       },
       { path: "/applicants", Component: ApplicantManagementRoute },
+      { path: "/ai-assistant", Component: AiRecruitingAssistantRoute },
       {
         path: "/positions/:positionId/applicants/:invitationId",
         Component: ApplicantDetailRoute,

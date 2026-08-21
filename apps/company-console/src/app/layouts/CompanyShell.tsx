@@ -9,6 +9,7 @@ import {
   Menu,
   PanelLeftClose,
   Settings2,
+  Sparkles,
   UserRound,
   Users,
   X,
@@ -22,6 +23,7 @@ const navigation = [
   { label: "대시보드", to: "/company", icon: LayoutDashboard },
   { label: "채용 포지션", to: "/positions", icon: BriefcaseBusiness },
   { label: "지원자 관리", to: "/applicants", icon: Users },
+  { label: "AI 어시스턴트", to: "/ai-assistant", icon: Sparkles },
   { label: "채용 관리", to: "/hiring", icon: FilePlus2 },
 ] as const;
 
@@ -34,6 +36,7 @@ const pageTitles = [
   { path: "/positions/", title: "포지션 운영" },
   { path: "/positions", title: "채용 포지션" },
   { path: "/applicants", title: "지원자 관리" },
+  { path: "/ai-assistant", title: "AI 채용 어시스턴트" },
   { path: "/hiring", title: "채용 관리" },
   { path: "/review", title: "지원자 검토" },
   { path: "/settings/invitation-email", title: "초대 메일 템플릿" },

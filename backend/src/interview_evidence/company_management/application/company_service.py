@@ -147,6 +147,16 @@ class InvitationStateSnapshot(BaseModel):
     row_version: int
 
 
+class RecruitingAssistantSubjectSnapshot(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    company_id: UUID
+    position_id: UUID
+    position_title: str
+    applicant_id: UUID
+    applicant_display_name: str
+
+
 class CompanyService:
     def __init__(
         self,
@@ -333,6 +343,21 @@ class CompanyManagementPublic:
             prohibited_topics=criterion.prohibited_topics,
             interview_duration_minutes=criterion.interview_duration_minutes,
             persona_definition=criterion.persona_definition,
+        )
+
+    def get_recruiting_assistant_subject(
+        self,
+        context: TenantContext,
+        invitation_id: UUID,
+    ) -> RecruitingAssistantSubjectSnapshot:
+        invitation = self._repository.get_invitation(context, invitation_id)
+        position = self._repository.get_position(context, invitation.position_id)
+        return RecruitingAssistantSubjectSnapshot(
+            company_id=context.company_id,
+            position_id=position.position_id,
+            position_title=position.title,
+            applicant_id=invitation.applicant_id,
+            applicant_display_name=invitation.applicant_display_name,
         )
 
     def get_criterion_version(

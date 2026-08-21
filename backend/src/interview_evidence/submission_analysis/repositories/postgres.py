@@ -90,6 +90,14 @@ class Base(DeclarativeBase):
 
 class SubmissionRow(Base):
     __tablename__ = "submissions"
+    __table_args__ = (
+        Index(
+            "ix_submissions_invitation_material",
+            "company_id",
+            "invitation_id",
+            "material_type",
+        ),
+    )
 
     company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     submission_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)

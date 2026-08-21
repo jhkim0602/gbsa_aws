@@ -20,6 +20,7 @@ tags:
 - name: Submission
 - name: Interview
 - name: Reporting
+- name: Assistant
 - name: Privacy
 paths:
   /me:
@@ -86,6 +87,12 @@ paths:
     $ref: ./paths/reporting/paths.yaml#/~1interview-sessions~1{session_id}~1review-artifacts
   /invitations/{invitation_id}/final-decisions:
     $ref: ./paths/reporting/paths.yaml#/~1invitations~1{invitation_id}~1final-decisions
+  /assistant/search:
+    $ref: ./paths/assistant/paths.yaml#/~1assistant~1search
+  /assistant/answers:
+    $ref: ./paths/assistant/paths.yaml#/~1assistant~1answers
+  /assistant/answers/stream:
+    $ref: ./paths/assistant/paths.yaml#/~1assistant~1answers~1stream
   /privacy/deletion-requests:
     $ref: ./paths/reporting/paths.yaml#/~1privacy~1deletion-requests
   /privacy/deletion-requests/{deletion_request_id}:
@@ -187,6 +194,141 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
   schemas:
+    AssistantSearchRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - scope
+      - query
+      properties:
+        scope:
+          type: string
+          enum:
+          - company
+          - position
+        position_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        query:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 8
+    AssistantSearchSource:
+      type: object
+      additionalProperties: false
+      required:
+      - source_id
+      - position_id
+      - applicant_id
+      - invitation_id
+      - report_id
+      - report_item_id
+      - criterion_id
+      - document_type
+      - excerpt
+      - score
+      - score_components
+      - metadata
+      properties:
+        source_id:
+          type: string
+          format: uuid
+        position_id:
+          type: string
+          format: uuid
+        applicant_id:
+          type: string
+          format: uuid
+        invitation_id:
+          type: string
+          format: uuid
+        report_id:
+          type: string
+          format: uuid
+        report_item_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        criterion_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        document_type:
+          type: string
+        excerpt:
+          type: string
+        score:
+          type: number
+          minimum: 0
+          maximum: 1
+        score_components:
+          type: object
+          additionalProperties:
+            type: number
+        metadata:
+          type: object
+          additionalProperties: true
+    AssistantSearchResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - scope
+      - position_id
+      - sources
+      properties:
+        scope:
+          type: string
+          enum:
+          - company
+          - position
+        position_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssistantSearchSource'
+    AssistantAnswerResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - scope
+      - position_id
+      - answer
+      - sources
+      - degraded_mode
+      properties:
+        scope:
+          type: string
+          enum:
+          - company
+          - position
+        position_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        answer:
+          type: string
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssistantSearchSource'
+        degraded_mode:
+          type:
+          - string
+          - 'null'
     ErrorEnvelope:
       type: object
       additionalProperties: false
@@ -2312,6 +2454,7 @@ components:
           - dynamodb
           - s3
           - opensearch
+          - retrieval
         target_type:
           type: string
         status:

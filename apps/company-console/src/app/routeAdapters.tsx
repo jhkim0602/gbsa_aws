@@ -13,6 +13,7 @@ import {
   completeCompanyLogin,
   getCompanyAccessToken,
 } from "../features/company/cognitoAuth";
+import { AiRecruitingAssistant } from "../features/assistant";
 import {
   ApplicantDetail,
   ApplicantManagement,
@@ -840,6 +841,13 @@ export function ApplicantManagementRoute() {
     return <Navigate replace to="/auth/login" />;
   }
   return <ApplicantManagement api={recruitingOperationsApi} />;
+}
+
+export function AiRecruitingAssistantRoute() {
+  if (AUTH_CONFIG && !getCompanyAccessToken(localStorage)) {
+    return <Navigate replace to="/auth/login" />;
+  }
+  return <AiRecruitingAssistant api={recruitingOperationsApi} />;
 }
 
 export function ApplicantDetailRoute() {

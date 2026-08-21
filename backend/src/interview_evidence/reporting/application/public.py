@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from interview_evidence.recruiting_assistant.repository import AssistantDocumentRepository
 from interview_evidence.reporting.application.deletion_service import (
     DeletionService,
     DeletionTargetSpec,
@@ -49,9 +50,11 @@ class ReportingPublic:
         *,
         repository: ReportingRepository,
         deletion_service: DeletionService,
+        assistant_documents: AssistantDocumentRepository | None = None,
     ) -> None:
         self._repository = repository
         self._deletion_service = deletion_service
+        self._assistant_documents = assistant_documents
 
     def get_review_projection(
         self,
@@ -146,6 +149,19 @@ class ReportingPublic:
                 )
             ],
         ]
+        if self._assistant_documents is not None:
+            targets.extend(
+                DeletionTargetSpec(
+                    owner_lane="D",
+                    store="retrieval",
+                    target_type="assistant_retrieval_document",
+                    resource_id=str(document_id),
+                )
+                for document_id in self._assistant_documents.list_document_ids_for_invitation(
+                    context,
+                    invitation_id,
+                )
+            )
         for asset in self._repository.list_recording_assets(
             context,
             report.interview_session_id,
@@ -213,6 +229,20 @@ class ReportingPublic:
         *,
         target: DeletionTargetSpec,
     ) -> ReportingDeletionReceipt:
+        if (
+            target.target_type == "assistant_retrieval_document"
+            and self._assistant_documents is not None
+        ):
+            verified_absent = self._assistant_documents.delete_and_verify(
+                context,
+                UUID(target.resource_id),
+            )
+            return ReportingDeletionReceipt(
+                store=target.store,
+                target_type=target.target_type,
+                resource_id=target.resource_id,
+                verified_absent=verified_absent,
+            )
         delete_and_verify = getattr(self._repository, "delete_and_verify_target", None)
         if delete_and_verify is None:
             raise RuntimeError("reporting deletion adapter is not configured")

@@ -16,6 +16,7 @@ from interview_evidence.integration.interview_reporting import (
     InterviewReportingBoundary,
 )
 from interview_evidence.interview_engine.application.public import InterviewEnginePublic
+from interview_evidence.recruiting_assistant.application import ReportSearchProjector
 from interview_evidence.reporting.api import LaneDRuntime
 from interview_evidence.reporting.application.assessment_service import CriterionAssessor
 from interview_evidence.reporting.application.deletion_service import DeletionService
@@ -199,23 +200,38 @@ class ReportRequestedEventHandler:
         reporting: LaneDRuntime,
         generator: ReportGenerator,
         clock: Clock,
+        assistant_projector: ReportSearchProjector | None = None,
     ) -> None:
         self._company = company
         self._interview = interview
         self._reporting = reporting
         self._generator = generator
         self._clock = clock
+        self._assistant_projector = assistant_projector
 
     def __call__(self, context: TenantContext, event: OutboxEvent) -> object:
         session_id = UUID(str(event.payload["interview_session_id"]))
-        existing = self._reporting.repository.get_report_for_session(context, session_id)
-        if existing is not None:
-            return existing
         snapshot = self._interview.get_session_snapshot(context, session_id=session_id)
         criterion = self._company.get_criterion_version(
             context,
             snapshot.competency_model_version_id,
         )
+        subject = self._company.get_recruiting_assistant_subject(
+            context,
+            snapshot.invitation_id,
+        )
+        existing = self._reporting.repository.get_report_for_session(context, session_id)
+        if existing is not None:
+            if self._assistant_projector is not None:
+                self._assistant_projector.project(
+                    context,
+                    position_id=subject.position_id,
+                    position_title=subject.position_title,
+                    applicant_id=subject.applicant_id,
+                    applicant_display_name=subject.applicant_display_name,
+                    report=existing,
+                )
+            return existing
         final_turns = self._interview.list_final_turns(context, session_id=session_id)
         turns = tuple(turn for turn in final_turns if turn.speaker.value == "applicant")
         questions = _questions_by_answer(final_turns)
@@ -272,7 +288,7 @@ class ReportRequestedEventHandler:
             for criterion_item in criterion.criteria
             for turn in (paired.get(criterion_item.criterion_id),)
         )
-        return self._generator.generate(
+        report = self._generator.generate(
             context,
             session_id=session_id,
             invitation_id=snapshot.invitation_id,
@@ -284,6 +300,16 @@ class ReportRequestedEventHandler:
             interview_level=criterion.interview_level,
             axis_weights=criterion.axis_weights,
         )
+        if self._assistant_projector is not None:
+            self._assistant_projector.project(
+                context,
+                position_id=subject.position_id,
+                position_title=subject.position_title,
+                applicant_id=subject.applicant_id,
+                applicant_display_name=subject.applicant_display_name,
+                report=report,
+            )
+        return report
 
 
 class _TurnLike(Protocol):
@@ -413,6 +439,7 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
     company = runtime.boundaries["company_management"]
     interview = runtime.boundaries["interview_engine"]
     reporting_boundary = runtime.boundaries["interview_reporting"]
+    assistant_projector = runtime.resources["assistant_projector"]
     lane_d = runtime.lanes["reporting"]
     if not isinstance(lane_b, LaneBRuntime):
         raise TypeError("production analysis runtime is invalid")
@@ -424,6 +451,8 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
         raise TypeError("production reporting projection is invalid")
     if not isinstance(lane_d, LaneDRuntime):
         raise TypeError("production reporting runtime is invalid")
+    if not isinstance(assistant_projector, ReportSearchProjector):
+        raise TypeError("production assistant projector is invalid")
     deletion_service = lane_d.deletion_service
     document_extractor = create_document_extractor(
         environment,
@@ -484,6 +513,7 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
                     CriterionAssessor(aws.model),
                 ),
                 clock=clock,
+                assistant_projector=assistant_projector,
             ),
             "deletion.requested": DeletionRequestedEventHandler(
                 deletion_service,

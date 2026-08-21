@@ -727,6 +727,11 @@ def create_company_router(
             )
         except TenantScopedResourceNotFound as error:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(error),
+            ) from error
         audit.append(
             scope.context,
             action="invitation.batch_created",

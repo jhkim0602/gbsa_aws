@@ -1,0 +1,69 @@
+/assistant/search:
+  post:
+    operationId: searchRecruitingAssistantSources
+    x-owner-lane: D
+    tags:
+    - Assistant
+    security:
+    - CompanyBearer: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/AssistantSearchRequest
+    responses:
+      '200':
+        description: Company- or position-scoped final-report search results
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/AssistantSearchResponse
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/assistant/answers:
+  post:
+    operationId: answerRecruitingAssistantQuestion
+    x-owner-lane: D
+    tags:
+    - Assistant
+    security:
+    - CompanyBearer: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/AssistantSearchRequest
+    responses:
+      '200':
+        description: Grounded answer with validated final-report sources
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/AssistantAnswerResponse
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
+/assistant/answers/stream:
+  post:
+    operationId: streamRecruitingAssistantAnswer
+    x-owner-lane: D
+    tags:
+    - Assistant
+    security:
+    - CompanyBearer: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/AssistantSearchRequest
+    responses:
+      '200':
+        description: Server-sent answer deltas followed by validated sources
+        content:
+          text/event-stream:
+            schema:
+              type: string
+      default:
+        $ref: ../../root.yaml#/components/responses/Error

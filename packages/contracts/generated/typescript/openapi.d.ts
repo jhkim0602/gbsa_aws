@@ -4,6 +4,54 @@
  */
 
 export interface paths {
+    readonly "/assistant/answers": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["answerRecruitingAssistantQuestion"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/assistant/answers/stream": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["streamRecruitingAssistantAnswer"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/assistant/search": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["searchRecruitingAssistantSources"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/applicant/access/exchange": {
         readonly parameters: {
             readonly query?: never;
@@ -504,6 +552,55 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        readonly AssistantAnswerResponse: {
+            readonly answer: string;
+            readonly degraded_mode: string | null;
+            /** Format: uuid */
+            readonly position_id: string | null;
+            /** @enum {string} */
+            readonly scope: "company" | "position";
+            readonly sources: readonly components["schemas"]["AssistantSearchSource"][];
+        };
+        readonly AssistantSearchRequest: {
+            readonly limit?: number;
+            /** Format: uuid */
+            readonly position_id?: string | null;
+            readonly query: string;
+            /** @enum {string} */
+            readonly scope: "company" | "position";
+        };
+        readonly AssistantSearchResponse: {
+            /** Format: uuid */
+            readonly position_id: string | null;
+            /** @enum {string} */
+            readonly scope: "company" | "position";
+            readonly sources: readonly components["schemas"]["AssistantSearchSource"][];
+        };
+        readonly AssistantSearchSource: {
+            /** Format: uuid */
+            readonly applicant_id: string;
+            /** Format: uuid */
+            readonly criterion_id: string | null;
+            readonly document_type: string;
+            readonly excerpt: string;
+            /** Format: uuid */
+            readonly invitation_id: string;
+            readonly metadata: {
+                readonly [key: string]: unknown;
+            };
+            /** Format: uuid */
+            readonly position_id: string;
+            /** Format: uuid */
+            readonly report_id: string;
+            /** Format: uuid */
+            readonly report_item_id: string | null;
+            readonly score: number;
+            readonly score_components: {
+                readonly [key: string]: number;
+            };
+            /** Format: uuid */
+            readonly source_id: string;
+        };
         readonly AnalysisReadiness: {
             readonly impact_summary?: string | null;
             readonly interview_ready: boolean;
@@ -675,7 +772,7 @@ export interface components {
             /** @enum {string} */
             readonly status: "pending" | "deleting" | "retrying" | "failed" | "verified_absent";
             /** @enum {string} */
-            readonly store: "aurora" | "dynamodb" | "s3" | "opensearch";
+            readonly store: "aurora" | "dynamodb" | "s3" | "opensearch" | "retrieval";
             /** Format: uuid */
             readonly target_id: string;
             readonly target_type: string;
@@ -1184,6 +1281,81 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    readonly answerRecruitingAssistantQuestion: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AssistantSearchRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Grounded answer with validated final-report sources */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AssistantAnswerResponse"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly searchRecruitingAssistantSources: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AssistantSearchRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Company- or position-scoped final-report search results */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AssistantSearchResponse"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly streamRecruitingAssistantAnswer: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AssistantSearchRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Server-sent answer deltas followed by validated sources */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "text/event-stream": string;
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
     readonly exchangeApplicantInvitationToken: {
         readonly parameters: {
             readonly query?: never;

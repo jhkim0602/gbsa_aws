@@ -498,7 +498,10 @@ def create_company_router(
                 scope_type=body.scope_type,
                 scope_id=body.scope_id,
                 reason=body.reason,
-                policy_snapshot={"retention_days": 180},
+                policy_snapshot={
+                    "source": "manual_request",
+                    "scope_type": body.scope_type,
+                },
                 occurred_at=clock.now(),
             )
         except LookupError as error:

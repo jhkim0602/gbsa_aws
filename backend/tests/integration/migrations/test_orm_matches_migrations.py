@@ -18,6 +18,7 @@ from interview_evidence.interview_engine.application.idempotency import (
     InterviewCommandResultRow,
 )
 from interview_evidence.interview_engine.repositories.postgres import Base as InterviewBase
+from interview_evidence.recruiting_assistant.repository import Base as AssistantBase
 from interview_evidence.reporting.repositories.postgres import Base as ReportingBase
 from interview_evidence.shared.persistence import Base as SharedBase
 from interview_evidence.submission_analysis.repositories.postgres import Base as SubmissionBase
@@ -25,7 +26,14 @@ from sqlalchemy import create_engine, inspect
 from sqlalchemy.engine import Inspector
 
 ROOT = Path(__file__).resolve().parents[4]
-LANE_BASES = (CompanyBase, SubmissionBase, InterviewBase, ReportingBase, SharedBase)
+LANE_BASES = (
+    CompanyBase,
+    SubmissionBase,
+    InterviewBase,
+    ReportingBase,
+    AssistantBase,
+    SharedBase,
+)
 
 # Imported for its side effect of registering the table on the interview engine Base.
 assert InterviewCommandResultRow.__tablename__ == "interview_command_results"

@@ -162,6 +162,19 @@ class Position(BaseModel):
             update={"status": PositionStatus.ACTIVE, "row_version": self.row_version + 1}
         )
 
+    def accepts_new_applications_on(self, current_date: date) -> bool:
+        if self.status is not PositionStatus.ACTIVE:
+            return False
+        if self.recruitment_start_at is not None and current_date < self.recruitment_start_at:
+            return False
+        return self.recruitment_end_at is None or current_date <= self.recruitment_end_at
+
+    def is_archived_on(self, current_date: date) -> bool:
+        return self.status is PositionStatus.CLOSED or (
+            self.recruitment_end_at is not None
+            and current_date > self.recruitment_end_at
+        )
+
     def revise(
         self,
         *,
