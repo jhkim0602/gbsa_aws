@@ -45,20 +45,23 @@ const pageTitles = [
  * after `mw-760:`, so the print rules win at every width without extra specificity.
  */
 const SHELL =
-  "grid min-h-screen grid-cols-[224px_minmax(0,1fr)] bg-canvas mw-760:block" +
-  " print:block print:bg-transparent";
+  "grid min-h-screen bg-canvas transition-[grid-template-columns] duration-[160ms]" +
+  " mw-760:block print:block print:bg-transparent";
+const SHELL_EXPANDED = `${SHELL} grid-cols-[224px_minmax(0,1fr)]`;
+const SHELL_COLLAPSED = `${SHELL} grid-cols-[0_minmax(0,1fr)]`;
 const SKIP_LINK =
   "fixed top-2 left-2 z-200 -translate-y-[160%] rounded-md bg-brand-strong" +
   " px-[11px] py-[7px] text-surface focus-visible:translate-y-0 print:hidden";
 
 const SIDEBAR =
   "fixed inset-[0_auto_0_0] z-40 flex h-screen w-56 flex-col border-r" +
-  " border-r-border bg-surface mw-760:top-0 mw-760:h-screen" +
-  " mw-760:w-[min(292px,88vw)] mw-760:shadow-float mw-760:transition-transform" +
-  " mw-760:duration-[160ms] print:hidden";
-// `.is-open` only flips the translation, so the two states differ by that one utility.
-const SIDEBAR_CLOSED = `${SIDEBAR} mw-760:-translate-x-[105%]`;
-const SIDEBAR_OPEN = `${SIDEBAR} mw-760:translate-x-0`;
+  " border-r-border bg-surface transition-transform duration-[160ms]" +
+  " mw-760:top-0 mw-760:h-screen mw-760:w-[min(292px,88vw)] mw-760:shadow-float" +
+  " print:hidden";
+const SIDEBAR_DESKTOP_OPEN = "translate-x-0";
+const SIDEBAR_DESKTOP_CLOSED = "invisible -translate-x-[105%]";
+const SIDEBAR_MOBILE_OPEN = "mw-760:translate-x-0";
+const SIDEBAR_MOBILE_CLOSED = "mw-760:-translate-x-[105%]";
 /*
  * `.company-sidebar__close { display: none }` and its 760px `display: inline-flex` are both
  * outranked in the bundle: hiring.css's `.icon-button { display: inline-grid }` is declared
@@ -133,22 +136,29 @@ const MAIN = "min-w-0 min-h-[calc(100vh-58px)] print:min-h-0";
 export function CompanyShell() {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const pageTitle =
     pageTitles.find((item) => location.pathname.startsWith(item.path))?.title ??
     "기업 콘솔";
   const applicantAppUrl =
     import.meta.env.VITE_APPLICANT_APP_URL ?? "http://localhost:5174/access";
+  const sidebarClassName = [
+    SIDEBAR,
+    sidebarCollapsed ? SIDEBAR_DESKTOP_CLOSED : SIDEBAR_DESKTOP_OPEN,
+    mobileMenuOpen ? SIDEBAR_MOBILE_OPEN : SIDEBAR_MOBILE_CLOSED,
+  ].join(" ");
 
   return (
-    <div className={SHELL}>
+    <div className={sidebarCollapsed ? SHELL_COLLAPSED : SHELL_EXPANDED}>
       <a className={SKIP_LINK} href="#company-main">
         본문으로 이동
       </a>
 
       <aside
-        className={mobileMenuOpen ? SIDEBAR_OPEN : SIDEBAR_CLOSED}
         aria-label="기업 콘솔 주 탐색"
+        aria-hidden={sidebarCollapsed || undefined}
+        className={sidebarClassName}
       >
         <div className={BRAND_ROW}>
           <NavLink className={BRAND} to="/company">
@@ -164,7 +174,10 @@ export function CompanyShell() {
             className={SIDEBAR_CLOSE}
             type="button"
             aria-label="탐색 닫기"
-            onClick={() => setMobileMenuOpen(false)}
+            onClick={() => {
+              setMobileMenuOpen(false);
+              setSidebarCollapsed(true);
+            }}
           >
             <PanelLeftClose size={18} aria-hidden="true" />
           </button>
@@ -296,7 +309,10 @@ export function CompanyShell() {
             className={TOPBAR_MENU}
             type="button"
             aria-label="탐색 열기"
-            onClick={() => setMobileMenuOpen(true)}
+            onClick={() => {
+              setMobileMenuOpen(true);
+              setSidebarCollapsed(false);
+            }}
           >
             <Menu size={19} aria-hidden="true" />
           </button>
