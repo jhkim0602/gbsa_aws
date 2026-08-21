@@ -22,6 +22,7 @@ class RetrievedSourceContext(BaseModel):
     locator: dict[str, object]
     excerpt: str
     score: float
+    material_type: str | None = None
 
 
 class BuiltInterviewContext(BaseModel):
@@ -31,6 +32,8 @@ class BuiltInterviewContext(BaseModel):
     older_summary: str
     remaining_criterion_ids: tuple[UUID, ...]
     remaining_time_seconds: int = Field(ge=0)
+    interview_stage: str = ""
+    interview_stage_focus: str = ""
     retrieved_source_ids: tuple[UUID, ...]
     retrieved_sources: tuple[RetrievedSourceContext, ...] = ()
     criterion_text: str = ""
@@ -54,6 +57,8 @@ class BuiltInterviewContext(BaseModel):
                 str(criterion_id) for criterion_id in self.remaining_criterion_ids
             ],
             "remaining_time_seconds": self.remaining_time_seconds,
+            "interview_stage": self.interview_stage,
+            "interview_stage_focus": self.interview_stage_focus,
             "retrieved_source_ids": [str(source_id) for source_id in self.retrieved_source_ids],
             "criterion_text": self.criterion_text,
             "verification_objective": self.verification_objective,
@@ -66,6 +71,7 @@ class BuiltInterviewContext(BaseModel):
                     "locator": source.locator,
                     "excerpt": source.excerpt,
                     "score": source.score,
+                    "material_type": source.material_type,
                 }
                 for source in self.retrieved_sources
             ],
@@ -90,6 +96,8 @@ class ContextBuilder:
         remaining_criterion_ids: tuple[UUID, ...],
         remaining_time_seconds: int,
         retrieved_source_ids: tuple[UUID, ...],
+        interview_stage: str = "",
+        interview_stage_focus: str = "",
         retrieved_sources: tuple[RetrievedSourceContext, ...] = (),
         criterion_text: str = "",
         verification_objective: str = "",
@@ -100,6 +108,8 @@ class ContextBuilder:
             (
                 older_summary,
                 str(remaining_time_seconds),
+                interview_stage,
+                interview_stage_focus,
                 *(str(value) for value in remaining_criterion_ids),
                 *(str(value) for value in retrieved_source_ids),
                 criterion_text,
@@ -129,6 +139,8 @@ class ContextBuilder:
             older_summary=older_summary,
             remaining_criterion_ids=remaining_criterion_ids,
             remaining_time_seconds=remaining_time_seconds,
+            interview_stage=interview_stage,
+            interview_stage_focus=interview_stage_focus,
             retrieved_source_ids=retrieved_source_ids,
             retrieved_sources=retrieved_sources,
             criterion_text=criterion_text,

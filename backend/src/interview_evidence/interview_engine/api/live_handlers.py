@@ -538,6 +538,7 @@ class LiveInterviewHandler:
             voice_id=plan.voice_id,
             occurred_at=self._clock.now(),
             interview_level=plan.interview_level,
+            interview_stage=plan.initial_stage,
             answered_target=answered_target,
             question_target=question_target,
             existing_progress=existing_progress,

@@ -22,6 +22,11 @@ DEFAULT_INTERVIEW_STAGES = (
     InterviewStage.PROJECT_DEEP_DIVE,
     InterviewStage.BEHAVIORAL,
 )
+INTERVIEW_STAGE_FOCUS = {
+    InterviewStage.TECHNICAL: "기술 선택, 구현 원리, 문제 해결 과정과 트레이드오프",
+    InterviewStage.PROJECT_DEEP_DIVE: "프로젝트 목표, 본인 역할, 설계와 구현, 결과와 회고",
+    InterviewStage.BEHAVIORAL: "협업, 갈등 조정, 의사소통, 피드백과 책임",
+}
 DEFAULT_OPENING_MESSAGE = "안녕하세요. 오늘은 기술, 프로젝트, 협업 경험을 중심으로 진행하겠습니다."
 DEFAULT_WARM_UP_QUESTION = (
     "먼저 간단한 자기소개와 지원 직무와 관련해 가장 자신 있는 경험을 말씀해 주세요?"
@@ -101,6 +106,10 @@ class InterviewPlan:
 
     def initial_target(self) -> VerificationTargetPlan | None:
         return self.verification_targets[0] if self.verification_targets else None
+
+    @property
+    def initial_stage(self) -> InterviewStage:
+        return self.stages[0]
 
     def target(self, target_id: UUID) -> VerificationTargetPlan:
         for target in self.verification_targets:

@@ -70,8 +70,7 @@ class PostgresHybridSearchIndex:
             self._session.scalar(
                 select(RetrievalDocumentRow.retrieval_document_id).where(
                     RetrievalDocumentRow.company_id == company_id,
-                    RetrievalDocumentRow.retrieval_document_id
-                    == _document_uuid(document_id),
+                    RetrievalDocumentRow.retrieval_document_id == _document_uuid(document_id),
                     RetrievalDocumentRow.content_hash == content_hash,
                     RetrievalDocumentRow.embedding_model == embedding_model,
                     RetrievalDocumentRow.embedding_version == embedding_version,
@@ -297,6 +296,7 @@ class PostgresHybridSearchIndex:
             embedding_version=row.embedding_version,
             path=row.path,
             symbol=row.symbol,
+            material_type=_optional_string(row.metadata_json.get("material_type")),
         )
 
 

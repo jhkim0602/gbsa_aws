@@ -18,6 +18,8 @@ from interview_evidence.interview_engine.application.context_builder import (
 )
 from interview_evidence.interview_engine.application.idempotency import IdempotencyStore
 from interview_evidence.interview_engine.application.interview_plan import (
+    INTERVIEW_STAGE_FOCUS,
+    InterviewStage,
     VerificationTargetPlan,
 )
 from interview_evidence.interview_engine.application.question_generator import (
@@ -110,6 +112,7 @@ class InterviewService:
         voice_id: str,
         occurred_at: datetime,
         interview_level: InterviewLevel = DEFAULT_INTERVIEW_LEVEL,
+        interview_stage: InterviewStage = InterviewStage.TECHNICAL,
         answered_target: VerificationTargetPlan | None = None,
         question_target: VerificationTargetPlan | None = None,
         existing_progress: VerificationProgress | None = None,
@@ -127,6 +130,7 @@ class InterviewService:
                 "target_criterion_id": str(target_criterion_id),
                 "model_config_version": model_config_version,
                 "retrieval_config_version": retrieval_config_version,
+                "interview_stage": interview_stage.value,
             },
             execute=lambda: self._run_pipeline(
                 context,
@@ -149,6 +153,7 @@ class InterviewService:
                 voice_id=voice_id,
                 occurred_at=occurred_at,
                 interview_level=interview_level,
+                interview_stage=interview_stage,
                 answered_target=answered_target,
                 question_target=question_target,
                 existing_progress=existing_progress,
@@ -179,6 +184,7 @@ class InterviewService:
         voice_id: str,
         occurred_at: datetime,
         interview_level: InterviewLevel,
+        interview_stage: InterviewStage,
         answered_target: VerificationTargetPlan | None,
         question_target: VerificationTargetPlan | None,
         existing_progress: VerificationProgress | None,
@@ -213,10 +219,15 @@ class InterviewService:
             invitation_id=session.invitation_id,
             competency_model_version_id=session.competency_model_version_id,
             session_id=session_id,
-            query=answer_text,
+            query=_retrieval_query(
+                answer_text=answer_text,
+                interview_stage=interview_stage,
+                question_target=question_target,
+            ),
             query_vector=query_vector,
             criterion_id=target_criterion_id,
             config_version=retrieval_config_version,
+            interview_stage=interview_stage,
         )
         turns = self._repository.list_final_turns(context, session_id)
         built_context = self._context_builder.build(
@@ -231,6 +242,8 @@ class InterviewService:
             older_summary="",
             remaining_criterion_ids=remaining_criterion_ids,
             remaining_time_seconds=remaining_time_seconds,
+            interview_stage=interview_stage.value,
+            interview_stage_focus=INTERVIEW_STAGE_FOCUS[interview_stage],
             retrieved_source_ids=tuple(hit.source_id for hit in retrieval.hits),
             retrieved_sources=tuple(
                 RetrievedSourceContext(
@@ -239,6 +252,7 @@ class InterviewService:
                     locator=hit.locator,
                     excerpt=hit.excerpt,
                     score=hit.score,
+                    material_type=hit.material_type,
                 )
                 for hit in retrieval.hits
             ),
@@ -552,3 +566,25 @@ class InterviewService:
                 updated_at=occurred_at,
             ),
         )
+
+
+def _retrieval_query(
+    *,
+    answer_text: str,
+    interview_stage: InterviewStage,
+    question_target: VerificationTargetPlan | None,
+) -> str:
+    target_parts = (
+        (question_target.objective, *question_target.missing_dimensions)
+        if question_target is not None
+        else ()
+    )
+    return " ".join(
+        part.strip()
+        for part in (
+            INTERVIEW_STAGE_FOCUS[interview_stage],
+            *target_parts,
+            answer_text,
+        )
+        if part.strip()
+    )

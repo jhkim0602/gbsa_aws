@@ -29,6 +29,7 @@ class BoundaryRetrievalRecord:
     ownership_confidence: float
     excerpt: str
     source_type: str
+    material_type: str | None
 
 
 class SubmissionInterviewBoundary:
@@ -115,6 +116,7 @@ class SubmissionInterviewBoundary:
                 ownership_confidence=result.ownership_confidence,
                 excerpt=result.excerpt,
                 source_type=result.source_type,
+                material_type=result.material_type,
             )
             for result in results
         )
@@ -220,7 +222,7 @@ class SubmissionInterviewBoundary:
             fallback_question=fallback_question,
             remaining_time_seconds=criteria.interview_duration_minutes * 60,
             model_config_version=strategy.model_config_version,
-            retrieval_config_version="aurora-hybrid-v1",
+            retrieval_config_version="stage-aware-hybrid-v1",
             voice_id=str(persona.get("voice_id", "Seoyeon")),
             verification_targets=verification_targets,
             interview_level=criteria.interview_level,

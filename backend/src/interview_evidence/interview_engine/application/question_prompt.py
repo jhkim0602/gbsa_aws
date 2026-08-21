@@ -62,6 +62,7 @@ _SYSTEM_PROMPT: Final = """\
 6. recent_turns에 이미 나온 질문을 다시 묻지 않습니다.
 7. 개인 신상, 가족, 종교, 정치, 출신 지역 등 직무와 무관한 주제는 묻지 않습니다.
 8. 질문에 실제로 활용한 발췌문의 source_id만 source_reference_ids에 담습니다.
+9. interview_stage와 interview_stage_focus를 따라 현재 단계의 목적에 맞는 질문을 만듭니다.
 
 질문 깊이:
 {depth_guidance}

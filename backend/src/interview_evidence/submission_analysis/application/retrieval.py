@@ -23,6 +23,7 @@ class RetrievalResult:
     locator: dict[str, object]
     excerpt: str
     source_type: str
+    material_type: str | None
     ownership_confidence: float
     score_components: dict[str, float]
 
@@ -76,6 +77,7 @@ class HybridRetriever:
                 locator=candidate.document.locator,
                 excerpt=candidate.document.text[:2000],
                 source_type=candidate.document.source_type,
+                material_type=candidate.document.material_type,
                 ownership_confidence=candidate.document.ownership_confidence,
                 score_components={
                     "vector": candidate.vector_score,

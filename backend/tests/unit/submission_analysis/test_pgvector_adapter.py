@@ -62,6 +62,7 @@ def test_postgres_hybrid_adapter_filters_scope_and_returns_source_excerpt() -> N
                     invitation_id=INVITATION_ID,
                     competency_model_version_id=VERSION_ID,
                     criterion_id=CRITERION_ID,
+                    material_type="resume",
                     embedding_model="amazon.titan-embed-text-v2:0",
                     embedding_version="titan-v2",
                 )
@@ -81,6 +82,7 @@ def test_postgres_hybrid_adapter_filters_scope_and_returns_source_excerpt() -> N
     assert len(candidates) == 1
     assert candidates[0].document.company_id == COMPANY_ID
     assert candidates[0].document.text == "ECS 배포 자동화 경험"
+    assert candidates[0].document.material_type == "resume"
     assert candidates[0].exact_symbol_score == 1.0
 
 
