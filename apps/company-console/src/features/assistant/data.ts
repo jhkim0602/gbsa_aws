@@ -109,16 +109,8 @@ export function toRagAnswer({
       insightByInvitationId,
     }),
   );
-  const reportCount = positionRows.reduce(
-    (count, position) => count + position.reportCount,
-    0,
-  );
-  const answer =
-    response.degradedMode === "no_sources"
-      ? noSourcesAnswer(scopeLabel, reportCount)
-      : response.answer;
   return {
-    paragraphs: splitParagraphs(answer),
+    paragraphs: splitParagraphs(response.answer),
     findings: citations
       .filter((citation) => citation.sourceType === "평가 기준 리포트")
       .slice(0, 3)
@@ -128,20 +120,6 @@ export function toRagAnswer({
     positionRows,
     ...(response.degradedMode ? { degradedMode: response.degradedMode } : {}),
   };
-}
-
-function noSourcesAnswer(scopeLabel: string, reportCount: number) {
-  if (!reportCount) {
-    return (
-      `${scopeLabel}에 검색 가능한 최종 리포트가 없습니다.\n\n` +
-      "면접과 리포트 생성이 완료된 뒤 새 채팅에서 다시 질문해 주세요."
-    );
-  }
-  return (
-    `${scopeLabel}에 최종 리포트 ${reportCount}건은 있지만 ` +
-    "AI 검색 인덱스에 아직 반영되지 않았습니다.\n\n" +
-    "잠시 후 새 채팅에서 다시 질문하거나 관리자에게 인덱싱 상태를 확인해 주세요."
-  );
 }
 
 export function toStreamingRagAnswer(

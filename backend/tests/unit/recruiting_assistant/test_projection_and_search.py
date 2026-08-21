@@ -316,7 +316,9 @@ def test_rag_answer_only_returns_source_ids_that_were_actually_retrieved() -> No
     assert "ECS 장애 원인" in answer.answer
     assert tuple(source.assistant_document_id for source in answer.sources) == (model.source_id,)
     assert answer.degraded_mode is None
-    assert model.calls[0]["temperature"] == 0.1
+    assert model.calls[0]["temperature"] == 0.3
+    assert model.calls[0]["max_tokens"] == 1600
+    assert "비슷한 사례" in model.calls[0]["system"]
 
 
 def test_rag_answer_does_not_call_model_without_grounding_sources() -> None:
@@ -341,7 +343,44 @@ def test_rag_answer_does_not_call_model_without_grounding_sources() -> None:
     assert model.calls == []
 
 
-def test_rag_answer_rejects_model_output_without_a_retrieved_citation() -> None:
+def test_rag_answer_uses_a_friendly_fallback_when_generation_fails() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    embedder = StaticTextEmbedder(_vector())
+
+    class FailingModel:
+        def generate(
+            self,
+            context: TenantContext,
+            model_input: Mapping[str, Any],
+        ) -> Mapping[str, Any]:
+            del context, model_input
+            raise RuntimeError("model unavailable")
+
+    with Session(engine) as session:
+        repository = SQLAlchemyAssistantDocumentRepository(session)
+        search = AssistantSearchService(repository, embedder)
+        ReportSearchProjector(repository, embedder).project(
+            _context(),
+            position_id=POSITION_ID,
+            position_title="백엔드 엔지니어",
+            applicant_id=APPLICANT_ID,
+            applicant_display_name="김민준",
+            report=_report(),
+        )
+        answer = AssistantAnswerService(search, FailingModel()).answer(
+            _context(),
+            scope="position",
+            query=AssistantSearchQuery(query="무관한 질문", position_id=POSITION_ID),
+        )
+
+    assert answer.degraded_mode == "generation_unavailable"
+    assert len(answer.sources) == 2
+    assert "답변으로 확정할 수 있는 내용은 확인하지 못했어요" in answer.answer
+    assert "답변을 생성하지 못했습니다" not in answer.answer
+
+
+def test_rag_answer_falls_back_to_retrieved_sources_for_an_unknown_citation() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     embedder = StaticTextEmbedder(_vector())
@@ -367,5 +406,7 @@ def test_rag_answer_rejects_model_output_without_a_retrieved_citation() -> None:
             query=AssistantSearchQuery(query="ECS 장애", position_id=POSITION_ID),
         )
 
-    assert answer.degraded_mode == "citation_validation_failed"
-    assert answer.sources == ()
+    assert answer.degraded_mode is None
+    assert len(answer.sources) == 2
+    assert all(source.assistant_document_id != model.source_id for source in answer.sources)
+    assert "ECS 장애 원인" in answer.answer

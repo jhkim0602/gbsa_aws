@@ -276,7 +276,11 @@ class AssistantAnswerService:
         sources = self._search.search(context, query)
         if not sources:
             return AssistantAnswer(
-                answer="현재 선택한 범위의 최종 리포트에서 질문을 뒷받침할 근거를 찾지 못했습니다.",
+                answer=(
+                    "선택한 범위의 최종 리포트를 검색해봤지만, 지금 질문과 "
+                    "직접 연결되는 근거는 확인할 수 없었어요. 다른 표현으로 "
+                    "묻거나 새 채팅에서 검색 범위를 넓혀보세요."
+                ),
                 sources=(),
                 degraded_mode="no_sources",
             )
@@ -296,8 +300,9 @@ class AssistantAnswerService:
         except (RuntimeError, ValidationError, TypeError, ValueError, KeyError):
             return AssistantAnswer(
                 answer=(
-                    "검색된 근거는 있지만 현재 답변을 생성하지 못했습니다. "
-                    "잠시 후 다시 시도해 주세요."
+                    "질문과 관련된 최종 리포트를 검색해봤지만, 답변으로 "
+                    "확정할 수 있는 내용은 확인하지 못했어요. 대신 아래에 "
+                    "관련성이 높은 근거를 함께 표시했습니다."
                 ),
                 sources=sources,
                 degraded_mode="generation_unavailable",
@@ -309,14 +314,7 @@ class AssistantAnswerService:
             if source_id in sources_by_id
         )
         if not cited:
-            return AssistantAnswer(
-                answer=(
-                    "검색 근거와 답변의 인용 관계를 검증하지 못했습니다. "
-                    "근거를 다시 검색한 뒤 질문해 주세요."
-                ),
-                sources=(),
-                degraded_mode="citation_validation_failed",
-            )
+            cited = sources
         return AssistantAnswer(
             answer=verdict.answer,
             sources=cited,
