@@ -212,16 +212,6 @@ export function ApplicantReportModal({
               </div>
             </section>
 
-            <footer className="mt-8 grid grid-cols-[1fr_220px] border-t border-[#bdbdb8] pt-5 text-[9px] mw-620:grid-cols-1 mw-620:gap-5">
-              <div className="text-muted">
-                <p>문서 구분: AI 채용 평가 참고자료</p>
-                <p className="mt-1">보안 등급: 사내 검토용</p>
-              </div>
-              <div className="grid grid-cols-[72px_1fr] border-t border-l border-[#bdbdb8]">
-                <DocumentApprovalCell label="검토자" />
-                <DocumentApprovalCell label="검토일" />
-              </div>
-            </footer>
           </article>
         </div>
       </DialogContent>
@@ -304,17 +294,6 @@ function DocumentCell({
     >
       {children}
     </td>
-  );
-}
-
-function DocumentApprovalCell({ label }: { label: string }) {
-  return (
-    <>
-      <span className="border-r border-b border-[#bdbdb8] bg-[#f3f3f1] px-2 py-3 text-center font-semibold">
-        {label}
-      </span>
-      <span className="border-r border-b border-[#bdbdb8] px-2 py-3" />
-    </>
   );
 }
 

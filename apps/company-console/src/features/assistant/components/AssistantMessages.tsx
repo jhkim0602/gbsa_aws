@@ -6,10 +6,11 @@ import {
   FileSearch,
   LockKeyhole,
   Search,
-  ShieldCheck,
 } from "lucide-react";
 
 import type { ChatMessage, Citation, PositionRow, RagAnswer } from "../types";
+
+const BOUNCE_DELAYS = ["0ms", "130ms", "260ms"] as const;
 
 export function MessageList({
   messages,
@@ -84,14 +85,8 @@ function AssistantPending() {
       <span className="grid size-8 place-items-center rounded-full bg-ink text-white">
         <Bot size={15} aria-hidden="true" />
       </span>
-      <div className="flex items-center gap-1 pt-3">
-        {[0, 1, 2].map((index) => (
-          <span
-            className="size-1.5 animate-pulse rounded-full bg-muted"
-            key={index}
-            style={{ animationDelay: `${index * 120}ms` }}
-          />
-        ))}
+      <div className="pt-3">
+        <BouncyDots />
       </div>
     </div>
   );
@@ -119,8 +114,8 @@ function AssistantMessage({
           </span>
           {answer.streaming ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f1f1ef] px-2 py-1 text-[8px] font-semibold text-muted">
-              <span className="size-1.5 animate-pulse rounded-full bg-ink-secondary" />
-              답변 작성 중
+              <BouncyDots compact />
+              {answer.paragraphs.length ? "AI 답변 생성 중" : "근거 조회 중"}
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-1 text-[8px] font-semibold text-success">
@@ -128,7 +123,7 @@ function AssistantMessage({
               {sourceStatus(answer)}
             </span>
           )}
-          {answer.degradedMode ? (
+          {showDegradedBadge(answer.degradedMode) ? (
             <span className="rounded-full bg-warning-soft px-2 py-1 text-[8px] font-semibold text-warning">
               제한된 답변
             </span>
@@ -151,9 +146,12 @@ function AssistantMessage({
             </p>
           ))}
           {answer.streaming && !answer.paragraphs.length ? (
-            <p className="h-5 text-[12px]" role="status">
-              <span className="inline-block h-[1.1em] w-[2px] animate-pulse translate-y-[2px] bg-ink" />
-              <span className="sr-only">답변을 생성하는 중입니다</span>
+            <p
+              className="flex items-center gap-2 text-[11px] text-muted"
+              role="status"
+            >
+              <BouncyDots />
+              <span>관련 리포트와 면접 근거를 조회하고 있습니다.</span>
             </p>
           ) : null}
         </div>
@@ -222,32 +220,48 @@ function AssistantMessage({
             </div>
           </div>
         ) : null}
-
-        {!answer.streaming ? (
-          <p className="mt-5 flex items-start gap-2 text-[9px] leading-[1.65] text-muted">
-            <ShieldCheck
-              className="mt-0.5 shrink-0 text-muted"
-              size={12}
-              aria-hidden="true"
-            />
-            검색된 최종 리포트에 없는 사실은 추론하지 않으며, 채용 판단은
-            담당자가 수행합니다.
-          </p>
-        ) : null}
       </div>
     </article>
   );
 }
 
 function sourceStatus(answer: RagAnswer) {
-  if (answer.degradedMode !== "no_sources") {
-    return `${answer.citations.length}개 소스 검색 완료`;
+  if (
+    answer.degradedMode === "no_sources" ||
+    answer.degradedMode === "search_unavailable"
+  ) {
+    return "확인 가능한 근거 없음";
   }
-  const reportCount = answer.positionRows.reduce(
-    (count, position) => count + position.reportCount,
-    0,
+  if (answer.degradedMode === "generation_unavailable") {
+    return `${answer.citations.length}개 관련 근거 확인`;
+  }
+  return `${answer.citations.length}개 소스 검색 완료`;
+}
+
+function showDegradedBadge(degradedMode: string | undefined) {
+  return Boolean(
+    degradedMode &&
+    !["no_sources", "search_unavailable", "generation_unavailable"].includes(
+      degradedMode,
+    ),
   );
-  return reportCount ? "검색 인덱스 준비 안 됨" : "검색할 리포트 없음";
+}
+
+function BouncyDots({ compact = false }: { compact?: boolean }) {
+  return (
+    <span
+      className={`inline-flex shrink-0 items-end ${compact ? "h-2 gap-0.5" : "h-3 gap-1"}`}
+      aria-hidden="true"
+    >
+      {BOUNCE_DELAYS.map((delay) => (
+        <span
+          className={`${compact ? "size-1" : "size-1.5"} animate-bounce rounded-full bg-brand motion-reduce:animate-none`}
+          key={delay}
+          style={{ animationDelay: delay, animationDuration: "900ms" }}
+        />
+      ))}
+    </span>
+  );
 }
 
 function PositionComparison({ rows }: { rows: readonly PositionRow[] }) {

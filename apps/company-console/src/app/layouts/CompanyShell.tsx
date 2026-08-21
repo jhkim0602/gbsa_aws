@@ -17,6 +17,7 @@ import {
 import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
+import whyYouLogo from "../../assets/whyyou-logo.png";
 import { ICON_BUTTON } from "../styles/primitives";
 
 const navigation = [
@@ -77,13 +78,8 @@ const SCRIM =
   " mw-760:bg-[rgb(31_35_40_/_35%)] print:hidden";
 
 const BRAND_ROW = "flex min-h-22 items-center px-[22px]";
-const BRAND = "flex min-w-0 items-center gap-[11px]";
-const BRAND_MARK =
-  "grid size-9 flex-[0_0_36px] place-items-center rounded-[10px] bg-brand" +
-  " text-[12px] font-extrabold text-white";
-const BRAND_TEXT = "grid gap-0.5";
-const BRAND_NAME = "text-[17px] tracking-[-0.01em]";
-const BRAND_TAGLINE = "text-[9px] tracking-[0.08em] text-muted uppercase";
+const BRAND = "flex min-w-0 items-center";
+const BRAND_LOGO = "h-auto w-[126px] object-contain";
 
 const NAVIGATION = "flex-1 overflow-y-auto p-[10px_14px]";
 const NAV_LABEL =
@@ -164,14 +160,14 @@ export function CompanyShell() {
         className={sidebarClassName}
       >
         <div className={BRAND_ROW}>
-          <NavLink className={BRAND} to="/company">
-            <span className={BRAND_MARK} aria-hidden="true">
-              IE
-            </span>
-            <span className={BRAND_TEXT}>
-              <strong className={BRAND_NAME}>InterviewEP</strong>
-              <small className={BRAND_TAGLINE}>Hiring Operations</small>
-            </span>
+          <NavLink className={BRAND} to="/company" aria-label="WhyYou 홈">
+            <img
+              className={BRAND_LOGO}
+              src={whyYouLogo}
+              alt="WhyYou"
+              width="800"
+              height="260"
+            />
           </NavLink>
           <button
             className={SIDEBAR_CLOSE}

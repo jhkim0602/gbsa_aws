@@ -46,7 +46,8 @@ describe("company feature routes", () => {
     expect(screen.getAllByRole("link", { name: "지원자 화면" })).toHaveLength(
       2,
     );
-    expect(screen.getByText("InterviewEP")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "WhyYou 홈" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "WhyYou" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "사용자 메뉴" })).toBeTruthy();
   });
 

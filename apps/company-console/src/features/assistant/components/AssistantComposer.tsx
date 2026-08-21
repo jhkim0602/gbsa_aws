@@ -105,8 +105,8 @@ export function AssistantComposer({
           </div>
         </div>
         <p className="mt-2 text-center text-[8px] text-subtle">
-          검색된 최종 리포트 근거에 기반한 답변이며, 최종 판단은 담당자가
-          수행합니다.
+          선택한 범위의 최종 리포트를 근거로 검색·생성한 답변이며, AI의 요약과
+          평가는 부정확할 수 있습니다.
         </p>
       </div>
     </form>

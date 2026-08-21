@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from collections.abc import Mapping, Sequence
+from concurrent.futures import Future
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from threading import Lock
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
@@ -391,6 +393,8 @@ class CachingTextEmbedder:
         self._delegate = delegate
         self._max_entries = max_entries
         self._vectors: OrderedDict[tuple[str, int, str], tuple[float, ...]] = OrderedDict()
+        self._inflight: dict[tuple[str, int, str], Future[tuple[float, ...]]] = {}
+        self._lock = Lock()
         self.model_id = delegate.model_id
         self.embedding_version = delegate.embedding_version
 
@@ -422,31 +426,59 @@ class CachingTextEmbedder:
             )
             for text in normalized_texts
         )
-        missing: OrderedDict[tuple[str, int, str], str] = OrderedDict()
-        for key, text in zip(keys, normalized_texts, strict=True):
-            if key not in self._vectors:
-                missing.setdefault(key, text)
-        if missing:
+        unique_texts = OrderedDict(zip(keys, normalized_texts, strict=True))
+        resolved: dict[tuple[str, int, str], tuple[float, ...]] = {}
+        leaders: OrderedDict[tuple[str, int, str], str] = OrderedDict()
+        followers: dict[tuple[str, int, str], Future[tuple[float, ...]]] = {}
+        with self._lock:
+            for key, text in unique_texts.items():
+                cached = self._vectors.get(key)
+                if cached is not None:
+                    self._vectors.move_to_end(key)
+                    resolved[key] = cached
+                    continue
+                pending = self._inflight.get(key)
+                if pending is None:
+                    pending = Future()
+                    self._inflight[key] = pending
+                    leaders[key] = text
+                else:
+                    followers[key] = pending
+
+        if leaders:
             batch_embed = getattr(self._delegate, "embed_many", None)
-            missing_texts = tuple(missing.values())
-            generated = (
-                tuple(batch_embed(context, missing_texts, dimensions=dimensions))
-                if callable(batch_embed)
-                else tuple(
-                    self._delegate.embed(context, text, dimensions=dimensions)
-                    for text in missing_texts
+            leader_texts = tuple(leaders.values())
+            try:
+                generated = (
+                    tuple(batch_embed(context, leader_texts, dimensions=dimensions))
+                    if callable(batch_embed)
+                    else tuple(
+                        self._delegate.embed(context, text, dimensions=dimensions)
+                        for text in leader_texts
+                    )
                 )
-            )
-            if len(generated) != len(missing):
-                raise EmbeddingProviderError("embedding response count is invalid")
-            for key, vector in zip(missing, generated, strict=True):
-                self._vectors[key] = vector
-                self._vectors.move_to_end(key)
-                if len(self._vectors) > self._max_entries:
-                    self._vectors.popitem(last=False)
-        for key in keys:
-            self._vectors.move_to_end(key)
-        return tuple(self._vectors[key] for key in keys)
+                if len(generated) != len(leaders):
+                    raise EmbeddingProviderError("embedding response count is invalid")
+            except BaseException as error:
+                with self._lock:
+                    for key in leaders:
+                        pending = self._inflight.pop(key)
+                        pending.set_exception(error)
+                raise
+
+            with self._lock:
+                for key, vector in zip(leaders, generated, strict=True):
+                    resolved[key] = vector
+                    self._vectors[key] = vector
+                    self._vectors.move_to_end(key)
+                    if len(self._vectors) > self._max_entries:
+                        self._vectors.popitem(last=False)
+                    pending = self._inflight.pop(key)
+                    pending.set_result(vector)
+
+        for key, pending in followers.items():
+            resolved[key] = pending.result()
+        return tuple(resolved[key] for key in keys)
 
 
 class SpeechToText(Protocol):

@@ -122,10 +122,18 @@ class GroundedModel:
         model_input: Mapping[str, Any],
     ) -> Mapping[str, Any]:
         context.assert_company(COMPANY_ID)
+        system = model_input["system"]
+        assert isinstance(system, str)
+        assert "관련되거나 비슷한 사례" in system
+        assert "실제로 답변에 활용한 source_id" in system
+        assert "채용 여부를 최종 결정" not in system
+        assert "서로 다른 포지션의 점수" not in system
         messages = model_input["messages"]
         assert isinstance(messages, list)
         content = messages[0]["content"][0]["text"]
         payload = json.loads(content)
+        assert "relevance_score" in payload["provided_sources"][0]
+        assert "score_components" in payload["provided_sources"][0]
         source_id = payload["provided_sources"][0]["source_id"]
         return {
             "answer": "지원자는 장애 원인을 분석하고 배포 절차를 개선한 경험이 있습니다.",

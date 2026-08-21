@@ -54,6 +54,7 @@ export type ChatMessage =
 export type ChatConversation = Readonly<{
   id: string;
   title: string;
+  titleCustomized?: boolean;
   scopeId: string;
   messages: readonly ChatMessage[];
   pending: boolean;

@@ -80,7 +80,8 @@ const assistantResponse = {
       reportItemId: null,
       criterionId: null,
       documentType: "report_summary",
-      excerpt: "구체적인 시스템 설계 근거가 확인됩니다.",
+      excerpt:
+        "지원자 종합 평가 리포트\n지원자명: 김민준\n지원 포지션: 백엔드 플랫폼 엔지니어\n리포트 상태: ready\n종합 점수: 87\n종합 요약: 구체적인 시스템 설계 근거가 확인됩니다.",
       score: 0.96,
       scoreComponents: { vector: 0.97, lexical: 0.94 },
       metadata: { overall_score: 87 },
@@ -154,6 +155,12 @@ describe("AI recruiting assistant", () => {
     expect(await screen.findByText("1개 포지션")).toBeTruthy();
     expect(screen.getByText("1명 지원자")).toBeTruthy();
     expect(await screen.findByText("1건 리포트")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "선택한 범위의 최종 리포트를 근거로 검색·생성한 답변이며, AI의 요약과 평가는 부정확할 수 있습니다.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/최종 판단은 담당자/)).toBeNull();
 
     const scope = screen.getByRole("combobox", { name: "분석 범위" });
     fireEvent.change(scope, { target: { value: "position-1" } });
@@ -185,12 +192,12 @@ describe("AI recruiting assistant", () => {
     );
   });
 
-  it("distinguishes a missing search projection from a missing report", async () => {
+  it("plainly reports when no relevant evidence is found", async () => {
     const noSourcesResponse = {
       scope: "position" as const,
       positionId: "position-1",
       answer:
-        "현재 선택한 범위의 최종 리포트에서 질문을 뒷받침할 근거를 찾지 못했습니다.",
+        "선택한 범위의 최종 리포트를 검색해봤지만, 지금 질문과 직접 연결되는 근거는 확인할 수 없었어요. 다른 표현으로 묻거나 새 채팅에서 검색 범위를 넓혀보세요.",
       degradedMode: "no_sources",
       sources: [],
     };
@@ -212,12 +219,13 @@ describe("AI recruiting assistant", () => {
       }),
     );
 
-    expect(await screen.findByText("검색 인덱스 준비 안 됨")).toBeTruthy();
+    expect(await screen.findByText("확인 가능한 근거 없음")).toBeTruthy();
     expect(
       screen.getByText(
-        "백엔드 플랫폼 엔지니어에 최종 리포트 1건은 있지만 AI 검색 인덱스에 아직 반영되지 않았습니다.",
+        "선택한 범위의 최종 리포트를 검색해봤지만, 지금 질문과 직접 연결되는 근거는 확인할 수 없었어요. 다른 표현으로 묻거나 새 채팅에서 검색 범위를 넓혀보세요.",
       ),
     ).toBeTruthy();
+    expect(screen.queryByText("제한된 답변")).toBeNull();
   });
 
   it("shows professional RAG evidence and an inline applicant report", async () => {
@@ -240,7 +248,18 @@ describe("AI recruiting assistant", () => {
     expect(
       screen.getByRole("complementary", { name: "RAG 답변 근거" }),
     ).toBeTruthy();
-    expect(screen.getByText("검색 일치도 96%")).toBeTruthy();
+    expect(screen.getByText("일치도 96%")).toBeTruthy();
+    const drawer = screen.getByRole("complementary", {
+      name: "RAG 답변 근거",
+    });
+    expect(
+      within(drawer).getByRole("table", { name: "근거 요약 정보" }),
+    ).toBeTruthy();
+    expect(
+      within(drawer).getByRole("table", { name: "검색 문맥 기본 정보" }),
+    ).toBeTruthy();
+    expect(within(drawer).getByText("생성 완료")).toBeTruthy();
+    expect(within(drawer).getByText("종합 요약")).toBeTruthy();
     expect(screen.queryByRole("link")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "간단 리포트 보기" }));
@@ -258,6 +277,10 @@ describe("AI recruiting assistant", () => {
     expect(
       within(dialog).getByRole("columnheader", { name: "근거 수" }),
     ).toBeTruthy();
+    expect(within(dialog).queryByText(/문서 구분:/)).toBeNull();
+    expect(within(dialog).queryByText(/보안 등급:/)).toBeNull();
+    expect(within(dialog).queryByText("검토자")).toBeNull();
+    expect(within(dialog).queryByText("검토일")).toBeNull();
   });
 
   it("creates separate in-memory chat rooms with message history", async () => {
@@ -292,6 +315,53 @@ describe("AI recruiting assistant", () => {
       ).getByRole("button", {
         name: /AWS 운영 경험.*전체 진행 중 포지션$/,
       }),
+    ).toBeTruthy();
+  });
+
+  it("renames a conversation and preserves the custom title", async () => {
+    renderAssistant();
+
+    await screen.findByRole("heading", {
+      name: "채용 데이터에 대해 무엇이든 물어보세요",
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "새 채용 분석 제목 수정" }),
+    );
+    const titleInput = screen.getByRole("textbox", { name: "대화 제목" });
+    fireEvent.change(titleInput, { target: { value: "AWS 운영 후보 검토" } });
+    fireEvent.click(screen.getByRole("button", { name: "대화 제목 저장" }));
+
+    expect(screen.getAllByText("AWS 운영 후보 검토").length).toBeGreaterThan(0);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "AWS 운영 경험이 확인된 지원자를 근거와 함께 알려줘.",
+      }),
+    );
+    expect(await screen.findByText("3개 소스 검색 완료")).toBeTruthy();
+    expect(screen.getAllByText("AWS 운영 후보 검토").length).toBeGreaterThan(0);
+  });
+
+  it("explains which data the RAG search does and does not use", async () => {
+    renderAssistant();
+
+    expect(await screen.findByText("RAG 검색 데이터")).toBeTruthy();
+    expect(
+      screen.getByText("최종 리포트와 평가 기준별 근거를 검색합니다."),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "어떻게 검색되나요?" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByRole("heading", {
+        name: "RAG 검색은 이렇게 동작합니다",
+      }),
+    ).toBeTruthy();
+    expect(within(dialog).getByText("직접 검색하는 자료")).toBeTruthy();
+    expect(within(dialog).getByText("검색 범위와 방식")).toBeTruthy();
+    expect(within(dialog).getByText("직접 검색하지 않는 자료")).toBeTruthy();
+    expect(
+      within(dialog).getByText(/이력서, 포트폴리오, 면접 영상·음성/),
     ).toBeTruthy();
   });
 
@@ -344,10 +414,14 @@ describe("AI recruiting assistant", () => {
   });
 
   it("renders answer deltas before the validated sources arrive", async () => {
+    let finishSearch: (() => void) | undefined;
     let finishStream: (() => void) | undefined;
     const streamingApi: RecruitingAssistantApi = {
       answerQuestion: assistantApi.answerQuestion,
       streamAnswer: vi.fn().mockImplementation(async (_request, handlers) => {
+        await new Promise<void>((resolve) => {
+          finishSearch = resolve;
+        });
         const first = "첫 번째 근거 문장이 스트리밍됩니다. ";
         handlers.onDelta?.(first, first);
         await new Promise<void>((resolve) => {
@@ -373,7 +447,15 @@ describe("AI recruiting assistant", () => {
         name: "현재 범위에서 근거가 구체적인 지원자를 정리해줘.",
       }),
     );
-    expect(await screen.findByText("답변 작성 중")).toBeTruthy();
+    expect(await screen.findByText("근거 조회 중")).toBeTruthy();
+    expect(
+      screen.getByText("관련 리포트와 면접 근거를 조회하고 있습니다."),
+    ).toBeTruthy();
+
+    await act(async () => {
+      finishSearch?.();
+    });
+    expect(await screen.findByText("AI 답변 생성 중")).toBeTruthy();
     expect(
       await screen.findByText("첫 번째 근거 문장이 스트리밍됩니다."),
     ).toBeTruthy();
@@ -382,5 +464,32 @@ describe("AI recruiting assistant", () => {
       finishStream?.();
     });
     expect(await screen.findByText("3개 소스 검색 완료")).toBeTruthy();
+  });
+
+  it("turns a streaming failure into a friendly searchable fallback", async () => {
+    const failingApi: RecruitingAssistantApi = {
+      answerQuestion: assistantApi.answerQuestion,
+      streamAnswer: vi.fn().mockRejectedValue(new Error("stream unavailable")),
+    };
+    render(
+      <MemoryRouter>
+        <AiRecruitingAssistant api={api} assistantApi={failingApi} />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "AWS 운영 경험이 확인된 지원자를 근거와 함께 알려줘.",
+      }),
+    );
+
+    expect(
+      await screen.findByText(
+        "선택한 범위의 채용 리포트를 검색해봤지만, 지금 질문과 직접 연결되는 내용을 확인할 수 없었어요. 채용 데이터와 관련된 다른 표현으로 다시 질문해 주세요.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("확인 가능한 근거 없음")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText("제한된 답변")).toBeNull();
   });
 });

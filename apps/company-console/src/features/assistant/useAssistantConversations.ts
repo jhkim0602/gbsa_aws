@@ -1,25 +1,14 @@
 import { useCallback, useRef, useState } from "react";
 
-import type {
-  CompanyInvitation,
-  CompanyPosition,
-} from "../company/types";
+import type { CompanyInvitation, CompanyPosition } from "../company/types";
 import type { RecruitingAssistantApi } from "./api";
-import {
-  conversationTitle,
-  toRagAnswer,
-  toStreamingRagAnswer,
-} from "./data";
-import {
-  isPositionArchived,
-  isPositionRecruiting,
-} from "./positionLifecycle";
-import type {
-  ChatConversation,
-  InsightByPosition,
-  PositionRow,
-} from "./types";
+import { conversationTitle, toRagAnswer, toStreamingRagAnswer } from "./data";
+import { isPositionArchived, isPositionRecruiting } from "./positionLifecycle";
+import type { ChatConversation, InsightByPosition, PositionRow } from "./types";
 import { INITIAL_CONVERSATION } from "./types";
+
+const SEARCH_UNCONFIRMED_MESSAGE =
+  "선택한 범위의 채용 리포트를 검색해봤지만, 지금 질문과 직접 연결되는 내용을 확인할 수 없었어요. 채용 데이터와 관련된 다른 표현으로 다시 질문해 주세요.";
 
 export function useAssistantConversations({
   assistantApi,
@@ -85,6 +74,22 @@ export function useAssistantConversations({
     [activeConversationId],
   );
 
+  const renameConversation = useCallback(
+    (conversationId: string, nextTitle: string) => {
+      const title = nextTitle.trim().slice(0, 60);
+      if (!title) return false;
+      setConversations((current) =>
+        current.map((conversation) =>
+          conversation.id === conversationId
+            ? { ...conversation, title, titleCustomized: true }
+            : conversation,
+        ),
+      );
+      return true;
+    },
+    [],
+  );
+
   const updateConversationScope = useCallback(
     (scopeId: string) => {
       setConversations((current) =>
@@ -122,17 +127,14 @@ export function useAssistantConversations({
             })();
       const scopePositions =
         scopeId === "all"
-          ? positions.filter((position) =>
-              isPositionRecruiting(position),
-            )
+          ? positions.filter((position) => isPositionRecruiting(position))
           : positions.filter((position) => position.positionId === scopeId);
       const scopePositionIds = new Set(
         scopePositions.map((position) => position.positionId),
       );
-      const scopeInvitations =
-        invitations.filter((invitation) =>
-          scopePositionIds.has(invitation.positionId),
-        );
+      const scopeInvitations = invitations.filter((invitation) =>
+        scopePositionIds.has(invitation.positionId),
+      );
       const scopePositionRows = positionRows.filter((row) =>
         scopePositionIds.has(row.positionId),
       );
@@ -145,7 +147,8 @@ export function useAssistantConversations({
           return {
             ...conversation,
             title:
-              conversation.messages.length === 0
+              conversation.messages.length === 0 &&
+              !conversation.titleCustomized
                 ? conversationTitle(normalized)
                 : conversation.title,
             pending: true,
@@ -219,8 +222,7 @@ export function useAssistantConversations({
               ? {
                   ...conversation,
                   pending: false,
-                  error:
-                    "답변을 생성하지 못했습니다. 잠시 후 다시 질문해 주세요.",
+                  error: undefined,
                   messages: conversation.messages.map((message) =>
                     message.id === assistantMessageId &&
                     message.role === "assistant"
@@ -228,8 +230,12 @@ export function useAssistantConversations({
                           ...message,
                           answer: {
                             ...message.answer,
+                            paragraphs: [SEARCH_UNCONFIRMED_MESSAGE],
+                            findings: [],
+                            sourceIds: [],
+                            citations: [],
                             streaming: false,
-                            degradedMode: "stream_interrupted",
+                            degradedMode: "search_unavailable",
                           },
                         }
                       : message,
@@ -238,7 +244,7 @@ export function useAssistantConversations({
               : conversation,
           ),
         );
-        return false;
+        return true;
       }
     },
     [
@@ -258,6 +264,7 @@ export function useAssistantConversations({
     setActiveConversationId,
     createConversation,
     deleteConversation,
+    renameConversation,
     updateConversationScope,
     ask,
   };

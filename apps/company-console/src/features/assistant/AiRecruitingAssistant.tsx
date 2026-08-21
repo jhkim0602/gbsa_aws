@@ -12,10 +12,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ASYNC_STATE } from "../../app/styles/primitives";
 import type { CompanyOperationsApi } from "../company/types";
 import { useRecruitingOperations } from "../company/useRecruitingOperations";
-import {
-  recruitingAssistantApi,
-  type RecruitingAssistantApi,
-} from "./api";
+import { recruitingAssistantApi, type RecruitingAssistantApi } from "./api";
 import { buildApplicantReportPreviews, buildPositionRows } from "./data";
 import { ApplicantReportModal } from "./components/ApplicantReportModal";
 import { AssistantComposer } from "./components/AssistantComposer";
@@ -25,10 +22,7 @@ import {
   EmptyConversation,
 } from "./components/AssistantNavigation";
 import { EvidenceDrawer } from "./components/EvidenceDrawer";
-import {
-  isPositionArchived,
-  isPositionRecruiting,
-} from "./positionLifecycle";
+import { isPositionArchived, isPositionRecruiting } from "./positionLifecycle";
 import type { Citation, InsightByPosition } from "./types";
 import { useAssistantConversations } from "./useAssistantConversations";
 
@@ -179,11 +173,7 @@ export function AiRecruitingAssistant({
     : [];
   const applicantReports = useMemo(
     () =>
-      buildApplicantReportPreviews(
-        positions,
-        invitations,
-        insightsByPosition,
-      ),
+      buildApplicantReportPreviews(positions, invitations, insightsByPosition),
     [insightsByPosition, invitations, positions],
   );
   const selectedReport = selectedReportInvitationId
@@ -232,6 +222,7 @@ export function AiRecruitingAssistant({
               conversationState.deleteConversation(conversationId);
               setSelectedCitationSourceId(null);
             }}
+            onRename={conversationState.renameConversation}
             onSelect={selectConversation}
           />
           <button
@@ -385,9 +376,7 @@ export function AiRecruitingAssistant({
             toolsOpen={composerToolsOpen}
             onQueryChange={setQuery}
             onSubmit={() => ask(query)}
-            onToggleTools={() =>
-              setComposerToolsOpen((current) => !current)
-            }
+            onToggleTools={() => setComposerToolsOpen((current) => !current)}
             onCloseTools={() => setComposerToolsOpen(false)}
           />
         </main>

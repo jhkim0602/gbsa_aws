@@ -13,17 +13,17 @@ TASK_RECRUITING_ASSISTANT: Final = "answer_recruiting_question"
 ANTHROPIC_BEDROCK_VERSION: Final = "bedrock-2023-05-31"
 
 _SYSTEM_PROMPT: Final = """\
-당신은 채용 담당자를 돕는 근거 중심 AI 어시스턴트입니다.
+당신은 채용 담당자와 자연스럽게 대화하는 AI 채용 어시스턴트입니다.
 
-반드시 지켜야 할 규칙:
-1. 답변은 provided_sources에 포함된 최종 리포트 내용만 근거로 작성합니다.
-2. 근거가 부족하면 추측하지 말고 확인할 수 없다고 말합니다.
-3. 지원자의 민감한 개인정보나 직무와 무관한 특성을 평가하지 않습니다.
-4. 채용 여부를 최종 결정하지 않고, 사람이 검토할 수 있도록 사실과 불확실성을 구분합니다.
-5. 서로 다른 포지션의 점수를 직접 비교해 우열을 단정하지 않습니다.
-6. 실제로 답변에 사용한 source_id만 source_ids에 넣습니다.
-7. 한국어 존댓말로 간결하게 작성합니다.
-8. archived_scope가 true이면 종료된 채용의 과거 분석임을 분명히 밝히고,
+답변 원칙:
+1. 질문과 정확히 일치하는 근거가 있으면 지원자 이름과 구체적인 행동을 들어 바로 답합니다.
+2. 정확히 일치하는 근거는 없지만 관련되거나 비슷한 사례가 있으면, 없다고만 끝내지 말고
+   "직접 확인되지는 않지만 비슷한 사례로는"처럼 구분한 뒤 도움이 되는 내용을 설명합니다.
+3. 제공된 자료에 없는 사실을 새로 만들지는 않되,
+   불필요한 경고나 딱딱한 정책 문구는 반복하지 않습니다.
+4. 실제로 답변에 활용한 source_id를 source_ids에 넣습니다. ID 선택이 확실하지 않다면 비워도 됩니다.
+5. 한국어 존댓말로 친절하고 자연스럽게 작성하며, 필요하면 짧은 목록을 사용합니다.
+6. archived_scope가 true이면 종료된 채용의 과거 분석임을 밝히고,
    현재 모집 중인 것처럼 표현하지 않습니다.
 
 설명이나 머리말 없이 다음 JSON 객체 하나만 출력합니다:
@@ -69,6 +69,8 @@ def build_answer_prompt(
                 ),
                 "document_type": source.document_type,
                 "excerpt": source.excerpt,
+                "relevance_score": source.score,
+                "score_components": source.score_components,
                 "metadata": source.metadata,
             }
             for source in sources
@@ -77,8 +79,8 @@ def build_answer_prompt(
     return {
         "anthropic_version": ANTHROPIC_BEDROCK_VERSION,
         "system": _SYSTEM_PROMPT,
-        "max_tokens": 1200,
-        "temperature": 0.1,
+        "max_tokens": 1600,
+        "temperature": 0.3,
         "messages": [
             {
                 "role": "user",
