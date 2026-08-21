@@ -235,6 +235,34 @@ def test_search_excludes_documents_from_a_different_embedding_space() -> None:
     assert results == ()
 
 
+def test_search_can_filter_candidates_below_a_configured_relevance_score() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    indexed_embedder = StaticTextEmbedder(_vector())
+    unrelated_embedder = StaticTextEmbedder((0.0, 1.0, *(0.0 for _ in range(1022))))
+
+    with Session(engine) as session:
+        repository = SQLAlchemyAssistantDocumentRepository(session)
+        ReportSearchProjector(repository, indexed_embedder).project(
+            _context(),
+            position_id=POSITION_ID,
+            position_title="백엔드 엔지니어",
+            applicant_id=APPLICANT_ID,
+            applicant_display_name="김민준",
+            report=_report(),
+        )
+        results = AssistantSearchService(
+            repository,
+            unrelated_embedder,
+            minimum_score=0.1,
+        ).search(
+            _context(),
+            AssistantSearchQuery(query="완전히 무관한 질문", position_id=POSITION_ID),
+        )
+
+    assert results == ()
+
+
 def test_assistant_documents_are_deleted_and_verified_by_invitation() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)

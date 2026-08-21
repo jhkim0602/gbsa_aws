@@ -3,6 +3,8 @@ from __future__ import annotations
 import io
 import json
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier, Lock
 from uuid import UUID
 
 import pytest
@@ -401,6 +403,43 @@ def test_embedding_cache_deduplicates_normalized_provider_requests() -> None:
     assert first == second
     assert len(delegate.calls) == 1
     assert embedder.embedding_version == delegate.embedding_version
+
+
+def test_embedding_cache_single_flights_concurrent_provider_requests() -> None:
+    class ConcurrentDelegate:
+        model_id = "concurrent-embedding"
+        embedding_version = "concurrent-v1"
+
+        def __init__(self) -> None:
+            self.entered = Barrier(2)
+            self.release = Barrier(2)
+            self.call_lock = Lock()
+            self.call_count = 0
+
+        def embed(
+            self,
+            context: TenantContext,
+            text: str,
+            *,
+            dimensions: int = 1024,
+        ) -> tuple[float, ...]:
+            with self.call_lock:
+                self.call_count += 1
+            self.entered.wait(timeout=2)
+            self.release.wait(timeout=2)
+            return (1.0,) * dimensions
+
+    delegate = ConcurrentDelegate()
+    embedder = CachingTextEmbedder(delegate, max_entries=2)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(embedder.embed, _context(), "같은 질문")
+        delegate.entered.wait(timeout=2)
+        second = executor.submit(embedder.embed, _context(), " 같은 질문 ")
+        delegate.release.wait(timeout=2)
+
+    assert first.result() == second.result()
+    assert delegate.call_count == 1
 
 
 def test_titan_rejects_oversized_input_before_provider_call() -> None:

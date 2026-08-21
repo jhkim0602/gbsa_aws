@@ -6,8 +6,9 @@ from typing import Protocol
 from uuid import UUID
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import JSON, DateTime, Index, String, Text, func, literal, select
+from sqlalchemy import JSON, DateTime, Index, String, Text, func, literal, select, union_all
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+from sqlalchemy.sql.elements import ColumnElement
 
 from interview_evidence.recruiting_assistant.domain import (
     AssistantSearchDocument,
@@ -167,35 +168,106 @@ class SQLAlchemyAssistantDocumentRepository:
         if allowed_position_ids == ():
             return ()
 
-        statement = select(AssistantRetrievalDocumentRow).where(
+        filters: list[ColumnElement[bool]] = [
             AssistantRetrievalDocumentRow.company_id == tenant.company_id,
             AssistantRetrievalDocumentRow.deleted_at.is_(None),
             AssistantRetrievalDocumentRow.embedding_model == embedding_model,
             AssistantRetrievalDocumentRow.embedding_version == embedding_version,
-        )
+        ]
         if position_id is not None:
-            statement = statement.where(AssistantRetrievalDocumentRow.position_id == position_id)
+            filters.append(AssistantRetrievalDocumentRow.position_id == position_id)
         elif allowed_position_ids is not None:
-            statement = statement.where(
-                AssistantRetrievalDocumentRow.position_id.in_(allowed_position_ids)
+            filters.append(
+                AssistantRetrievalDocumentRow.position_id.in_(allowed_position_ids),
             )
 
         if self._session.bind is not None and self._session.bind.dialect.name == "postgresql":
+            candidate_limit = min(100, max(20, limit * 5))
+            vector_distance_expr = AssistantRetrievalDocumentRow.embedding.cosine_distance(
+                list(query_vector)
+            )
             vector_score_expr = (
-                literal(1.0)
-                - AssistantRetrievalDocumentRow.embedding.cosine_distance(list(query_vector))
+                literal(1.0) - vector_distance_expr
             ).label("vector_score")
+            search_document_expr = func.to_tsvector(
+                "simple",
+                AssistantRetrievalDocumentRow.search_text,
+            )
+            search_query_expr = func.websearch_to_tsquery("simple", query)
             lexical_rank_expr = func.ts_rank_cd(
-                func.to_tsvector("simple", AssistantRetrievalDocumentRow.search_text),
-                func.websearch_to_tsquery("simple", query),
+                search_document_expr,
+                search_query_expr,
             )
             lexical_score_expr = func.least(
                 literal(1.0),
                 lexical_rank_expr,
             ).label("lexical_score")
+
+            # Keep the vector ORDER BY independent from the lexical rank. This lets
+            # PostgreSQL use an HNSW index when one is introduced after measuring the
+            # corpus, while the lexical branch can use its expression GIN index today.
+            vector_candidates = (
+                select(
+                    AssistantRetrievalDocumentRow.company_id.label("company_id"),
+                    AssistantRetrievalDocumentRow.assistant_document_id.label(
+                        "assistant_document_id"
+                    ),
+                    vector_score_expr,
+                    literal(0.0).label("lexical_score"),
+                )
+                .where(*filters)
+                .order_by(vector_distance_expr.asc())
+                .limit(candidate_limit)
+            )
+            lexical_candidates = (
+                select(
+                    AssistantRetrievalDocumentRow.company_id.label("company_id"),
+                    AssistantRetrievalDocumentRow.assistant_document_id.label(
+                        "assistant_document_id"
+                    ),
+                    literal(0.0).label("vector_score"),
+                    lexical_score_expr,
+                )
+                .where(*filters, search_document_expr.op("@@")(search_query_expr))
+                .order_by(lexical_rank_expr.desc())
+                .limit(candidate_limit)
+            )
+            candidate_union = union_all(vector_candidates, lexical_candidates).subquery()
+            candidate_scores = (
+                select(
+                    candidate_union.c.company_id,
+                    candidate_union.c.assistant_document_id,
+                    func.max(candidate_union.c.vector_score).label("vector_score"),
+                    func.max(candidate_union.c.lexical_score).label("lexical_score"),
+                )
+                .group_by(
+                    candidate_union.c.company_id,
+                    candidate_union.c.assistant_document_id,
+                )
+                .subquery()
+            )
+            combined_score_expr = (
+                candidate_scores.c.vector_score * 0.7
+                + candidate_scores.c.lexical_score * 0.3
+            )
             rows = self._session.execute(
-                statement.add_columns(vector_score_expr, lexical_score_expr)
-                .order_by((vector_score_expr * 0.7 + lexical_score_expr * 0.3).desc())
+                select(
+                    AssistantRetrievalDocumentRow,
+                    candidate_scores.c.vector_score,
+                    candidate_scores.c.lexical_score,
+                )
+                .join(
+                    candidate_scores,
+                    (
+                        AssistantRetrievalDocumentRow.company_id
+                        == candidate_scores.c.company_id
+                    )
+                    & (
+                        AssistantRetrievalDocumentRow.assistant_document_id
+                        == candidate_scores.c.assistant_document_id
+                    ),
+                )
+                .order_by(combined_score_expr.desc())
                 .limit(limit)
             ).all()
             return tuple(
@@ -208,14 +280,15 @@ class SQLAlchemyAssistantDocumentRepository:
             )
 
         query_terms = {term.casefold() for term in query.split() if term}
-        candidates = []
+        fallback_candidates: list[AssistantSearchResult] = []
+        statement = select(AssistantRetrievalDocumentRow).where(*filters)
         for row in self._session.scalars(statement).all():
             vector_score = _cosine(tuple(row.embedding), query_vector)
             row_terms = {
                 term.casefold() for term in row.search_text.replace("_", " ").split() if term
             }
             lexical_score = len(query_terms & row_terms) / len(query_terms) if query_terms else 0.0
-            candidates.append(
+            fallback_candidates.append(
                 self._result(
                     row,
                     vector_score=max(0.0, vector_score),
@@ -223,7 +296,11 @@ class SQLAlchemyAssistantDocumentRepository:
                 )
             )
         return tuple(
-            sorted(candidates, key=lambda candidate: candidate.score, reverse=True)[:limit]
+            sorted(
+                fallback_candidates,
+                key=lambda candidate: candidate.score,
+                reverse=True,
+            )[:limit]
         )
 
     def list_document_ids_for_invitation(

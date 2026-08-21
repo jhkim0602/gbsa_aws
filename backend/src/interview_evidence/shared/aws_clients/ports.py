@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from collections.abc import Mapping, Sequence
+from concurrent.futures import Future
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from threading import Lock
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
@@ -391,6 +393,8 @@ class CachingTextEmbedder:
         self._delegate = delegate
         self._max_entries = max_entries
         self._vectors: OrderedDict[tuple[str, int, str], tuple[float, ...]] = OrderedDict()
+        self._inflight: dict[tuple[str, int, str], Future[tuple[float, ...]]] = {}
+        self._lock = Lock()
         self.model_id = delegate.model_id
         self.embedding_version = delegate.embedding_version
 
@@ -410,15 +414,37 @@ class CachingTextEmbedder:
             dimensions,
             sha256(normalized.encode("utf-8")).hexdigest(),
         )
-        cached = self._vectors.get(key)
-        if cached is not None:
+        with self._lock:
+            cached = self._vectors.get(key)
+            if cached is not None:
+                self._vectors.move_to_end(key)
+                return cached
+            pending = self._inflight.get(key)
+            if pending is None:
+                pending = Future()
+                self._inflight[key] = pending
+                is_leader = True
+            else:
+                is_leader = False
+
+        if not is_leader:
+            return pending.result()
+
+        try:
+            vector = self._delegate.embed(context, normalized, dimensions=dimensions)
+        except BaseException as error:
+            with self._lock:
+                self._inflight.pop(key, None)
+                pending.set_exception(error)
+            raise
+
+        with self._lock:
+            self._vectors[key] = vector
             self._vectors.move_to_end(key)
-            return cached
-        vector = self._delegate.embed(context, normalized, dimensions=dimensions)
-        self._vectors[key] = vector
-        self._vectors.move_to_end(key)
-        if len(self._vectors) > self._max_entries:
-            self._vectors.popitem(last=False)
+            if len(self._vectors) > self._max_entries:
+                self._vectors.popitem(last=False)
+            self._inflight.pop(key, None)
+            pending.set_result(vector)
         return vector
 
 

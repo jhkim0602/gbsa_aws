@@ -217,9 +217,14 @@ class AssistantSearchService:
         self,
         repository: AssistantDocumentRepository,
         embedder: TextEmbedder,
+        *,
+        minimum_score: float = 0.0,
     ) -> None:
+        if not 0.0 <= minimum_score <= 1.0:
+            raise ValueError("assistant minimum score must be between 0 and 1")
         self._repository = repository
         self._embedder = embedder
+        self._minimum_score = minimum_score
 
     def search(
         self,
@@ -231,7 +236,7 @@ class AssistantSearchService:
             raise ValueError("assistant search query is required")
         if query.allowed_position_ids == ():
             return ()
-        return self._repository.search(
+        results = self._repository.search(
             context,
             query=normalized,
             query_vector=self._embedder.embed(context, normalized, dimensions=1024),
@@ -241,6 +246,7 @@ class AssistantSearchService:
             allowed_position_ids=query.allowed_position_ids,
             limit=query.limit,
         )
+        return tuple(result for result in results if result.score >= self._minimum_score)
 
 
 @dataclass(frozen=True, slots=True)

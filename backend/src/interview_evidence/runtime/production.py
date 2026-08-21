@@ -349,7 +349,11 @@ def create_production_runtime(
     )
     assistant_documents = SQLAlchemyAssistantDocumentRepository(session)
     assistant_projector = ReportSearchProjector(assistant_documents, embedder)
-    assistant_search = AssistantSearchService(assistant_documents, embedder)
+    assistant_search = AssistantSearchService(
+        assistant_documents,
+        embedder,
+        minimum_score=float(environment.get("ASSISTANT_MIN_RELEVANCE_SCORE", "0")),
+    )
     assistant_answers = AssistantAnswerService(assistant_search, model)
     base_reporting_public = ReportingPublic(
         repository=base_lane_d.repository,
