@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
 
@@ -8,6 +9,23 @@ from interview_evidence.shared.interview_level import (
     InterviewLevel,
 )
 from interview_evidence.shared.tenant import TenantContext
+
+
+class InterviewStage(StrEnum):
+    TECHNICAL = "technical"
+    PROJECT_DEEP_DIVE = "project_deep_dive"
+    BEHAVIORAL = "behavioral"
+
+
+DEFAULT_INTERVIEW_STAGES = (
+    InterviewStage.TECHNICAL,
+    InterviewStage.PROJECT_DEEP_DIVE,
+    InterviewStage.BEHAVIORAL,
+)
+DEFAULT_OPENING_MESSAGE = "안녕하세요. 오늘은 기술, 프로젝트, 협업 경험을 중심으로 진행하겠습니다."
+DEFAULT_WARM_UP_QUESTION = (
+    "먼저 간단한 자기소개와 지원 직무와 관련해 가장 자신 있는 경험을 말씀해 주세요?"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +66,9 @@ class InterviewPlan:
     voice_id: str
     verification_targets: tuple[VerificationTargetPlan, ...] = ()
     interview_level: InterviewLevel = DEFAULT_INTERVIEW_LEVEL
+    stages: tuple[InterviewStage, ...] = DEFAULT_INTERVIEW_STAGES
+    opening_message: str = DEFAULT_OPENING_MESSAGE
+    warm_up_question: str = DEFAULT_WARM_UP_QUESTION
 
     def __post_init__(self) -> None:
         if not self.criterion_ids:
@@ -62,6 +83,21 @@ class InterviewPlan:
             target_criteria = {target.criterion_id for target in self.verification_targets}
             if not target_criteria.issubset(set(self.criterion_ids)):
                 raise ValueError("verification target criterion is outside the plan")
+        if self.stages != DEFAULT_INTERVIEW_STAGES:
+            raise ValueError("interview plan requires the fixed interview stage sequence")
+        if not self.opening_message.strip():
+            raise ValueError("interview plan requires an opening message")
+        if not self.warm_up_question.strip().endswith("?"):
+            raise ValueError("interview warm-up prompt must be one question")
+
+    @property
+    def opening_prompt(self) -> str:
+        return f"{self.opening_message.strip()} {self.warm_up_question.strip()}"
+
+    def is_warm_up_question(self, text: str | None) -> bool:
+        if text is None:
+            return False
+        return text.strip() == self.opening_prompt
 
     def initial_target(self) -> VerificationTargetPlan | None:
         return self.verification_targets[0] if self.verification_targets else None

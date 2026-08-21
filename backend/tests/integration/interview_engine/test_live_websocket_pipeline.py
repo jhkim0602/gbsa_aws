@@ -66,6 +66,7 @@ MODEL_VERSION_ID = UUID("00000000-0000-7000-8000-000000000006")
 CRITERION_ID = UUID("00000000-0000-7000-8000-000000000007")
 ANSWER_TURN_ID = UUID("00000000-0000-7000-8000-000000000008")
 SECOND_ANSWER_TURN_ID = UUID("00000000-0000-7000-8000-000000000012")
+THIRD_ANSWER_TURN_ID = UUID("00000000-0000-7000-8000-000000000013")
 
 
 class EmptyRetrieval:
@@ -244,7 +245,10 @@ def test_real_stream_handler_creates_initial_and_follow_up_questions() -> None:
         envelope("session.start", sequence=0, key="session-start-0001"),
     )
     assert initial.message_type == "question.ready"
-    assert initial.payload["text"] == "최근 해결한 기술 문제를 설명해 주세요?"
+    assert initial.payload["text"] == (
+        "안녕하세요. 오늘은 기술, 프로젝트, 협업 경험을 중심으로 진행하겠습니다. "
+        "먼저 간단한 자기소개와 지원 직무와 관련해 가장 자신 있는 경험을 말씀해 주세요?"
+    )
     assert (
         repository.get_session(context(), SESSION_ID).state is InterviewSessionState.AWAITING_ANSWER
     )
@@ -302,14 +306,11 @@ def test_real_stream_handler_creates_initial_and_follow_up_questions() -> None:
     )
     progress = repository.list_verification_progress(context(), SESSION_ID)
     assert len(progress) == 1
-    assert progress[0].state is VerificationProgressState.IN_PROGRESS
-    assert progress[0].follow_up_count == 1
+    assert progress[0].state is VerificationProgressState.PENDING
+    assert progress[0].follow_up_count == 0
     rationales = repository.list_question_rationales(context(), SESSION_ID)
-    assert [rationale.question_type for rationale in rationales] == [
-        "common",
-        "follow_up",
-    ]
-    assert rationales[1].objective.startswith("자료에서 확인되지 않은")
+    assert [rationale.question_type for rationale in rationales] == ["personalized"]
+    assert rationales[0].objective.startswith("자료에서 확인되지 않은")
     final_turns = repository.list_final_turns(context(), SESSION_ID)
     assert [turn.speaker for turn in final_turns] == [
         TurnSpeaker.INTERVIEWER,
@@ -338,7 +339,7 @@ def test_real_stream_handler_creates_initial_and_follow_up_questions() -> None:
     )
     assert second_transcript[0].message_type == "transcript.final"
 
-    completed = protocol.handle(
+    second_question = protocol.handle(
         context(),
         principal(),
         envelope(
@@ -347,6 +348,51 @@ def test_real_stream_handler_creates_initial_and_follow_up_questions() -> None:
             key="answer-complete-0002",
             payload={
                 "answer_turn_id": str(SECOND_ANSWER_TURN_ID),
+                "last_recording_chunk_sequence": 0,
+            },
+        ),
+    )
+
+    assert second_question.message_type == "question.ready"
+    progress = repository.list_verification_progress(context(), SESSION_ID)
+    assert progress[0].state is VerificationProgressState.IN_PROGRESS
+    assert progress[0].follow_up_count == 1
+    rationales = repository.list_question_rationales(context(), SESSION_ID)
+    assert [rationale.question_type for rationale in rationales] == [
+        "personalized",
+        "follow_up",
+    ]
+
+    third_transcript = protocol.handle_audio(
+        context(),
+        principal(),
+        envelope(
+            "audio.chunk.begin",
+            sequence=second_question.sequence,
+            key="audio-chunk-0003",
+        ),
+        AudioChunkMetadata(
+            answer_turn_id=THIRD_ANSWER_TURN_ID,
+            chunk_sequence=3,
+            codec="pcm_s16le",
+            sample_rate_hz=16000,
+            channel_count=1,
+            byte_length=len(audio),
+            sha256=sha256(audio).hexdigest(),
+        ),
+        audio,
+    )
+    assert third_transcript[0].message_type == "transcript.final"
+
+    completed = protocol.handle(
+        context(),
+        principal(),
+        envelope(
+            "answer.complete",
+            sequence=second_question.sequence,
+            key="answer-complete-0003",
+            payload={
+                "answer_turn_id": str(THIRD_ANSWER_TURN_ID),
                 "last_recording_chunk_sequence": 0,
             },
         ),
@@ -365,4 +411,4 @@ def test_real_stream_handler_creates_initial_and_follow_up_questions() -> None:
         event for event in outbox.pending() if event.event_type == "interview.completed"
     ]
     assert len(completion_events) == 1
-    assert completion_events[0].payload["last_turn_id"] == str(SECOND_ANSWER_TURN_ID)
+    assert completion_events[0].payload["last_turn_id"] == str(THIRD_ANSWER_TURN_ID)

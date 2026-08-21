@@ -30,7 +30,6 @@ from interview_evidence.interview_engine.domain.session import (
 from interview_evidence.interview_engine.domain.turn import (
     HotViewSyncStatus,
     InterviewTurn,
-    QuestionRationale,
     TurnSpeaker,
     TurnStatus,
     VerificationProgress,
@@ -102,6 +101,7 @@ class LiveInterviewHandler:
     ) -> ServerEnvelope:
         plan = self._plan(started, context)
         initial_target = plan.initial_target()
+        opening_prompt = plan.opening_prompt
         question_turn = self._repository.save_turn(
             context,
             InterviewTurn(
@@ -111,7 +111,7 @@ class LiveInterviewHandler:
                 sequence=self._next_turn_sequence(context, started.interview_session_id),
                 speaker=TurnSpeaker.INTERVIEWER,
                 status=TurnStatus.FINAL,
-                text=plan.initial_question,
+                text=opening_prompt,
                 target_criterion_id=(
                     initial_target.criterion_id
                     if initial_target is not None
@@ -138,27 +138,6 @@ class LiveInterviewHandler:
                     updated_at=self._clock.now(),
                 ),
             )
-            self._repository.save_question_rationale(
-                context,
-                QuestionRationale(
-                    question_rationale_id=new_uuid7(self._clock.now()),
-                    company_id=started.company_id,
-                    interview_session_id=started.interview_session_id,
-                    question_turn_id=question_turn.turn_id,
-                    applicant_id=started.applicant_id,
-                    competency_model_version_id=(started.competency_model_version_id),
-                    criterion_id=initial_target.criterion_id,
-                    verification_target_id=(initial_target.verification_target_id),
-                    verification_target_type=initial_target.target_type,
-                    objective=initial_target.objective,
-                    question_type="common",
-                    retrieval_version=plan.retrieval_config_version,
-                    generation_version=plan.model_config_version,
-                    policy_result="configured_common_question",
-                    source_reference_ids=(),
-                    created_at=self._clock.now(),
-                ),
-            )
         awaiting = self._state_machine.transition(
             started,
             expected_sequence=started.session_sequence,
@@ -176,7 +155,7 @@ class LiveInterviewHandler:
         )
         speech = self._speech.synthesize(
             context,
-            text=plan.initial_question,
+            text=opening_prompt,
             voice_id=plan.voice_id,
         )
         return self._question_message(
@@ -514,6 +493,14 @@ class LiveInterviewHandler:
                         "post_processing_status": "queued",
                     },
                 )
+        elif (
+            previous_question is not None
+            and plan.is_warm_up_question(previous_question.text)
+            and plan.verification_targets
+        ):
+            question_target = plan.initial_target()
+            if question_target is not None:
+                existing_progress = progress_by_target.get(question_target.verification_target_id)
         target = (
             question_target.criterion_id
             if question_target is not None
