@@ -154,6 +154,12 @@ describe("AI recruiting assistant", () => {
     expect(await screen.findByText("1개 포지션")).toBeTruthy();
     expect(screen.getByText("1명 지원자")).toBeTruthy();
     expect(await screen.findByText("1건 리포트")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "선택한 범위의 최종 리포트를 근거로 검색·생성한 답변이며, AI의 요약과 평가는 부정확할 수 있습니다.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/최종 판단은 담당자/)).toBeNull();
 
     const scope = screen.getByRole("combobox", { name: "분석 범위" });
     fireEvent.change(scope, { target: { value: "position-1" } });

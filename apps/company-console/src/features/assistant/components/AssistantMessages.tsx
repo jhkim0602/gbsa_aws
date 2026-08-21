@@ -6,7 +6,6 @@ import {
   FileSearch,
   LockKeyhole,
   Search,
-  ShieldCheck,
 } from "lucide-react";
 
 import type { ChatMessage, Citation, PositionRow, RagAnswer } from "../types";
@@ -221,18 +220,6 @@ function AssistantMessage({
               ))}
             </div>
           </div>
-        ) : null}
-
-        {!answer.streaming ? (
-          <p className="mt-5 flex items-start gap-2 text-[9px] leading-[1.65] text-muted">
-            <ShieldCheck
-              className="mt-0.5 shrink-0 text-muted"
-              size={12}
-              aria-hidden="true"
-            />
-            검색된 최종 리포트에 없는 사실은 추론하지 않으며, 채용 판단은
-            담당자가 수행합니다.
-          </p>
         ) : null}
       </div>
     </article>

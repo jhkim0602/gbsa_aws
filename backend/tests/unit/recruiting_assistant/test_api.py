@@ -122,6 +122,12 @@ class GroundedModel:
         model_input: Mapping[str, Any],
     ) -> Mapping[str, Any]:
         context.assert_company(COMPANY_ID)
+        system = model_input["system"]
+        assert isinstance(system, str)
+        assert "provided_sources에 포함된 최종 리포트" in system
+        assert "실제로 답변에 사용한 source_id" in system
+        assert "채용 여부를 최종 결정" not in system
+        assert "서로 다른 포지션의 점수" not in system
         messages = model_input["messages"]
         assert isinstance(messages, list)
         content = messages[0]["content"][0]["text"]
