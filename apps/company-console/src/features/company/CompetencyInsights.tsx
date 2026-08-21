@@ -1,6 +1,8 @@
 import { BarChart3, CircleAlert, Sparkles } from "lucide-react";
 import { useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
+
+import { interviewReviewPath } from "../../app/applicantWorkspacePath";
 import {
   Bar,
   BarChart,
@@ -361,12 +363,10 @@ export function ScoreDistribution({
 }
 
 export function ApplicantScoreTable({
-  positionId,
   invitations,
   insights,
   limit,
 }: {
-  positionId: string;
   invitations: readonly CompanyInvitation[];
   insights: readonly CompanyApplicantInsight[];
   limit?: number;
@@ -427,14 +427,20 @@ export function ApplicantScoreTable({
                       aria-label={`${displayName} 리포트 열기`}
                       onClick={() =>
                         navigate(
-                          `/positions/${positionId}/applicants/${insight.invitationId}`,
+                          interviewReviewPath(
+                            insight.interviewSessionId,
+                            insight.invitationId,
+                          ),
                         )
                       }
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
                           event.preventDefault();
                           navigate(
-                            `/positions/${positionId}/applicants/${insight.invitationId}`,
+                            interviewReviewPath(
+                              insight.interviewSessionId,
+                              insight.invitationId,
+                            ),
                           );
                         }
                       }}
@@ -511,7 +517,10 @@ export function ApplicantScoreTable({
                 <Link
                   className="grid gap-3 p-4 hover:bg-surface-muted"
                   key={insight.invitationId}
-                  to={`/positions/${positionId}/applicants/${insight.invitationId}`}
+                  to={interviewReviewPath(
+                    insight.interviewSessionId,
+                    insight.invitationId,
+                  )}
                   aria-label={`${displayName} 리포트 열기`}
                 >
                   <span className="flex items-center gap-3">

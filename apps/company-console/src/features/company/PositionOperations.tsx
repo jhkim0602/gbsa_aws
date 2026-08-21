@@ -40,10 +40,8 @@ import {
   STATUS_BADGE,
   STATUS_BADGE_TONE,
 } from "../../app/styles/primitives";
-import {
-  applicantWorkspacePath,
-  summarizeApplicantPipeline,
-} from "./applicantSummary";
+import { applicantWorkspacePath } from "../../app/applicantWorkspacePath";
+import { summarizeApplicantPipeline } from "./applicantSummary";
 import { statusLabel, statusTone } from "./companyFormatters";
 import { PositionDashboard } from "./PositionDashboard";
 import { PositionQuickEditModal } from "./PositionSettings";
@@ -490,7 +488,6 @@ export function PositionOperations({
               limit={10}
             />
             <ApplicantScoreTable
-              positionId={position.positionId}
               invitations={positionInvitations}
               insights={weightedInsights}
             />

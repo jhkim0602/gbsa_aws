@@ -121,7 +121,6 @@ export function PositionDashboard({
       />
 
       <ApplicantScoreTable
-        positionId={position.positionId}
         invitations={invitations}
         insights={insights}
         limit={5}

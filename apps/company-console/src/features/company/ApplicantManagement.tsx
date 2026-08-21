@@ -22,10 +22,8 @@ import {
   invitationTone,
 } from "../../app/styles/primitives";
 import { invitationStatusMeta } from "../hiring/PositionInvitations";
-import {
-  applicantWorkspacePath,
-  summarizeApplicantPipeline,
-} from "./applicantSummary";
+import { applicantWorkspacePath } from "../../app/applicantWorkspacePath";
+import { summarizeApplicantPipeline } from "./applicantSummary";
 import type {
   CompanyDeletionStatus,
   CompanyInvitation,

@@ -17,6 +17,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { applicantWorkspacePath } from "../../app/applicantWorkspacePath";
 import {
   ASYNC_STATE,
   BUTTON_PRIMARY,
@@ -1120,7 +1121,7 @@ function InvitationTable({
                     <Link
                       className={INVITATION_APPLICANT_LINK}
                       aria-label={`${displayName} 상세 보기`}
-                      to={`/positions/${invitation.positionId}/applicants/${invitation.invitationId}`}
+                      to={applicantWorkspacePath(invitation)}
                     >
                       <strong className={INVITATION_TABLE_NAME}>
                         {displayName}

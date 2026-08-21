@@ -5,7 +5,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -25,6 +25,13 @@ import type {
   InvitationEmailTemplateState,
   PositionInvitationApi,
 } from "../../hiring";
+
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <output data-testid="location">{`${location.pathname}${location.search}`}</output>
+  );
+}
 
 beforeEach(() => {
   localStorage.clear();
@@ -710,6 +717,9 @@ describe("company workspace", () => {
       listInvitations: vi.fn().mockResolvedValue([
         {
           ...positionTwoInvitations[1],
+          status: "interviewing",
+          interviewStatus: "interviewing",
+          reportStatus: null,
           interviewSessionId: "session-1",
         },
       ]),
@@ -769,6 +779,39 @@ describe("company workspace", () => {
       screen.getByRole("heading", { name: "제출 자료 원본" }),
     ).toBeTruthy();
     expect(screen.getByText("resume.pdf")).toBeTruthy();
+  });
+
+  it("redirects a completed interview detail to the full review workspace", async () => {
+    const apiWithCompletedSession: CompanyOperationsApi = {
+      ...operationsApi,
+      listInvitations: vi.fn().mockResolvedValue([
+        {
+          ...positionTwoInvitations[1],
+          status: "materials_submitted",
+          interviewStatus: "completed",
+          reportStatus: "ready",
+          interviewSessionId: "session-1",
+        },
+      ]),
+    };
+    render(
+      <MemoryRouter
+        initialEntries={["/positions/position-2/applicants/invitation-2"]}
+      >
+        <ApplicantDetail
+          positionId="position-2"
+          invitationId="invitation-2"
+          api={apiWithCompletedSession}
+        />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/review/session-1?invitationId=invitation-2",
+      ),
+    );
   });
 
   it("bounds invitation fan-out and keeps invitations in position order", async () => {

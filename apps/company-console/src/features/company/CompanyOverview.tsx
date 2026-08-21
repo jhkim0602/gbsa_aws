@@ -24,8 +24,8 @@ import {
   STATUS_BADGE,
   STATUS_BADGE_TONE,
 } from "../../app/styles/primitives";
+import { applicantWorkspacePath } from "../../app/applicantWorkspacePath";
 import { statusLabel, statusTone } from "./companyFormatters";
-import { applicantWorkspacePath } from "./applicantSummary";
 import { displayApplicant, invitationProjection } from "./recruitingState";
 import type {
   CompanyInvitationStatus,

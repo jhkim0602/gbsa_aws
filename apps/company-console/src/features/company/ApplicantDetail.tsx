@@ -17,8 +17,9 @@ import {
   Video,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 
+import { applicantWorkspacePath } from "../../app/applicantWorkspacePath";
 import {
   ASYNC_STATE,
   BUTTON_SECONDARY,
@@ -108,9 +109,13 @@ export function ApplicantDetail({
   const [report, setReport] = useState<CompanyApplicantReport | null>(null);
   const [detailLoading, setDetailLoading] = useState(true);
   const [selectedStartMs, setSelectedStartMs] = useState<number | null>(null);
+  const reviewPath = invitation ? applicantWorkspacePath(invitation) : null;
+  const redirectToReview = reviewPath?.startsWith("/review/")
+    ? reviewPath
+    : null;
 
   useEffect(() => {
-    if (!invitation) return;
+    if (!invitation || redirectToReview) return;
     let active = true;
     setDetailLoading(true);
     const reportRequest =
@@ -149,7 +154,7 @@ export function ApplicantDetail({
     return () => {
       active = false;
     };
-  }, [api, invitation, invitationId, positionId]);
+  }, [api, invitation, invitationId, positionId, redirectToReview]);
 
   if (loading) {
     return (
@@ -164,6 +169,9 @@ export function ApplicantDetail({
         지원자 정보를 찾을 수 없습니다.
       </div>
     );
+  }
+  if (redirectToReview) {
+    return <Navigate replace to={redirectToReview} />;
   }
 
   const displayName =
