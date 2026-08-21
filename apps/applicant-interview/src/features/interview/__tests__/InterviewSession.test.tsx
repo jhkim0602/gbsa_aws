@@ -255,7 +255,7 @@ describe("InterviewSession", () => {
       expect(recorder.start).toHaveBeenCalledWith(stream);
       expect(protocol.submitAutomatedAnswer).toHaveBeenCalledWith({
         answerTurnId: expect.any(String),
-        text: expect.stringContaining("장애 대응 경험을 설명해 주세요."),
+        text: expect.not.stringContaining("장애 대응 경험을 설명해 주세요."),
         lastRecordingChunkSequence: 0,
       });
       expect(dispose).toHaveBeenCalledOnce();
@@ -485,7 +485,7 @@ describe("InterviewSession", () => {
       expect(protocol.submitAutomatedAnswer).toHaveBeenCalledTimes(2);
       expect(protocol.submitAutomatedAnswer).toHaveBeenLastCalledWith({
         answerTurnId: expect.any(String),
-        text: expect.stringContaining("문제의 원인을 어떻게 해결했나요?"),
+        text: expect.not.stringContaining("문제의 원인을 어떻게 해결했나요?"),
         lastRecordingChunkSequence: 0,
       });
     } finally {
@@ -605,7 +605,7 @@ describe("InterviewSession", () => {
       expect(protocol.submitAutomatedAnswer).toHaveBeenCalledOnce();
       expect(protocol.submitAutomatedAnswer).toHaveBeenCalledWith({
         answerTurnId: expect.any(String),
-        text: expect.stringContaining("재연결 테스트 질문입니다."),
+        text: expect.not.stringContaining("재연결 테스트 질문입니다."),
         lastRecordingChunkSequence: 0,
       });
     } finally {

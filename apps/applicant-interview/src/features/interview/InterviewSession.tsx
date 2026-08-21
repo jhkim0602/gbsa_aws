@@ -403,7 +403,7 @@ export function InterviewSession({
     if (!automationMode) return;
     await delay(900);
     const answerIndex = automatedAnswerIndexRef.current;
-    const answer = automatedAnswer(question, answerIndex);
+    const answer = automatedAnswer(answerIndex);
     setTranscript(answer);
     setAutomationStatus(
       automationMode === "speech"
