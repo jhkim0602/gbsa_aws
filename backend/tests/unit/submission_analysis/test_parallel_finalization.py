@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any, cast
@@ -349,9 +349,17 @@ class FailingConsumer:
     def __init__(self, operations: list[str]) -> None:
         self.operations = operations
 
-    def consume_once(self, *, max_messages: int) -> int:
+    def consume_once(
+        self,
+        *,
+        max_messages: int,
+        commit: Callable[[], None],
+        rollback: Callable[[], None],
+    ) -> int:
         assert max_messages == 1
+        del commit
         self.operations.append("consume")
+        rollback()
         raise RuntimeError("consumer failed")
 
 

@@ -7,7 +7,11 @@ from typing import Any, Protocol
 
 from google.genai import types
 
-from interview_evidence.shared.aws_clients.ports import AIModel, TextEmbedder
+from interview_evidence.shared.aws_clients.ports import (
+    AIModel,
+    EmbeddingProviderError,
+    TextEmbedder,
+)
 from interview_evidence.shared.tenant import TenantContext, require_tenant_context
 
 
@@ -33,7 +37,11 @@ class VertexClient(Protocol):
     models: VertexModelsClient
 
 
-class GcpGenerativeAdapterError(RuntimeError):
+class GcpGenerativeAdapterError(ConnectionError):
+    pass
+
+
+class GcpEmbeddingProviderError(GcpGenerativeAdapterError, EmbeddingProviderError):
     pass
 
 
@@ -107,12 +115,12 @@ class GcpVertexTextEmbedder(TextEmbedder):
                 raise ValueError("Vertex embedding values are unavailable")
             vector = tuple(float(value) for value in values)
         except Exception as error:
-            raise GcpGenerativeAdapterError("text embedding unavailable") from error
+            raise GcpEmbeddingProviderError("text embedding unavailable") from error
         if len(vector) != dimensions or not all(math.isfinite(value) for value in vector):
-            raise GcpGenerativeAdapterError("text embedding response is invalid")
+            raise GcpEmbeddingProviderError("text embedding response is invalid")
         magnitude = math.sqrt(sum(value * value for value in vector))
         if magnitude == 0:
-            raise GcpGenerativeAdapterError("text embedding response is invalid")
+            raise GcpEmbeddingProviderError("text embedding response is invalid")
         return tuple(value / magnitude for value in vector)
 
 

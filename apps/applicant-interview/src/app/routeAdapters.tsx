@@ -254,7 +254,7 @@ const submissionApi: SubmissionWorkspaceApi = {
       }),
     });
   },
-  async registerRepository(url, materialId) {
+  async registerRepository(url, materialId, githubUsername) {
     await applicantRequest("/v1/applicant/submissions", {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey("repository") },
@@ -262,7 +262,9 @@ const submissionApi: SubmissionWorkspaceApi = {
         material_type: toApiMaterialType(materialId),
         source_type: "public_git",
         public_url: url,
-        candidate_identity_inputs: {},
+        candidate_identity_inputs: {
+          claimed_handles: [githubUsername],
+        },
       }),
     });
   },

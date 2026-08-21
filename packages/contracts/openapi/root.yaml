@@ -1532,6 +1532,7 @@ components:
         - source_type
         - material_type
         - public_url
+        - candidate_identity_inputs
         properties:
           material_type:
             $ref: '#/components/schemas/SubmissionMaterialType'
@@ -1539,12 +1540,33 @@ components:
             type: string
             enum:
             - public_git
-            - public_url
           public_url:
             type: string
             format: uri
           candidate_identity_inputs:
             type: object
+            additionalProperties: false
+            required:
+            - claimed_handles
+            properties:
+              claimed_handles:
+                type: array
+                minItems: 1
+                maxItems: 1
+                items:
+                  type: string
+                  pattern: ^(?!-)(?!.*--)[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$
+              claimed_names:
+                type: array
+                maxItems: 20
+                items:
+                  type: string
+              claimed_emails:
+                type: array
+                maxItems: 20
+                items:
+                  type: string
+                  format: email
     SubmissionView:
       type: object
       additionalProperties: false

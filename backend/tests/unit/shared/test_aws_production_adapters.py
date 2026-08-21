@@ -6,6 +6,10 @@ from collections.abc import Mapping
 from uuid import UUID
 
 import pytest
+from interview_evidence.shared.aws_clients.ports import (
+    CachingTextEmbedder,
+    StaticTextEmbedder,
+)
 from interview_evidence.shared.aws_clients.production import (
     AwsBedrockModel,
     AwsCognitoPrincipalProvider,
@@ -230,13 +234,18 @@ def test_sqs_long_poll_delivery_can_be_acknowledged_or_retried() -> None:
     assert delivery.event_id == event_id
     assert delivery.aggregate_id == aggregate_id
     queue.retry(delivery.receipt_handle)
+    queue.extend_visibility(delivery.receipt_handle, 300)
     queue.acknowledge(delivery.receipt_handle)
     assert [call[0] for call in client.calls] == [
         "receive_message",
         "change_message_visibility",
+        "change_message_visibility",
         "delete_message",
     ]
     assert client.calls[0][1]["WaitTimeSeconds"] == 1
+    assert client.calls[0][1]["AttributeNames"] == ["ApproximateReceiveCount"]
+    assert "VisibilityTimeout" not in client.calls[0][1]
+    assert client.calls[2][1]["VisibilityTimeout"] == 300
 
 
 def test_sqs_readiness_and_depth_use_queue_attributes() -> None:
@@ -380,6 +389,28 @@ def test_titan_embedder_returns_normalized_vector_without_exposing_text() -> Non
         "dimensions": 256,
         "normalize": True,
     }
+
+
+def test_embedding_cache_deduplicates_normalized_provider_requests() -> None:
+    delegate = StaticTextEmbedder((1.0,) * 1024)
+    embedder = CachingTextEmbedder(delegate, max_entries=2)
+
+    first = embedder.embed(_context(), "  같은 코드 조각  ")
+    second = embedder.embed(_context(), "같은 코드 조각")
+
+    assert first == second
+    assert len(delegate.calls) == 1
+    assert embedder.embedding_version == delegate.embedding_version
+
+
+def test_titan_rejects_oversized_input_before_provider_call() -> None:
+    bedrock = RecordingClient()
+    embedder = AwsTitanTextEmbedder(bedrock)
+
+    with pytest.raises(ValueError, match="exceeds 50000"):
+        embedder.embed(_context(), "x" * 50_001)
+
+    assert bedrock.calls == []
 
 
 def test_textract_transcribe_and_media_convert_adapters_return_sanitized_results() -> None:

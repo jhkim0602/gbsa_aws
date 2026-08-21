@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import UUID
 
+import pytest
 from interview_evidence.runtime.worker import (
     EVENT_QUEUE_ROUTING,
     InterviewCompletedEventHandler,
@@ -169,6 +172,143 @@ def test_consumer_requeues_retryable_failure_without_recording_success() -> None
             event_version=1,
         ).outcome_digest,
     )
+
+
+def test_consumer_requeues_retrying_outcome_without_recording_success() -> None:
+    queue = InMemoryQueue()
+    processed = InMemoryProcessedMessageStore()
+    dispatcher = OutboxDispatcher(
+        outbox=InMemoryOutbox(),
+        queues={"analysis": queue},
+        routing={"submission.analysis_requested": "analysis"},
+    )
+    dispatcher.outbox.append(_event())
+    dispatcher.dispatch_once()
+    consumer = MessageConsumer(
+        consumer_name="analysis-worker",
+        queue=queue,
+        processed=processed,
+        handlers={
+            "submission.analysis_requested": lambda _context, _event: SimpleNamespace(
+                status="retrying"
+            )
+        },
+        clock=FrozenClock(NOW),
+    )
+
+    assert consumer.consume_once(max_messages=1) == 0
+    assert not processed.contains(
+        consumer_name="analysis-worker",
+        event_id=EVENT_ID,
+        event_version=1,
+    )
+    assert queue.receive(max_messages=1)[0].receive_count == 2
+
+
+def test_consumer_commits_database_before_acknowledging_sqs() -> None:
+    operations: list[str] = []
+
+    class OrderedQueue(InMemoryQueue):
+        def acknowledge(self, receipt_handle: str) -> None:
+            operations.append("ack")
+            super().acknowledge(receipt_handle)
+
+    queue = OrderedQueue()
+    dispatcher = OutboxDispatcher(
+        outbox=InMemoryOutbox(),
+        queues={"analysis": queue},
+        routing={"submission.analysis_requested": "analysis"},
+    )
+    dispatcher.outbox.append(_event())
+    dispatcher.dispatch_once()
+    consumer = MessageConsumer(
+        consumer_name="analysis-worker",
+        queue=queue,
+        processed=InMemoryProcessedMessageStore(),
+        handlers={"submission.analysis_requested": lambda _context, _event: "ready"},
+        clock=FrozenClock(NOW),
+    )
+
+    assert consumer.consume_once(
+        max_messages=1,
+        commit=lambda: operations.append("commit"),
+        rollback=lambda: operations.append("rollback"),
+    ) == 1
+    assert operations == ["commit", "ack"]
+
+
+def test_consumer_extends_visibility_while_handler_is_running() -> None:
+    extensions: list[int] = []
+
+    class HeartbeatQueue(InMemoryQueue):
+        visibility_timeout_seconds = 3
+
+        def extend_visibility(self, receipt_handle: str, timeout_seconds: int) -> None:
+            super().extend_visibility(receipt_handle, timeout_seconds)
+            extensions.append(timeout_seconds)
+
+    queue = HeartbeatQueue()
+    dispatcher = OutboxDispatcher(
+        outbox=InMemoryOutbox(),
+        queues={"analysis": queue},
+        routing={"submission.analysis_requested": "analysis"},
+    )
+    dispatcher.outbox.append(_event())
+    dispatcher.dispatch_once()
+
+    def slow_handler(_context: TenantContext, _event: OutboxEvent) -> str:
+        time.sleep(1.1)
+        return "ready"
+
+    consumer = MessageConsumer(
+        consumer_name="analysis-worker",
+        queue=queue,
+        processed=InMemoryProcessedMessageStore(),
+        handlers={"submission.analysis_requested": slow_handler},
+        clock=FrozenClock(NOW),
+    )
+
+    assert consumer.consume_once(max_messages=1) == 1
+    assert extensions == [3]
+
+
+def test_consumer_does_not_acknowledge_when_database_commit_fails() -> None:
+    operations: list[str] = []
+
+    class OrderedQueue(InMemoryQueue):
+        def acknowledge(self, receipt_handle: str) -> None:
+            operations.append("ack")
+            super().acknowledge(receipt_handle)
+
+    queue = OrderedQueue()
+    dispatcher = OutboxDispatcher(
+        outbox=InMemoryOutbox(),
+        queues={"analysis": queue},
+        routing={"submission.analysis_requested": "analysis"},
+    )
+    dispatcher.outbox.append(_event())
+    dispatcher.dispatch_once()
+    consumer = MessageConsumer(
+        consumer_name="analysis-worker",
+        queue=queue,
+        processed=InMemoryProcessedMessageStore(),
+        handlers={"submission.analysis_requested": lambda _context, _event: "ready"},
+        clock=FrozenClock(NOW),
+    )
+
+    def fail_commit() -> None:
+        operations.append("commit")
+        raise RuntimeError("database commit failed")
+
+    with pytest.raises(RuntimeError, match="database commit failed"):
+        consumer.consume_once(
+            max_messages=1,
+            commit=fail_commit,
+            rollback=lambda: operations.append("rollback"),
+        )
+
+    assert operations == ["commit", "rollback"]
+    assert queue.approximate_depth() == 1
 
 
 def test_local_worker_runtime_executes_a_cycle_without_cloud_dependencies() -> None:

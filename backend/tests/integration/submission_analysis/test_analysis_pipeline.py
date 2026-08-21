@@ -7,7 +7,10 @@ from typing import Any
 from uuid import UUID
 
 import pytest
-from interview_evidence.shared.aws_clients.ports import StaticTextEmbedder
+from interview_evidence.shared.aws_clients.ports import (
+    EmbeddingProviderError,
+    StaticTextEmbedder,
+)
 from interview_evidence.shared.ids import FrozenClock
 from interview_evidence.shared.messaging.outbox import InMemoryOutbox
 from interview_evidence.shared.tenant import ActorType, TenantContext
@@ -113,6 +116,21 @@ class SourceAwareModel:
         }
 
 
+class UnavailableEmbedder:
+    model_id = "unavailable-embedder"
+    embedding_version = "unavailable-v1"
+
+    def embed(
+        self,
+        _context: TenantContext,
+        _text: str,
+        *,
+        dimensions: int = 1024,
+    ) -> tuple[float, ...]:
+        del dimensions
+        raise EmbeddingProviderError("provider unavailable")
+
+
 def test_document_event_creates_durable_chunks_search_records_and_strategy() -> None:
     repository = InMemorySubmissionRepository()
     repository.save_submission(
@@ -180,10 +198,58 @@ def test_document_event_creates_durable_chunks_search_records_and_strategy() -> 
         query_vector=embedder.embed(_context(), "결제 장애율"),
         exact_symbol=None,
     )
+    assert pipeline.finalize_invitation(
+        _context(),
+        invitation_id=INVITATION_ID,
+        applicant_id=APPLICANT_ID,
+        submission_ids=frozenset({SUBMISSION_ID}),
+    )
     strategy = repository.latest_strategy(_context(), INVITATION_ID)
     assert strategy is not None
     assert strategy.competency_model_version_id == CRITERION_VERSION_ID
     assert outbox.pending()[-1].event_type == "strategy.ready"
+
+
+def test_embedding_provider_failure_uses_analysis_retry_contract() -> None:
+    repository = InMemorySubmissionRepository()
+    repository.save_submission(
+        _context(),
+        _pdf_submission(SUBMISSION_ID, "resume.pdf"),
+    )
+    pipeline = SubmissionAnalysisPipeline(
+        repository=repository,
+        extractor=DocumentExtractionAdapter(
+            DeterministicTextract(
+                (
+                    TextractPage(
+                        page_number=1,
+                        lines=("결제 장애율을 30% 줄이고 재처리 큐를 설계했습니다.",),
+                    ),
+                )
+            ),
+            extractor_version="textract-v1",
+        ),
+        search_index=InMemorySearchIndex(),
+        text_embedder=UnavailableEmbedder(),
+        strategy_model=SourceAwareModel(),
+        axis_provider=StaticAxisProvider(),
+        outbox=InMemoryOutbox(),
+        clock=FrozenClock(NOW),
+    )
+
+    with pytest.raises(RetryableAnalysisError, match="embedding_provider_unavailable"):
+        pipeline.process(
+            _context(),
+            AnalysisJob(
+                submission_id=SUBMISSION_ID,
+                invitation_id=INVITATION_ID,
+                applicant_id=APPLICANT_ID,
+                analysis_version=1,
+                source_type=SourceType.PDF,
+                source_object_id=SUBMISSION_ID,
+                idempotency_key="analysis-embedding-retry-0001",
+            ),
+        )
 
 
 def test_public_git_event_persists_code_units_and_exact_symbol_index() -> None:
@@ -283,6 +349,26 @@ def test_public_git_event_persists_code_units_and_exact_symbol_index() -> None:
     )
     assert matches[0].exact_symbol_score == 1.0
     assert matches[0].document.ownership_confidence < 0.5
+
+
+def test_code_unit_embedding_excerpt_excludes_unrelated_file_content() -> None:
+    source = "\n".join(
+        (
+            "UNRELATED_SECRET_LIKE_TEXT = 'do-not-embed-with-target'",
+            "",
+            "def target_function():",
+            "    return 'candidate code'",
+            "",
+            "def unrelated_function():",
+            "    return 'other code'",
+        )
+    )
+
+    excerpt = SubmissionAnalysisPipeline._code_unit_excerpt(source, (3, 4))
+
+    assert excerpt == "def target_function():\n    return 'candidate code'"
+    assert "UNRELATED_SECRET_LIKE_TEXT" not in excerpt
+    assert "unrelated_function" not in excerpt
 
 
 def test_each_analyzed_commit_contributes_its_own_code_unit_evidence() -> None:
@@ -773,15 +859,8 @@ def _pdf_submission(submission_id: UUID, filename: str) -> Submission:
     )
 
 
-def test_a_second_submission_builds_the_next_strategy_version_instead_of_failing() -> None:
-    """An applicant submits a resume and a cover letter, so two analyses run.
-
-    Both used to build strategy version 1, which violates
-    ``uq_interview_strategies_invitation_version``. The second analysis died on the insert
-    and the applicant was left unable to enter the interview at all -- the whole live
-    journey stopped here. Postgres enforces this; the in-memory repository now does too,
-    which is what let the defect pass this suite.
-    """
+def test_multiple_submissions_build_one_combined_strategy_after_analysis() -> None:
+    """Finalization combines all completed materials into one strategy generation."""
     second_submission_id = UUID("00000000-0000-7000-8000-000000000207")
     repository = InMemorySubmissionRepository()
     repository.save_submission(_context(), _pdf_submission(SUBMISSION_ID, "resume.pdf"))
@@ -822,20 +901,23 @@ def test_a_second_submission_builds_the_next_strategy_version_instead_of_failing
         )
         assert result.status is JobStatus.READY
 
-    # The interview reads the latest strategy, so the second submission's sources are the
-    # ones it plans from.
+    assert pipeline.finalize_invitation(
+        _context(),
+        invitation_id=INVITATION_ID,
+        applicant_id=APPLICANT_ID,
+        submission_ids=frozenset({SUBMISSION_ID, second_submission_id}),
+    )
     strategy = repository.latest_strategy(_context(), INVITATION_ID)
     assert strategy is not None
-    assert strategy.strategy_version == 2
+    assert strategy.strategy_version == 1
     versions = sorted(
         value.strategy_version
         for value in repository.strategies.values()
         if value.invitation_id == INVITATION_ID
     )
-    assert versions == [1, 2]
-    # Each version announces itself, or the interview never learns it can start.
+    assert versions == [1]
     assert [
         event.payload["strategy_version"]
         for event in outbox.pending()
         if event.event_type == "strategy.ready"
-    ] == [1, 2]
+    ] == [1]

@@ -1187,16 +1187,22 @@ export interface components {
             readonly weight: number;
         };
         readonly SubmissionCreate: {
+            readonly material_type: components["schemas"]["SubmissionMaterialType"];
             /** @enum {string} */
             readonly source_type: "cover_letter" | "resume" | "pdf";
             /** Format: uuid */
             readonly upload_id: string;
         } | {
-            readonly candidate_identity_inputs?: Record<string, never>;
+            readonly candidate_identity_inputs: {
+                readonly claimed_emails?: readonly string[];
+                readonly claimed_handles: readonly [string];
+                readonly claimed_names?: readonly string[];
+            };
+            readonly material_type: components["schemas"]["SubmissionMaterialType"];
             /** Format: uri */
             readonly public_url: string;
             /** @enum {string} */
-            readonly source_type: "public_git" | "public_url";
+            readonly source_type: "public_git";
         };
         readonly SubmissionView: {
             /** Format: date-time */

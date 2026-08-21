@@ -17,6 +17,7 @@ from interview_evidence.interview_engine.adapters.recent_context import (
 from interview_evidence.runtime.generative_ai import create_generative_ai_dependencies
 from interview_evidence.shared.aws_clients.ports import (
     AIModel,
+    CachingTextEmbedder,
     ConsumableQueue,
     EmailSender,
     ObjectStorage,
@@ -122,6 +123,12 @@ def create_aws_runtime_dependencies(
             cast(SqsClient, factory("sqs")),
             queue_url=_required(environment, f"SQS_{name.upper()}_QUEUE_URL"),
             wait_time_seconds=sqs_wait_time_seconds,
+            visibility_timeout_seconds=int(
+                environment.get(
+                    f"SQS_{name.upper()}_VISIBILITY_TIMEOUT_SECONDS",
+                    "900" if name == "media" else "300",
+                )
+            ),
         )
         for name in ("analysis", "media", "reporting", "deletion")
     }
@@ -179,6 +186,10 @@ def create_aws_runtime_dependencies(
         environment,
         aws_client_factory=factory,
     )
+    embedder = CachingTextEmbedder(
+        generative_ai.embedder,
+        max_entries=int(environment.get("BEDROCK_EMBEDDING_CACHE_ENTRIES", "2048")),
+    )
     speech_to_text = AwsTranscribeSpeechToText(
         cast(TranscribeClient, factory("transcribe")),
         s3,
@@ -216,7 +227,7 @@ def create_aws_runtime_dependencies(
         search_index=search_index,
         queues=queues,
         model=generative_ai.model,
-        embedder=generative_ai.embedder,
+        embedder=embedder,
         speech_to_text=speech_to_text,
         text_to_speech=text_to_speech,
         media_convert=media_convert,

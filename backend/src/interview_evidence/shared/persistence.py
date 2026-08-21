@@ -173,6 +173,7 @@ class SQLOutbox:
             .where(OutboxEventRow.publish_status == PublishStatus.PENDING.value)
             .order_by(OutboxEventRow.occurred_at, OutboxEventRow.outbox_event_id)
             .with_for_update(skip_locked=True)
+            .limit(100)
         )
         return tuple(self._domain(row) for row in rows)
 

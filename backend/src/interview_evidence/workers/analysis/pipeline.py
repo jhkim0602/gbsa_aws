@@ -5,11 +5,16 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from interview_evidence.shared.aws_clients.ports import AIModel, TextEmbedder
+from interview_evidence.shared.aws_clients.ports import (
+    AIModel,
+    EmbeddingProviderError,
+    TextEmbedder,
+)
 from interview_evidence.shared.ids import Clock, new_uuid7
 from interview_evidence.shared.messaging.outbox import Outbox
 from interview_evidence.shared.tenant import TenantContext
 from interview_evidence.submission_analysis.adapters.search import (
+    CurrentDocumentLookup,
     SearchDocument,
     SearchIndex,
 )
@@ -88,6 +93,7 @@ RETRYABLE_SOURCE_CODES = frozenset(
 )
 SOURCE_FAILURE_SUMMARY = "제출 자료를 분석할 수 없어 해당 자료는 면접 준비에서 제외됩니다."
 SOURCE_CANDIDATE_CLAIM = "source_reference_candidate"
+MAX_EMBEDDING_CHARACTERS = 50_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,6 +204,8 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                 raise RetryableAnalysisError(code) from error
             self._record_failed(context, job.submission_id, code)
             raise NonRetryableAnalysisError(code) from error
+        except EmbeddingProviderError as error:
+            raise RetryableAnalysisError("embedding_provider_unavailable") from error
 
     def _process_document(
         self,
@@ -470,6 +478,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     changed_line_ranges=ranges,
                     related_files=related,
                 ):
+                    excerpt = self._code_unit_excerpt(source, expanded.line_range)
                     code_unit_id = new_uuid7(occurred_at)
                     document_id = str(code_unit_id)
                     unit = CandidateCodeUnit(
@@ -511,8 +520,8 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                             company_id=context.company_id,
                             applicant_id=submission.applicant_id,
                             source_id=unit.code_unit_id,
-                            text=f"{unit.symbol} {source}",
-                            vector=self.embed(context, source),
+                            text=f"{unit.symbol}\n{excerpt}",
+                            vector=self.embed(context, excerpt),
                             symbols=(unit.symbol,),
                             locator=locator,
                             ownership_confidence=commit_analysis.ownership_confidence,
@@ -521,7 +530,9 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                             document_type="code_unit",
                             source_type="candidate_code_unit",
                             source_version=commit_sha,
-                            content_hash=submission.content_hash or "0" * 64,
+                            content_hash=hashlib.sha256(
+                                excerpt.encode("utf-8")
+                            ).hexdigest(),
                             embedding_model=self._text_embedder.model_id,
                             embedding_version=self._text_embedder.embedding_version,
                             path=unit.path,
@@ -533,7 +544,9 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                             source_id=unit.code_unit_id,
                             source_type="candidate_code_unit",
                             locator=locator,
-                            content_hash=hashlib.sha256(source.encode("utf-8")).hexdigest(),
+                            content_hash=hashlib.sha256(
+                                excerpt.encode("utf-8")
+                            ).hexdigest(),
                             relevance_score=1.0,
                             ownership_confidence=commit_analysis.ownership_confidence,
                         )
@@ -605,6 +618,15 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
         except SyntaxError:
             return ()
 
+    @staticmethod
+    def _code_unit_excerpt(source: str, line_range: tuple[int, int]) -> str:
+        lines = source.splitlines()
+        start, end = line_range
+        excerpt = "\n".join(lines[max(0, start - 1) : min(len(lines), end)]).strip()
+        if not excerpt:
+            raise NonRetryableAnalysisError("public_git_code_unit_empty")
+        return excerpt[:MAX_EMBEDDING_CHARACTERS]
+
     def _index_criterion_axis(
         self,
         context: TenantContext,
@@ -619,17 +641,18 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     *criterion.follow_up_directions,
                 )
             )
+            document_id = str(
+                uuid5(
+                    NAMESPACE_URL,
+                    f"{axis.competency_model_version_id}:criterion:{criterion.criterion_id}",
+                )
+            )
+            content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            if self._axis_document_is_current(context, document_id, content_hash):
+                continue
             self._search_index.add(
                 SearchDocument(
-                    document_id=str(
-                        uuid5(
-                            NAMESPACE_URL,
-                            (
-                                f"{axis.competency_model_version_id}:"
-                                f"criterion:{criterion.criterion_id}"
-                            ),
-                        )
-                    ),
+                    document_id=document_id,
                     company_id=context.company_id,
                     applicant_id=UUID(int=0),
                     source_id=criterion.criterion_id,
@@ -643,23 +666,29 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     document_type="criterion_guide",
                     source_type="criterion_guide",
                     source_version=str(axis.version_number),
-                    content_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                    content_hash=content_hash,
                     embedding_model=self._text_embedder.model_id,
                     embedding_version=self._text_embedder.embedding_version,
                 )
             )
         for requirement in axis.requirements:
+            document_id = str(
+                uuid5(
+                    NAMESPACE_URL,
+                    (
+                        f"{axis.competency_model_version_id}:"
+                        f"requirement:{requirement.job_requirement_id}"
+                    ),
+                )
+            )
+            content_hash = hashlib.sha256(
+                requirement.statement.encode("utf-8")
+            ).hexdigest()
+            if self._axis_document_is_current(context, document_id, content_hash):
+                continue
             self._search_index.add(
                 SearchDocument(
-                    document_id=str(
-                        uuid5(
-                            NAMESPACE_URL,
-                            (
-                                f"{axis.competency_model_version_id}:"
-                                f"requirement:{requirement.job_requirement_id}"
-                            ),
-                        )
-                    ),
+                    document_id=document_id,
                     company_id=context.company_id,
                     applicant_id=UUID(int=0),
                     source_id=requirement.job_requirement_id,
@@ -672,11 +701,27 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     document_type="job_requirement",
                     source_type="job_requirement",
                     source_version=str(axis.version_number),
-                    content_hash=hashlib.sha256(requirement.statement.encode("utf-8")).hexdigest(),
+                    content_hash=content_hash,
                     embedding_model=self._text_embedder.model_id,
                     embedding_version=self._text_embedder.embedding_version,
                 )
             )
+
+    def _axis_document_is_current(
+        self,
+        context: TenantContext,
+        document_id: str,
+        content_hash: str,
+    ) -> bool:
+        if not isinstance(self._search_index, CurrentDocumentLookup):
+            return False
+        return self._search_index.has_current_document(
+            company_id=context.company_id,
+            document_id=document_id,
+            content_hash=content_hash,
+            embedding_model=self._text_embedder.model_id,
+            embedding_version=self._text_embedder.embedding_version,
+        )
 
     def finalize_invitation(
         self,

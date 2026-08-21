@@ -57,6 +57,30 @@ class PostgresHybridSearchIndex:
         )
         self._session.flush()
 
+    def has_current_document(
+        self,
+        *,
+        company_id: UUID,
+        document_id: str,
+        content_hash: str,
+        embedding_model: str,
+        embedding_version: str,
+    ) -> bool:
+        return (
+            self._session.scalar(
+                select(RetrievalDocumentRow.retrieval_document_id).where(
+                    RetrievalDocumentRow.company_id == company_id,
+                    RetrievalDocumentRow.retrieval_document_id
+                    == _document_uuid(document_id),
+                    RetrievalDocumentRow.content_hash == content_hash,
+                    RetrievalDocumentRow.embedding_model == embedding_model,
+                    RetrievalDocumentRow.embedding_version == embedding_version,
+                    RetrievalDocumentRow.deleted_at.is_(None),
+                )
+            )
+            is not None
+        )
+
     def delete(self, context: TenantContext, document_id: str) -> bool:
         tenant = require_tenant_context(context)
         identifier = _document_uuid(document_id)

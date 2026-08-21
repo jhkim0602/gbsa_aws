@@ -15,6 +15,7 @@ from interview_evidence.shared.aws_clients.ports import (
     AIModel,
     ConsumableQueue,
     EmailSender,
+    EmbeddingProviderError,
     ObjectStorage,
     QueueDelivery,
     SpeechToText,
@@ -33,8 +34,12 @@ from interview_evidence.shared.tenant import TenantContext, require_tenant_conte
 from interview_evidence.workers.analysis.document_extract import TextractPage
 
 
-class AwsAdapterError(RuntimeError):
+class AwsAdapterError(ConnectionError):
     """Sanitized managed-service failure."""
+
+
+class AwsEmbeddingProviderError(AwsAdapterError, EmbeddingProviderError):
+    """A Bedrock embedding failure that should follow the worker retry contract."""
 
 
 class ResponseBody(Protocol):
@@ -300,12 +305,16 @@ class AwsSqsQueue(ConsumableQueue):
         *,
         queue_url: str,
         wait_time_seconds: int = 2,
+        visibility_timeout_seconds: int = 300,
     ) -> None:
         if not 0 <= wait_time_seconds <= 20:
             raise ValueError("SQS wait time must be between 0 and 20 seconds")
+        if not 1 <= visibility_timeout_seconds <= 43_200:
+            raise ValueError("SQS visibility timeout must be between 1 and 43200 seconds")
         self._client = client
         self._queue_url = queue_url
         self._wait_time_seconds = wait_time_seconds
+        self.visibility_timeout_seconds = visibility_timeout_seconds
 
     def publish(
         self,
@@ -340,7 +349,7 @@ class AwsSqsQueue(ConsumableQueue):
                 QueueUrl=self._queue_url,
                 MaxNumberOfMessages=max(1, min(max_messages, 10)),
                 WaitTimeSeconds=self._wait_time_seconds,
-                VisibilityTimeout=60,
+                AttributeNames=["ApproximateReceiveCount"],
             )
         except Exception as error:
             raise AwsAdapterError("queue receive unavailable") from error
@@ -373,6 +382,17 @@ class AwsSqsQueue(ConsumableQueue):
                         payload=dict(cast(Mapping[str, object], payload)),
                         trace_id=str(envelope["trace_id"]),
                         occurred_at=datetime.fromisoformat(str(event["occurred_at"])),
+                        receive_count=max(
+                            1,
+                            int(
+                                str(
+                                    cast(
+                                        Mapping[str, object],
+                                        raw.get("Attributes", {}),
+                                    ).get("ApproximateReceiveCount", 1)
+                                )
+                            ),
+                        ),
                     )
                 )
             except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
@@ -397,6 +417,18 @@ class AwsSqsQueue(ConsumableQueue):
             )
         except Exception as error:
             raise AwsAdapterError("queue retry unavailable") from error
+
+    def extend_visibility(self, receipt_handle: str, timeout_seconds: int) -> None:
+        if timeout_seconds != self.visibility_timeout_seconds:
+            raise ValueError("visibility heartbeat must use the configured queue timeout")
+        try:
+            self._client.change_message_visibility(
+                QueueUrl=self._queue_url,
+                ReceiptHandle=receipt_handle,
+                VisibilityTimeout=timeout_seconds,
+            )
+        except Exception as error:
+            raise AwsAdapterError("queue visibility extension unavailable") from error
 
     def healthcheck(self) -> None:
         self._attributes()
@@ -599,6 +631,7 @@ class AwsBedrockModel(AIModel):
 
 class AwsTitanTextEmbedder(TextEmbedder):
     embedding_version = "titan-v2"
+    max_input_characters = 50_000
 
     def __init__(
         self,
@@ -620,6 +653,8 @@ class AwsTitanTextEmbedder(TextEmbedder):
         normalized_text = text.strip()
         if not normalized_text:
             raise ValueError("embedding text must not be blank")
+        if len(normalized_text) > self.max_input_characters:
+            raise ValueError("Titan embedding text exceeds 50000 characters")
         if dimensions not in {256, 512, 1024}:
             raise ValueError("Titan embedding dimensions must be 256, 512, or 1024")
         request = {
@@ -642,9 +677,9 @@ class AwsTitanTextEmbedder(TextEmbedder):
             raw_embedding = decoded["embedding"]
             vector = tuple(float(value) for value in raw_embedding)
         except Exception as error:
-            raise AwsAdapterError("text embedding unavailable") from error
+            raise AwsEmbeddingProviderError("text embedding unavailable") from error
         if len(vector) != dimensions or not all(math.isfinite(value) for value in vector):
-            raise AwsAdapterError("text embedding response is invalid")
+            raise AwsEmbeddingProviderError("text embedding response is invalid")
         return vector
 
 

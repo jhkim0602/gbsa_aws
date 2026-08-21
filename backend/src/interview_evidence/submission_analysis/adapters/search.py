@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 from uuid import UUID
 
-from interview_evidence.shared.tenant import TenantContext
+from interview_evidence.shared.tenant import TenantContext, require_tenant_context
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +81,127 @@ class SearchIndex(Protocol):
         embedding_model: str | None = None,
         embedding_version: str | None = None,
     ) -> tuple[SearchCandidate, ...]: ...
+
+
+@runtime_checkable
+class CurrentDocumentLookup(Protocol):
+    def has_current_document(
+        self,
+        *,
+        company_id: UUID,
+        document_id: str,
+        content_hash: str,
+        embedding_model: str,
+        embedding_version: str,
+    ) -> bool: ...
+
+
+class InMemorySearchIndex:
+    def __init__(self) -> None:
+        self._documents: dict[str, SearchDocument] = {}
+
+    def add(self, document: SearchDocument) -> None:
+        self._documents[document.document_id] = document
+
+    def has_current_document(
+        self,
+        *,
+        company_id: UUID,
+        document_id: str,
+        content_hash: str,
+        embedding_model: str,
+        embedding_version: str,
+    ) -> bool:
+        document = self._documents.get(document_id)
+        return (
+            document is not None
+            and document.company_id == company_id
+            and document.content_hash == content_hash
+            and document.embedding_model == embedding_model
+            and document.embedding_version == embedding_version
+        )
+
+    def delete(self, context: TenantContext, document_id: str) -> bool:
+        tenant = require_tenant_context(context)
+        document = self._documents.get(document_id)
+        if document is not None:
+            tenant.assert_company(document.company_id)
+            self._documents.pop(document_id, None)
+        return document_id not in self._documents
+
+    def delete_and_verify(self, context: TenantContext, document_id: str) -> bool:
+        return self.delete(context, document_id)
+
+    def healthcheck(self) -> None:
+        return None
+
+    def candidates(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        query: str,
+        query_vector: tuple[float, ...],
+        exact_symbol: str | None,
+        invitation_id: UUID | None = None,
+        competency_model_version_id: UUID | None = None,
+        criterion_id: UUID | None = None,
+        embedding_model: str | None = None,
+        embedding_version: str | None = None,
+    ) -> tuple[SearchCandidate, ...]:
+        tenant = require_tenant_context(context)
+        if applicant_id != tenant.actor_id and tenant.actor_type.value == "applicant":
+            raise PermissionError("applicant scope mismatch")
+        query_terms = {term.casefold() for term in query.split() if term}
+        matches: list[SearchCandidate] = []
+        for document in self._documents.values():
+            if document.company_id != tenant.company_id or document.applicant_id != applicant_id:
+                continue
+            if invitation_id is not None and document.invitation_id != invitation_id:
+                continue
+            if (
+                competency_model_version_id is not None
+                and document.competency_model_version_id != competency_model_version_id
+            ):
+                continue
+            if criterion_id is not None and document.criterion_id not in {
+                None,
+                criterion_id,
+            }:
+                continue
+            if embedding_model is not None and document.embedding_model != embedding_model:
+                continue
+            if (
+                embedding_version is not None
+                and document.embedding_version != embedding_version
+            ):
+                continue
+            document_terms = {
+                term.casefold()
+                for term in document.text.replace("_", " ").split()
+                if term
+            }
+            lexical = (
+                len(query_terms & document_terms) / len(query_terms)
+                if query_terms
+                else 0
+            )
+            exact = (
+                1.0
+                if exact_symbol is not None
+                and exact_symbol.casefold()
+                in {symbol.casefold() for symbol in document.symbols}
+                else 0.0
+            )
+            matches.append(
+                SearchCandidate(
+                    document=document,
+                    vector_score=_cosine(query_vector, document.vector),
+                    lexical_score=lexical,
+                    exact_symbol_score=exact,
+                )
+            )
+        return tuple(matches)
 
 
 def _cosine(left: tuple[float, ...], right: tuple[float, ...]) -> float:

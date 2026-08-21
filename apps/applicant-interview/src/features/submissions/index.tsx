@@ -5,9 +5,7 @@ import {
   CheckCircle2,
   FileText,
   GitBranch,
-  Plus,
   RefreshCw,
-  X,
 } from "lucide-react";
 import {
   type FormEvent,
@@ -41,6 +39,7 @@ export type SubmissionWorkspaceApi = {
   registerRepository(
     url: string,
     materialId: SubmissionMaterialId,
+    githubUsername: string,
   ): Promise<void>;
   getReadiness(): Promise<AnalysisReadiness>;
   getWorkspace(): Promise<SubmissionWorkspaceData>;
@@ -120,7 +119,6 @@ type ConfiguredMaterial = MaterialDefinition &
     instructions?: string;
   }>;
 
-const MAX_PROJECT_URLS = 3;
 const READINESS_POLL_INTERVAL_MS = 2_000;
 const STRATEGY_POLL_INTERVAL_MS = 500;
 
@@ -150,7 +148,7 @@ const MATERIAL_DEFINITIONS: Record<SubmissionMaterialId, MaterialDefinition> = {
     id: "projects",
     label: "대표 프로젝트",
     shortDescription: "공개 저장소를 통해 작업 근거를 확인하는 자료",
-    format: "공개 Git 저장소 · 최대 3개",
+    format: "GitHub 공개 저장소 · 1개",
     kind: "repository",
   },
   portfolio: {
@@ -335,74 +333,72 @@ function PdfSubmissionEditor({
 }
 
 function RepositorySubmissionEditor({
-  urls,
+  url,
+  githubUsername,
   state,
-  onUpdate,
-  onAdd,
-  onRemove,
+  onUrlChange,
+  onGithubUsernameChange,
   onSubmit,
 }: {
-  urls: readonly string[];
+  url: string;
+  githubUsername: string;
   state: RequestState;
-  onUpdate(index: number, value: string): void;
-  onAdd(): void;
-  onRemove(index: number): void;
+  onUrlChange(value: string): void;
+  onGithubUsernameChange(value: string): void;
   onSubmit(event: FormEvent<HTMLFormElement>): void;
 }) {
-  const repositoryCount = urls.filter((url) => url.trim()).length;
+  const readyToSubmit = url.trim().length > 0 && githubUsername.trim().length > 0;
 
   return (
     <form className="space-y-4" onSubmit={onSubmit}>
       <div className="space-y-3">
-        {urls.map((repositoryUrl, index) => (
-          <div className="space-y-1.5" key={index}>
-            <label
-              className="text-xs font-semibold text-ink"
-              htmlFor={`public-repository-url-${index}`}
-            >
-              저장소 URL {index + 1}
-            </label>
-            <div className="grid grid-cols-[minmax(0,1fr)_40px] gap-2">
-              <input
-                className="min-h-10 min-w-0 rounded-md border border-border-strong bg-surface px-3 text-sm text-ink outline-none placeholder:text-subtle focus:border-brand"
-                id={`public-repository-url-${index}`}
-                type="url"
-                placeholder="https://github.com/organization/project"
-                value={repositoryUrl}
-                onChange={(event) => onUpdate(index, event.target.value)}
-              />
-              <button
-                className="grid size-10 place-items-center rounded-md border border-border bg-surface text-muted hover:border-danger/40 hover:text-danger"
-                type="button"
-                aria-label={`저장소 URL ${index + 1} 삭제`}
-                title="저장소 삭제"
-                onClick={() => onRemove(index)}
-              >
-                <X aria-hidden="true" size={17} />
-              </button>
-            </div>
-          </div>
-        ))}
+        <div className="space-y-1.5">
+          <label
+            className="text-xs font-semibold text-ink"
+            htmlFor="candidate-github-username"
+          >
+            지원자 GitHub 아이디
+          </label>
+          <input
+            className="min-h-10 w-full rounded-md border border-border-strong bg-surface px-3 text-sm text-ink outline-none placeholder:text-subtle focus:border-brand"
+            id="candidate-github-username"
+            type="text"
+            autoComplete="username"
+            required
+            pattern="(?!-)(?!.*--)[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?"
+            placeholder="candidate-github-id"
+            value={githubUsername}
+            onChange={(event) => onGithubUsernameChange(event.target.value)}
+          />
+          <p className="text-[11px] leading-4 text-muted">
+            저장소에서 본인이 작성한 커밋만 분석하는 데 사용합니다.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <label
+            className="text-xs font-semibold text-ink"
+            htmlFor="public-repository-url"
+          >
+            GitHub 저장소 URL
+          </label>
+          <input
+            className="min-h-10 w-full rounded-md border border-border-strong bg-surface px-3 text-sm text-ink outline-none placeholder:text-subtle focus:border-brand"
+            id="public-repository-url"
+            type="url"
+            required
+            placeholder="https://github.com/organization/project"
+            value={url}
+            onChange={(event) => onUrlChange(event.target.value)}
+          />
+          <p className="text-[11px] leading-4 text-muted">
+            공개 GitHub 저장소 1개만 등록할 수 있습니다.
+          </p>
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        {urls.length < MAX_PROJECT_URLS ? (
-          <button
-            className="grid size-9 place-items-center rounded-md border border-border bg-surface text-ink hover:border-brand/40 hover:text-brand-strong"
-            type="button"
-            aria-label="저장소 추가"
-            title="저장소 추가"
-            onClick={onAdd}
-          >
-            <Plus aria-hidden="true" size={17} />
-          </button>
-        ) : (
-          <span className="text-xs text-muted">
-            최대 3개까지 등록할 수 있습니다.
-          </span>
-        )}
-
-        {repositoryCount > 0 ? (
+      <div className="flex justify-end">
+        {readyToSubmit ? (
           <button
             className="inline-flex min-h-9 items-center rounded-md border border-brand bg-brand px-4 text-xs font-semibold text-white hover:bg-brand-strong disabled:border-border disabled:bg-surface-strong disabled:text-subtle"
             type="submit"
@@ -419,7 +415,7 @@ function RepositorySubmissionEditor({
           role="status"
         >
           <CheckCircle2 aria-hidden="true" size={15} />
-          프로젝트 {repositoryCount}개가 제출되었습니다.
+          GitHub 프로젝트가 제출되었습니다.
         </p>
       ) : null}
 
@@ -429,7 +425,7 @@ function RepositorySubmissionEditor({
           role="alert"
         >
           <AlertCircle aria-hidden="true" size={15} />
-          중복되지 않은 공개 Git URL인지 확인해 주세요.
+          GitHub 아이디와 공개 저장소 URL을 확인해 주세요.
         </p>
       ) : null}
     </form>
@@ -769,7 +765,8 @@ export function SubmissionWorkspace({
   const [selectedMaterial, setSelectedMaterial] =
     useState<SubmissionMaterialId>(initialMaterial);
   const [files, setFiles] = useState(INITIAL_FILES);
-  const [repositoryUrls, setRepositoryUrls] = useState([""]);
+  const [repositoryUrl, setRepositoryUrl] = useState("");
+  const [githubUsername, setGithubUsername] = useState("");
   const [materialStates, setMaterialStates] = useState(() => ({
     ...INITIAL_STATES,
     ...Object.fromEntries(
@@ -829,7 +826,7 @@ export function SubmissionWorkspace({
   const activeMaterial =
     configuredMaterials.find((material) => material.id === selectedMaterial) ??
     configuredMaterials[0];
-  const repositoryCount = repositoryUrls.filter((url) => url.trim()).length;
+  const hasRepositoryInput = repositoryUrl.trim().length > 0;
   const requiredMaterials = configuredMaterials.filter(
     (material) => material.required,
   );
@@ -870,17 +867,16 @@ export function SubmissionWorkspace({
 
   async function registerRepository(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const urls = repositoryUrls.map((url) => url.trim()).filter(Boolean);
-    if (urls.length === 0 || new Set(urls).size !== urls.length) {
+    const url = repositoryUrl.trim();
+    const username = githubUsername.trim();
+    if (!url || !username) {
       updateMaterialState("projects", "error");
       return;
     }
 
     updateMaterialState("projects", "pending");
     try {
-      for (const url of urls) {
-        await api.registerRepository(url, "projects");
-      }
+      await api.registerRepository(url, "projects", username);
       updateMaterialState("projects", "success");
       void refreshReadiness();
     } catch {
@@ -888,26 +884,13 @@ export function SubmissionWorkspace({
     }
   }
 
-  function updateRepositoryUrl(index: number, value: string) {
-    setRepositoryUrls((current) =>
-      current.map((url, itemIndex) => (itemIndex === index ? value : url)),
-    );
+  function updateRepositoryUrl(value: string) {
+    setRepositoryUrl(value);
     updateMaterialState("projects", "idle");
   }
 
-  function addRepositoryUrl() {
-    setRepositoryUrls((current) =>
-      current.length < MAX_PROJECT_URLS ? [...current, ""] : current,
-    );
-    updateMaterialState("projects", "idle");
-  }
-
-  function removeRepositoryUrl(index: number) {
-    setRepositoryUrls((current) =>
-      current.length === 1
-        ? [""]
-        : current.filter((_, itemIndex) => itemIndex !== index),
-    );
+  function updateGithubUsername(value: string) {
+    setGithubUsername(value);
     updateMaterialState("projects", "idle");
   }
 
@@ -929,7 +912,7 @@ export function SubmissionWorkspace({
   const activeState = materialStates[activeMaterial.id];
   const activeHasInput =
     activeMaterial.id === "projects"
-      ? repositoryCount > 0
+      ? hasRepositoryInput
       : files[activeMaterial.id as PdfMaterialId] !== null;
   const activeSubmissionStatus = submissionStatus(activeState, activeHasInput);
   const activeAnalysisStatus = analysisStatus(
@@ -1006,7 +989,7 @@ export function SubmissionWorkspace({
                 const state = materialStates[material.id];
                 const hasInput =
                   material.id === "projects"
-                    ? repositoryCount > 0
+                    ? hasRepositoryInput
                     : files[material.id as PdfMaterialId] !== null;
                 const submitted = submissionStatus(state, hasInput);
                 const analyzed = analysisStatus(
@@ -1137,11 +1120,11 @@ export function SubmissionWorkspace({
 
               {activeMaterial.kind === "repository" ? (
                 <RepositorySubmissionEditor
-                  urls={repositoryUrls}
+                  url={repositoryUrl}
+                  githubUsername={githubUsername}
                   state={materialStates.projects}
-                  onUpdate={updateRepositoryUrl}
-                  onAdd={addRepositoryUrl}
-                  onRemove={removeRepositoryUrl}
+                  onUrlChange={updateRepositoryUrl}
+                  onGithubUsernameChange={updateGithubUsername}
                   onSubmit={registerRepository}
                 />
               ) : (

@@ -77,12 +77,14 @@ class AnalysisJobHandler:
         self,
         context: TenantContext,
         job: AnalysisJob,
+        *,
+        attempt_number: int | None = None,
     ) -> JobOutcome:
         key = (context.company_id, job.idempotency_key)
         existing = self._final.get(key)
         if existing is not None:
             return existing
-        attempts = self._attempts.get(key, 0) + 1
+        attempts = max(self._attempts.get(key, 0) + 1, attempt_number or 1)
         self._attempts[key] = attempts
         try:
             result = self._processor.process(context, job)

@@ -5,8 +5,9 @@ WORKER_CONCURRENCY ?= 4
 
 # Every target below that runs application code loads `.env` first. `set -a` exports what the
 # file assigns, so `os.environ` carries it -- without that the runtime reads none of it and
-# fails on the first required setting.
-RUN_WITH_ENV = set -a && source .env && set +a &&
+# fails on the first required setting. Keep the source tree explicit as well so host commands
+# always run the current checkout even if an editable-install path is stale or unavailable.
+RUN_WITH_ENV = set -a && source .env && set +a && export PYTHONPATH="$(CURDIR)/backend/src$${PYTHONPATH:+:$${PYTHONPATH}}" &&
 
 # `--no-editable`, matching CI and the image: this installs a copy of `backend/src` into the
 # virtualenv. Use `make dev-install` for a working copy where edits take effect.

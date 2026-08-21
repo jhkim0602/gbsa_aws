@@ -156,7 +156,7 @@ def test_pilot_scale_hybrid_retrieval_p95_is_below_one_second() -> None:
 
 
 @pytest.mark.asyncio
-async def test_applicant_can_register_at_most_three_public_git_projects() -> None:
+async def test_applicant_can_register_only_one_public_github_project() -> None:
     principal = ApplicantPrincipal(
         company_id=COMPANY_ID,
         invitation_id=INVITATION_ID,
@@ -180,23 +180,40 @@ async def test_applicant_can_register_at_most_three_public_git_projects() -> Non
         base_url="https://testserver",
         cookies={"iep_applicant_session": "applicant-session"},
     ) as client:
+        missing_identity = await client.post(
+            "/v1/applicant/submissions",
+            headers={"Idempotency-Key": "project-missing-github-id"},
+            json={
+                "material_type": "projects",
+                "source_type": "public_git",
+                "public_url": "https://github.com/example/missing-identity",
+                "candidate_identity_inputs": {},
+            },
+        )
         responses = [
             await client.post(
                 "/v1/applicant/submissions",
                 headers={"Idempotency-Key": f"project-submission-{index}"},
                 json={
+                    "material_type": "projects",
                     "source_type": "public_git",
                     "public_url": f"https://github.com/example/project-{index}",
-                    "candidate_identity_inputs": {},
+                    "candidate_identity_inputs": {
+                        "claimed_handles": ["candidate-dev"]
+                    },
                 },
             )
-            for index in range(1, 5)
+            for index in range(1, 3)
         ]
 
-    assert [response.status_code for response in responses[:3]] == [202, 202, 202]
-    assert responses[3].status_code == 422
-    assert responses[3].json()["detail"] == ("up to 3 public Git project URLs are allowed")
-    assert len(repository.list_submissions(system_context(), APPLICANT_ID)) == 3
+    assert missing_identity.status_code == 422
+    assert missing_identity.json()["detail"] == (
+        "exactly one candidate GitHub username is required"
+    )
+    assert responses[0].status_code == 202
+    assert responses[1].status_code == 422
+    assert responses[1].json()["detail"] == ("only one public GitHub project URL is allowed")
+    assert len(repository.list_submissions(system_context(), APPLICANT_ID)) == 1
 
 
 @pytest.mark.asyncio
@@ -240,6 +257,7 @@ async def test_lane_b_submission_to_traceable_strategy_journey() -> None:
             "/v1/applicant/submissions",
             headers={"Idempotency-Key": "quickstart-register-pdf"},
             json={
+                "material_type": "resume",
                 "source_type": "resume",
                 "upload_id": upload.json()["upload_id"],
             },
@@ -248,11 +266,13 @@ async def test_lane_b_submission_to_traceable_strategy_journey() -> None:
             "/v1/applicant/submissions",
             headers={"Idempotency-Key": "quickstart-register-git"},
             json={
+                "material_type": "projects",
                 "source_type": "public_git",
                 "public_url": "https://github.com/example/candidate-project",
                 "candidate_identity_inputs": {
                     "claimed_names": ["홍길동"],
                     "claimed_emails": ["candidate@example.com"],
+                    "claimed_handles": ["candidate-dev"],
                 },
             },
         )
@@ -265,6 +285,7 @@ async def test_lane_b_submission_to_traceable_strategy_journey() -> None:
     assert git.candidate_identity_inputs == {
         "claimed_names": ("홍길동",),
         "claimed_emails": ("candidate@example.com",),
+        "claimed_handles": ("candidate-dev",),
     }
 
     extraction = DocumentExtractionAdapter(

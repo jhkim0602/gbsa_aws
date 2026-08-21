@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -29,7 +30,10 @@ from interview_evidence.submission_analysis.repositories.postgres import (
     SubmissionRepository,
 )
 
-MAX_PUBLIC_GIT_PROJECTS = 3
+MAX_PUBLIC_GIT_PROJECTS = 1
+GITHUB_USERNAME = re.compile(
+    r"^(?!-)(?!.*--)[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,6 +161,10 @@ class SubmissionService:
         resolved_material_type = _resolve_material_type(material_type, source_type)
         _validate_material_request(resolved_material_type, source_type, requirements)
         if source_type is SourceType.PUBLIC_GIT:
+            normalized_identity = _normalize_candidate_identity_inputs(
+                candidate_identity_inputs
+            )
+            _validate_github_identity(normalized_identity)
             existing_projects = tuple(
                 submission
                 for submission in self._repository.list_submissions(
@@ -168,7 +176,11 @@ class SubmissionService:
                 and submission.status is not SubmissionStatus.DELETED
             )
             if len(existing_projects) >= MAX_PUBLIC_GIT_PROJECTS:
-                raise ValueError("up to 3 public Git project URLs are allowed")
+                raise ValueError("only one public GitHub project URL is allowed")
+        else:
+            normalized_identity = _normalize_candidate_identity_inputs(
+                candidate_identity_inputs
+            )
         submission = Submission(
             submission_id=new_uuid7(self._clock.now()),
             company_id=context.company_id,
@@ -177,9 +189,7 @@ class SubmissionService:
             material_type=resolved_material_type,
             source_type=source_type,
             source_uri=validated_url,
-            candidate_identity_inputs=_normalize_candidate_identity_inputs(
-                candidate_identity_inputs
-            ),
+            candidate_identity_inputs=normalized_identity,
             created_at=self._clock.now(),
         )
         return self._persist_requested(context, submission, idempotency_key)
@@ -313,6 +323,16 @@ def _normalize_candidate_identity_inputs(
             raise ValueError("candidate identity inputs must be string arrays")
         normalized[key] = tuple(value.strip() for value in raw_values)
     return normalized
+
+
+def _validate_github_identity(
+    values: dict[str, tuple[str, ...]] | None,
+) -> None:
+    handles = values.get("claimed_handles", ()) if values is not None else ()
+    if len(handles) != 1:
+        raise ValueError("exactly one candidate GitHub username is required")
+    if GITHUB_USERNAME.fullmatch(handles[0]) is None:
+        raise ValueError("candidate GitHub username is invalid")
 
 
 def _validate_material_request(

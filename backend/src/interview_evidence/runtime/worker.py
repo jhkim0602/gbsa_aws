@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from functools import partial
 from typing import Protocol, cast
 from uuid import UUID
 
@@ -23,12 +22,13 @@ from interview_evidence.reporting.application.deletion_service import DeletionSe
 from interview_evidence.reporting.application.evidence_service import EvidenceService
 from interview_evidence.reporting.domain.deletion import DeletionStatus
 from interview_evidence.runtime.document_ai import create_document_extractor
-from interview_evidence.shared.aws_clients.ports import ConsumableQueue
+from interview_evidence.shared.aws_clients.ports import ConsumableQueue, InMemoryQueue
 from interview_evidence.shared.database import RequestScopedDatabase
-from interview_evidence.shared.ids import Clock, new_uuid7
-from interview_evidence.shared.messaging.outbox import Outbox, OutboxEvent
+from interview_evidence.shared.ids import Clock, SystemClock, new_uuid7
+from interview_evidence.shared.messaging.outbox import InMemoryOutbox, Outbox, OutboxEvent
 from interview_evidence.shared.messaging.worker import (
     EventHandler,
+    InMemoryProcessedMessageStore,
     MessageConsumer,
     OutboxDispatcher,
     ProcessedMessageStore,
@@ -53,6 +53,7 @@ from interview_evidence.workers.analysis.pipeline import SubmissionAnalysisPipel
 from interview_evidence.workers.reporting.report import CriterionInput, ReportGenerator
 
 EVENT_QUEUE_ROUTING = {
+    "system.parity_probe": "analysis",
     "invitation.consent_completed": "analysis",
     "submission.analysis_requested": "analysis",
     "submission.analysis_completed": "analysis",
@@ -70,6 +71,15 @@ EVENT_QUEUE_ROUTING = {
 }
 
 
+class ParityProbeEventHandler:
+    def __call__(self, context: TenantContext, event: OutboxEvent) -> object:
+        context.assert_company(event.company_id)
+        probe_id = UUID(str(event.payload["probe_id"]))
+        if event.aggregate_type != "system_parity" or probe_id != event.aggregate_id:
+            raise ValueError("invalid parity probe event")
+        return {"probe_id": str(probe_id), "status": "processed"}
+
+
 @dataclass(slots=True)
 class WorkerRuntime:
     dispatcher: OutboxDispatcher
@@ -81,8 +91,21 @@ class WorkerRuntime:
             return self._run_without_transaction()
         completed = self._run_in_transaction(self.dispatcher.dispatch_once)
         for consumer in self.consumers:
-            completed += self._run_in_transaction(partial(consumer.consume_once, max_messages=1))
+            completed += self._run_consumer(consumer)
         return completed
+
+    def _run_consumer(self, consumer: MessageConsumer) -> int:
+        if self.database is None:
+            return consumer.consume_once(max_messages=1)
+        token = self.database.begin_scope()
+        try:
+            return consumer.consume_once(
+                max_messages=1,
+                commit=self.database.session.commit,
+                rollback=self.database.session.rollback,
+            )
+        finally:
+            self.database.end_scope(token)
 
     def _run_in_transaction(self, operation: Callable[[], int]) -> int:
         if self.database is None:
@@ -530,6 +553,20 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
     )
 
 
+def create_local_worker_runtime() -> WorkerRuntime:
+    queues = {
+        name: InMemoryQueue()
+        for name in ("analysis", "media", "reporting", "deletion")
+    }
+    return create_worker_runtime(
+        outbox=InMemoryOutbox(),
+        queues=queues,
+        processed=InMemoryProcessedMessageStore(),
+        handlers={"system.parity_probe": ParityProbeEventHandler()},
+        clock=SystemClock(),
+    )
+
+
 def create_environment_worker_runtime(
     environment: Mapping[str, str] | None = None,
 ) -> WorkerRuntime:
@@ -538,4 +575,9 @@ def create_environment_worker_runtime(
     # sidecar is running. Installed here rather than in `worker.main` so that every entry point
     # into a worker runtime gets it.
     configure_worker_tracing(active_environment)
+    if active_environment.get(
+        "APP_ENVIRONMENT",
+        active_environment.get("APP_ENV"),
+    ) == "local":
+        return create_local_worker_runtime()
     return create_production_worker_runtime(active_environment)

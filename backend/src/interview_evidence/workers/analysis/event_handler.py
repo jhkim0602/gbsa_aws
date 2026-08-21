@@ -77,6 +77,7 @@ class AnalysisRequestedEventHandler:
                 source_object_id=UUID(str(event.payload["source_object_id"])),
                 idempotency_key=event.idempotency_key,
             ),
+            attempt_number=event.delivery_attempt,
         )
 
 
