@@ -130,6 +130,8 @@ class PostgresHybridSearchIndex:
         invitation_id: UUID | None = None,
         competency_model_version_id: UUID | None = None,
         criterion_id: UUID | None = None,
+        embedding_model: str | None = None,
+        embedding_version: str | None = None,
     ) -> tuple[SearchCandidate, ...]:
         tenant = require_tenant_context(context)
         if tenant.actor_type.value == "applicant" and tenant.actor_id != applicant_id:
@@ -157,6 +159,10 @@ class PostgresHybridSearchIndex:
                     RetrievalDocumentRow.criterion_id == criterion_id,
                 )
             )
+        if embedding_model is not None:
+            statement = statement.where(RetrievalDocumentRow.embedding_model == embedding_model)
+        if embedding_version is not None:
+            statement = statement.where(RetrievalDocumentRow.embedding_version == embedding_version)
 
         if self._session.bind is not None and self._session.bind.dialect.name == "postgresql":
             query_vector_value = list(query_vector)

@@ -126,6 +126,48 @@ def test_criterion_filter_keeps_criterion_agnostic_submission_chunks() -> None:
     assert tuple(candidate.document.source_id for candidate in candidates) == (chunk_id,)
 
 
+def test_embedding_filter_excludes_vectors_from_another_provider() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    gcp_id = UUID("00000000-0000-7000-8000-000000000021")
+    aws_id = UUID("00000000-0000-7000-8000-000000000022")
+    with Session(engine) as session:
+        index = PostgresHybridSearchIndex(session)
+        for source_id, model, version in (
+            (gcp_id, "gemini-embedding-001", "vertex-gemini-v1"),
+            (aws_id, "amazon.titan-embed-text-v2:0", "titan-v2"),
+        ):
+            index.add(
+                SearchDocument(
+                    document_id=str(source_id),
+                    company_id=COMPANY_ID,
+                    applicant_id=APPLICANT_ID,
+                    source_id=source_id,
+                    text="동일한 프로젝트 설명",
+                    vector=_vector(1.0, 0.0),
+                    symbols=(),
+                    locator={"page_number": 1},
+                    ownership_confidence=1.0,
+                    invitation_id=INVITATION_ID,
+                    competency_model_version_id=VERSION_ID,
+                    embedding_model=model,
+                    embedding_version=version,
+                )
+            )
+
+        candidates = index.candidates(
+            _context(),
+            applicant_id=APPLICANT_ID,
+            query="프로젝트",
+            query_vector=_vector(1.0, 0.0),
+            exact_symbol=None,
+            embedding_model="gemini-embedding-001",
+            embedding_version="vertex-gemini-v1",
+        )
+
+    assert tuple(candidate.document.source_id for candidate in candidates) == (gcp_id,)
+
+
 def test_debug_documents_return_extracted_text_for_the_current_invitation() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)

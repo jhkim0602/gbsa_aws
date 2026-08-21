@@ -48,6 +48,8 @@ class HybridRetriever:
         invitation_id: UUID | None = None,
         competency_model_version_id: UUID | None = None,
         criterion_id: UUID | None = None,
+        embedding_model: str | None = None,
+        embedding_version: str | None = None,
     ) -> tuple[RetrievalResult, ...]:
         candidates = self._index.candidates(
             context,
@@ -58,6 +60,8 @@ class HybridRetriever:
             invitation_id=invitation_id,
             competency_model_version_id=competency_model_version_id,
             criterion_id=criterion_id,
+            embedding_model=embedding_model,
+            embedding_version=embedding_version,
         )
         results = [
             RetrievalResult(

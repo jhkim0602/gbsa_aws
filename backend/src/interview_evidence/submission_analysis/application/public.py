@@ -140,6 +140,8 @@ class SubmissionAnalysisPublic:
         config_version: str,
         limit: int,
         exact_symbol: str | None = None,
+        embedding_model: str | None = None,
+        embedding_version: str | None = None,
     ) -> tuple[RetrievalResult, ...]:
         if not config_version:
             raise ValueError("retrieval config version is required")
@@ -152,6 +154,8 @@ class SubmissionAnalysisPublic:
             query=query,
             query_vector=query_vector,
             exact_symbol=exact_symbol,
+            embedding_model=embedding_model,
+            embedding_version=embedding_version,
             limit=limit,
         )
 

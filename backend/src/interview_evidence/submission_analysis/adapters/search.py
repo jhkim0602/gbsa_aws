@@ -78,6 +78,8 @@ class SearchIndex(Protocol):
         invitation_id: UUID | None = None,
         competency_model_version_id: UUID | None = None,
         criterion_id: UUID | None = None,
+        embedding_model: str | None = None,
+        embedding_version: str | None = None,
     ) -> tuple[SearchCandidate, ...]: ...
 
 

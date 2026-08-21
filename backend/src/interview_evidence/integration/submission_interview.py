@@ -90,6 +90,8 @@ class SubmissionInterviewBoundary:
         config_version: str,
         limit: int,
         exact_symbol: str | None = None,
+        embedding_model: str | None = None,
+        embedding_version: str | None = None,
     ) -> tuple[RetrievalRecord, ...]:
         results = self._submission.retrieve_context(
             context,
@@ -102,6 +104,8 @@ class SubmissionInterviewBoundary:
             config_version=config_version,
             limit=limit,
             exact_symbol=exact_symbol,
+            embedding_model=embedding_model,
+            embedding_version=embedding_version,
         )
         return tuple(
             BoundaryRetrievalRecord(

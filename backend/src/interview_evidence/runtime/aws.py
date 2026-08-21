@@ -14,6 +14,7 @@ from interview_evidence.interview_engine.adapters.recent_context import (
     DynamoRecentContext,
     RecentContextPort,
 )
+from interview_evidence.runtime.generative_ai import create_generative_ai_dependencies
 from interview_evidence.shared.aws_clients.ports import (
     AIModel,
     ConsumableQueue,
@@ -24,16 +25,13 @@ from interview_evidence.shared.aws_clients.ports import (
     TextToSpeech,
 )
 from interview_evidence.shared.aws_clients.production import (
-    AwsBedrockModel,
     AwsCognitoPrincipalProvider,
     AwsMediaConvert,
     AwsPollyTextToSpeech,
     AwsS3ObjectStorage,
     AwsSesEmailSender,
     AwsSqsQueue,
-    AwsTitanTextEmbedder,
     AwsTranscribeSpeechToText,
-    BedrockClient,
     CognitoClient,
     MediaConvertClient,
     PollyClient,
@@ -177,18 +175,9 @@ def create_aws_runtime_dependencies(
         if retrieval_backend == "opensearch"
         else None
     )
-    model = AwsBedrockModel(
-        cast(BedrockClient, factory("bedrock-runtime")),
-        model_id=_required(environment, "BEDROCK_MODEL_ID"),
-        guardrail_id=environment.get("BEDROCK_GUARDRAIL_ID"),
-        guardrail_version=environment.get("BEDROCK_GUARDRAIL_VERSION", "DRAFT"),
-    )
-    embedder = AwsTitanTextEmbedder(
-        cast(BedrockClient, factory("bedrock-runtime")),
-        model_id=environment.get(
-            "BEDROCK_EMBEDDING_MODEL_ID",
-            "amazon.titan-embed-text-v2:0",
-        ),
+    generative_ai = create_generative_ai_dependencies(
+        environment,
+        aws_client_factory=factory,
     )
     speech_to_text = AwsTranscribeSpeechToText(
         cast(TranscribeClient, factory("transcribe")),
@@ -226,8 +215,8 @@ def create_aws_runtime_dependencies(
         recent_context=recent_context,
         search_index=search_index,
         queues=queues,
-        model=model,
-        embedder=embedder,
+        model=generative_ai.model,
+        embedder=generative_ai.embedder,
         speech_to_text=speech_to_text,
         text_to_speech=text_to_speech,
         media_convert=media_convert,

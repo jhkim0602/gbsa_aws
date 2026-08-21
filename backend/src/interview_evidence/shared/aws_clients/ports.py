@@ -140,6 +140,7 @@ class AIModel(Protocol):
 
 class TextEmbedder(Protocol):
     model_id: str
+    embedding_version: str
 
     def embed(
         self,
@@ -202,6 +203,7 @@ class StaticSearch:
 
 class StaticTextEmbedder:
     model_id = "test-static-embedding"
+    embedding_version = "test-static-v1"
 
     def __init__(self, vector: Sequence[float]) -> None:
         self._vector = tuple(float(value) for value in vector)

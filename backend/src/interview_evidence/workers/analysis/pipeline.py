@@ -250,7 +250,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                 source_hash=draft.source_hash,
                 chunk_hash=draft.chunk_hash,
                 embedding_model=self._text_embedder.model_id,
-                embedding_version="titan-v2",
+                embedding_version=self._text_embedder.embedding_version,
                 index_document_id=str(new_uuid7(occurred_at)),
             )
             for draft in drafts
@@ -298,7 +298,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     source_version=str(job.analysis_version),
                     content_hash=chunk.chunk_hash,
                     embedding_model=self._text_embedder.model_id,
-                    embedding_version="titan-v2",
+                    embedding_version=self._text_embedder.embedding_version,
                     material_type=submission.material_type.value,
                 )
             )
@@ -523,7 +523,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                             source_version=commit_sha,
                             content_hash=submission.content_hash or "0" * 64,
                             embedding_model=self._text_embedder.model_id,
-                            embedding_version="titan-v2",
+                            embedding_version=self._text_embedder.embedding_version,
                             path=unit.path,
                             symbol=unit.symbol,
                         )
@@ -645,7 +645,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     source_version=str(axis.version_number),
                     content_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
                     embedding_model=self._text_embedder.model_id,
-                    embedding_version="titan-v2",
+                    embedding_version=self._text_embedder.embedding_version,
                 )
             )
         for requirement in axis.requirements:
@@ -674,7 +674,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     source_version=str(axis.version_number),
                     content_hash=hashlib.sha256(requirement.statement.encode("utf-8")).hexdigest(),
                     embedding_model=self._text_embedder.model_id,
-                    embedding_version="titan-v2",
+                    embedding_version=self._text_embedder.embedding_version,
                 )
             )
 
@@ -737,9 +737,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
         if (
             previous is not None
             and previous.competency_model_version_id == axis.competency_model_version_id
-            and frozenset(
-                candidate.source_id for candidate in previous.source_reference_candidates
-            )
+            and frozenset(candidate.source_id for candidate in previous.source_reference_candidates)
             == candidate_ids
         ):
             return previous, False

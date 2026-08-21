@@ -31,6 +31,8 @@ class SubmissionRetrieval(Protocol):
         config_version: str,
         limit: int,
         exact_symbol: str | None = None,
+        embedding_model: str | None = None,
+        embedding_version: str | None = None,
     ) -> tuple[RetrievalRecord, ...]: ...
 
 
@@ -88,6 +90,14 @@ class RetrievalClient:
                     query,
                     dimensions=1024,
                 )
+            embedding_scope = (
+                {
+                    "embedding_model": self._embedder.model_id,
+                    "embedding_version": self._embedder.embedding_version,
+                }
+                if self._embedder is not None
+                else {}
+            )
             results = self._provider.retrieve_context(
                 context,
                 applicant_id=applicant_id,
@@ -99,6 +109,7 @@ class RetrievalClient:
                 config_version=config_version,
                 limit=self._limit,
                 exact_symbol=exact_symbol,
+                **embedding_scope,
             )
         except Exception:
             return RetrievalOutcome(

@@ -598,6 +598,8 @@ class AwsBedrockModel(AIModel):
 
 
 class AwsTitanTextEmbedder(TextEmbedder):
+    embedding_version = "titan-v2"
+
     def __init__(
         self,
         client: BedrockClient,
