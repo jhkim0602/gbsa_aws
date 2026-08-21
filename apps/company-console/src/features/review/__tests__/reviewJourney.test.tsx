@@ -271,5 +271,14 @@ describe("Lane D review journey", () => {
     expect(video?.currentTime).toBe(62);
     expect(play).toHaveBeenCalled();
     expect(screen.getByText("세션 12345678")).toBeTruthy();
+
+    const timelinePanel = screen
+      .getByRole("heading", { name: "면접 타임라인" })
+      .closest("section");
+    const humanReviewPanel = screen
+      .getByRole("heading", { name: "사람 검토" })
+      .closest("section");
+    expect(timelinePanel?.parentElement?.className).not.toContain("sticky");
+    expect(humanReviewPanel?.parentElement?.className).toContain("sticky");
   });
 });

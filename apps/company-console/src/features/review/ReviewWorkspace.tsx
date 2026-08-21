@@ -115,7 +115,7 @@ export function ReviewWorkspace({
       </header>
 
       <div className={WORKSPACE_LAYOUT}>
-        <div className="min-w-0 [grid-area:timeline] sticky top-3 mw-820:static print:hidden">
+        <div className="min-w-0 [grid-area:timeline] print:hidden">
           <TimelineView
             entries={timeline.entries}
             playbackStatus={timeline.playback.status}
