@@ -200,7 +200,7 @@ class ReportGenerator:
             version=1,
             kind=ReportKind.AI_ORIGINAL,
             model_version="bedrock-model-v1",
-            prompt_version="report-prompt-v1",
+            prompt_version="assessment-prompt-v2",
             config_version=COMMUNICATION_SEPARATED_CONFIG_VERSION,
             status=(
                 ReportStatus.READY if all(item.evidence for item in items) else ReportStatus.PARTIAL

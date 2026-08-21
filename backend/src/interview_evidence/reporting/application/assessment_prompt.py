@@ -339,7 +339,7 @@ class AssessmentPromptTemplate(BaseModel):
 
 def _template_for(level: InterviewLevel) -> AssessmentPromptTemplate:
     return AssessmentPromptTemplate(
-        prompt_version=f"assessment-prompt-v1-{level.value}",
+        prompt_version=f"assessment-prompt-v2-{level.value}",
         interview_level=level,
         persona=_PERSONA,
         system_prompt=_SYSTEM_PROMPT,

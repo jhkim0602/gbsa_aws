@@ -261,10 +261,13 @@ class Report:
     def scored_items(self) -> tuple[ReportItem, ...]:
         return tuple(item for item in self.items if self.score_for(item) is not None)
 
-    def score_for(self, item: ReportItem) -> int | None:
+    def axis_aggregate_for(self, item: ReportItem) -> Aggregate:
         if self.config_version == COMMUNICATION_SEPARATED_CONFIG_VERSION:
-            return item.competency_score
-        return item.average_score
+            return item.competency_axis_aggregate
+        return item.axis_aggregate
+
+    def score_for(self, item: ReportItem) -> int | None:
+        return self.axis_aggregate_for(item).score
 
     @property
     def criterion_aggregate(self) -> Aggregate:

@@ -50,6 +50,7 @@ class RationaleProvider:
             SimpleNamespace(
                 question_turn_id=TURN_ID,
                 criterion_id=UUID("00000000-0000-7000-8000-000000000005"),
+                interview_stage="project_deep_dive",
                 verification_target_type="detail_missing",
                 objective="자료에서 확인되지 않은 원인 분석과 복구 역할 확인",
                 question_type="follow_up",
@@ -85,6 +86,7 @@ def test_question_rationale_is_projected_separately_from_evidence() -> None:
     assert len(entries) == 1
     rationale = entries[0].question_rationale
     assert rationale is not None
+    assert rationale.interview_stage == "project_deep_dive"
     assert rationale.objective.startswith("자료에서 확인되지 않은")
     assert rationale.source_references[0].excerpt.startswith("ECS 배포")
     assert entries[0].entry_type == "question"

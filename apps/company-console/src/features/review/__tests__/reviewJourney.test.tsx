@@ -5,6 +5,7 @@ import {
   HumanReview,
   ReportView,
   ReviewWorkspace,
+  summarizeInterviewStages,
   TimelineView,
   type ReviewApi,
 } from "../index";
@@ -72,6 +73,7 @@ describe("Lane D review journey", () => {
               text: "ECS 장애의 원인을 어떻게 좁혔나요?",
               questionRationale: {
                 criterionId: "criterion-1",
+                interviewStage: "project_deep_dive",
                 verificationTargetType: "detail_missing",
                 objective: "자료에서 확인되지 않은 원인 분석과 복구 역할 확인",
                 questionType: "follow_up",
@@ -123,6 +125,50 @@ describe("Lane D review journey", () => {
     expect(
       screen.getByText("ECS 배포 경험은 있으나 장애 대응 설명은 없습니다."),
     ).toBeTruthy();
+    expect(screen.getAllByText("프로젝트 심층").length).toBeGreaterThan(0);
+  });
+
+  it("summarizes question counts in the fixed interview stage order", () => {
+    const stages = summarizeInterviewStages([
+      {
+        entryId: "question-1",
+        type: "question",
+        startMs: 0,
+        endMs: 1000,
+        text: "기술 질문",
+        questionRationale: {
+          criterionId: "criterion-1",
+          interviewStage: "technical",
+          verificationTargetType: "detail_missing",
+          objective: "기술 판단 확인",
+          questionType: "adaptive",
+          policyResult: "accepted",
+          sourceReferences: [],
+        },
+      },
+      {
+        entryId: "question-2",
+        type: "question",
+        startMs: 2000,
+        endMs: 3000,
+        text: "협업 질문",
+        questionRationale: {
+          criterionId: "criterion-1",
+          interviewStage: "behavioral",
+          verificationTargetType: "detail_missing",
+          objective: "협업 방식 확인",
+          questionType: "stage_opening",
+          policyResult: "accepted",
+          sourceReferences: [],
+        },
+      },
+    ]);
+
+    expect(stages.map((stage) => [stage.label, stage.questionCount])).toEqual([
+      ["기술 면접", 1],
+      ["프로젝트 심층", 0],
+      ["협업·인성", 1],
+    ]);
   });
 
   it("records a human decision and exposes deletion residue", async () => {

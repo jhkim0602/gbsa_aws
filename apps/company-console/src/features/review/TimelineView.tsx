@@ -251,9 +251,18 @@ export function TimelineView({
                     </span>
                     <span className="grid gap-1">
                       <span className="flex items-center justify-between">
-                        <strong className="text-[9px]">
-                          {typeLabels[entry.type]}
-                        </strong>
+                        <span className="flex items-center gap-1.5">
+                          <strong className="text-[9px]">
+                            {typeLabels[entry.type]}
+                          </strong>
+                          {entry.questionRationale?.interviewStage ? (
+                            <small className="rounded-full bg-brand-soft px-1.5 py-0.5 text-[7px] font-[650] text-brand-strong">
+                              {interviewStageLabel(
+                                entry.questionRationale.interviewStage,
+                              )}
+                            </small>
+                          ) : null}
+                        </span>
                         <time className="font-mono text-[8px] text-subtle">
                           {formatTime(entry.startMs)}
                         </time>
@@ -277,6 +286,13 @@ export function TimelineView({
                         <p className="mt-2 text-[8px] leading-[1.45] text-muted">
                           지원자 답변 Evidence가 아닌 질문 생성 참고 자료입니다.
                         </p>
+                        {entry.questionRationale.interviewStage ? (
+                          <p className="text-[8px] font-[650] text-brand-strong">
+                            {interviewStageLabel(
+                              entry.questionRationale.interviewStage,
+                            )}
+                          </p>
+                        ) : null}
                         <div className="grid grid-cols-[18px_minmax(0,1fr)] items-start gap-[5px] text-brand-strong">
                           <Target size={14} aria-hidden="true" />
                           <span className="grid gap-0.5">
@@ -349,6 +365,19 @@ function targetTypeLabel(
     source_conflict: "자료 간 차이 확인",
     ownership_uncertain: "본인 기여 확인",
   }[type];
+}
+
+function interviewStageLabel(
+  stage: NonNullable<
+    ReviewTimelineEntry["questionRationale"]
+  >["interviewStage"] &
+    string,
+) {
+  return {
+    technical: "기술 면접",
+    project_deep_dive: "프로젝트 심층",
+    behavioral: "협업·인성",
+  }[stage];
 }
 
 function playbackLabel(

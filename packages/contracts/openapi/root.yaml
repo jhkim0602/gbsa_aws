@@ -2200,6 +2200,18 @@ components:
           - 'null'
           minimum: 0
           maximum: 100
+        communication_score:
+          description: Communication score calculated separately from competency scores.
+            null means the answers did not provide enough evidence to judge delivery.
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          maximum: 100
+        communication_scored_criteria_count:
+          description: Number of criteria whose answers supported a communication score.
+          type: integer
+          minimum: 0
         unscored_criteria_count:
           description: How many criteria produced no score, so the reviewer can see
             what overall_score does not cover.
@@ -2219,6 +2231,7 @@ components:
       additionalProperties: false
       required:
       - criterion_id
+      - interview_stage
       - verification_target_type
       - objective
       - question_type
@@ -2230,6 +2243,12 @@ components:
         criterion_id:
           type: string
           format: uuid
+        interview_stage:
+          type: string
+          enum:
+          - technical
+          - project_deep_dive
+          - behavioral
         verification_target_type:
           type: string
           enum:
@@ -2249,6 +2268,9 @@ components:
           - personalized
           - follow_up
           - degraded
+          - stage_opening
+          - adaptive
+          - stage_final
         retrieval_version:
           type: string
           minLength: 1

@@ -91,6 +91,10 @@ describe("HiringWorkspace", () => {
     expect(screen.queryByText("내부 면접 정책")).toBeNull();
     expect(screen.queryByLabelText("금지 주제")).toBeNull();
     expect(screen.queryByLabelText("면접 시간(분)")).toBeNull();
+    expect(screen.getByText("30분 고정 면접")).toBeTruthy();
+    expect(screen.getByText("1. 기술 면접 · 9분")).toBeTruthy();
+    expect(screen.getByText("2. 프로젝트 심층 · 12분")).toBeTruthy();
+    expect(screen.getByText("3. 협업·인성 · 9분")).toBeTruthy();
     expect(screen.getByAltText("신입 AI 면접관").getAttribute("src")).toBe(
       "/interviewers/entry_eyes_open_mouth_closed.webp",
     );

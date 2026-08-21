@@ -1058,10 +1058,12 @@ export interface components {
             /** Format: uuid */
             readonly criterion_id: string;
             readonly generation_version: string;
+            /** @enum {string} */
+            readonly interview_stage: "technical" | "project_deep_dive" | "behavioral";
             readonly objective: string;
             readonly policy_result: string;
             /** @enum {string} */
-            readonly question_type: "common" | "personalized" | "follow_up" | "degraded";
+            readonly question_type: "common" | "personalized" | "follow_up" | "degraded" | "stage_opening" | "adaptive" | "stage_final";
             readonly retrieval_version: string;
             readonly source_references: readonly {
                 readonly excerpt: string;
@@ -1118,6 +1120,10 @@ export interface components {
         readonly ReportView: {
             /** @constant */
             readonly ai_original_immutable: true;
+            /** @description Communication score calculated separately from competency scores. null means the answers did not provide enough evidence to judge delivery. */
+            readonly communication_score?: number | null;
+            /** @description Number of criteria whose answers supported a communication score. */
+            readonly communication_scored_criteria_count?: number;
             readonly human_reviews?: readonly components["schemas"]["HumanReviewView"][];
             readonly items: readonly components["schemas"]["ReportItemView"][];
             /** @description Weighted mean across the criteria that could be scored, using the weights

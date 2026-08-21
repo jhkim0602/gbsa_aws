@@ -8,6 +8,7 @@ import type {
   AxisAssessment,
   EvidenceRange,
   EvidenceSufficiency,
+  InterviewStageSummary,
   ReviewEvidenceContext,
   ReviewQuestionSource,
   ReviewReport,
@@ -147,12 +148,14 @@ const EMPTY_CONTEXT: ReviewEvidenceContext = {
 export function ReportView({
   report,
   evidenceContext = EMPTY_CONTEXT,
+  stageSummary = [],
   onSelectEvidence,
   onOverride,
 }: {
   report: ReviewReport;
   /** Resolves a citation to the answer it quoted. Absent leaves the spans unresolved. */
   evidenceContext?: ReviewEvidenceContext;
+  stageSummary?: InterviewStageSummary[];
   onSelectEvidence(startMs: number): void;
   onOverride?(
     reportItemId: string,
@@ -274,7 +277,9 @@ export function ReportView({
           </header>
 
           <div className="grid content-start gap-4 px-[18mm] py-[10mm] mw-1180:px-4 mw-1180:py-3.5">
-            {activeTab === "overview" ? <OverviewPage report={report} /> : null}
+            {activeTab === "overview" ? (
+              <OverviewPage report={report} stageSummary={stageSummary} />
+            ) : null}
             {activeTab === "criteria" ? (
               <CriteriaPage
                 report={report}
@@ -302,15 +307,24 @@ export function ReportView({
   );
 }
 
-function OverviewPage({ report }: { report: ReviewReport }) {
-  const axes = summarizeAxes(report.items);
+function OverviewPage({
+  report,
+  stageSummary,
+}: {
+  report: ReviewReport;
+  stageSummary: InterviewStageSummary[];
+}) {
+  const axes = summarizeAxes(report.items).filter(
+    (axis) => axis.axis !== "communication",
+  );
   const states = countStates(report.items);
+  const communicationScore = report.communicationScore ?? null;
 
   return (
     <div className="grid gap-4">
-      <div className="grid grid-cols-[132px_minmax(0,1fr)] items-center gap-4 mw-520:grid-cols-[minmax(0,1fr)]">
+      <div className="grid grid-cols-[132px_132px_minmax(0,1fr)] items-center gap-3 mw-680:grid-cols-[repeat(2,minmax(0,1fr))] mw-520:grid-cols-[minmax(0,1fr)]">
         <div className="grid justify-items-center gap-0.5 rounded-lg border border-border-muted bg-surface-muted px-2.5 py-[14px] text-center">
-          <span className="text-[9px] font-[650] text-muted">종합 점수</span>
+          <span className="text-[9px] font-[650] text-muted">직무 역량</span>
           <strong
             className={`text-[34px] font-bold leading-[1.1] ${toneText[toneOf(report.overallScore)]}`}
           >
@@ -324,7 +338,20 @@ function OverviewPage({ report }: { report: ReviewReport }) {
               : coverageLabel(report)}
           </small>
         </div>
-        <p className="text-[11px] leading-[1.75] text-ink-secondary">
+        <div className="grid justify-items-center gap-0.5 rounded-lg border border-border-muted bg-brand-soft px-2.5 py-[14px] text-center">
+          <span className="text-[9px] font-[650] text-muted">설명력</span>
+          <strong
+            className={`text-[34px] font-bold leading-[1.1] ${toneText[toneOf(communicationScore)]}`}
+          >
+            {communicationScore ?? "—"}
+          </strong>
+          <small className="text-[8px] leading-[1.4] text-subtle">
+            {communicationScore === null
+              ? "판단 근거 없음"
+              : `기준 ${report.communicationScoredCriteriaCount ?? 0}개에서 판단`}
+          </small>
+        </div>
+        <p className="text-[11px] leading-[1.75] text-ink-secondary mw-680:col-span-2 mw-520:col-span-1">
           {report.summary}
         </p>
       </div>
@@ -332,9 +359,9 @@ function OverviewPage({ report }: { report: ReviewReport }) {
       {/* Sits under the score because the number is the thing most easily misread as a
           hiring verdict, which the constitution reserves for a person. */}
       <p className="rounded-e-[5px] border-l-2 border-brand bg-brand-soft px-3 py-2.5 text-[9px] leading-[1.65] text-ink-secondary">
-        합격 여부를 판단한 점수가 아닙니다. AI가 지원자의 실제 답변만 읽고 매긴
-        판단 근거이며, {PASSING_BAND}점 이상은 해당 축을 답변에서 보여줬다는
-        뜻입니다. 최종 결정은 담당자가 근거를 직접 확인한 뒤 기록합니다.
+        합격 여부를 판단한 점수가 아닙니다. 직무 역량과 설명력은 서로 섞지 않고
+        실제 답변 근거로 각각 계산합니다. {PASSING_BAND}점 이상은 해당 축을
+        답변에서 보여줬다는 뜻이며, 최종 결정은 담당자가 직접 기록합니다.
         {report.unscoredCriteriaCount > 0
           ? ` 기준 ${report.unscoredCriteriaCount}개는 인용할 답변이 없어 이 점수에 포함되지 않았습니다.`
           : ""}
@@ -344,6 +371,30 @@ function OverviewPage({ report }: { report: ReviewReport }) {
         breakdown={report.scoringBreakdown}
         score={report.overallScore}
       />
+
+      {stageSummary.length > 0 ? (
+        <section className={REPORT_SECTION} aria-label="면접 단계 요약">
+          <h4 className={REPORT_SECTION_HEADING}>면접 단계</h4>
+          <ol className="grid grid-cols-3 gap-2 mw-520:grid-cols-[minmax(0,1fr)]">
+            {stageSummary.map((stage, index) => (
+              <li
+                className="rounded-md border border-border-muted bg-surface-muted px-3 py-2.5"
+                key={stage.stage}
+              >
+                <small className="font-mono text-[8px] text-brand">
+                  단계 {index + 1}
+                </small>
+                <strong className="mt-0.5 block text-[10px]">
+                  {stage.label}
+                </strong>
+                <span className="mt-1 block text-[8px] text-muted">
+                  질문 {stage.questionCount}개
+                </span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
 
       <section className={REPORT_SECTION} aria-label="축별 평균 점수">
         <h4 className={REPORT_SECTION_HEADING}>축별 평균</h4>
@@ -583,7 +634,14 @@ function CriteriaPage({
               <div className="grid gap-1">
                 {item.axisAssessments.map((axis) => (
                   <div className={AXIS_ROW_DETAILED} key={axis.axis}>
-                    <span className={AXIS_LABEL}>{axis.label}</span>
+                    <span className={`${AXIS_LABEL} flex items-center gap-1.5`}>
+                      {axis.label}
+                      {axis.axis === "communication" ? (
+                        <small className="rounded-full bg-brand-soft px-1.5 py-0.5 text-[7px] text-brand-strong">
+                          별도 집계
+                        </small>
+                      ) : null}
+                    </span>
                     <ScoreValue score={axis.score} />
                     <ScoreBar score={axis.score} />
                     <p className={AXIS_RATIONALE}>{axis.rationale}</p>

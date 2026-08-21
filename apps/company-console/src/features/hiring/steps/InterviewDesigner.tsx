@@ -9,7 +9,23 @@ import {
   type InterviewerTone,
 } from "../types";
 
-const durationOptions = [10, 20, 30] as const;
+const interviewStages = [
+  {
+    name: "기술 면접",
+    duration: 9,
+    description: "기술 선택과 문제 해결 과정",
+  },
+  {
+    name: "프로젝트 심층",
+    duration: 12,
+    description: "본인 역할과 설계·구현 근거",
+  },
+  {
+    name: "협업·인성",
+    duration: 9,
+    description: "협업 방식과 의사소통 경험",
+  },
+] as const;
 
 const interviewerOptions: ReadonlyArray<{
   level: InterviewLevel;
@@ -84,10 +100,6 @@ const DURATION_OPTION =
   "grid min-h-[82px] grid-cols-[24px_minmax(0,1fr)] grid-rows-[auto_auto] content-center" +
   " gap-x-[9px] gap-y-0.5 rounded-[5px] border bg-white px-[14px] py-3 text-left" +
   " [&>svg]:row-[1/3] [&>svg]:self-center";
-// `box-shadow` as a utility would need the whole `--tw-shadow` chain; the source declares the
-// shorthand, and `text-brand` has to follow the base `text-muted`, which it does here.
-const DURATION_OPTION_ACTIVE =
-  "border-brand bg-[#5966ce0d] text-brand [box-shadow:inset_0_-3px_var(--color-link)]";
 const PICKER_GRID =
   "grid grid-cols-[repeat(3,minmax(0,1fr))] gap-2.5 mw-620:grid-cols-[minmax(0,1fr)]";
 const PICKER_OPTION =
@@ -211,37 +223,25 @@ export function InterviewDesigner({
         <header className={SECTION_HEADER}>
           <span className={SECTION_EYEBROW}>02 · 진행 시간</span>
           <h3 className={SECTION_TITLE} id="duration-title">
-            면접 시간
+            30분 고정 면접
           </h3>
           <p className={SECTION_TEXT}>
-            평가기준 수와 질문 깊이에 맞는 시간을 선택합니다.
+            모든 지원자에게 동일한 세 단계와 시간 배분을 적용합니다.
           </p>
         </header>
-        <fieldset className={DURATION_GRID}>
-          <legend className="sr-only">면접 시간 선택</legend>
-          {durationOptions.map((duration) => (
-            <button
-              className={`${DURATION_OPTION} ${
-                draft.interviewDurationMinutes === duration
-                  ? DURATION_OPTION_ACTIVE
-                  : "border-border"
-              }`}
-              key={duration}
-              type="button"
-              onClick={() => update("interviewDurationMinutes", duration)}
-            >
+        <ol className={DURATION_GRID} aria-label="면접 단계별 시간">
+          {interviewStages.map((stage, index) => (
+            <li className={`${DURATION_OPTION} border-border`} key={stage.name}>
               <Clock3 aria-hidden="true" size={17} />
-              <strong className="text-[13px] text-ink">{duration}분</strong>
-              <small className="text-[9px]">
-                {duration === 10
-                  ? "핵심 확인"
-                  : duration === 20
-                    ? "표준 면접"
-                    : "심층 검증"}
+              <strong className="text-[13px] text-ink">
+                {index + 1}. {stage.name} · {stage.duration}분
+              </strong>
+              <small className="text-[9px] text-muted">
+                {stage.description}
               </small>
-            </button>
+            </li>
           ))}
-        </fieldset>
+        </ol>
       </section>
 
       <section className={SECTION_DIVIDED} aria-labelledby="interviewer-title">

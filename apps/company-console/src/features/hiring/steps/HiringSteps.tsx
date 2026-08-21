@@ -376,8 +376,7 @@ export function CriteriaStep(
       : draft.headcount > 0 &&
         draft.interviewCapacity > 0 &&
         Boolean(draft.interviewAt) &&
-        !Number.isNaN(Date.parse(draft.interviewAt)) &&
-        draft.interviewDurationMinutes >= 10;
+        !Number.isNaN(Date.parse(draft.interviewAt));
 
   return (
     <form className="grid" onSubmit={onSubmit}>
