@@ -15,6 +15,7 @@ from interview_evidence.reporting.repositories.postgres import (
 from interview_evidence.shared.tenant import ActorType, TenantContext
 from interview_evidence.workers.reporting.media import MediaPostProcessor
 from interview_evidence.workers.reporting.report import (
+    CriterionAnswerInput,
     CriterionInput,
     ReportGenerator,
 )
@@ -78,10 +79,16 @@ def test_completed_session_to_human_decision_and_verified_deletion() -> None:
             CriterionInput(
                 criterion_id=CRITERION_ID,
                 observation="대안 비교",
-                answer_turn_id=TURN_ID,
-                transcript=transcript,
-                video_start_ms=1000,
-                video_end_ms=2800,
+                answers=(
+                    CriterionAnswerInput(
+                        question="대안을 어떻게 비교했나요?",
+                        answer_turn_id=TURN_ID,
+                        transcript=transcript,
+                        video_start_ms=1000,
+                        video_end_ms=2800,
+                        interview_stage="technical",
+                    ),
+                ),
             ),
         ),
         recording=recording,

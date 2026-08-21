@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from typing import Protocol, cast
 from uuid import UUID
 
@@ -21,6 +22,7 @@ from interview_evidence.reporting.application.assessment_service import Criterio
 from interview_evidence.reporting.application.deletion_service import DeletionService
 from interview_evidence.reporting.application.evidence_service import EvidenceService
 from interview_evidence.reporting.domain.deletion import DeletionStatus
+from interview_evidence.reporting.domain.timeline import TranscriptSegment
 from interview_evidence.runtime.document_ai import create_document_extractor
 from interview_evidence.shared.aws_clients.ports import ConsumableQueue, InMemoryQueue
 from interview_evidence.shared.database import RequestScopedDatabase
@@ -50,7 +52,11 @@ from interview_evidence.workers.analysis.git_fetch import (
 )
 from interview_evidence.workers.analysis.handlers import AnalysisJobHandler
 from interview_evidence.workers.analysis.pipeline import SubmissionAnalysisPipeline
-from interview_evidence.workers.reporting.report import CriterionInput, ReportGenerator
+from interview_evidence.workers.reporting.report import (
+    CriterionAnswerInput,
+    CriterionInput,
+    ReportGenerator,
+)
 
 EVENT_QUEUE_ROUTING = {
     "system.parity_probe": "analysis",
@@ -257,11 +263,15 @@ class ReportRequestedEventHandler:
             return existing
         final_turns = self._interview.list_final_turns(context, session_id=session_id)
         turns = tuple(turn for turn in final_turns if turn.speaker.value == "applicant")
-        questions = _questions_by_answer(final_turns)
         transcripts = {
             segment.turn_id: segment
             for segment in self._reporting.repository.list_transcripts(context, session_id)
         }
+        answers_by_criterion = _criterion_answers_by_criterion(
+            final_turns,
+            self._interview.list_question_rationales(context, session_id=session_id),
+            transcripts,
+        )
         recording = next(
             (
                 asset
@@ -274,48 +284,20 @@ class ReportRequestedEventHandler:
         )
         if recording is None or not turns:
             raise TimeoutError("report inputs are not ready")
-        # `strict=False` is load-bearing and lossy: an interview that produced fewer answers
-        # than the position has criteria pairs only the leading ones, and the trailing criteria
-        # silently disappear. That used to cost nothing but coverage; now those criteria carry
-        # weight, so a dropped one would quietly shrink the divisor the score is read against.
-        #
-        # So the pairing is made explicit. Every criterion becomes an input; the ones with no
-        # answer to pair with get no Evidence, which `ReportGenerator` already records as
-        # `insufficient_evidence` -- and `Report.criterion_aggregate` then excludes them *with
-        # their weight visible*, which is what the calculator has to show.
-        paired = {
-            criterion_item.criterion_id: turn
-            for criterion_item, turn in zip(criterion.criteria, turns, strict=False)
-            if turn.turn_id in transcripts
-        }
-        if not paired:
-            raise TimeoutError("report transcript inputs are not ready")
         inputs = tuple(
             CriterionInput(
                 criterion_id=criterion_item.criterion_id,
                 criterion_name=criterion_item.name,
                 criterion_text=criterion_item.description,
-                question=questions.get(turn.turn_id, "") if turn is not None else "",
                 observation=(
-                    "지원자의 최종 답변에서 관찰된 내용"
-                    if turn is not None
+                    "면접 질문에 대한 지원자의 답변들을 종합한 결과"
+                    if answers_by_criterion.get(criterion_item.criterion_id)
                     else "이 기준을 확인할 답변이 면접에서 나오지 않았습니다"
                 ),
-                # None, not a placeholder: there is no answer, so there is no turn and no
-                # transcript. `ReportGenerator` records the item as `insufficient_evidence`
-                # rather than trying to build an Evidence range out of nothing.
-                answer_turn_id=turn.turn_id if turn is not None else None,
-                transcript=transcripts[turn.turn_id] if turn is not None else None,
-                video_start_ms=(
-                    transcripts[turn.turn_id].session_start_ms if turn is not None else 0
-                ),
-                video_end_ms=(
-                    transcripts[turn.turn_id].session_end_ms if turn is not None else 0
-                ),
+                answers=answers_by_criterion.get(criterion_item.criterion_id, ()),
                 weight=criterion_item.weight,
             )
             for criterion_item in criterion.criteria
-            for turn in (paired.get(criterion_item.criterion_id),)
         )
         report = self._generator.generate(
             context,
@@ -359,22 +341,83 @@ class _SpeakerLike(Protocol):
     def value(self) -> str: ...
 
 
-def _questions_by_answer(turns: Sequence[_TurnLike]) -> dict[UUID, str]:
-    """Pair each applicant answer with the question it followed.
+class _RationaleLike(Protocol):
+    @property
+    def question_turn_id(self) -> UUID: ...
 
-    Turns arrive in session order, so the interviewer turn most recently before an answer
-    is the one it answers. The scorer needs this: the same answer is strong for one
-    question and evasive for another, and judging it without the question asked would
-    penalise a candidate for being exactly as brief as we asked them to be.
-    """
-    paired: dict[UUID, str] = {}
-    asked = ""
+    @property
+    def criterion_id(self) -> UUID: ...
+
+    @property
+    def interview_stage(self) -> str: ...
+
+
+def _criterion_answers_by_criterion(
+    turns: Sequence[_TurnLike],
+    rationales: Sequence[_RationaleLike],
+    transcripts: Mapping[UUID, TranscriptSegment],
+) -> dict[UUID, tuple[CriterionAnswerInput, ...]]:
+    """Group every answered scoring question, removing only repeated question-answer pairs."""
+    rationale_by_turn = {item.question_turn_id: item for item in rationales}
+    grouped: dict[UUID, list[CriterionAnswerInput]] = {}
+    question: _TurnLike | None = None
     for turn in turns:
         if turn.speaker.value == "interviewer":
-            asked = turn.text or asked
-        elif turn.speaker.value == "applicant":
-            paired[turn.turn_id] = asked
-    return paired
+            question = turn
+            continue
+        if turn.speaker.value != "applicant" or question is None:
+            continue
+        transcript = transcripts.get(turn.turn_id)
+        rationale = rationale_by_turn.get(question.turn_id)
+        if transcript is None:
+            question = None
+            continue
+        if rationale_by_turn and rationale is None:
+            # The current flow deliberately leaves the greeting/warm-up without a scoring
+            # rationale. It can steer retrieval but must not silently become the whole report.
+            question = None
+            continue
+        criterion_id = (
+            rationale.criterion_id
+            if rationale is not None
+            else getattr(question, "target_criterion_id", None)
+        )
+        if criterion_id is None:
+            question = None
+            continue
+        candidate = CriterionAnswerInput(
+            question=question.text or "",
+            answer_turn_id=turn.turn_id,
+            transcript=transcript,
+            video_start_ms=transcript.session_start_ms,
+            video_end_ms=transcript.session_end_ms,
+            interview_stage=(rationale.interview_stage if rationale is not None else "unknown"),
+        )
+        collected = grouped.setdefault(criterion_id, [])
+        if not any(_same_question_and_answer(candidate, seen) for seen in collected):
+            collected.append(candidate)
+        question = None
+    return {criterion_id: tuple(answers) for criterion_id, answers in grouped.items()}
+
+
+def _same_question_and_answer(
+    left: CriterionAnswerInput,
+    right: CriterionAnswerInput,
+) -> bool:
+    return _text_similarity(left.question, right.question) >= 0.92 and _text_similarity(
+        left.transcript.text,
+        right.transcript.text,
+    ) >= 0.88
+
+
+def _text_similarity(left: str, right: str) -> float:
+    normalized_left = "".join(character.casefold() for character in left if character.isalnum())
+    normalized_right = "".join(
+        character.casefold() for character in right if character.isalnum()
+    )
+    if not normalized_left or not normalized_right:
+        return float(normalized_left == normalized_right)
+    return SequenceMatcher(None, normalized_left, normalized_right, autojunk=False).ratio()
 
 
 class DeletionRequestedEventHandler:

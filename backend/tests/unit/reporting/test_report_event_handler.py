@@ -3,7 +3,10 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 from uuid import UUID
 
-from interview_evidence.runtime.worker import ReportRequestedEventHandler
+from interview_evidence.runtime.worker import (
+    ReportRequestedEventHandler,
+    _criterion_answers_by_criterion,
+)
 from interview_evidence.shared.ids import FrozenClock
 from interview_evidence.shared.messaging.outbox import OutboxEvent
 from interview_evidence.shared.tenant import ActorType, TenantContext
@@ -27,7 +30,9 @@ def test_report_request_uses_transcript_range_for_evidence() -> None:
         trace_id="trace-report-request",
     )
     transcript = SimpleNamespace(
+        transcript_segment_id=UUID("00000000-0000-7000-8000-000000000011"),
         turn_id=ANSWER_TURN_ID,
+        text="로그와 지표를 비교해 원인을 좁히고 복구했습니다.",
         session_start_ms=1_250,
         session_end_ms=4_750,
     )
@@ -71,6 +76,13 @@ def test_report_request_uses_transcript_range_for_evidence() -> None:
             text="로그와 지표를 비교해 원인을 좁히고 복구했습니다.",
         ),
     )
+    interview.list_question_rationales.return_value = (
+        SimpleNamespace(
+            question_turn_id=QUESTION_TURN_ID,
+            criterion_id=CRITERION_ID,
+            interview_stage="technical",
+        ),
+    )
 
     generated_report = object()
     generator = Mock()
@@ -102,5 +114,66 @@ def test_report_request_uses_transcript_range_for_evidence() -> None:
 
     assert result is generated_report
     criterion_input = generator.generate.call_args.kwargs["criteria"][0]
-    assert criterion_input.video_start_ms == transcript.session_start_ms
-    assert criterion_input.video_end_ms == transcript.session_end_ms
+    assert len(criterion_input.answers) == 1
+    assert criterion_input.answers[0].video_start_ms == transcript.session_start_ms
+    assert criterion_input.answers[0].video_end_ms == transcript.session_end_ms
+
+
+def test_repeated_question_keeps_only_answers_that_add_information() -> None:
+    question_ids = tuple(
+        UUID(f"00000000-0000-7000-8000-00000000002{index}") for index in range(3)
+    )
+    answer_ids = tuple(
+        UUID(f"00000000-0000-7000-8000-00000000003{index}") for index in range(3)
+    )
+    question_text = "운영 문제를 해결한 경험을 설명해 주세요."
+    repeated_answer = "로그를 비교해 원인을 찾고 복구했습니다."
+    new_answer = "복구 후 오류율을 측정하고 재발 방지 알림을 추가했습니다."
+    turns: list[SimpleNamespace] = []
+    transcripts: dict[UUID, SimpleNamespace] = {}
+    rationales: list[SimpleNamespace] = []
+    for index, (question_id, answer_id, answer_text) in enumerate(
+        zip(
+            question_ids,
+            answer_ids,
+            (repeated_answer, repeated_answer, new_answer),
+            strict=True,
+        )
+    ):
+        turns.extend(
+            (
+                SimpleNamespace(
+                    turn_id=question_id,
+                    speaker=SimpleNamespace(value="interviewer"),
+                    text=question_text,
+                ),
+                SimpleNamespace(
+                    turn_id=answer_id,
+                    speaker=SimpleNamespace(value="applicant"),
+                    text=answer_text,
+                ),
+            )
+        )
+        transcripts[answer_id] = SimpleNamespace(
+            transcript_segment_id=UUID(
+                f"00000000-0000-7000-8000-00000000004{index}"
+            ),
+            turn_id=answer_id,
+            text=answer_text,
+            session_start_ms=index * 1_000,
+            session_end_ms=(index + 1) * 1_000,
+        )
+        rationales.append(
+            SimpleNamespace(
+                question_turn_id=question_id,
+                criterion_id=CRITERION_ID,
+                interview_stage="technical",
+            )
+        )
+
+    grouped = _criterion_answers_by_criterion(turns, rationales, transcripts)
+
+    assert [answer.transcript.text for answer in grouped[CRITERION_ID]] == [
+        repeated_answer,
+        new_answer,
+    ]

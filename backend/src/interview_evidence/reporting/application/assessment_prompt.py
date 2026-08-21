@@ -380,6 +380,7 @@ class AnswerForAssessment(BaseModel):
     answer_text: str = Field(min_length=1, max_length=20_000)
     video_start_ms: int = Field(ge=0)
     video_end_ms: int = Field(gt=0)
+    interview_stage: str = Field(default="unknown", min_length=1, max_length=40)
 
 
 def build_assessment_prompt(
@@ -416,6 +417,7 @@ def build_assessment_prompt(
                 "answer_text": answer.answer_text,
                 "video_start_ms": answer.video_start_ms,
                 "video_end_ms": answer.video_end_ms,
+                "interview_stage": answer.interview_stage,
             }
             for answer in answers
         ],
