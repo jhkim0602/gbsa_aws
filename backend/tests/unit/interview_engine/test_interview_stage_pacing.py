@@ -1,0 +1,164 @@
+from uuid import UUID
+
+from interview_evidence.interview_engine.application.interview_plan import (
+    FIXED_INTERVIEW_DURATION_SECONDS,
+    InterviewPlan,
+    InterviewStage,
+    VerificationTargetPlan,
+)
+
+CRITERION_ID = UUID("00000000-0000-7000-8000-000000000001")
+TARGET_ID = UUID("00000000-0000-7000-8000-000000000002")
+
+
+def _target() -> VerificationTargetPlan:
+    return VerificationTargetPlan(
+        verification_target_id=TARGET_ID,
+        criterion_id=CRITERION_ID,
+        criterion_text="지원자가 직접 수행한 경험",
+        target_type="detail_missing",
+        objective="본인의 역할과 판단 근거를 확인한다.",
+        missing_dimensions=("본인 역할", "판단 근거"),
+        follow_up_directions=(),
+        max_follow_ups=2,
+        common_question="직접 수행한 경험을 설명해 주세요?",
+    )
+
+
+def _plan() -> InterviewPlan:
+    return InterviewPlan(
+        criterion_ids=(CRITERION_ID,),
+        initial_question="직접 수행한 경험을 설명해 주세요?",
+        prohibited_topics=(),
+        fallback_question="판단 근거를 설명해 주세요?",
+        remaining_time_seconds=FIXED_INTERVIEW_DURATION_SECONDS,
+        model_config_version="question-v1",
+        retrieval_config_version="stage-aware-hybrid-v1",
+        voice_id="Seoyeon",
+        verification_targets=(_target(),),
+    )
+
+
+def test_stage_time_budgets_split_the_fixed_thirty_minutes() -> None:
+    plan = _plan()
+
+    assert plan.remaining_time_seconds == 1800
+    assert tuple(plan.stage_time_budget_seconds(stage) for stage in plan.stages) == (
+        540,
+        720,
+        540,
+    )
+    assert tuple(plan.stage_question_limit(stage) for stage in plan.stages) == (6, 8, 6)
+
+
+def test_fast_answers_use_question_limits_instead_of_looping_forever() -> None:
+    plan = _plan()
+
+    opening = plan.next_stage_question(
+        current_stage=InterviewStage.TECHNICAL,
+        stage_question_count=0,
+        stage_elapsed_seconds=0,
+        total_elapsed_seconds=0,
+        last_question_was_final=False,
+    )
+    final = plan.next_stage_question(
+        current_stage=InterviewStage.TECHNICAL,
+        stage_question_count=5,
+        stage_elapsed_seconds=10,
+        total_elapsed_seconds=10,
+        last_question_was_final=False,
+    )
+    project = plan.next_stage_question(
+        current_stage=InterviewStage.TECHNICAL,
+        stage_question_count=6,
+        stage_elapsed_seconds=20,
+        total_elapsed_seconds=20,
+        last_question_was_final=True,
+    )
+
+    assert opening.question_type == "stage_opening"
+    assert final.question_type == "stage_final"
+    assert project.stage is InterviewStage.PROJECT_DEEP_DIVE
+    assert project.question_type == "stage_opening"
+
+
+def test_long_answer_moves_to_next_stage_after_it_finishes() -> None:
+    plan = _plan()
+
+    decision = plan.next_stage_question(
+        current_stage=InterviewStage.TECHNICAL,
+        stage_question_count=1,
+        stage_elapsed_seconds=550,
+        total_elapsed_seconds=550,
+        last_question_was_final=False,
+    )
+
+    assert decision.stage is InterviewStage.PROJECT_DEEP_DIVE
+    assert decision.question_type == "stage_opening"
+
+
+def test_stage_asks_a_final_question_before_moving_on_at_the_time_boundary() -> None:
+    plan = _plan()
+
+    final = plan.next_stage_question(
+        current_stage=InterviewStage.TECHNICAL,
+        stage_question_count=2,
+        stage_elapsed_seconds=480,
+        total_elapsed_seconds=480,
+        last_question_was_final=False,
+    )
+    project = plan.next_stage_question(
+        current_stage=InterviewStage.TECHNICAL,
+        stage_question_count=3,
+        stage_elapsed_seconds=570,
+        total_elapsed_seconds=570,
+        last_question_was_final=True,
+    )
+
+    assert final.stage is InterviewStage.TECHNICAL
+    assert final.question_type == "stage_final"
+    assert project.stage is InterviewStage.PROJECT_DEEP_DIVE
+    assert project.question_type == "stage_opening"
+
+
+def test_expired_total_time_still_preserves_one_question_in_later_stages() -> None:
+    plan = _plan()
+
+    project = plan.next_stage_question(
+        current_stage=InterviewStage.TECHNICAL,
+        stage_question_count=1,
+        stage_elapsed_seconds=1800,
+        total_elapsed_seconds=1800,
+        last_question_was_final=False,
+    )
+    behavioral = plan.next_stage_question(
+        current_stage=InterviewStage.PROJECT_DEEP_DIVE,
+        stage_question_count=1,
+        stage_elapsed_seconds=60,
+        total_elapsed_seconds=1860,
+        last_question_was_final=False,
+    )
+    completed = plan.next_stage_question(
+        current_stage=InterviewStage.BEHAVIORAL,
+        stage_question_count=1,
+        stage_elapsed_seconds=60,
+        total_elapsed_seconds=1920,
+        last_question_was_final=False,
+    )
+
+    assert project.stage is InterviewStage.PROJECT_DEEP_DIVE
+    assert behavioral.stage is InterviewStage.BEHAVIORAL
+    assert completed.completes_interview
+
+
+def test_target_exhaustion_does_not_end_the_interview() -> None:
+    plan = _plan()
+
+    target = plan.next_target_for_question(
+        answered_target_id=TARGET_ID,
+        follow_up_count=2,
+        completed_target_ids=frozenset({TARGET_ID}),
+        prefer_new_target=True,
+    )
+
+    assert target.verification_target_id == TARGET_ID

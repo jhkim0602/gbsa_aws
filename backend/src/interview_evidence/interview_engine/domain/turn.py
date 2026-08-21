@@ -154,6 +154,7 @@ class QuestionRationale(BaseModel):
     verification_target_type: str = Field(min_length=1, max_length=40)
     objective: str = Field(min_length=1, max_length=4000)
     question_type: str = Field(min_length=1, max_length=40)
+    interview_stage: str = Field(default="technical", min_length=1, max_length=40)
     retrieval_version: str = Field(min_length=1, max_length=100)
     generation_version: str = Field(min_length=1, max_length=100)
     policy_result: str = Field(min_length=1, max_length=100)

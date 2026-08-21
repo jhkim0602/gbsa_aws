@@ -13,6 +13,7 @@ from interview_evidence.interview_engine.application.authorization import (
     InterviewAuthorizationDenied,
 )
 from interview_evidence.interview_engine.application.interview_plan import (
+    FIXED_INTERVIEW_DURATION_SECONDS,
     InterviewPlan,
     VerificationTargetPlan,
 )
@@ -220,7 +221,7 @@ class SubmissionInterviewBoundary:
             initial_question=initial_question,
             prohibited_topics=criteria.prohibited_topics,
             fallback_question=fallback_question,
-            remaining_time_seconds=criteria.interview_duration_minutes * 60,
+            remaining_time_seconds=FIXED_INTERVIEW_DURATION_SECONDS,
             model_config_version=strategy.model_config_version,
             retrieval_config_version="stage-aware-hybrid-v1",
             voice_id=str(persona.get("voice_id", "Seoyeon")),

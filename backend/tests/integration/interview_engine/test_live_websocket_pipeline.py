@@ -23,6 +23,7 @@ from interview_evidence.interview_engine.application.context_reconciliation impo
 )
 from interview_evidence.interview_engine.application.idempotency import InMemoryIdempotencyStore
 from interview_evidence.interview_engine.application.interview_plan import (
+    FIXED_INTERVIEW_DURATION_SECONDS,
     InterviewPlan,
     VerificationTargetPlan,
 )
@@ -91,7 +92,7 @@ class FixedPlanProvider:
             initial_question="최근 해결한 기술 문제를 설명해 주세요?",
             prohibited_topics=("가족",),
             fallback_question="판단 과정을 구체적으로 설명해 주세요?",
-            remaining_time_seconds=600,
+            remaining_time_seconds=FIXED_INTERVIEW_DURATION_SECONDS,
             model_config_version="question-model-v1",
             retrieval_config_version="hybrid-v1",
             voice_id="Seoyeon",

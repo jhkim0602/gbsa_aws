@@ -26,6 +26,7 @@ def test_context_builder_prioritizes_recent_turns_within_budget() -> None:
         remaining_time_seconds=300,
         interview_stage="project_deep_dive",
         interview_stage_focus="프로젝트 목표, 본인 역할, 설계와 구현, 결과와 회고",
+        next_question_type="stage_opening",
         retrieved_source_ids=(UUID("00000000-0000-7000-8000-000000000201"),),
         retrieved_sources=(
             RetrievedSourceContext(
@@ -47,6 +48,7 @@ def test_context_builder_prioritizes_recent_turns_within_budget() -> None:
     assert result.recent_turns[-1].turn_id == turns[-1].turn_id
     assert result.remaining_time_seconds == 300
     assert result.interview_stage == "project_deep_dive"
+    assert result.next_question_type == "stage_opening"
     assert result.remaining_criterion_ids
     assert result.retrieved_source_ids
     payload = result.model_payload()

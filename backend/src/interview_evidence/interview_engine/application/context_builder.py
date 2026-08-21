@@ -34,6 +34,7 @@ class BuiltInterviewContext(BaseModel):
     remaining_time_seconds: int = Field(ge=0)
     interview_stage: str = ""
     interview_stage_focus: str = ""
+    next_question_type: str = "adaptive"
     retrieved_source_ids: tuple[UUID, ...]
     retrieved_sources: tuple[RetrievedSourceContext, ...] = ()
     criterion_text: str = ""
@@ -59,6 +60,7 @@ class BuiltInterviewContext(BaseModel):
             "remaining_time_seconds": self.remaining_time_seconds,
             "interview_stage": self.interview_stage,
             "interview_stage_focus": self.interview_stage_focus,
+            "next_question_type": self.next_question_type,
             "retrieved_source_ids": [str(source_id) for source_id in self.retrieved_source_ids],
             "criterion_text": self.criterion_text,
             "verification_objective": self.verification_objective,
@@ -98,6 +100,7 @@ class ContextBuilder:
         retrieved_source_ids: tuple[UUID, ...],
         interview_stage: str = "",
         interview_stage_focus: str = "",
+        next_question_type: str = "adaptive",
         retrieved_sources: tuple[RetrievedSourceContext, ...] = (),
         criterion_text: str = "",
         verification_objective: str = "",
@@ -110,6 +113,7 @@ class ContextBuilder:
                 str(remaining_time_seconds),
                 interview_stage,
                 interview_stage_focus,
+                next_question_type,
                 *(str(value) for value in remaining_criterion_ids),
                 *(str(value) for value in retrieved_source_ids),
                 criterion_text,
@@ -141,6 +145,7 @@ class ContextBuilder:
             remaining_time_seconds=remaining_time_seconds,
             interview_stage=interview_stage,
             interview_stage_focus=interview_stage_focus,
+            next_question_type=next_question_type,
             retrieved_source_ids=retrieved_source_ids,
             retrieved_sources=retrieved_sources,
             criterion_text=criterion_text,

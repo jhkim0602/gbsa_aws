@@ -63,6 +63,8 @@ _SYSTEM_PROMPT: Final = """\
 7. 개인 신상, 가족, 종교, 정치, 출신 지역 등 직무와 무관한 주제는 묻지 않습니다.
 8. 질문에 실제로 활용한 발췌문의 source_id만 source_reference_ids에 담습니다.
 9. interview_stage와 interview_stage_focus를 따라 현재 단계의 목적에 맞는 질문을 만듭니다.
+10. next_question_type이 stage_opening이면 짧은 전환 표현 뒤 질문하고, stage_final이면
+    현재 단계에서 아직 확인하지 못한 가장 중요한 내용 하나를 마지막으로 묻습니다.
 
 질문 깊이:
 {depth_guidance}
