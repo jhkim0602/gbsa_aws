@@ -174,6 +174,7 @@ export function InterviewRoom({
   question,
   transcript = "",
   interviewerSpeaking = false,
+  questionInProgress = interviewerSpeaking,
   state,
   connectionState,
   textOnly,
@@ -187,6 +188,7 @@ export function InterviewRoom({
   question: string;
   transcript?: string;
   interviewerSpeaking?: boolean;
+  questionInProgress?: boolean;
   state: InterviewState;
   connectionState: ConnectionState;
   textOnly: boolean;
@@ -212,6 +214,7 @@ export function InterviewRoom({
   }, []);
 
   function startAnswer() {
+    if (questionInProgress) return;
     setRecording(true);
     onStartAnswer();
   }
@@ -397,11 +400,11 @@ export function InterviewRoom({
             <button
               type="button"
               className={FOOTER_ACTION}
-              disabled={recording || state === "paused" || interviewerSpeaking}
+              disabled={recording || state === "paused" || questionInProgress}
               onClick={startAnswer}
             >
               <Mic className="size-4" aria-hidden="true" />
-              답변 시작
+              {questionInProgress ? "질문 재생 중" : "답변 시작"}
             </button>
             {onAddExplanation ? (
               <button
@@ -409,7 +412,7 @@ export function InterviewRoom({
                 className={FOOTER_ICON_ACTION}
                 aria-label="정정 또는 추가 설명"
                 title="정정 또는 추가 설명"
-                disabled={recording || state === "paused"}
+                disabled={recording || state === "paused" || questionInProgress}
                 onClick={onAddExplanation}
               >
                 <RefreshCcw className="size-4" aria-hidden="true" />

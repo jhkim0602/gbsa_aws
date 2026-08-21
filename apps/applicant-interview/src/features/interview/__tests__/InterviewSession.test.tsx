@@ -264,6 +264,138 @@ describe("InterviewSession", () => {
     }
   });
 
+  it("waits for interviewer audio to finish before an automated answer", async () => {
+    vi.useFakeTimers();
+    try {
+      let onQuestion:
+        | ((question: {
+            questionTurnId: string;
+            text: string;
+            textOnly: boolean;
+          }) => void)
+        | undefined;
+      let onQuestionAudioStart:
+        ((format: { sampleRateHz: number }) => void) | undefined;
+      let onQuestionAudioEnd: (() => void) | undefined;
+      let onPlaybackState: ((state: "idle" | "playing") => void) | undefined;
+      const protocol = {
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        startAnswer: vi.fn(),
+        completeAnswer: vi.fn(),
+        sendAudioFrame: vi.fn(),
+        repeatQuestion: vi.fn(),
+        submitAutomatedAnswer: vi.fn(),
+      };
+      const stream = {
+        getTracks: () => [],
+      } as unknown as MediaStream;
+      const recorder = {
+        start: vi.fn(),
+        stop: vi.fn().mockResolvedValue(undefined),
+      };
+      const audioPlayer = {
+        start: vi.fn(
+          async (
+            _sampleRateHz: number,
+            onStateChange: (state: "idle" | "playing") => void,
+          ) => {
+            onPlaybackState = onStateChange;
+          },
+        ),
+        enqueue: vi.fn(),
+        end: vi.fn(),
+        stop: vi.fn().mockResolvedValue(undefined),
+      };
+      const dependencies: Partial<InterviewSessionDependencies> = {
+        socketFactory: vi.fn(),
+        mediaDevices: { getUserMedia: vi.fn() },
+        mediaBuffer: {
+          put: vi.fn(),
+          list: vi.fn().mockResolvedValue([]),
+          removeVerified: vi.fn().mockResolvedValue(undefined),
+        },
+        createRecorder: vi.fn(() => recorder),
+        createAudioCapture: vi.fn(),
+        createAudioPlayer: vi.fn(() => audioPlayer),
+        createAutomatedMedia: vi.fn().mockResolvedValue({
+          stream,
+          dispose: vi.fn(),
+        }),
+        loadAutomatedPcm: vi.fn().mockResolvedValue(new Int16Array()),
+        createProtocolClient: vi.fn((input) => {
+          onQuestion = input.onQuestion;
+          onQuestionAudioStart = input.onQuestionAudioStart;
+          onQuestionAudioEnd = input.onQuestionAudioEnd;
+          input.store.getState().setConnectionState("connected");
+          input.store.getState().applyServerState({
+            state: "awaiting_answer",
+            serverSequence: 1,
+            lastFinalTurnId: null,
+            lastVerifiedRecordingChunkSequence: 0,
+            degradedModes: [],
+          });
+          return protocol;
+        }),
+      };
+
+      render(
+        <InterviewSession
+          sessionId="00000000-0000-7000-8000-000000000540"
+          equipmentCheckId="00000000-0000-7000-8000-000000000541"
+          websocketUrl="ws://localhost/session"
+          recordingApi={{ upload: vi.fn() }}
+          dependencies={dependencies}
+          automationMode="speech"
+        />,
+      );
+
+      act(() => {
+        onQuestion?.({
+          questionTurnId: "00000000-0000-7000-8000-000000000542",
+          text: "질문 음성이 끝난 뒤 답변해 주세요.",
+          textOnly: false,
+        });
+        onQuestionAudioStart?.({ sampleRateHz: 24_000 });
+      });
+      await act(async () => {
+        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+
+      expect(recorder.start).not.toHaveBeenCalled();
+      expect(protocol.startAnswer).not.toHaveBeenCalled();
+      expect(
+        (
+          screen.getByRole("button", {
+            name: "질문 재생 중",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+
+      act(() => {
+        onPlaybackState?.("playing");
+        onQuestionAudioEnd?.();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      expect(recorder.start).not.toHaveBeenCalled();
+
+      act(() => {
+        onPlaybackState?.("idle");
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(900);
+      });
+
+      expect(recorder.start).toHaveBeenCalledWith(stream);
+      expect(protocol.startAnswer).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("continues when the next fast interview question arrives immediately", async () => {
     vi.useFakeTimers();
     try {

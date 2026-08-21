@@ -118,6 +118,8 @@ export function InterviewSession({
   const [questionTurnId, setQuestionTurnId] = useState<string | null>(null);
   const [transcript, setTranscript] = useState("");
   const [interviewerSpeaking, setInterviewerSpeaking] = useState(false);
+  const [questionPlaybackComplete, setQuestionPlaybackComplete] =
+    useState(false);
   const [automationStatus, setAutomationStatus] = useState("");
   const [automationRunVersion, setAutomationRunVersion] = useState(0);
   const mediaBuffer = useMemo(
@@ -190,11 +192,14 @@ export function InterviewSession({
       onQuestion(nextQuestion) {
         setQuestion(nextQuestion.text);
         setQuestionTurnId(nextQuestion.questionTurnId);
+        setQuestionPlaybackComplete(nextQuestion.textOnly);
+        if (nextQuestion.textOnly) setInterviewerSpeaking(false);
       },
       onTranscript(text) {
         setTranscript(text);
       },
       onQuestionAudioStart(format) {
+        setQuestionPlaybackComplete(false);
         const player = audioPlayerRef.current ?? resolved.createAudioPlayer();
         audioPlayerRef.current = player;
         audioPlaybackChainRef.current = audioPlaybackChainRef.current
@@ -202,10 +207,12 @@ export function InterviewSession({
           .then(() =>
             player.start(format.sampleRateHz, (state: AudioPlaybackState) => {
               setInterviewerSpeaking(state === "playing");
+              if (state === "idle") setQuestionPlaybackComplete(true);
             }),
           )
           .catch(() => {
             setInterviewerSpeaking(false);
+            setQuestionPlaybackComplete(true);
           });
       },
       onQuestionAudioChunk(chunk) {
@@ -224,6 +231,7 @@ export function InterviewSession({
       },
       onQuestionAudioError() {
         setInterviewerSpeaking(false);
+        setQuestionPlaybackComplete(true);
         audioPlaybackChainRef.current = audioPlaybackChainRef.current
           .catch(() => undefined)
           .then(() => audioPlayerRef.current?.stop());
@@ -263,6 +271,7 @@ export function InterviewSession({
       snapshot.connectionState !== "connected" ||
       snapshot.state !== "awaiting_answer" ||
       !questionTurnId ||
+      !questionPlaybackComplete ||
       automatedQuestionRef.current === questionTurnId ||
       automationRunningRef.current
     ) {
@@ -288,6 +297,7 @@ export function InterviewSession({
   }, [
     automationMode,
     automationRunVersion,
+    questionPlaybackComplete,
     questionTurnId,
     snapshot.connectionState,
     snapshot.state,
@@ -320,7 +330,7 @@ export function InterviewSession({
   }
 
   async function startAnswer(): Promise<void> {
-    if (streamRef.current) return;
+    if (streamRef.current || !questionPlaybackComplete) return;
     const stream = await resolved.mediaDevices.getUserMedia({
       audio: true,
       video: true,
@@ -489,6 +499,7 @@ export function InterviewSession({
 
   function addExplanation(): void {
     if (questionTurnId) {
+      setQuestionPlaybackComplete(false);
       clientRef.current?.repeatQuestion(questionTurnId, "clarify");
     }
   }
@@ -507,6 +518,7 @@ export function InterviewSession({
         question={question}
         transcript={transcript}
         interviewerSpeaking={interviewerSpeaking}
+        questionInProgress={!questionPlaybackComplete}
         state={snapshot.state}
         connectionState={snapshot.connectionState}
         textOnly={snapshot.degradedModes.includes("text_only")}
