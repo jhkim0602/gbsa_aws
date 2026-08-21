@@ -229,11 +229,14 @@ def test_consumer_commits_database_before_acknowledging_sqs() -> None:
         clock=FrozenClock(NOW),
     )
 
-    assert consumer.consume_once(
-        max_messages=1,
-        commit=lambda: operations.append("commit"),
-        rollback=lambda: operations.append("rollback"),
-    ) == 1
+    assert (
+        consumer.consume_once(
+            max_messages=1,
+            commit=lambda: operations.append("commit"),
+            rollback=lambda: operations.append("rollback"),
+        )
+        == 1
+    )
     assert operations == ["commit", "ack"]
 
 
@@ -312,7 +315,12 @@ def test_consumer_does_not_acknowledge_when_database_commit_fails() -> None:
 
 
 def test_local_worker_runtime_executes_a_cycle_without_cloud_dependencies() -> None:
-    runtime = create_environment_worker_runtime({"APP_ENVIRONMENT": "local"})
+    runtime = create_environment_worker_runtime(
+        {
+            "APP_ENVIRONMENT": "local",
+            "WORKER_RUNTIME_MODE": "in-memory",
+        }
+    )
 
     assert runtime.run_once() == 0
 

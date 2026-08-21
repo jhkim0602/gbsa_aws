@@ -401,25 +401,52 @@ class CachingTextEmbedder:
         *,
         dimensions: int = 1024,
     ) -> tuple[float, ...]:
+        return self.embed_many(context, (text,), dimensions=dimensions)[0]
+
+    def embed_many(
+        self,
+        context: TenantContext,
+        texts: Sequence[str],
+        *,
+        dimensions: int = 1024,
+    ) -> tuple[tuple[float, ...], ...]:
         require_tenant_context(context)
-        normalized = text.strip()
-        if not normalized:
+        normalized_texts = tuple(text.strip() for text in texts)
+        if not normalized_texts or any(not text for text in normalized_texts):
             raise ValueError("embedding text must not be blank")
-        key = (
-            f"{self.model_id}:{self.embedding_version}",
-            dimensions,
-            sha256(normalized.encode("utf-8")).hexdigest(),
+        keys = tuple(
+            (
+                f"{self.model_id}:{self.embedding_version}",
+                dimensions,
+                sha256(text.encode("utf-8")).hexdigest(),
+            )
+            for text in normalized_texts
         )
-        cached = self._vectors.get(key)
-        if cached is not None:
+        missing: OrderedDict[tuple[str, int, str], str] = OrderedDict()
+        for key, text in zip(keys, normalized_texts, strict=True):
+            if key not in self._vectors:
+                missing.setdefault(key, text)
+        if missing:
+            batch_embed = getattr(self._delegate, "embed_many", None)
+            missing_texts = tuple(missing.values())
+            generated = (
+                tuple(batch_embed(context, missing_texts, dimensions=dimensions))
+                if callable(batch_embed)
+                else tuple(
+                    self._delegate.embed(context, text, dimensions=dimensions)
+                    for text in missing_texts
+                )
+            )
+            if len(generated) != len(missing):
+                raise EmbeddingProviderError("embedding response count is invalid")
+            for key, vector in zip(missing, generated, strict=True):
+                self._vectors[key] = vector
+                self._vectors.move_to_end(key)
+                if len(self._vectors) > self._max_entries:
+                    self._vectors.popitem(last=False)
+        for key in keys:
             self._vectors.move_to_end(key)
-            return cached
-        vector = self._delegate.embed(context, normalized, dimensions=dimensions)
-        self._vectors[key] = vector
-        self._vectors.move_to_end(key)
-        if len(self._vectors) > self._max_entries:
-            self._vectors.popitem(last=False)
-        return vector
+        return tuple(self._vectors[key] for key in keys)
 
 
 class SpeechToText(Protocol):

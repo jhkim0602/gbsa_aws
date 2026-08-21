@@ -46,9 +46,16 @@ class GcpEmbeddingProviderError(GcpGenerativeAdapterError, EmbeddingProviderErro
 
 
 class GcpVertexModel(AIModel):
-    def __init__(self, client: VertexClient, *, model_id: str) -> None:
+    def __init__(
+        self,
+        client: VertexClient,
+        *,
+        model_id: str,
+        thinking_budget: int = 0,
+    ) -> None:
         self._client = client
         self._model_id = model_id
+        self._thinking_budget = thinking_budget
 
     def generate(
         self,
@@ -66,6 +73,9 @@ class GcpVertexModel(AIModel):
                     max_output_tokens=_optional_int(model_input.get("max_tokens")),
                     response_mime_type="application/json",
                     labels={"company_id": str(tenant.company_id)},
+                    thinking_config=types.ThinkingConfig(
+                        thinking_budget=self._thinking_budget,
+                    ),
                 ),
             )
             response_text = getattr(response, "text", None)
@@ -93,35 +103,59 @@ class GcpVertexTextEmbedder(TextEmbedder):
         *,
         dimensions: int = 1024,
     ) -> tuple[float, ...]:
+        return self.embed_many(context, (text,), dimensions=dimensions)[0]
+
+    def embed_many(
+        self,
+        context: TenantContext,
+        texts: Sequence[str],
+        *,
+        dimensions: int = 1024,
+    ) -> tuple[tuple[float, ...], ...]:
         require_tenant_context(context)
-        normalized_text = text.strip()
-        if not normalized_text:
+        normalized_texts = tuple(text.strip() for text in texts)
+        if not normalized_texts or any(not text for text in normalized_texts):
             raise ValueError("embedding text must not be blank")
         if dimensions <= 0:
             raise ValueError("embedding dimensions must be positive")
         try:
             response = self._client.models.embed_content(
                 model=self.model_id,
-                contents=normalized_text,
+                contents=list(normalized_texts),
                 config=types.EmbedContentConfig(
                     task_type="SEMANTIC_SIMILARITY",
                     output_dimensionality=dimensions,
                 ),
             )
             embeddings = getattr(response, "embeddings", None)
-            first = embeddings[0] if isinstance(embeddings, Sequence) and embeddings else None
-            values = getattr(first, "values", None)
-            if not isinstance(values, Sequence):
+            if not isinstance(embeddings, Sequence) or len(embeddings) != len(normalized_texts):
                 raise ValueError("Vertex embedding values are unavailable")
-            vector = tuple(float(value) for value in values)
+            vectors = tuple(
+                _normalized_embedding(
+                    getattr(embedding, "values", None),
+                    dimensions=dimensions,
+                )
+                for embedding in embeddings
+            )
         except Exception as error:
             raise GcpEmbeddingProviderError("text embedding unavailable") from error
-        if len(vector) != dimensions or not all(math.isfinite(value) for value in vector):
-            raise GcpEmbeddingProviderError("text embedding response is invalid")
-        magnitude = math.sqrt(sum(value * value for value in vector))
-        if magnitude == 0:
-            raise GcpEmbeddingProviderError("text embedding response is invalid")
-        return tuple(value / magnitude for value in vector)
+        return vectors
+
+
+def _normalized_embedding(
+    values: object,
+    *,
+    dimensions: int,
+) -> tuple[float, ...]:
+    if not isinstance(values, Sequence):
+        raise ValueError("Vertex embedding values are unavailable")
+    vector = tuple(float(value) for value in values)
+    if len(vector) != dimensions or not all(math.isfinite(value) for value in vector):
+        raise ValueError("Vertex embedding values are invalid")
+    magnitude = math.sqrt(sum(value * value for value in vector))
+    if magnitude == 0:
+        raise ValueError("Vertex embedding values are invalid")
+    return tuple(value / magnitude for value in vector)
 
 
 def _contents(model_input: Mapping[str, Any]) -> list[types.Content]:

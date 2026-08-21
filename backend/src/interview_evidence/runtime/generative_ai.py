@@ -50,6 +50,7 @@ def create_generative_ai_dependencies(
         model: AIModel = GcpVertexModel(
             vertex_client,
             model_id=environment.get("GCP_VERTEX_AI_MODEL_ID", "gemini-2.5-flash").strip(),
+            thinking_budget=int(environment.get("GCP_VERTEX_AI_THINKING_BUDGET", "0")),
         )
     else:
         model = AwsBedrockModel(

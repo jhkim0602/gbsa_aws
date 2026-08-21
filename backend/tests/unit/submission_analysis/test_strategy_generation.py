@@ -3,7 +3,11 @@ from uuid import UUID
 import pytest
 from interview_evidence.shared.aws_clients.ports import DeterministicAIModel
 from interview_evidence.shared.tenant import ActorType, TenantContext
+from interview_evidence.submission_analysis.application.strategy_prompt import (
+    strategy_task_payload_of,
+)
 from interview_evidence.submission_analysis.application.strategy_service import (
+    MAX_STRATEGY_PROMPT_SOURCES,
     StrategyGenerationError,
     StrategyService,
 )
@@ -98,3 +102,42 @@ def test_strategy_rejects_unknown_criterion_or_source() -> None:
             source_candidates=(source_reference(),),
             strategy_version=1,
         )
+
+
+def test_strategy_limits_and_deduplicates_prompt_sources_but_keeps_full_provenance() -> None:
+    model = DeterministicAIModel(
+        {
+            "common_topics": [],
+            "verification_points": [],
+            "follow_up_directions": {},
+            "time_budget": {"total_seconds": 1800},
+            "required_evidence_plan": {},
+        }
+    )
+    candidates = tuple(
+        SourceReferenceCandidate(
+            source_id=UUID(int=100 + index),
+            source_type="submission_chunk",
+            locator={"page_number": index + 1},
+            content_hash=f"{index:064x}",
+            relevance_score=1,
+            ownership_confidence=1,
+        )
+        for index in range(MAX_STRATEGY_PROMPT_SOURCES + 6)
+    )
+    duplicate = candidates[0].model_copy(update={"source_id": UUID(int=999)})
+
+    strategy = StrategyService(model, model_config_version="strategy-v1").generate(
+        context(),
+        invitation_id=INVITATION_ID,
+        applicant_id=APPLICANT_ID,
+        competency_model_version_id=CRITERION_VERSION_ID,
+        criterion_ids=(CRITERION_ID,),
+        source_candidates=(*candidates, duplicate),
+        strategy_version=1,
+    )
+
+    prompt_payload = strategy_task_payload_of(model.calls[0][1])
+    assert prompt_payload is not None
+    assert len(prompt_payload["provided_source_candidates"]) == MAX_STRATEGY_PROMPT_SOURCES
+    assert len(strategy.source_reference_candidates) == len(candidates) + 1

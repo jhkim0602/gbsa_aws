@@ -554,10 +554,7 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
 
 
 def create_local_worker_runtime() -> WorkerRuntime:
-    queues = {
-        name: InMemoryQueue()
-        for name in ("analysis", "media", "reporting", "deletion")
-    }
+    queues = {name: InMemoryQueue() for name in ("analysis", "media", "reporting", "deletion")}
     return create_worker_runtime(
         outbox=InMemoryOutbox(),
         queues=queues,
@@ -575,9 +572,9 @@ def create_environment_worker_runtime(
     # sidecar is running. Installed here rather than in `worker.main` so that every entry point
     # into a worker runtime gets it.
     configure_worker_tracing(active_environment)
-    if active_environment.get(
-        "APP_ENVIRONMENT",
-        active_environment.get("APP_ENV"),
-    ) == "local":
+    runtime_mode = active_environment.get("WORKER_RUNTIME_MODE", "production").strip().casefold()
+    if runtime_mode == "in-memory":
         return create_local_worker_runtime()
+    if runtime_mode != "production":
+        raise RuntimeError("WORKER_RUNTIME_MODE must be production or in-memory")
     return create_production_worker_runtime(active_environment)

@@ -403,6 +403,20 @@ def test_embedding_cache_deduplicates_normalized_provider_requests() -> None:
     assert embedder.embedding_version == delegate.embedding_version
 
 
+def test_embedding_cache_batches_only_uncached_texts() -> None:
+    delegate = StaticTextEmbedder((1.0,) * 1024)
+    embedder = CachingTextEmbedder(delegate, max_entries=3)
+
+    embedder.embed(_context(), "이미 캐시된 문단")
+    vectors = embedder.embed_many(
+        _context(),
+        ("이미 캐시된 문단", "새 문단", "새 문단"),
+    )
+
+    assert len(vectors) == 3
+    assert len(delegate.calls) == 2
+
+
 def test_titan_rejects_oversized_input_before_provider_call() -> None:
     bedrock = RecordingClient()
     embedder = AwsTitanTextEmbedder(bedrock)

@@ -251,6 +251,10 @@ def test_embedding_provider_failure_uses_analysis_retry_contract() -> None:
             ),
         )
 
+    assert repository.get_submission(_context(), SUBMISSION_ID).status is SubmissionStatus.RECEIVED
+    assert repository.list_analyses(_context(), frozenset({SUBMISSION_ID})) == ()
+    assert repository.list_chunks(_context(), APPLICANT_ID) == ()
+
 
 def test_public_git_event_persists_code_units_and_exact_symbol_index() -> None:
     repository = InMemorySubmissionRepository()

@@ -15,7 +15,15 @@ from interview_evidence.submission_analysis.domain.submission import (
     Submission,
     SubmissionStatus,
 )
-from interview_evidence.workers.analysis.handlers import AnalysisJob, AnalysisJobHandler
+from interview_evidence.workers.analysis.handlers import (
+    AnalysisJob,
+    AnalysisJobHandler,
+    JobStatus,
+)
+
+ANALYSIS_RETRY_EXHAUSTED_SUMMARY = (
+    "분석 서비스 연결이 반복해서 실패해 자료를 처리하지 못했습니다. 다시 제출해 주세요."
+)
 
 
 class InvitationAnalysisFinalizer(Protocol):
@@ -66,7 +74,7 @@ class AnalysisRequestedEventHandler:
                         expected_version=snapshot.row_version,
                     ),
                 )
-        return self._handler.handle(
+        outcome = self._handler.handle(
             context,
             AnalysisJob(
                 submission_id=submission_id,
@@ -79,6 +87,22 @@ class AnalysisRequestedEventHandler:
             ),
             attempt_number=event.delivery_attempt,
         )
+        if outcome.status is JobStatus.DLQ:
+            current = self._runtime.repository.get_submission(context, submission_id)
+            if current.status in {
+                SubmissionStatus.RECEIVED,
+                SubmissionStatus.VALIDATING,
+                SubmissionStatus.ANALYZING,
+            }:
+                self._runtime.repository.save_submission(
+                    context,
+                    current.transition(
+                        SubmissionStatus.FAILED,
+                        failure_code=outcome.failure_code or "analysis_retry_exhausted",
+                        impact_summary=ANALYSIS_RETRY_EXHAUSTED_SUMMARY,
+                    ),
+                )
+        return outcome
 
 
 def _owns_analysis_state_transition(

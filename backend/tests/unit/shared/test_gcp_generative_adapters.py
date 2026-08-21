@@ -88,6 +88,8 @@ def test_vertex_model_translates_anthropic_prompt_and_returns_structured_fields(
     assert config.system_instruction == "한국어 JSON으로 답합니다."
     assert config.response_mime_type == "application/json"
     assert config.labels == {"company_id": str(COMPANY_ID)}
+    assert config.thinking_config is not None
+    assert config.thinking_config.thinking_budget == 0
 
 
 def test_vertex_embedder_returns_normalized_requested_dimensions() -> None:
@@ -100,11 +102,33 @@ def test_vertex_embedder_returns_normalized_requested_dimensions() -> None:
     assert embedder.embedding_version == "vertex-gemini-v1"
     call = client.models.embedding_calls[0]
     assert call["model"] == "embedding-test"
-    assert call["contents"] == "프로젝트 경험"
+    assert call["contents"] == ["프로젝트 경험"]
     config = call["config"]
     assert isinstance(config, types.EmbedContentConfig)
     assert config.task_type == "SEMANTIC_SIMILARITY"
     assert config.output_dimensionality == 2
+
+
+def test_vertex_embedder_batches_multiple_texts_in_one_request() -> None:
+    client = FakeVertexClient()
+    client.models.embedding_response = FakeResponse(
+        embeddings=[FakeEmbedding([3.0, 4.0]), FakeEmbedding([5.0, 12.0])]
+    )
+    embedder = GcpVertexTextEmbedder(client, model_id="embedding-test")
+
+    vectors = embedder.embed_many(
+        _context(),
+        ("첫 번째 문단", "두 번째 문단"),
+        dimensions=2,
+    )
+
+    assert vectors[0] == pytest.approx((0.6, 0.8))
+    assert vectors[1] == pytest.approx((5 / 13, 12 / 13))
+    assert len(client.models.embedding_calls) == 1
+    assert client.models.embedding_calls[0]["contents"] == [
+        "첫 번째 문단",
+        "두 번째 문단",
+    ]
 
 
 def test_vertex_model_rejects_non_json_response() -> None:
