@@ -10,6 +10,7 @@ export type InterviewStageSummary = {
   stage: InterviewStage;
   label: string;
   questionCount: number;
+  evidenceCount: number;
 };
 
 /** How far the quoted answer carries the criterion, as the AI graded the citation. */
@@ -169,6 +170,8 @@ export type ReviewAnswerQuote = {
  */
 export type ReviewEvidenceContext = {
   answersBySegmentId: Record<string, ReviewAnswerQuote>;
+  /** The scored question immediately before each applicant answer. */
+  stageBySegmentId: Record<string, InterviewStage>;
   /** Submission excerpts the interview drew on, grouped by the criterion they served. */
   sourcesByCriterionId: Record<string, ReviewQuestionSource[]>;
 };

@@ -69,8 +69,8 @@ export function ReviewWorkspace({
     [timeline.entries],
   );
   const stageSummary = useMemo(
-    () => summarizeInterviewStages(timeline.entries),
-    [timeline.entries],
+    () => summarizeInterviewStages(timeline.entries, report, evidenceContext),
+    [evidenceContext, report, timeline.entries],
   );
 
   /**
@@ -148,21 +148,44 @@ export function ReviewWorkspace({
 
 export function summarizeInterviewStages(
   entries: ReviewTimeline["entries"],
+  report?: ReviewReport,
+  evidenceContext?: ReturnType<typeof buildEvidenceContext>,
 ): InterviewStageSummary[] {
   const stages: InterviewStageSummary[] = [
-    { stage: "technical", label: "기술 면접", questionCount: 0 },
+    {
+      stage: "technical",
+      label: "기술 면접",
+      questionCount: 0,
+      evidenceCount: 0,
+    },
     {
       stage: "project_deep_dive",
       label: "프로젝트 심층",
       questionCount: 0,
+      evidenceCount: 0,
     },
-    { stage: "behavioral", label: "협업·인성", questionCount: 0 },
+    {
+      stage: "behavioral",
+      label: "협업·인성",
+      questionCount: 0,
+      evidenceCount: 0,
+    },
   ];
   for (const entry of entries) {
     const stage = entry.questionRationale?.interviewStage;
     if (!stage) continue;
     const summary = stages.find((item) => item.stage === stage);
     if (summary) summary.questionCount += 1;
+  }
+  if (report && evidenceContext) {
+    for (const item of report.items) {
+      for (const evidence of item.evidence) {
+        const stage =
+          evidenceContext.stageBySegmentId?.[evidence.transcriptSegmentId];
+        const summary = stages.find((candidate) => candidate.stage === stage);
+        if (summary) summary.evidenceCount += 1;
+      }
+    }
   }
   return stages;
 }

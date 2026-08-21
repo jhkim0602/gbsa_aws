@@ -8,6 +8,7 @@ import type {
   AxisAssessment,
   EvidenceRange,
   EvidenceSufficiency,
+  InterviewStage,
   InterviewStageSummary,
   ReviewEvidenceContext,
   ReviewQuestionSource,
@@ -142,6 +143,7 @@ const sufficiencyTone: Record<EvidenceSufficiency, string> = {
 
 const EMPTY_CONTEXT: ReviewEvidenceContext = {
   answersBySegmentId: {},
+  stageBySegmentId: {},
   sourcesByCriterionId: {},
 };
 
@@ -388,7 +390,8 @@ function OverviewPage({
                   {stage.label}
                 </strong>
                 <span className="mt-1 block text-[8px] text-muted">
-                  질문 {stage.questionCount}개
+                  질문 {stage.questionCount}개 · 평가 근거 {stage.evidenceCount}
+                  개
                 </span>
               </li>
             ))}
@@ -648,6 +651,7 @@ function CriteriaPage({
                     <AxisCitations
                       axis={axis}
                       evidenceById={evidenceById}
+                      stageBySegmentId={evidenceContext.stageBySegmentId}
                       followedEvidenceId={followedEvidenceId}
                       onFollow={followEvidence}
                     />
@@ -679,6 +683,11 @@ function CriteriaPage({
                       evidence.transcriptSegmentId
                     ]
                   }
+                  interviewStage={
+                    evidenceContext.stageBySegmentId?.[
+                      evidence.transcriptSegmentId
+                    ]
+                  }
                   isFollowed={followedEvidenceId === evidence.evidenceId}
                   onFollow={followEvidence}
                 />
@@ -706,11 +715,13 @@ function CriteriaPage({
 function AxisCitations({
   axis,
   evidenceById,
+  stageBySegmentId,
   followedEvidenceId,
   onFollow,
 }: {
   axis: AxisAssessment;
   evidenceById: Map<string, EvidenceRange>;
+  stageBySegmentId?: Record<string, InterviewStage>;
   followedEvidenceId: string | null;
   onFollow(evidence: EvidenceRange): void;
 }) {
@@ -744,6 +755,7 @@ function AxisCitations({
           );
         }
         const isFollowed = followedEvidenceId === evidence.evidenceId;
+        const stage = stageBySegmentId?.[evidence.transcriptSegmentId];
         return (
           // `.axis-citation.is-followed` is declared after `.axis-citation:hover` at equal
           // specificity, so a followed chip keeps its 18% fill on hover. A `hover:` utility
@@ -762,6 +774,7 @@ function AxisCitations({
           >
             <Quote size={11} aria-hidden="true" />
             근거 {index + 1}
+            {stage ? ` · ${interviewStageLabels[stage]}` : ""}
             <small className="font-mono text-[7px] font-semibold text-muted">
               {formatTime(evidence.startMs)}
             </small>
@@ -776,11 +789,13 @@ function AxisCitations({
 function EvidenceCard({
   evidence,
   answer,
+  interviewStage,
   isFollowed,
   onFollow,
 }: {
   evidence: EvidenceRange;
   answer?: { text: string; startMs: number; endMs: number };
+  interviewStage?: InterviewStage;
   isFollowed: boolean;
   onFollow(evidence: EvidenceRange): void;
 }) {
@@ -795,11 +810,18 @@ function EvidenceCard({
       aria-current={isFollowed ? "true" : undefined}
     >
       <header className="flex items-center justify-between gap-2">
-        <span
-          className={`rounded-sm px-1.5 py-0.5 text-[8px] font-[650] ${sufficiencyTone[evidence.sufficiency]}`}
-          title="AI가 이 답변을 기준의 근거로 얼마나 직접적으로 봤는지"
-        >
-          {sufficiencyLabels[evidence.sufficiency]}
+        <span className="flex flex-wrap items-center gap-1.5">
+          <span
+            className={`rounded-sm px-1.5 py-0.5 text-[8px] font-[650] ${sufficiencyTone[evidence.sufficiency]}`}
+            title="AI가 이 답변을 기준의 근거로 얼마나 직접적으로 봤는지"
+          >
+            {sufficiencyLabels[evidence.sufficiency]}
+          </span>
+          {interviewStage ? (
+            <span className="rounded-sm bg-brand-soft px-1.5 py-0.5 text-[8px] font-[650] text-brand-strong">
+              {interviewStageLabels[interviewStage]}
+            </span>
+          ) : null}
         </span>
         <button
           type="button"
@@ -840,6 +862,12 @@ function EvidenceCard({
     </article>
   );
 }
+
+const interviewStageLabels: Record<InterviewStage, string> = {
+  technical: "기술",
+  project_deep_dive: "프로젝트",
+  behavioral: "협업·인성",
+};
 
 /**
  * The submitted material the interview drew this criterion's questions from.

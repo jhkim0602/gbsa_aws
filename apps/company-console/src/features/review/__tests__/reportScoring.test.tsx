@@ -130,13 +130,24 @@ describe("report scoring", () => {
         ],
       }),
       [
-        { stage: "technical", label: "기술 면접", questionCount: 4 },
+        {
+          stage: "technical",
+          label: "기술 면접",
+          questionCount: 4,
+          evidenceCount: 3,
+        },
         {
           stage: "project_deep_dive",
           label: "프로젝트 심층",
           questionCount: 5,
+          evidenceCount: 4,
         },
-        { stage: "behavioral", label: "협업·인성", questionCount: 3 },
+        {
+          stage: "behavioral",
+          label: "협업·인성",
+          questionCount: 3,
+          evidenceCount: 2,
+        },
       ],
     );
 
@@ -145,7 +156,7 @@ describe("report scoring", () => {
     expect(screen.getByText("84")).toBeTruthy();
     expect(screen.getByText("63")).toBeTruthy();
     expect(screen.getByText("기준 2개에서 판단")).toBeTruthy();
-    expect(screen.getByText("질문 5개")).toBeTruthy();
+    expect(screen.getByText("질문 5개 · 평가 근거 4개")).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: "기준별 평가" }));
     expect(screen.getByText("별도 집계")).toBeTruthy();
   });
