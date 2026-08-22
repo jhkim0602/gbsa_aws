@@ -32,7 +32,7 @@ up:
 down:
 	docker compose down
 
-# Creates the two S3 buckets (with the CORS rules the browser upload needs), the four SQS
+# Creates the two S3 buckets (with the CORS rules the browser upload needs), the five SQS
 # queues and the DynamoDB table. Nothing seeds application data: there is no demo company or
 # position, so a fresh database starts empty and the first company comes from a real signup.
 local-infra:

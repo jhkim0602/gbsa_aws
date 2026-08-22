@@ -109,6 +109,7 @@ from interview_evidence.shared.aws_clients.ports import (
     TextEmbedder,
     TextToSpeech,
 )
+from interview_evidence.shared.aws_clients.task_protection import create_task_protection
 from interview_evidence.shared.database import RequestScopedDatabase
 from interview_evidence.shared.ids import SystemClock
 from interview_evidence.shared.operations import (
@@ -471,6 +472,11 @@ def create_production_runtime(
                 handler=lane_c.stream_handler,
                 database=database,
                 speech=lane_c.websocket_speech,
+                task_protection=create_task_protection(
+                    agent_uri=environment.get("ECS_AGENT_URI"),
+                    service="api",
+                    metrics=active_metrics,
+                ),
             ),
             create_reporting_router(
                 principal_provider=principals,
@@ -525,7 +531,7 @@ def create_production_runtime(
             "report_generation": ReportGenerator(
                 lane_d.repository,
                 EvidenceService(lane_d.repository),
-                CriterionAssessor(model),
+                CriterionAssessor(model, metrics=active_metrics),
             ),
             "privacy_deletion": lane_d.deletion_service,
         },

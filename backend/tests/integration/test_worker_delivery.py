@@ -34,6 +34,20 @@ EVENT_ID = UUID("00000000-0000-7000-8000-000000000103")
 AGGREGATE_ID = UUID("00000000-0000-7000-8000-000000000104")
 
 
+class RecordingTaskProtection:
+    def __init__(self) -> None:
+        self.acquired: list[UUID] = []
+        self.released: list[UUID] = []
+
+    def acquire(self, workload_id: UUID) -> bool:
+        self.acquired.append(workload_id)
+        return True
+
+    def release(self, workload_id: UUID) -> bool:
+        self.released.append(workload_id)
+        return True
+
+
 def _context() -> TenantContext:
     return TenantContext(
         company_id=COMPANY_ID,
@@ -88,6 +102,7 @@ def test_consumer_records_success_and_suppresses_duplicate_delivery() -> None:
     queue = InMemoryQueue()
     processed = InMemoryProcessedMessageStore()
     calls: list[UUID] = []
+    task_protection = RecordingTaskProtection()
 
     def handle(context: TenantContext, event: OutboxEvent) -> str:
         context.assert_company(event.company_id)
@@ -109,10 +124,13 @@ def test_consumer_records_success_and_suppresses_duplicate_delivery() -> None:
         processed=processed,
         handlers={"submission.analysis_requested": handle},
         clock=FrozenClock(NOW),
+        task_protection=task_protection,
     )
 
     assert consumer.consume_once(max_messages=10) == 2
     assert calls == [EVENT_ID]
+    assert task_protection.acquired == [EVENT_ID]
+    assert task_protection.released == [EVENT_ID]
     assert queue.receive(max_messages=10) == ()
     assert processed.contains(
         consumer_name="analysis-worker",

@@ -28,6 +28,7 @@ from interview_evidence.company_management.repositories.postgres import (
 from interview_evidence.shared.idempotency import ResourceIdempotencyStore
 from interview_evidence.shared.ids import Clock, CommandMeta, new_uuid7
 from interview_evidence.shared.interview_level import InterviewLevel
+from interview_evidence.shared.messaging.outbox import Outbox, OutboxEvent
 from interview_evidence.shared.security.principals import CompanyPrincipal
 from interview_evidence.shared.submission_materials import (
     DEFAULT_SUBMISSION_REQUIREMENTS,
@@ -163,10 +164,12 @@ class CompanyService:
         repository: CompanyRepository,
         clock: Clock,
         idempotency: ResourceIdempotencyStore,
+        outbox: Outbox | None = None,
     ) -> None:
         self._repository = repository
         self._clock = clock
         self._idempotency = idempotency
+        self._outbox = outbox
 
     def get_current_user(
         self,
@@ -257,13 +260,14 @@ class CompanyService:
             created_by=principal.company_user_id,
             created_at=self._clock.now(),
         )
-        self._repository.save_position(context, position)
+        position = self._repository.save_position(context, position)
         self._idempotency.put(
             context,
             operation="position.create",
             idempotency_key=idempotency_key,
             resource_id=position.position_id,
         )
+        self._emit_position_capacity_changed(context, position)
         return position
 
     def list_positions(self, context: TenantContext) -> tuple[Position, ...]:
@@ -307,7 +311,45 @@ class CompanyService:
             submission_requirements=submission_requirements,
             status=status,
         )
-        return self._repository.save_position(context, updated)
+        updated = self._repository.save_position(context, updated)
+        self._emit_position_capacity_changed(context, updated)
+        return updated
+
+    def _emit_position_capacity_changed(
+        self,
+        context: TenantContext,
+        position: Position,
+    ) -> None:
+        if self._outbox is None:
+            return
+        occurred_at = self._clock.now()
+        self._outbox.append(
+            OutboxEvent(
+                outbox_event_id=new_uuid7(occurred_at),
+                company_id=context.company_id,
+                aggregate_type="position",
+                aggregate_id=position.position_id,
+                aggregate_version=position.row_version,
+                event_type="position.capacity_changed",
+                event_version=1,
+                payload={
+                    "position_id": str(position.position_id),
+                    "position_status": position.status.value,
+                    "interview_at": (
+                        position.interview_at.isoformat()
+                        if position.interview_at is not None
+                        else None
+                    ),
+                    "expected_concurrency": position.interview_capacity,
+                    "interview_duration_minutes": 30,
+                },
+                idempotency_key=(
+                    f"position-capacity-{position.position_id}-v{position.row_version}"
+                ),
+                trace_id=context.trace_id,
+                occurred_at=occurred_at,
+            )
+        )
 
 
 class CompanyManagementPublic:

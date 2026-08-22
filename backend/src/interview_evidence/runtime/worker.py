@@ -7,6 +7,20 @@ from difflib import SequenceMatcher
 from typing import Protocol, cast
 from uuid import UUID
 
+from interview_evidence.capacity_management.event_handler import (
+    PositionCapacityChangedHandler,
+)
+from interview_evidence.capacity_management.planner import (
+    CapacityPlanner,
+    CapacityPlannerConfig,
+)
+from interview_evidence.capacity_management.repository import (
+    SqlAlchemyCapacityRepository,
+)
+from interview_evidence.capacity_management.scaling import (
+    AwsEcsScheduledScaling,
+    InMemoryScheduledScaling,
+)
 from interview_evidence.company_management.application.company_service import (
     CompanyManagementPublic,
 )
@@ -25,6 +39,10 @@ from interview_evidence.reporting.domain.deletion import DeletionStatus
 from interview_evidence.reporting.domain.timeline import TranscriptSegment
 from interview_evidence.runtime.document_ai import create_document_extractor
 from interview_evidence.shared.aws_clients.ports import ConsumableQueue, InMemoryQueue
+from interview_evidence.shared.aws_clients.task_protection import (
+    TaskProtection,
+    create_task_protection,
+)
 from interview_evidence.shared.database import RequestScopedDatabase
 from interview_evidence.shared.ids import Clock, SystemClock, new_uuid7
 from interview_evidence.shared.messaging.outbox import InMemoryOutbox, Outbox, OutboxEvent
@@ -74,6 +92,8 @@ EVENT_QUEUE_ROUTING = {
     "deletion.target_requested": "deletion",
     "deletion.target_verified": "deletion",
     "retention.expired": "deletion",
+    "position.capacity_changed": "capacity",
+    "capacity.reconcile_requested": "capacity",
 }
 
 
@@ -404,17 +424,19 @@ def _same_question_and_answer(
     left: CriterionAnswerInput,
     right: CriterionAnswerInput,
 ) -> bool:
-    return _text_similarity(left.question, right.question) >= 0.92 and _text_similarity(
-        left.transcript.text,
-        right.transcript.text,
-    ) >= 0.88
+    return (
+        _text_similarity(left.question, right.question) >= 0.92
+        and _text_similarity(
+            left.transcript.text,
+            right.transcript.text,
+        )
+        >= 0.88
+    )
 
 
 def _text_similarity(left: str, right: str) -> float:
     normalized_left = "".join(character.casefold() for character in left if character.isalnum())
-    normalized_right = "".join(
-        character.casefold() for character in right if character.isalnum()
-    )
+    normalized_right = "".join(character.casefold() for character in right if character.isalnum())
     if not normalized_left or not normalized_right:
         return float(normalized_left == normalized_right)
     return SequenceMatcher(None, normalized_left, normalized_right, autojunk=False).ratio()
@@ -452,6 +474,7 @@ def create_worker_runtime(
     clock: Clock,
     database: RequestScopedDatabase | None = None,
     metrics: MetricRecorder | None = None,
+    task_protection: TaskProtection | None = None,
 ) -> WorkerRuntime:
     active_metrics = metrics or NullMetricRecorder()
     consumers = tuple(
@@ -467,6 +490,7 @@ def create_worker_runtime(
             },
             clock=clock,
             metrics=active_metrics,
+            task_protection=task_protection,
         )
         for queue_name, queue in queues.items()
     )
@@ -550,6 +574,45 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
         clock,
         max_attempts=3,
     )
+    capacity_repository = SqlAlchemyCapacityRepository(database.session)
+    capacity_scaling = (
+        InMemoryScheduledScaling()
+        if environment.get("APP_ENVIRONMENT", "").strip().casefold()
+        in {"local", "local-production", "test"}
+        else AwsEcsScheduledScaling(
+            aws.application_auto_scaling,
+            cluster_name=_required_worker_setting(environment, "ECS_CLUSTER_NAME"),
+            api_service_name=_required_worker_setting(
+                environment,
+                "ECS_API_SERVICE_NAME",
+            ),
+            worker_service_name=_required_worker_setting(
+                environment,
+                "ECS_WORKER_SERVICE_NAME",
+            ),
+        )
+    )
+    capacity_planner = CapacityPlanner(
+        CapacityPlannerConfig(
+            api_baseline_tasks=int(environment.get("CAPACITY_API_BASELINE_TASKS", "2")),
+            api_max_tasks=int(environment.get("CAPACITY_API_MAX_TASKS", "20")),
+            api_safe_sessions_per_task=int(
+                environment.get("CAPACITY_API_SAFE_SESSIONS_PER_TASK", "25")
+            ),
+            worker_baseline_tasks=int(environment.get("CAPACITY_WORKER_BASELINE_TASKS", "1")),
+            worker_max_tasks=int(environment.get("CAPACITY_WORKER_MAX_TASKS", "30")),
+            worker_safe_completions_per_task=int(
+                environment.get("CAPACITY_WORKER_SAFE_COMPLETIONS_PER_TASK", "25")
+            ),
+        )
+    )
+    capacity_handler = PositionCapacityChangedHandler(
+        capacity_repository,
+        capacity_planner,
+        capacity_scaling,
+        clock,
+        metrics,
+    )
     return create_worker_runtime(
         outbox=outbox,
         queues=aws.queues,
@@ -582,7 +645,7 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
                 generator=ReportGenerator(
                     lane_d.repository,
                     EvidenceService(lane_d.repository),
-                    CriterionAssessor(aws.model),
+                    CriterionAssessor(aws.model, metrics=metrics),
                 ),
                 clock=clock,
                 assistant_projector=assistant_projector,
@@ -595,15 +658,24 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
                 deletion_service,
                 clock,
             ),
+            "position.capacity_changed": capacity_handler,
+            "capacity.reconcile_requested": capacity_handler,
         },
         clock=clock,
         database=database,
         metrics=metrics,
+        task_protection=create_task_protection(
+            agent_uri=environment.get("ECS_AGENT_URI"),
+            service="worker",
+            metrics=metrics,
+        ),
     )
 
 
 def create_local_worker_runtime() -> WorkerRuntime:
-    queues = {name: InMemoryQueue() for name in ("analysis", "media", "reporting", "deletion")}
+    queues = {
+        name: InMemoryQueue() for name in ("analysis", "media", "reporting", "deletion", "capacity")
+    }
     return create_worker_runtime(
         outbox=InMemoryOutbox(),
         queues=queues,
@@ -611,6 +683,13 @@ def create_local_worker_runtime() -> WorkerRuntime:
         handlers={"system.parity_probe": ParityProbeEventHandler()},
         clock=SystemClock(),
     )
+
+
+def _required_worker_setting(environment: Mapping[str, str], name: str) -> str:
+    value = environment.get(name, "").strip()
+    if not value:
+        raise RuntimeError(f"required worker setting is missing: {name}")
+    return value
 
 
 def create_environment_worker_runtime(

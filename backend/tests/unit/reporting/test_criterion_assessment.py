@@ -23,6 +23,7 @@ from interview_evidence.reporting.domain.report import (
     ReportItem,
 )
 from interview_evidence.shared.interview_level import InterviewLevel
+from interview_evidence.shared.operations import InMemoryMetricRecorder
 from interview_evidence.shared.tenant import ActorType, TenantContext
 
 COMPANY_ID = UUID("00000000-0000-7000-8000-000000000001")
@@ -140,6 +141,28 @@ def test_a_score_citing_evidence_that_does_not_exist_is_withheld() -> None:
     # The axis that cited a real answer is untouched: one bad citation does not void the
     # whole assessment.
     assert scores["depth"].score == 64
+
+
+def test_citation_verification_records_accepted_and_withheld_axis_counts() -> None:
+    body = verdict()
+    body["axis_scores"][0]["quoted_evidence_ids"] = [str(OTHER_EVIDENCE_ID)]
+    metrics = InMemoryMetricRecorder()
+
+    CriterionAssessor(StubModel(body), metrics=metrics).assess(
+        context(),
+        criterion_id=CRITERION_ID,
+        criterion_name="장애 대응 판단",
+        criterion_text="장애 상황에서 대안을 비교할 수 있다.",
+        answers=(answer(),),
+        model_config_version="report-config-v1",
+    )
+
+    axis_counts = {
+        record.dimensions["outcome"]: record.value
+        for record in metrics.records
+        if record.name == "ai_assessment_axis_count"
+    }
+    assert axis_counts == {"evidence_verified": 1, "citation_withheld": 1}
 
 
 def test_an_axis_with_nothing_to_cite_scores_null_not_zero() -> None:

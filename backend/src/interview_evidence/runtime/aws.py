@@ -9,6 +9,7 @@ import boto3  # type: ignore[import-untyped]
 from botocore.config import Config  # type: ignore[import-untyped]
 from sqlalchemy import URL
 
+from interview_evidence.capacity_management.scaling import ApplicationAutoScalingClient
 from interview_evidence.interview_engine.adapters.recent_context import (
     DynamoClient,
     DynamoRecentContext,
@@ -88,6 +89,7 @@ class AwsRuntimeDependencies:
     text_to_speech: TextToSpeech
     media_convert: MediaConvertPort
     metrics: MetricRecorder
+    application_auto_scaling: ApplicationAutoScalingClient
 
 
 def create_aws_runtime_dependencies(
@@ -130,7 +132,7 @@ def create_aws_runtime_dependencies(
                 )
             ),
         )
-        for name in ("analysis", "media", "reporting", "deletion")
+        for name in ("analysis", "media", "reporting", "deletion", "capacity")
     }
     principal_provider = AwsCognitoPrincipalProvider(cast(CognitoClient, factory("cognito-idp")))
     object_storage = AwsS3ObjectStorage(
@@ -232,6 +234,10 @@ def create_aws_runtime_dependencies(
         text_to_speech=text_to_speech,
         media_convert=media_convert,
         metrics=metrics,
+        application_auto_scaling=cast(
+            ApplicationAutoScalingClient,
+            factory("application-autoscaling"),
+        ),
     )
 
 

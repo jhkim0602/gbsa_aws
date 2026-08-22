@@ -86,6 +86,7 @@ def create_lane_a_runtime(
         active_repository,
         active_clock,
         active_idempotency,
+        active_outbox,
     )
     criteria_service = CriteriaService(
         active_repository,

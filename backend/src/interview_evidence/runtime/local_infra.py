@@ -45,7 +45,7 @@ def initialize_local_infrastructure(
         endpoint_url=aws_endpoint,
         config=Config(connect_timeout=3, read_timeout=3, retries={"max_attempts": 1}),
     )
-    for name in ("analysis", "media", "reporting", "deletion"):
+    for name in ("analysis", "media", "reporting", "deletion", "capacity"):
         sqs.create_queue(QueueName=_required(values, f"LOCAL_{name.upper()}_QUEUE_NAME"))
 
     dynamodb = boto3.client(

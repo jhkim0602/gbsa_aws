@@ -11,6 +11,7 @@ import {
 } from "../components/FormPrimitives";
 import { RoleCategoryField } from "../role-selector/RoleCategoryField";
 import { InlineTechStackSelector } from "../tech-stack-combobox";
+import { MAX_GUARANTEED_INTERVIEW_CONCURRENCY } from "../interviewCapacityEstimate";
 import type {
   CriteriaHiringStep,
   HiringDraft,
@@ -468,6 +469,7 @@ export function CriteriaStep(
       ? requirementsReady && criteriaReady
       : draft.headcount > 0 &&
         draft.interviewCapacity > 0 &&
+        draft.interviewCapacity <= MAX_GUARANTEED_INTERVIEW_CONCURRENCY &&
         Boolean(draft.interviewAt) &&
         !Number.isNaN(Date.parse(draft.interviewAt));
 

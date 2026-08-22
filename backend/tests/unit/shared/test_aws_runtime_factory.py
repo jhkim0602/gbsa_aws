@@ -44,6 +44,7 @@ def _environment() -> dict[str, str]:
         "SQS_MEDIA_QUEUE_URL": "https://sqs.invalid/media",
         "SQS_REPORTING_QUEUE_URL": "https://sqs.invalid/reporting",
         "SQS_DELETION_QUEUE_URL": "https://sqs.invalid/deletion",
+        "SQS_CAPACITY_QUEUE_URL": "https://sqs.invalid/capacity",
     }
 
 
@@ -58,7 +59,9 @@ def test_aws_runtime_factory_builds_all_production_dependencies() -> None:
         "media",
         "reporting",
         "deletion",
+        "capacity",
     }
+    assert dependencies.application_auto_scaling is not None
     assert dependencies.object_storage is not None
     assert dependencies.media_storage is not None
     assert dependencies.recent_context is not None

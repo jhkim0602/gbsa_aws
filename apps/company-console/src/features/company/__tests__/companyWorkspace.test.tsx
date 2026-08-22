@@ -64,6 +64,8 @@ const api: CompanyWorkspaceApi = {
       positionId: "position-2",
       title: "프로덕트 디자이너",
       description: "지원자 경험과 운영 도구를 설계합니다.",
+      interviewCapacity: 100,
+      interviewAt: "2026-09-15T05:00:00Z",
       submissionRequirements: [
         { materialType: "resume", required: true, enabled: true },
       ],
@@ -561,6 +563,49 @@ describe("company workspace", () => {
     );
     expect(
       await screen.findByText("채용을 확정하고 운영을 시작했습니다."),
+    ).toBeTruthy();
+  });
+
+  it("shows the reservation estimate and cancels only the interview schedule", async () => {
+    vi.mocked(operationsApi.updatePosition).mockClear();
+    render(
+      <MemoryRouter>
+        <PositionOperations
+          positionId="position-2"
+          api={operationsApi}
+          invitationApi={invitationApi}
+          templateApi={templateApi}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "프로덕트 디자이너" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "간편 수정" }));
+    expect(
+      (await screen.findByLabelText("예약 오토스케일링 예상 비용")).textContent,
+    ).toContain("API 5개 · Worker 5개 예약");
+
+    fireEvent.click(screen.getByRole("button", { name: "면접 예약 취소" }));
+    expect(screen.getByLabelText("면접 예약 취소 확인")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "예약 취소 확정" }));
+
+    await waitFor(() =>
+      expect(operationsApi.updatePosition).toHaveBeenCalledTimes(1),
+    );
+    expect(operationsApi.updatePosition).toHaveBeenCalledWith(
+      expect.objectContaining({
+        positionId: "position-2",
+        interviewAt: null,
+        interviewCapacity: 100,
+        status: "active",
+      }),
+    );
+    expect(
+      await screen.findByText(
+        "면접 예약을 취소했습니다. 예약 확장 계획도 함께 해제됩니다.",
+      ),
     ).toBeTruthy();
   });
 

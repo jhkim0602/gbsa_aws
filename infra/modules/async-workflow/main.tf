@@ -28,7 +28,7 @@ variable "tags" {
 }
 
 locals {
-  workflows = toset(["analysis", "media", "reporting", "deletion"])
+  workflows = toset(["analysis", "media", "reporting", "deletion", "capacity"])
   tags = merge(var.tags, {
     Component = "async-workflow"
   })
@@ -140,7 +140,7 @@ resource "aws_sfn_state_machine" "pipeline" {
   type     = "STANDARD"
 
   definition = jsonencode({
-    Comment = "Dispatch durable analysis, media, reporting, or deletion work"
+    Comment = "Dispatch durable analysis, media, reporting, deletion, or capacity work"
     StartAt = "Dispatch"
     States = {
       Dispatch = {
@@ -186,6 +186,15 @@ resource "aws_sfn_state_machine" "pipeline" {
         Resource = "arn:aws:states:::sqs:sendMessage"
         Parameters = {
           QueueUrl        = aws_sqs_queue.work["deletion"].url
+          "MessageBody.$" = "$"
+        }
+        End = true
+      }
+      QueueCapacity = {
+        Type     = "Task"
+        Resource = "arn:aws:states:::sqs:sendMessage"
+        Parameters = {
+          QueueUrl        = aws_sqs_queue.work["capacity"].url
           "MessageBody.$" = "$"
         }
         End = true

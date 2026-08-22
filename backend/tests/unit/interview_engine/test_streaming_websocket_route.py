@@ -162,14 +162,30 @@ class FakeStreamingSpeechToText:
         return self.session
 
 
+class RecordingTaskProtection:
+    def __init__(self) -> None:
+        self.acquired: list[UUID] = []
+        self.released: list[UUID] = []
+
+    def acquire(self, workload_id: UUID) -> bool:
+        self.acquired.append(workload_id)
+        return True
+
+    def release(self, workload_id: UUID) -> bool:
+        self.released.append(workload_id)
+        return True
+
+
 def test_websocket_streams_partial_caption_then_persists_final_transcript() -> None:
     handler = FakeProtocolHandler()
+    task_protection = RecordingTaskProtection()
     router = create_interview_websocket_router(
         principal_provider=FakePrincipalProvider(),
         handler=handler,  # type: ignore[arg-type]
         speech=WebSocketSpeechRuntime(
             speech_to_text=FakeStreamingSpeechToText(),
         ),
+        task_protection=task_protection,
     )
     app = create_app([router])
 
@@ -207,6 +223,8 @@ def test_websocket_streams_partial_caption_then_persists_final_transcript() -> N
             assert websocket.receive_json()["message_type"] == "question.ready"
 
     assert handler.saved_transcript == "안녕하세요 반갑습니다"
+    assert task_protection.acquired == [SESSION_ID]
+    assert task_protection.released == [SESSION_ID]
 
 
 def test_question_generation_failure_keeps_websocket_available_for_retry() -> None:

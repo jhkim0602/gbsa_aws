@@ -427,7 +427,7 @@ components:
           - integer
           - 'null'
           minimum: 1
-          maximum: 10000
+          maximum: 400
         interview_at:
           type:
           - string
@@ -481,7 +481,7 @@ components:
           - integer
           - 'null'
           minimum: 1
-          maximum: 10000
+          maximum: 400
         interview_at:
           type:
           - string
@@ -833,8 +833,9 @@ components:
             type: string
         interview_duration_minutes:
           type: integer
-          minimum: 10
-          maximum: 120
+          enum:
+          - 30
+          description: All newly configured interviews use the fixed 30-minute format.
         interview_level:
           $ref: '#/components/schemas/InterviewLevel'
         axis_weights:

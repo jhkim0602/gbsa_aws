@@ -698,7 +698,7 @@ export interface components {
         readonly CompetencyModelVersionCreate: {
             readonly axis_weights?: components["schemas"]["AssessmentAxisWeights"];
             readonly criteria: readonly components["schemas"]["EvaluationCriterionInput"][];
-            readonly interview_duration_minutes: number;
+            readonly interview_duration_minutes: 30;
             readonly interview_level?: components["schemas"]["InterviewLevel"];
             readonly job_requirements: readonly components["schemas"]["JobRequirementInput"][];
             /** @description System-managed compatibility field; recruiter clients must not set it. */

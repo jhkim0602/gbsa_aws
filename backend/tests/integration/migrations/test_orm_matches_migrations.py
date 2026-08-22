@@ -13,6 +13,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from interview_evidence.capacity_management.repository import CapacityReservationRow
 from interview_evidence.company_management.repositories.postgres import Base as CompanyBase
 from interview_evidence.interview_engine.application.idempotency import (
     InterviewCommandResultRow,
@@ -37,6 +38,7 @@ LANE_BASES = (
 
 # Imported for its side effect of registering the table on the interview engine Base.
 assert InterviewCommandResultRow.__tablename__ == "interview_command_results"
+assert CapacityReservationRow.__tablename__ == "capacity_reservations"
 
 
 def _migrated_inspector(database: Path) -> Inspector:

@@ -39,6 +39,7 @@ from interview_evidence.shared.interview_level import (
     DEFAULT_INTERVIEW_LEVEL,
     InterviewLevel,
 )
+from interview_evidence.shared.operations import MetricRecorder, NullMetricRecorder
 from interview_evidence.shared.tenant import TenantContext
 
 #: The Korean label a reviewer reads for each axis key. Snapshotted onto every stored
@@ -62,11 +63,13 @@ class CriterionAssessor:
         model: AIModel,
         *,
         prompt: AssessmentPromptTemplate | None = None,
+        metrics: MetricRecorder | None = None,
     ) -> None:
         self._model = model
         # An explicit template pins every level to it, which is what a scoring-calibration
         # experiment wants. Left unset, the interview's level chooses.
         self._prompt = prompt
+        self._metrics = metrics or NullMetricRecorder()
 
     def prompt_for(self, level: InterviewLevel) -> AssessmentPromptTemplate:
         return self._prompt or assessment_prompt_for(level)
@@ -88,6 +91,7 @@ class CriterionAssessor:
         caller renders as a report item without scores rather than as a zero.
         """
         if not answers:
+            self._record_criterion_outcome("no_answers")
             return None
         try:
             response = self._model.generate(
@@ -105,8 +109,35 @@ class CriterionAssessor:
         except (RuntimeError, ValidationError, TypeError, ValueError, KeyError):
             # Deliberately swallowed: see the module docstring. A scoring failure must not
             # cost the reviewer the Evidence trail.
+            self._record_criterion_outcome("model_unavailable")
             return None
         verified = verdict.verified_against(frozenset(answer.evidence_id for answer in answers))
+        accepted_axes = sum(score.score is not None for score in verified.axis_scores)
+        withheld_axes = sum(
+            original.score is not None and checked.score is None
+            for original, checked in zip(verdict.axis_scores, verified.axis_scores, strict=True)
+        )
+        if accepted_axes:
+            self._metrics.record(
+                "ai_assessment_axis_count",
+                float(accepted_axes),
+                unit="Count",
+                dimensions={"outcome": "evidence_verified"},
+            )
+        if withheld_axes:
+            self._metrics.record(
+                "ai_assessment_axis_count",
+                float(withheld_axes),
+                unit="Count",
+                dimensions={"outcome": "citation_withheld"},
+            )
+        self._record_criterion_outcome(
+            "citation_withheld"
+            if withheld_axes and not accepted_axes
+            else "partially_verified"
+            if withheld_axes
+            else "evidence_verified"
+        )
         return CriterionAssessment(
             axis_assessments=tuple(
                 AxisAssessment(
@@ -121,6 +152,14 @@ class CriterionAssessor:
             assessment_state=_state_of(verified),
             summary=verified.summary,
             follow_up_question=verified.follow_up_question,
+        )
+
+    def _record_criterion_outcome(self, outcome: str) -> None:
+        self._metrics.record(
+            "ai_assessment_criterion_count",
+            1,
+            unit="Count",
+            dimensions={"outcome": outcome},
         )
 
 

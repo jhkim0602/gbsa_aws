@@ -9,6 +9,10 @@ from typing import Protocol
 from uuid import UUID
 
 from interview_evidence.shared.aws_clients.ports import ConsumableQueue, EventQueue
+from interview_evidence.shared.aws_clients.task_protection import (
+    NullTaskProtection,
+    TaskProtection,
+)
 from interview_evidence.shared.ids import Clock
 from interview_evidence.shared.messaging.outbox import (
     Outbox,
@@ -144,6 +148,7 @@ class MessageConsumer:
         clock: Clock,
         queue_name: str | None = None,
         metrics: MetricRecorder | None = None,
+        task_protection: TaskProtection | None = None,
     ) -> None:
         self._consumer_name = consumer_name
         self._queue = queue
@@ -152,6 +157,7 @@ class MessageConsumer:
         self._clock = clock
         self._queue_name = queue_name or consumer_name.removesuffix("-worker")
         self._metrics = metrics or NullMetricRecorder()
+        self._task_protection = task_protection or NullTaskProtection()
 
     def consume_once(
         self,
@@ -204,10 +210,14 @@ class MessageConsumer:
             )
             started_at = time.perf_counter()
             try:
-                outcome = self._handle_with_heartbeat(
-                    delivery.receipt_handle,
-                    partial(handler, context, event),
-                )
+                self._task_protection.acquire(delivery.event_id)
+                try:
+                    outcome = self._handle_with_heartbeat(
+                        delivery.receipt_handle,
+                        partial(handler, context, event),
+                    )
+                finally:
+                    self._task_protection.release(delivery.event_id)
                 if _requests_retry(outcome):
                     raise MessageRetryRequested("handler requested retry")
             except (MessageRetryRequested, TimeoutError, ConnectionError):
@@ -247,9 +257,7 @@ class MessageConsumer:
         handler: Callable[[], object],
     ) -> object:
         extend = getattr(self._queue, "extend_visibility", None)
-        visibility_timeout = int(
-            getattr(self._queue, "visibility_timeout_seconds", 0)
-        )
+        visibility_timeout = int(getattr(self._queue, "visibility_timeout_seconds", 0))
         if not callable(extend) or visibility_timeout < 3:
             return handler()
         stopped = Event()
