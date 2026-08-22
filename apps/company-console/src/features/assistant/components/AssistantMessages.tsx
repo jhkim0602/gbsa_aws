@@ -1,6 +1,5 @@
 import {
   BarChart3,
-  Bot,
   Check,
   ChevronRight,
   FileSearch,
@@ -9,8 +8,10 @@ import {
 } from "lucide-react";
 
 import type { ChatMessage, Citation, PositionRow, RagAnswer } from "../types";
+import { WhyYouAssistantAvatar } from "./WhyYouAssistantAvatar";
 
-const BOUNCE_DELAYS = ["0ms", "130ms", "260ms"] as const;
+const THINKING_LABEL = "생각 중...";
+const THINKING_CHARACTERS = Array.from(THINKING_LABEL);
 
 export function MessageList({
   messages,
@@ -30,13 +31,13 @@ export function MessageList({
   return (
     <div className="mx-auto w-full max-w-[760px] py-8">
       <div className="mb-7 flex items-center justify-center">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f5f5f3] px-3 py-1.5 text-[8px] font-medium text-muted">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-soft px-3 py-1.5 text-[8px] font-medium text-brand">
           <LockKeyhole size={10} aria-hidden="true" />
           분석 범위 · {scopeLabel}
         </span>
       </div>
       <div
-        className="mx-auto mb-7 flex max-w-[620px] items-center justify-center gap-2 rounded-xl border border-[#e7e7e3] bg-[#fafaf8] px-3 py-2 text-center text-[9px] leading-[1.55] text-muted"
+        className="mx-auto mb-7 flex max-w-[620px] items-center justify-center gap-2 rounded-xl border border-[color-mix(in_srgb,var(--color-brand)_18%,var(--color-border))] bg-transparent px-3 py-2 text-center text-[9px] leading-[1.55] text-muted"
         role="status"
       >
         <LockKeyhole size={11} className="shrink-0" aria-hidden="true" />
@@ -49,7 +50,7 @@ export function MessageList({
         {messages.map((message) =>
           message.role === "user" ? (
             <div className="flex justify-end" key={message.id}>
-              <p className="max-w-[78%] rounded-[20px] bg-[#f1f1ef] px-4 py-2.5 text-[12px] leading-[1.65] text-ink">
+              <p className="max-w-[78%] rounded-[10px] border-0 bg-brand-soft px-4 py-2.5 text-[12px] leading-[1.65] text-ink">
                 {message.content}
               </p>
             </div>
@@ -82,11 +83,9 @@ function AssistantPending() {
       role="status"
       aria-label="답변 생성 중"
     >
-      <span className="grid size-8 place-items-center rounded-full bg-ink text-white">
-        <Bot size={15} aria-hidden="true" />
-      </span>
+      <WhyYouAssistantAvatar state="searching" />
       <div className="pt-3">
-        <BouncyDots />
+        <ThinkingText />
       </div>
     </div>
   );
@@ -104,19 +103,22 @@ function AssistantMessage({
       className="grid grid-cols-[32px_minmax(0,1fr)] gap-3"
       aria-live={answer.streaming ? "polite" : undefined}
     >
-      <span className="grid size-8 place-items-center rounded-full bg-ink text-white">
-        <Bot size={15} aria-hidden="true" />
-      </span>
+      <WhyYouAssistantAvatar
+        state={
+          answer.streaming
+            ? answer.paragraphs.length
+              ? "thinking"
+              : "searching"
+            : "complete"
+        }
+      />
       <div className="min-w-0 pt-0.5">
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <span className="text-[9px] font-semibold text-ink-secondary">
             AI 채용 어시스턴트
           </span>
           {answer.streaming ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f1f1ef] px-2 py-1 text-[8px] font-semibold text-muted">
-              <BouncyDots compact />
-              {answer.paragraphs.length ? "AI 답변 생성 중" : "근거 조회 중"}
-            </span>
+            <ThinkingText compact />
           ) : (
             <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-1 text-[8px] font-semibold text-success">
               <Check size={9} aria-hidden="true" />
@@ -139,25 +141,21 @@ function AssistantMessage({
               {paragraph}
               {answer.streaming && index === answer.paragraphs.length - 1 ? (
                 <span
-                  className="ml-0.5 inline-block h-[1.1em] w-[2px] animate-pulse translate-y-[2px] bg-ink"
+                  className="ml-0.5 inline-block h-[1.1em] w-[2px] animate-pulse translate-y-[2px] bg-brand"
                   aria-hidden="true"
                 />
               ) : null}
             </p>
           ))}
           {answer.streaming && !answer.paragraphs.length ? (
-            <p
-              className="flex items-center gap-2 text-[11px] text-muted"
-              role="status"
-            >
-              <BouncyDots />
-              <span>관련 리포트와 면접 근거를 조회하고 있습니다.</span>
+            <p className="text-[11px] text-muted" role="status">
+              관련 리포트와 면접 근거를 조회하고 있습니다.
             </p>
           ) : null}
         </div>
 
         {!answer.streaming && answer.findings.length ? (
-          <div className="mt-5 border-y border-[#ececea] py-1">
+          <div className="mt-5 border-y border-border-muted py-1">
             <div className="flex items-center gap-2 px-1 py-3">
               <Search
                 size={13}
@@ -174,7 +172,7 @@ function AssistantMessage({
                   className="grid grid-cols-[6px_minmax(0,1fr)] gap-2.5 text-[10px] leading-[1.65] text-ink-secondary"
                   key={finding}
                 >
-                  <span className="mt-[6px] size-1.5 rounded-full bg-ink-secondary" />
+                  <span className="mt-[6px] size-1.5 rounded-full bg-brand" />
                   {finding}
                 </li>
               ))}
@@ -183,8 +181,8 @@ function AssistantMessage({
         ) : null}
 
         {!answer.streaming && answer.positionRows.length > 1 ? (
-          <details className="group mt-5 border-y border-[#ececea]">
-            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-1 text-[10px] font-semibold text-ink-secondary hover:bg-[#fafafa]">
+          <details className="group mt-5 border-y border-border-muted">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-1 text-[10px] font-semibold text-ink-secondary hover:bg-brand-soft">
               <span className="flex items-center gap-2">
                 <BarChart3
                   size={14}
@@ -247,26 +245,30 @@ function showDegradedBadge(degradedMode: string | undefined) {
   );
 }
 
-function BouncyDots({ compact = false }: { compact?: boolean }) {
+function ThinkingText({ compact = false }: { compact?: boolean }) {
   return (
     <span
-      className={`inline-flex shrink-0 items-end ${compact ? "h-2 gap-0.5" : "h-3 gap-1"}`}
-      aria-hidden="true"
+      className={`inline-flex shrink-0 items-center font-semibold text-brand ${compact ? "text-[8px]" : "text-[10px]"}`}
+      aria-label={THINKING_LABEL}
     >
-      {BOUNCE_DELAYS.map((delay) => (
-        <span
-          className={`${compact ? "size-1" : "size-1.5"} animate-bounce rounded-full bg-brand motion-reduce:animate-none`}
-          key={delay}
-          style={{ animationDelay: delay, animationDuration: "900ms" }}
-        />
-      ))}
+      <span className="inline-flex" aria-hidden="true">
+        {THINKING_CHARACTERS.map((character, index) => (
+          <span
+            className="why-you-thinking-letter inline-block"
+            key={`${character}-${index}`}
+            style={{ animationDelay: `${index * 75}ms` }}
+          >
+            {character === " " ? "\u00a0" : character}
+          </span>
+        ))}
+      </span>
     </span>
   );
 }
 
 function PositionComparison({ rows }: { rows: readonly PositionRow[] }) {
   return (
-    <div className="overflow-x-auto border-t border-[#ececea] px-1 pb-3">
+    <div className="overflow-x-auto border-t border-border-muted px-1 pb-3">
       <div className="grid min-w-[420px] grid-cols-[minmax(160px,1fr)_60px_60px_54px] py-2.5 text-[8px] font-medium text-muted">
         <span>포지션</span>
         <span className="text-right">지원자</span>
@@ -301,12 +303,12 @@ function CitationButton({
 }) {
   return (
     <button
-      className="group inline-flex min-h-8 max-w-full items-center gap-2 rounded-lg border border-[#e5e5e2] bg-white px-2.5 text-left text-[9px] text-ink-secondary hover:bg-[#f5f5f3]"
+      className="group inline-flex min-h-8 max-w-full items-center gap-2 rounded-lg border border-border bg-surface px-2.5 text-left text-[9px] text-ink-secondary hover:border-brand hover:bg-brand-soft hover:text-brand"
       type="button"
       aria-label={`근거 ${citation.id}: ${citation.title}`}
       onClick={() => onSelect(citation.sourceId)}
     >
-      <span className="grid size-5 shrink-0 place-items-center rounded-md bg-[#f1f1ef] font-mono text-[8px] font-semibold text-ink-secondary">
+      <span className="grid size-5 shrink-0 place-items-center rounded-md bg-brand-soft font-mono text-[8px] font-semibold text-brand">
         {citation.id}
       </span>
       <span className="truncate">{citation.title}</span>

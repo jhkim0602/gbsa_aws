@@ -33,6 +33,23 @@ def test_strategy_prompt_is_a_valid_anthropic_messages_request() -> None:
     assert payload["provided_source_candidates"][0]["source_id"] == str(SOURCE_ID)
 
 
+def test_strategy_prompt_requests_natural_five_axis_coverage_without_inventing_context() -> None:
+    system = str(
+        build_strategy_prompt(
+            invitation_id=INVITATION_ID,
+            competency_model_version_id=MODEL_VERSION_ID,
+            criterion_ids=(CRITERION_ID,),
+            source_candidates=(_source_candidate(),),
+            model_config_version="strategy-v1",
+        )["system"]
+    )
+
+    for label in ("정확성", "깊이", "CS 기본기", "본인 기여", "설명력"):
+        assert label in system
+    assert "한 질문에 다섯 관점을 모두 억지로 담지 않습니다" in system
+    assert "검증되지 않은 사실을 확정적으로 말하지 않습니다" in system
+
+
 def test_strategy_response_parses_anthropic_json_content() -> None:
     result = {
         "common_topics": ["문제 해결"],

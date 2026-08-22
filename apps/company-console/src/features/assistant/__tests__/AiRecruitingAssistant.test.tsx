@@ -447,23 +447,32 @@ describe("AI recruiting assistant", () => {
         name: "현재 범위에서 근거가 구체적인 지원자를 정리해줘.",
       }),
     );
-    expect(await screen.findByText("근거 조회 중")).toBeTruthy();
+    expect(await screen.findByLabelText("생각 중...")).toBeTruthy();
     expect(
       screen.getByText("관련 리포트와 면접 근거를 조회하고 있습니다."),
+    ).toBeTruthy();
+    expect(
+      document.querySelector('[data-assistant-avatar-state="searching"]'),
     ).toBeTruthy();
 
     await act(async () => {
       finishSearch?.();
     });
-    expect(await screen.findByText("AI 답변 생성 중")).toBeTruthy();
+    expect(await screen.findByLabelText("생각 중...")).toBeTruthy();
     expect(
       await screen.findByText("첫 번째 근거 문장이 스트리밍됩니다."),
+    ).toBeTruthy();
+    expect(
+      document.querySelector('[data-assistant-avatar-state="thinking"]'),
     ).toBeTruthy();
 
     await act(async () => {
       finishStream?.();
     });
     expect(await screen.findByText("3개 소스 검색 완료")).toBeTruthy();
+    expect(
+      document.querySelector('[data-assistant-avatar-state="complete"]'),
+    ).toBeTruthy();
   });
 
   it("turns a streaming failure into a friendly searchable fallback", async () => {

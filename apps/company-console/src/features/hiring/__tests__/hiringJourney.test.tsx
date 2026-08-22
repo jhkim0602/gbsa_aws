@@ -10,8 +10,7 @@ function createApi(): HiringWorkspaceApi {
   };
 }
 
-async function advanceToEvaluation(api: HiringWorkspaceApi) {
-  render(<HiringWorkspace api={api} />);
+function completePositionBasics() {
   fireEvent.change(screen.getByLabelText("포지션명"), {
     target: { value: "백엔드 플랫폼 엔지니어" },
   });
@@ -21,6 +20,27 @@ async function advanceToEvaluation(api: HiringWorkspaceApi) {
   fireEvent.change(screen.getByLabelText("모집 종료일"), {
     target: { value: "2026-09-30" },
   });
+}
+
+async function advanceToPositionDescription() {
+  fireEvent.click(screen.getByLabelText("포지션명"));
+  fireEvent.click(
+    screen.getByRole("button", { name: /서비스 백엔드 사용자 기능/ }),
+  );
+  completePositionBasics();
+  fireEvent.click(screen.getByRole("button", { name: "다음" }));
+  await screen.findByRole("heading", {
+    name: "주요 기술 스택을 선택해 주세요",
+  });
+  fireEvent.click(screen.getByRole("button", { name: "백엔드" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Spring Boot" }));
+  fireEvent.click(screen.getByRole("button", { name: "다음" }));
+  await screen.findByRole("heading", { name: "포지션 상세" });
+}
+
+async function advanceToEvaluation(api: HiringWorkspaceApi) {
+  render(<HiringWorkspace api={api} />);
+  await advanceToPositionDescription();
   fireEvent.change(screen.getByLabelText("포지션 설명"), {
     target: { value: "ECS 기반 서비스의 안정성과 운영 품질을 개선합니다." },
   });
@@ -34,9 +54,70 @@ async function advanceToEvaluation(api: HiringWorkspaceApi) {
 }
 
 describe("HiringWorkspace", () => {
-  it("can insert the long-form position description example", () => {
+  it("shows one position question at a time and keeps the active step number visible", async () => {
     const api = createApi();
     render(<HiringWorkspace api={api} />);
+
+    expect(screen.getByText("포지션명과 모집 기간")).toBeTruthy();
+    expect(
+      screen
+        .getByText("채용할 직무를 선택해 주세요")
+        .closest("#position-role-picker")
+        ?.getAttribute("aria-hidden"),
+    ).toBe("true");
+    expect(screen.queryByText("주요 기술 스택을 선택해 주세요")).toBeNull();
+    expect(screen.queryByText("포지션 상세")).toBeNull();
+
+    const progress = screen.getByRole("navigation", {
+      name: "채용 설정 진행 단계",
+    });
+    const currentStep = within(progress).getByText("1");
+    expect(currentStep.className).toContain("text-[11px]");
+    expect(currentStep.className).toContain("!text-white");
+
+    fireEvent.click(screen.getByLabelText("포지션명"));
+    expect(await screen.findByText("채용할 직무를 선택해 주세요")).toBeTruthy();
+    const customRoleInput = screen.getByLabelText("세부 직무 직접 입력");
+    expect(customRoleInput).toBe(document.activeElement);
+    fireEvent.keyDown(customRoleInput, { key: "Escape" });
+    expect(
+      screen
+        .getByText("채용할 직무를 선택해 주세요")
+        .closest("#position-role-picker")
+        ?.getAttribute("aria-hidden"),
+    ).toBe("true");
+
+    fireEvent.click(screen.getByLabelText("포지션명"));
+    fireEvent.click(
+      screen.getByRole("button", { name: /서비스 백엔드 사용자 기능/ }),
+    );
+    expect((screen.getByLabelText("포지션명") as HTMLInputElement).value).toBe(
+      "서비스 백엔드",
+    );
+    expect(
+      screen
+        .getByText("채용할 직무를 선택해 주세요")
+        .closest("#position-role-picker")
+        ?.getAttribute("aria-hidden"),
+    ).toBe("true");
+
+    completePositionBasics();
+    fireEvent.click(screen.getByRole("button", { name: "다음" }));
+    expect(
+      await screen.findByText("주요 기술 스택을 선택해 주세요"),
+    ).toBeTruthy();
+    expect(screen.getByLabelText("기술 스택 검색")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "기술 추가" })).toBeNull();
+    expect(screen.queryByText("포지션명과 모집 기간")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "이전" }));
+    expect(await screen.findByText("포지션명과 모집 기간")).toBeTruthy();
+  });
+
+  it("can insert the long-form position description example", async () => {
+    const api = createApi();
+    render(<HiringWorkspace api={api} />);
+    await advanceToPositionDescription();
 
     fireEvent.click(
       screen.getByRole("button", { name: "포지션 상세 예시 적용" }),

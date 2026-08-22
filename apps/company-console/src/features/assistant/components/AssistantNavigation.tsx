@@ -25,7 +25,7 @@ import type { ChatConversation } from "../types";
 import { suggestedQuestions } from "../types";
 
 const HISTORY_PANEL =
-  "relative z-30 flex min-h-0 flex-col border-r border-[#e8e8e5] bg-[#f7f7f5]" +
+  "relative z-30 flex min-h-0 flex-col border-r border-border bg-surface-muted" +
   " mw-900:fixed mw-900:inset-[58px_auto_0_0] mw-900:w-[min(292px,88vw)]" +
   " mw-900:shadow-float";
 
@@ -75,7 +75,7 @@ export function ConversationHistory({
     <aside className={HISTORY_PANEL} aria-label="AI 대화 목록">
       <header className="flex h-15 items-center justify-between px-3.5">
         <div className="flex items-center gap-2">
-          <span className="grid size-7 place-items-center rounded-lg bg-white text-ink shadow-[0_1px_3px_rgb(0_0_0_/_8%)]">
+          <span className="grid size-7 place-items-center rounded-lg bg-brand-soft text-brand shadow-soft">
             <History size={14} aria-hidden="true" />
           </span>
           <div>
@@ -85,7 +85,7 @@ export function ConversationHistory({
         </div>
         <div className="flex items-center gap-1">
           <button
-            className="grid size-8 place-items-center rounded-lg text-ink hover:bg-[#ececea]"
+            className="grid size-8 place-items-center rounded-lg text-brand hover:bg-brand-soft"
             type="button"
             aria-label="새 채팅 만들기"
             onClick={onCreate}
@@ -93,7 +93,7 @@ export function ConversationHistory({
             <Plus size={16} aria-hidden="true" />
           </button>
           <button
-            className="grid size-8 place-items-center rounded-lg text-muted hover:bg-surface-muted hover:text-ink"
+            className="grid size-8 place-items-center rounded-lg text-muted hover:bg-brand-soft hover:text-brand"
             type="button"
             aria-label="대화 목록 닫기"
             onClick={onClose}
@@ -103,9 +103,11 @@ export function ConversationHistory({
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
-        <p className="px-2 py-2 text-[8px] font-medium text-muted">최근 대화</p>
-        <div className="grid gap-1">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <p className="px-3.5 py-3 text-[8px] font-medium text-muted">
+          최근 대화
+        </p>
+        <div className="grid">
           {conversations.map((conversation) => {
             const active = conversation.id === activeConversationId;
             const editing = conversation.id === editingConversationId;
@@ -122,10 +124,8 @@ export function ConversationHistory({
                   }`;
             return (
               <div
-                className={`group grid grid-cols-[minmax(0,1fr)_56px] items-center rounded-xl border ${
-                  active
-                    ? "border-[#e5e5e2] bg-white shadow-[0_1px_3px_rgb(0_0_0_/_5%)]"
-                    : "border-transparent hover:bg-[#ececea]"
+                className={`group grid min-h-14 grid-cols-[minmax(0,1fr)_56px] items-center border-b border-border-muted ${
+                  active ? "bg-brand-soft" : "hover:bg-surface-strong"
                 }`}
                 key={conversation.id}
               >
@@ -137,7 +137,7 @@ export function ConversationHistory({
                     <label className="min-w-0">
                       <span className="sr-only">대화 제목</span>
                       <input
-                        className="h-8 w-full rounded-lg border border-[#d7d7d3] bg-white px-2.5 text-[10px] font-semibold text-ink outline-none focus:border-brand"
+                        className="h-8 w-full rounded-lg border border-border bg-surface px-2.5 text-[10px] font-semibold text-ink outline-none focus:border-brand"
                         autoFocus
                         maxLength={60}
                         value={titleDraft}
@@ -157,7 +157,7 @@ export function ConversationHistory({
                         <Check size={12} aria-hidden="true" />
                       </button>
                       <button
-                        className="grid size-7 place-items-center rounded-lg text-muted hover:bg-white hover:text-ink"
+                        className="grid size-7 place-items-center rounded-lg text-muted hover:bg-brand-soft hover:text-brand"
                         type="button"
                         aria-label="대화 제목 수정 취소"
                         onClick={stopEditing}
@@ -187,7 +187,7 @@ export function ConversationHistory({
                     </button>
                     <div className="flex items-center">
                       <button
-                        className="grid size-7 place-items-center rounded-lg text-subtle hover:bg-white hover:text-ink"
+                        className="grid size-7 place-items-center rounded-lg text-subtle hover:bg-surface hover:text-brand"
                         type="button"
                         aria-label={`${conversation.title} 제목 수정`}
                         onClick={() => startEditing(conversation)}
@@ -195,7 +195,7 @@ export function ConversationHistory({
                         <Pencil size={12} aria-hidden="true" />
                       </button>
                       <button
-                        className="grid size-7 place-items-center rounded-lg text-subtle hover:bg-white hover:text-danger"
+                        className="grid size-7 place-items-center rounded-lg text-subtle hover:bg-surface hover:text-danger"
                         type="button"
                         aria-label={`${conversation.title} 삭제`}
                         onClick={() => onDelete(conversation.id)}
@@ -211,13 +211,13 @@ export function ConversationHistory({
         </div>
       </div>
 
-      <div className="border-t border-[#e8e8e5] bg-white p-3">
-        <div className="flex items-center gap-2 rounded-xl border border-[#e5e5e2] bg-[#fafaf9] px-3 py-2.5">
-          <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-white text-brand shadow-[0_1px_3px_rgb(0_0_0_/_6%)]">
+      <div className="border-t border-border bg-surface p-3">
+        <div className="flex items-center gap-2 rounded-xl border border-[color-mix(in_srgb,var(--color-brand)_18%,var(--color-border))] bg-brand-soft px-3 py-2.5">
+          <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-surface text-brand shadow-soft">
             <CircleHelp size={13} aria-hidden="true" />
           </span>
           <span className="min-w-0">
-            <strong className="block text-[9px] font-semibold text-ink-secondary">
+            <strong className="block text-[9px] font-semibold text-brand-strong">
               RAG 검색 데이터
             </strong>
             <small className="mt-0.5 block truncate text-[7px] text-muted">
@@ -242,9 +242,9 @@ function SearchHelpSection({
   last?: boolean;
 }) {
   return (
-    <section className={last ? "" : "border-b border-[#ececea] pb-4"}>
+    <section className={last ? "" : "border-b border-border-muted pb-4"}>
       <p className="flex items-center gap-2 text-[11px] font-semibold text-ink-secondary">
-        <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-[#f4f6ff] text-brand">
+        <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand">
           {icon}
         </span>
         {title}
@@ -265,8 +265,8 @@ function RagSearchHelpDialog({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-80 bg-[#11182766] backdrop-blur-[1px]" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-90 max-h-[min(720px,88vh)] w-[min(660px,calc(100vw-24px))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-[#e5e5e2] bg-white shadow-[0_24px_80px_rgb(15_23_42_/_22%)] outline-none">
-          <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-[#e8e8e5] bg-white px-6 py-5">
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-90 max-h-[min(720px,88vh)] w-[min(660px,calc(100vw-24px))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-border bg-surface shadow-[0_24px_80px_rgb(15_23_42_/_22%)] outline-none">
+          <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border bg-surface px-6 py-5">
             <div>
               <p className="text-[9px] font-semibold text-brand">
                 RAG 검색 안내
@@ -280,7 +280,7 @@ function RagSearchHelpDialog({
               </Dialog.Description>
             </div>
             <Dialog.Close
-              className="grid size-8 shrink-0 place-items-center rounded-lg text-muted hover:bg-[#f2f2f0] hover:text-ink"
+              className="grid size-8 shrink-0 place-items-center rounded-lg text-muted hover:bg-brand-soft hover:text-brand"
               aria-label="검색 안내 닫기"
             >
               <X size={16} aria-hidden="true" />
@@ -298,10 +298,10 @@ function RagSearchHelpDialog({
                   ["4", "답변 구성", "검색 근거를 바탕으로 AI가 답변"],
                 ].map(([step, title, description]) => (
                   <li
-                    className="rounded-xl border border-[#e8e8e5] bg-[#fafaf9] p-3"
+                    className="rounded-xl border border-border-muted bg-surface-muted p-3"
                     key={step}
                   >
-                    <span className="grid size-5 place-items-center rounded-full bg-ink text-[8px] font-semibold text-white">
+                    <span className="grid size-5 place-items-center rounded-full bg-brand text-[8px] font-semibold text-white">
                       {step}
                     </span>
                     <strong className="mt-3 block text-[10px] text-ink-secondary">
@@ -315,7 +315,7 @@ function RagSearchHelpDialog({
               </ol>
             </section>
 
-            <section className="grid gap-4 rounded-2xl border border-[#e8e8e5] p-5">
+            <section className="grid gap-4 rounded-2xl border border-border p-5">
               <SearchHelpSection
                 icon={<FileSearch size={13} />}
                 title="직접 검색하는 자료"
@@ -344,7 +344,7 @@ function RagSearchHelpDialog({
               />
             </section>
 
-            <p className="rounded-xl bg-[#f4f6ff] px-4 py-3 text-[9px] leading-[1.65] text-[#4f5f83]">
+            <p className="rounded-xl bg-brand-soft px-4 py-3 text-[9px] leading-[1.65] text-brand-strong">
               검색 결과가 질문과 정확히 일치하지 않으면, 일치하는 지원자가
               없다는 점과 함께 확인된 유사 근거를 안내합니다. AI가 생성한 요약과
               평가는 실제 채용 판단 전에 원문 근거를 다시 확인해 주세요.
@@ -377,14 +377,14 @@ export function EmptyConversation({
 
   return (
     <section className="mx-auto grid min-h-full w-full max-w-[760px] content-center justify-items-center py-14 text-center">
-      <span className="grid size-11 place-items-center rounded-full border border-[#e5e5e2] bg-white text-ink shadow-[0_2px_8px_rgb(0_0_0_/_6%)]">
+      <span className="grid size-11 place-items-center rounded-full border border-[color-mix(in_srgb,var(--color-brand)_20%,var(--color-border))] bg-brand-soft text-brand shadow-soft">
         <Sparkles size={19} aria-hidden="true" />
       </span>
       <p className="mt-5 text-[9px] font-medium text-muted">
         {scopeLabel}에서 시작하는 대화
       </p>
       {archivedScope ? (
-        <span className="mt-3 rounded-full border border-[#dededb] bg-[#f7f7f5] px-3 py-1.5 text-[8px] font-semibold text-muted">
+        <span className="mt-3 rounded-full border border-border bg-surface-muted px-3 py-1.5 text-[8px] font-semibold text-muted">
           읽기 전용 과거 채용 분석
         </span>
       ) : null}
@@ -400,7 +400,7 @@ export function EmptyConversation({
           : ""}
       </p>
       <button
-        className="mt-2 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[9px] font-semibold text-brand hover:bg-[#f4f6ff]"
+        className="mt-2 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[9px] font-semibold text-brand hover:bg-brand-soft"
         type="button"
         onClick={() => setSearchHelpOpen(true)}
       >
@@ -424,7 +424,7 @@ export function EmptyConversation({
       <div className="mt-8 grid w-full grid-cols-2 gap-2 mw-620:grid-cols-1">
         {suggestedQuestions.map((question) => (
           <button
-            className="group min-h-14 rounded-xl border border-[#e8e8e5] bg-[#fafafa] px-4 py-3 text-left text-[11px] leading-[1.5] text-ink-secondary transition hover:bg-[#f2f2f0]"
+            className="group min-h-14 rounded-xl border border-border bg-surface px-4 py-3 text-left text-[11px] leading-[1.5] text-ink-secondary shadow-soft transition hover:border-brand hover:bg-brand-soft hover:text-brand"
             key={question}
             type="button"
             onClick={() => onAsk(question)}
@@ -451,7 +451,7 @@ export function EmptyConversation({
 function DataCount({ icon, value }: { icon: ReactNode; value: string }) {
   return (
     <span className="inline-flex items-center gap-1.5 px-1.5 py-1 text-[8px] text-muted">
-      <span className="text-ink-secondary">{icon}</span>
+      <span className="text-brand">{icon}</span>
       {value}
     </span>
   );

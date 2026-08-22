@@ -1,5 +1,5 @@
 import { Check, CheckCircle2, FileText } from "lucide-react";
-import { useRef, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { formAlertClass } from "../../../app/styles/primitives";
 import {
@@ -10,7 +10,7 @@ import {
   type FormVariant,
 } from "../components/FormPrimitives";
 import { RoleCategoryField } from "../role-selector/RoleCategoryField";
-import { TechStackCombobox } from "../tech-stack-combobox";
+import { InlineTechStackSelector } from "../tech-stack-combobox";
 import type {
   CriteriaHiringStep,
   HiringDraft,
@@ -71,10 +71,6 @@ const POSITION_BASICS_GRID =
   " grid-cols-[minmax(260px,1.5fr)_minmax(150px,0.75fr)_minmax(150px,0.75fr)]" +
   " mw-780:grid-cols-[minmax(0,1fr)]";
 
-const TECH_STACK =
-  "mt-3 w-full max-w-[860px] [justify-self:start] border-t border-border-muted pt-7" +
-  " mw-780:max-w-none";
-
 const DESCRIPTION_EDITOR =
   "overflow-hidden rounded-md border border-border bg-surface" +
   " focus-within:border-brand focus-within:shadow-[0_0_0_3px_#5966ce1a]";
@@ -102,126 +98,223 @@ const EDITOR_DONE =
 const COMPLETION =
   "grid min-h-[470px] content-center justify-items-center px-7 py-[50px] text-center";
 
+type PositionPage = "basics" | "technology" | "description";
+
+const positionPageOrder: PositionPage[] = [
+  "basics",
+  "technology",
+  "description",
+];
+
 export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
   const { draft, stage, submitting, update, onSubmit, onBack } = props;
+  const [positionPage, setPositionPage] = useState<PositionPage>("basics");
+  const [rolePickerOpen, setRolePickerOpen] = useState(false);
+  const rolePickerRef = useRef<HTMLDivElement>(null);
   const periodValid =
     !draft.recruitmentStartAt ||
     !draft.recruitmentEndAt ||
     draft.recruitmentEndAt >= draft.recruitmentStartAt;
-  const readyByStage: Record<PositionHiringStep, boolean> = {
-    position: Boolean(
+  const readyByPositionPage: Record<PositionPage, boolean> = {
+    basics: Boolean(
       draft.title.trim() &&
-      draft.description.trim() &&
-      draft.descriptionCompleted &&
       draft.roleType &&
       draft.recruitmentStartAt &&
       draft.recruitmentEndAt &&
       periodValid,
     ),
+    technology: draft.techStack.length > 0,
+    description: Boolean(
+      draft.description.trim() && draft.descriptionCompleted,
+    ),
+  };
+  const readyByStage: Record<PositionHiringStep, boolean> = {
+    position: readyByPositionPage[positionPage],
     application: draft.submissionRequirements.some(
       (requirement) => requirement.required,
     ),
   };
 
+  useEffect(() => {
+    const picker = rolePickerRef.current;
+    if (!picker) return;
+    if (rolePickerOpen) picker.removeAttribute("inert");
+    else picker.setAttribute("inert", "");
+  }, [rolePickerOpen]);
+
+  function openRolePicker() {
+    rolePickerRef.current?.removeAttribute("inert");
+    setRolePickerOpen(true);
+  }
+
+  function closeRolePicker() {
+    setRolePickerOpen(false);
+  }
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (stage === "application") {
+      onSubmit(event);
+      return;
+    }
+
+    const currentIndex = positionPageOrder.indexOf(positionPage);
+    const nextPage = positionPageOrder[currentIndex + 1];
+    if (nextPage) {
+      setPositionPage(nextPage);
+      return;
+    }
+    onSubmit(event);
+  }
+
+  function handleBack() {
+    if (stage === "application") {
+      onBack?.();
+      return;
+    }
+
+    const currentIndex = positionPageOrder.indexOf(positionPage);
+    const previousPage = positionPageOrder[currentIndex - 1];
+    if (previousPage) setPositionPage(previousPage);
+  }
+
+  const canGoBack =
+    stage === "application" || positionPage !== positionPageOrder[0];
+
   return (
-    <form className="grid" onSubmit={onSubmit}>
+    <form className="grid" onSubmit={handleSubmit}>
       {stage === "position" ? (
         <>
-          <FormSection
-            eyebrow="01 · 기본 정보"
-            title="포지션명과 모집 기간"
-            description="지원자에게 보이는 포지션 이름과 공고 운영 기간을 설정합니다."
-          >
-            <div className={POSITION_BASICS_GRID}>
-              <Field label="포지션명">
-                <input
-                  autoFocus
-                  className={formInputClass()}
-                  required
-                  maxLength={200}
-                  value={draft.title}
-                  placeholder="예: 백엔드 플랫폼 엔지니어"
-                  onChange={(event) => update("title", event.target.value)}
-                />
-              </Field>
-              <Field label="모집 시작일">
-                <input
-                  className={formInputClass()}
-                  required
-                  type="date"
-                  value={draft.recruitmentStartAt}
-                  onChange={(event) =>
-                    update("recruitmentStartAt", event.target.value)
-                  }
-                />
-              </Field>
-              <Field label="모집 종료일">
-                <input
-                  className={formInputClass()}
-                  required
-                  type="date"
-                  min={draft.recruitmentStartAt || undefined}
-                  value={draft.recruitmentEndAt}
-                  onChange={(event) =>
-                    update("recruitmentEndAt", event.target.value)
-                  }
-                />
-              </Field>
-            </div>
-            {!periodValid ? (
-              <p className={formAlertClass()} role="alert">
-                모집 종료일은 시작일 이후로 선택해 주세요.
-              </p>
-            ) : null}
-          </FormSection>
-
-          <FormSection
-            eyebrow="02 · 직무와 기술"
-            title="직무와 주요 기술 스택"
-            description="직무와 기술 환경을 함께 설정해 면접 질문과 평가 기준의 방향을 정합니다."
-          >
-            <RoleCategoryField
-              value={draft.roleType}
-              onChange={(value, suggestedTitle) => {
-                update("roleType", value);
-                if (suggestedTitle) update("title", suggestedTitle);
-              }}
-            />
-            <div className={TECH_STACK}>
-              <Field
-                label="주요 기술 스택"
-                variant="prominent"
-                hint="검색하거나 목록에 없는 기술을 직접 입력할 수 있습니다."
+          {positionPage === "basics" ? (
+            <FormSection
+              eyebrow="01 · 기본 정보"
+              title="포지션명과 모집 기간"
+              description="포지션명을 눌러 직무를 선택하고 공고 운영 기간을 설정합니다."
+            >
+              <div className={POSITION_BASICS_GRID}>
+                <Field label="포지션명">
+                  <input
+                    aria-controls="position-role-picker"
+                    aria-expanded={rolePickerOpen}
+                    className={formInputClass()}
+                    required
+                    maxLength={200}
+                    value={draft.title}
+                    placeholder="예: 백엔드 플랫폼 엔지니어"
+                    onClick={openRolePicker}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === "ArrowDown") {
+                        event.preventDefault();
+                        openRolePicker();
+                      }
+                    }}
+                    onChange={(event) => update("title", event.target.value)}
+                  />
+                </Field>
+                <Field label="모집 시작일">
+                  <input
+                    className={formInputClass()}
+                    required
+                    type="date"
+                    value={draft.recruitmentStartAt}
+                    onChange={(event) =>
+                      update("recruitmentStartAt", event.target.value)
+                    }
+                  />
+                </Field>
+                <Field label="모집 종료일">
+                  <input
+                    className={formInputClass()}
+                    required
+                    type="date"
+                    min={draft.recruitmentStartAt || undefined}
+                    value={draft.recruitmentEndAt}
+                    onChange={(event) =>
+                      update("recruitmentEndAt", event.target.value)
+                    }
+                  />
+                </Field>
+              </div>
+              {!periodValid ? (
+                <p className={formAlertClass()} role="alert">
+                  모집 종료일은 시작일 이후로 선택해 주세요.
+                </p>
+              ) : null}
+              <div
+                ref={rolePickerRef}
+                aria-hidden={!rolePickerOpen}
+                className={`grid overflow-hidden transition-[grid-template-rows,opacity,margin] duration-350 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+                  rolePickerOpen
+                    ? "mt-5 grid-rows-[1fr] opacity-100"
+                    : "pointer-events-none mt-0 grid-rows-[0fr] opacity-0"
+                }`}
+                id="position-role-picker"
               >
-                <TechStackCombobox
-                  className="min-h-16 gap-2 px-3 py-3"
-                  value={draft.techStack}
-                  onChange={(value) => update("techStack", value)}
-                  placeholder="예: Java, Spring Boot, AWS"
-                />
-              </Field>
-            </div>
-          </FormSection>
+                <div className="min-h-0 overflow-hidden">
+                  <div className="border-t border-border-muted pt-7">
+                    <header className="mb-5 grid gap-1">
+                      <span className="font-mono text-[9px] font-bold text-brand uppercase">
+                        직무 선택
+                      </span>
+                      <h4 className="text-xl font-bold text-ink">
+                        채용할 직무를 선택해 주세요
+                      </h4>
+                      <p className="text-[11px] leading-5 text-muted">
+                        세부 직무를 선택하면 포지션명에 자동으로 반영됩니다.
+                      </p>
+                    </header>
+                    <RoleCategoryField
+                      focusCustomRole={rolePickerOpen}
+                      value={draft.roleType}
+                      onRequestClose={closeRolePicker}
+                      onChange={(value, suggestedTitle) => {
+                        update("roleType", value);
+                        if (suggestedTitle) {
+                          update("title", suggestedTitle);
+                          closeRolePicker();
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </FormSection>
+          ) : null}
 
-          <FormSection
-            eyebrow="03 · 공고 본문"
-            title="포지션 상세"
-            description="회사 소개, 포지션 배경과 주요 업무를 하나의 본문으로 구성합니다."
-          >
-            <PositionDescriptionEditor
-              value={draft.description}
-              completed={draft.descriptionCompleted}
-              onChange={(value) => {
-                update("description", value);
-                if (draft.descriptionCompleted) {
-                  update("descriptionCompleted", false);
+          {positionPage === "technology" ? (
+            <FormSection
+              eyebrow="02 · 기술 스택"
+              title="주요 기술 스택을 선택해 주세요"
+              description="검색하거나 카테고리를 선택해 이 포지션에서 사용할 기술을 추가합니다."
+            >
+              <InlineTechStackSelector
+                value={draft.techStack}
+                onChange={(value) => update("techStack", value)}
+              />
+            </FormSection>
+          ) : null}
+
+          {positionPage === "description" ? (
+            <FormSection
+              eyebrow="03 · 공고 본문"
+              title="포지션 상세"
+              description="회사 소개, 포지션 배경과 주요 업무를 하나의 본문으로 구성합니다."
+            >
+              <PositionDescriptionEditor
+                value={draft.description}
+                completed={draft.descriptionCompleted}
+                onChange={(value) => {
+                  update("description", value);
+                  if (draft.descriptionCompleted) {
+                    update("descriptionCompleted", false);
+                  }
+                }}
+                onCompletedChange={(completed) =>
+                  update("descriptionCompleted", completed)
                 }
-              }}
-              onCompletedChange={(completed) =>
-                update("descriptionCompleted", completed)
-              }
-            />
-          </FormSection>
+              />
+            </FormSection>
+          ) : null}
         </>
       ) : null}
 
@@ -233,7 +326,7 @@ export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
         submitting={submitting}
         disabled={!readyByStage[stage]}
         label="다음"
-        onBack={onBack}
+        onBack={canGoBack ? handleBack : undefined}
       />
     </form>
   );

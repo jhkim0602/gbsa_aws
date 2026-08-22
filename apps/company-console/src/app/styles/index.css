@@ -1,6 +1,96 @@
 @import "tailwindcss";
 @import "@iep/design-system/theme.css";
 
+@keyframes why-you-bot-search {
+  0%,
+  100% {
+    transform: rotate(-4deg) scale(0.94);
+  }
+  50% {
+    transform: rotate(5deg) scale(1.04);
+  }
+}
+
+@keyframes why-you-bot-think {
+  0%,
+  100% {
+    transform: translateY(0) scaleX(1);
+  }
+  45% {
+    transform: translateY(-2px) scaleX(0.94);
+  }
+  70% {
+    transform: translateY(0.5px) scaleX(1.04) scaleY(0.96);
+  }
+}
+
+@keyframes why-you-bot-orbit {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes why-you-thinking-letter {
+  0%,
+  100% {
+    color: var(--color-muted);
+    opacity: 0.55;
+    transform: translateY(0);
+  }
+  42% {
+    color: var(--color-brand);
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+@layer components {
+  .why-you-bot__figure,
+  .why-you-bot__orbit {
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  .why-you-bot__orbit {
+    opacity: 0;
+    transform-box: view-box;
+    transform-origin: 16px 16px;
+  }
+
+  .why-you-bot[data-assistant-avatar-state="searching"] .why-you-bot__figure {
+    animation: why-you-bot-search 1.15s ease-in-out infinite;
+  }
+
+  .why-you-bot[data-assistant-avatar-state="searching"] .why-you-bot__orbit {
+    opacity: 1;
+    animation: why-you-bot-orbit 1.25s linear infinite;
+  }
+
+  .why-you-bot[data-assistant-avatar-state="thinking"] .why-you-bot__figure {
+    animation: why-you-bot-think 850ms ease-in-out infinite;
+  }
+
+  .why-you-thinking-letter {
+    animation: why-you-thinking-letter 1.15s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .why-you-bot *,
+    .why-you-bot__figure,
+    .why-you-bot__orbit {
+      animation: none !important;
+    }
+
+    .why-you-thinking-letter {
+      animation: none !important;
+      opacity: 1;
+    }
+  }
+}
+
 /* The printed review report is a real document on real A4: the sheet is sized in
    millimetres, so the browser's default page margin would inset it from the paper edge and
    print the console canvas around it. `@page` addresses the page box rather than an element,

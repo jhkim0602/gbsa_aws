@@ -152,7 +152,7 @@ describe("report scoring", () => {
     );
 
     expect(screen.getByText("직무 역량")).toBeTruthy();
-    expect(screen.getByText("설명력")).toBeTruthy();
+    expect(screen.getAllByText("설명력").length).toBeGreaterThan(0);
     expect(screen.getByText("84")).toBeTruthy();
     expect(screen.getByText("63")).toBeTruthy();
     expect(screen.getByText("기준 2개에서 판단")).toBeTruthy();
@@ -202,7 +202,7 @@ describe("report scoring", () => {
     );
 
     // Counting the unjudged criterion as zero would print 40.
-    expect(screen.getByText("80점")).toBeTruthy();
+    expect(screen.getAllByText("80점").length).toBeGreaterThan(0);
     expect(screen.getByText("기준 1개에서 판단")).toBeTruthy();
   });
 
@@ -403,6 +403,11 @@ describe("report scoring", () => {
     );
 
     // 0.9*90 + 0.1*10 = 82. A plain mean would have printed 50.
-    expect(screen.getByText("82점")).toBeTruthy();
+    expect(screen.getAllByText("82점").length).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("img", {
+        name: /면접 점수 레이더 그래프/,
+      }),
+    ).toBeTruthy();
   });
 });

@@ -65,6 +65,26 @@ _SYSTEM_PROMPT: Final = """\
 9. interview_stage와 interview_stage_focus를 따라 현재 단계의 목적에 맞는 질문을 만듭니다.
 10. next_question_type이 stage_opening이면 짧은 전환 표현 뒤 질문하고, stage_final이면
     현재 단계에서 아직 확인하지 못한 가장 중요한 내용 하나를 마지막으로 묻습니다.
+11. 갑자기 본론만 묻지 말고, 가능하면 질문 앞에 짧은 맥락 연결 문장을 둡니다.
+    - retrieved_sources를 쓰는 경우: "제출하신 자료에서 ~를 언급하셨는데요" 처럼 연결합니다.
+    - recent_turns를 쓰는 경우: "앞서 ~라고 설명해 주셨는데요" 처럼 연결합니다.
+    - 근거가 없으면 "이번에는 ~와 관련해 여쭤보겠습니다" 처럼 중립적으로 전환합니다.
+    연결 문장은 지원자의 답변을 미리 평가하거나 정답을 암시하지 않으며, 제공된 발취문과 이전 답변에
+    있는 정보만 자연스럽게 반복합니다.
+
+면접 전체에서 자연스럽게 확인할 다섯 관점:
+- 정확성: 언급한 기술적 사실과 인과관계의 판단 근거를 확인합니다.
+- 깊이: 선택 이유, 대안, 제약 조건과 트레이드오프를 한 단계 더 확인합니다.
+- CS 기본기: 지원자가 제출 자료나 답변에서 실제로 언급한 기술과 직접 연결된 기반 원리를 확인합니다.
+  직무와 무관한 암기식 이론 문제나 답변에 등장하지 않은 상위 개념은 묻지 않습니다.
+- 본인 기여: 팀의 결과와 지원자가 직접 판단하고 수행한 범위를 구분합니다.
+- 설명력: 별도의 지식 문제를 만들지 않고, 면접 전체에서 답변의 구조와 전달 과정을 관찰합니다.
+
+한 질문에 다섯 관점을 모두 담지 않습니다. recent_turns와 missing_dimensions를 보고 아직 충분히
+드러나지 않았으면서 현재 단계에 가장 자연스럽게 연결되는 관점 하나나 둘만 고릅니다.
+- technical 단계: 정확성, 깊이, CS 기본기를 우선합니다.
+- project_deep_dive 단계: 깊이, 본인 기여, 정확성을 우선합니다.
+- behavioral 단계: 본인 기여와 설명력을 우선합니다.
 
 질문 깊이:
 {depth_guidance}
@@ -137,7 +157,7 @@ class QuestionPromptTemplate(BaseModel):
 
 def _template_for(level: InterviewLevel) -> QuestionPromptTemplate:
     return QuestionPromptTemplate(
-        prompt_version=f"question-prompt-v2-{level.value}",
+        prompt_version=f"question-prompt-v3-{level.value}",
         interview_level=level,
         persona=_PERSONA,
         system_prompt=_SYSTEM_PROMPT,

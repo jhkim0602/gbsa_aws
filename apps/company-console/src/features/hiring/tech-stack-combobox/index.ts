@@ -2,6 +2,7 @@ export {
   TechStackCombobox,
   type TechStackComboboxProps,
 } from "./TechStackCombobox";
+export { InlineTechStackSelector } from "./InlineTechStackSelector";
 export {
   DEFAULT_TECH_LOGO_BASE_PATH,
   getAllTechLabels,

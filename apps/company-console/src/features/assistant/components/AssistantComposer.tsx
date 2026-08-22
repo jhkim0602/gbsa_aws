@@ -11,7 +11,7 @@ import {
 import type { FormEvent, KeyboardEvent, ReactNode } from "react";
 
 const COMPOSER_WRAP =
-  "relative z-10 bg-gradient-to-t from-white via-white to-transparent" +
+  "relative z-10 bg-gradient-to-t from-canvas via-canvas to-transparent" +
   " px-5 pt-4 pb-5 mw-620:px-3 mw-620:pb-3";
 
 export function AssistantComposer({
@@ -51,7 +51,7 @@ export function AssistantComposer({
   return (
     <form className={COMPOSER_WRAP} onSubmit={submit}>
       <div className="mx-auto w-full max-w-[780px]">
-        <div className="relative rounded-[26px] border border-[#dededb] bg-surface p-2 shadow-[0_2px_12px_rgb(0_0_0_/_8%)] transition focus-within:border-[#c9c9c5] focus-within:shadow-[0_4px_18px_rgb(0_0_0_/_10%)]">
+        <div className="relative rounded-[26px] border border-border bg-surface p-2 shadow-soft transition focus-within:border-brand focus-within:shadow-[0_6px_24px_rgb(89_102_206_/_14%)]">
           {toolsOpen ? (
             <RagContextMenu
               scopeLabel={scopeLabel}
@@ -74,8 +74,8 @@ export function AssistantComposer({
               <button
                 className={`grid size-8 place-items-center rounded-full border transition ${
                   toolsOpen
-                    ? "border-[#c9c9c5] bg-[#efefed] text-ink"
-                    : "border-transparent bg-[#f5f5f3] text-muted hover:bg-[#ececea] hover:text-ink"
+                    ? "border-brand bg-brand-soft text-brand"
+                    : "border-transparent bg-surface-strong text-muted hover:bg-brand-soft hover:text-brand"
                 }`}
                 type="button"
                 aria-label="참조 데이터 보기"
@@ -84,7 +84,7 @@ export function AssistantComposer({
               >
                 <Plus size={16} aria-hidden="true" />
               </button>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f5f5f3] px-2.5 py-1.5 text-[8px] font-medium text-muted">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-soft px-2.5 py-1.5 text-[8px] font-medium text-brand">
                 <Database size={10} aria-hidden="true" />
                 {scopeLabel} · RAG
               </span>
@@ -95,7 +95,7 @@ export function AssistantComposer({
               ) : null}
             </div>
             <button
-              className="grid size-8 place-items-center rounded-full bg-ink text-white transition hover:bg-[#303030] disabled:bg-[#e9e9e6] disabled:text-subtle"
+              className="grid size-8 place-items-center rounded-full bg-brand text-white shadow-soft transition hover:bg-brand-strong disabled:bg-surface-strong disabled:text-subtle disabled:shadow-none"
               type="submit"
               aria-label="질문 보내기"
               disabled={!query.trim() || pending}
@@ -123,7 +123,7 @@ function RagContextMenu({
   onClose(): void;
 }) {
   return (
-    <div className="absolute bottom-[calc(100%+10px)] left-0 z-30 w-[300px] rounded-2xl border border-[#dededb] bg-surface p-2.5 shadow-float mw-620:w-[min(300px,calc(100vw-32px))]">
+    <div className="absolute bottom-[calc(100%+10px)] left-0 z-30 w-[300px] rounded-2xl border border-border bg-surface p-2.5 shadow-float mw-620:w-[min(300px,calc(100vw-32px))]">
       <div className="flex items-center justify-between px-2 py-1.5">
         <div>
           <strong className="block text-[10px] text-ink">참조 데이터</strong>
@@ -172,7 +172,7 @@ function ContextSource({
 }) {
   return (
     <div className="grid grid-cols-[30px_minmax(0,1fr)_16px] items-center gap-2 rounded-xl px-2 py-2 hover:bg-surface-muted">
-      <span className="grid size-7 place-items-center rounded-lg bg-[#f1f1ef] text-ink-secondary">
+      <span className="grid size-7 place-items-center rounded-lg bg-brand-soft text-brand">
         {icon}
       </span>
       <span className="min-w-0">

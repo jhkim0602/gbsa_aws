@@ -27,13 +27,13 @@ import type { Citation, InsightByPosition } from "./types";
 import { useAssistantConversations } from "./useAssistantConversations";
 
 const ROOT =
-  "relative grid h-[calc(100vh-58px)] min-h-[640px] overflow-hidden bg-white" +
+  "relative grid h-[calc(100vh-58px)] min-h-[640px] overflow-hidden bg-canvas" +
   " mw-760:h-auto mw-760:min-h-[calc(100vh-58px)]";
 const HEADER =
-  "relative z-20 flex h-15 items-center gap-3 border-b border-[#ececea]" +
-  " bg-[rgb(255_255_255_/_96%)] px-5 backdrop-blur mw-620:px-3";
+  "relative z-20 flex h-15 items-center gap-3 border-b border-border" +
+  " bg-[color-mix(in_srgb,var(--color-surface)_96%,transparent)] px-5 backdrop-blur mw-620:px-3";
 const CONVERSATION =
-  "min-h-0 overflow-y-auto scroll-smooth bg-white px-5 pb-10 mw-620:px-3";
+  "min-h-0 overflow-y-auto scroll-smooth bg-canvas px-5 pb-10 mw-620:px-3";
 
 export function AiRecruitingAssistant({
   api,
@@ -237,7 +237,7 @@ export function AiRecruitingAssistant({
       <section className="grid min-h-0 min-w-0 grid-rows-[60px_minmax(0,1fr)]">
         <header className={HEADER}>
           <button
-            className="grid size-8 shrink-0 place-items-center rounded-lg text-muted hover:bg-[#f2f2f0] hover:text-ink"
+            className="grid size-8 shrink-0 place-items-center rounded-lg text-muted hover:bg-brand-soft hover:text-brand"
             type="button"
             aria-label="대화 목록 열기"
             aria-expanded={historyOpen}
@@ -252,7 +252,7 @@ export function AiRecruitingAssistant({
 
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="grid size-7 shrink-0 place-items-center rounded-full bg-ink text-white">
+              <span className="grid size-7 shrink-0 place-items-center rounded-full bg-brand text-white shadow-soft">
                 <Sparkles size={14} aria-hidden="true" />
               </span>
               <div className="min-w-0">
@@ -275,7 +275,7 @@ export function AiRecruitingAssistant({
               aria-hidden="true"
             />
             <select
-              className="h-9 max-w-[270px] appearance-none rounded-lg border border-[#e5e5e2] bg-[#f7f7f5] py-0 pr-8 pl-8 text-[10px] font-medium text-ink-secondary outline-none hover:bg-[#f1f1ef] disabled:cursor-not-allowed disabled:opacity-100 mw-620:max-w-[146px]"
+              className="h-9 max-w-[270px] appearance-none rounded-lg border border-border bg-surface py-0 pr-8 pl-8 text-[10px] font-medium text-ink-secondary outline-none hover:border-brand hover:bg-brand-soft focus:border-brand disabled:cursor-not-allowed disabled:opacity-100 mw-620:max-w-[146px]"
               value={selectedScope}
               disabled={scopeLocked}
               onChange={(event) =>
@@ -324,7 +324,7 @@ export function AiRecruitingAssistant({
           </label>
 
           <button
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#e5e5e2] bg-white px-3 text-[10px] font-semibold text-ink-secondary hover:bg-[#f7f7f5] mw-620:size-9 mw-620:justify-center mw-620:px-0"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-[10px] font-semibold text-ink-secondary hover:border-brand hover:bg-brand-soft hover:text-brand mw-620:size-9 mw-620:justify-center mw-620:px-0"
             type="button"
             aria-label="새 채팅 만들기"
             onClick={() => createConversation(selectedScope)}

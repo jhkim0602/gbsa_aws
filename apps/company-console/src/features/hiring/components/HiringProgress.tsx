@@ -25,7 +25,7 @@ const STEP =
 
 const MARKER =
   "z-1 row-start-1 grid size-6 place-items-center rounded-[50%] border border-border" +
-  " bg-transparent font-mono text-[9px] text-muted";
+  " bg-transparent font-mono text-[11px] font-bold text-muted";
 
 // `.hiring-progress li.is-complete` never matched: the markup puts `is-complete` on the span,
 // not the li. `li > span.is-complete` (--color-text) is declared after `li > span.is-current`
@@ -58,9 +58,9 @@ export function HiringProgress({ step }: { step: HiringStep }) {
               <span
                 className={`${MARKER} ${
                   completed
-                    ? "border-ink bg-ink text-white"
+                    ? "!border-ink !bg-ink !text-white"
                     : current
-                      ? "border-brand bg-brand text-white"
+                      ? "!border-brand-strong !bg-brand-strong !text-white"
                       : ""
                 }`}
                 aria-hidden="true"

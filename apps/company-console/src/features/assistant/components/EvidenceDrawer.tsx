@@ -24,7 +24,7 @@ export function EvidenceDrawer({
         onClick={onClose}
       />
       <aside
-        className="absolute inset-[0_0_0_auto] w-[min(440px,100%)] overflow-y-auto border-l border-[#dededb] bg-[#f7f7f5] shadow-float"
+        className="absolute inset-[0_0_0_auto] w-[min(440px,100%)] overflow-y-auto border-l border-border bg-canvas shadow-float"
         aria-label="RAG 답변 근거"
       >
         <header className="sticky top-0 z-10 flex h-15 items-center justify-between border-b border-border-muted bg-[rgb(255_255_255_/_96%)] px-5 backdrop-blur">
@@ -52,7 +52,7 @@ export function EvidenceDrawer({
           />
 
           {citation.applicantInvitationId ? (
-            <section className="mt-4 rounded-xl border border-[#dededb] bg-white p-5">
+            <section className="mt-4 rounded-xl border border-border bg-surface p-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-[8px] font-medium text-muted">
@@ -65,12 +65,12 @@ export function EvidenceDrawer({
                     페이지를 이동하지 않고 평가 요약과 기준별 근거를 확인합니다.
                   </p>
                 </div>
-                <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#f1f1ef] text-ink">
+                <span className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-soft text-brand">
                   <UserRound size={16} aria-hidden="true" />
                 </span>
               </div>
               <button
-                className="mt-4 inline-flex min-h-9 w-full items-center justify-center gap-2 rounded-lg bg-ink px-3 text-[10px] font-semibold text-white hover:bg-[#303030]"
+                className="mt-4 inline-flex min-h-9 w-full items-center justify-center gap-2 rounded-lg bg-brand px-3 text-[10px] font-semibold text-white hover:bg-brand-strong"
                 type="button"
                 onClick={() =>
                   onOpenReport(citation.applicantInvitationId as string)
@@ -92,7 +92,7 @@ export function EvidenceDrawer({
               <button
                 className={`grid grid-cols-[25px_minmax(0,1fr)_14px] items-center gap-2 rounded-xl px-2.5 py-2.5 text-left ${
                   item.sourceId === citation.sourceId
-                    ? "bg-[#efefed]"
+                    ? "bg-brand-soft"
                     : "hover:bg-surface-muted"
                 }`}
                 key={item.sourceId}
@@ -102,7 +102,7 @@ export function EvidenceDrawer({
                 <span
                   className={`grid size-[25px] place-items-center rounded-lg font-mono text-[8px] font-bold ${
                     item.sourceId === citation.sourceId
-                      ? "bg-ink text-white"
+                      ? "bg-brand text-white"
                       : "bg-surface-strong text-muted"
                   }`}
                 >
@@ -131,10 +131,10 @@ export function EvidenceDrawer({
 
 function EvidenceSummaryTable({ citation }: { citation: Citation }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-[#dededb] bg-surface">
+    <section className="overflow-hidden rounded-xl border border-border bg-surface">
       <div className="flex items-center justify-between gap-3 border-b border-border-muted px-4 py-3.5">
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-ink font-mono text-[9px] font-bold text-white">
+          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-brand font-mono text-[9px] font-bold text-white">
             {citation.id}
           </span>
           <div className="min-w-0">
@@ -180,7 +180,7 @@ function EvidenceSummaryRow({
 }) {
   return (
     <tr className="border-t border-border-muted first:border-t-0">
-      <th className="w-[104px] bg-[#f7f7f5] px-4 py-3 text-[8px] font-semibold text-muted">
+      <th className="w-[104px] bg-surface-muted px-4 py-3 text-[8px] font-semibold text-muted">
         {label}
       </th>
       <td
@@ -219,7 +219,7 @@ function EvidenceContext({
     NARRATIVE_CONTEXT_LABELS.has(field.label),
   );
   return (
-    <section className="mt-4 overflow-hidden rounded-xl border border-[#dededb] bg-surface">
+    <section className="mt-4 overflow-hidden rounded-xl border border-border bg-surface">
       <div className="flex items-center gap-2 border-b border-border-muted px-4 py-3.5 text-[9px] font-semibold text-ink-secondary">
         <FileSearch size={13} aria-hidden="true" />
         검색된 문맥
@@ -246,7 +246,7 @@ function EvidenceContext({
           <div className="mt-3 grid gap-2.5">
             {narratives.map((field) => (
               <article
-                className="rounded-lg border border-border-muted bg-[#fafaf9] px-3.5 py-3"
+                className="rounded-lg border border-border-muted bg-surface-muted px-3.5 py-3"
                 key={field.label}
               >
                 <p className="text-[8px] font-semibold text-muted">
@@ -260,7 +260,7 @@ function EvidenceContext({
           </div>
         ) : null}
         {context.looseText.length ? (
-          <div className="mt-3 rounded-lg bg-[#f7f7f5] px-3.5 py-3 text-[10px] leading-[1.75] text-ink-secondary">
+          <div className="mt-3 rounded-lg bg-brand-soft px-3.5 py-3 text-[10px] leading-[1.75] text-ink-secondary">
             {context.looseText.map((line) => (
               <p key={line}>{line}</p>
             ))}
@@ -284,7 +284,7 @@ type ContextField = Readonly<{ label: string; value: string }>;
 function ContextMetaRow({ field }: { field: ContextField }) {
   return (
     <tr className="border-t border-border-muted first:border-t-0">
-      <th className="w-[96px] bg-[#f7f7f5] px-3 py-2.5 text-[8px] font-semibold text-muted">
+      <th className="w-[96px] bg-surface-muted px-3 py-2.5 text-[8px] font-semibold text-muted">
         {field.label}
       </th>
       <td className="break-words px-3 py-2.5 text-[9px] font-medium leading-[1.55] text-ink-secondary">

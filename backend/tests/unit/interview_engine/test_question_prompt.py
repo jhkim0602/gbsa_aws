@@ -82,6 +82,17 @@ def test_system_prompt_carries_the_persona_and_the_policy_limits() -> None:
     assert "source_reference_ids" in system
 
 
+def test_system_prompt_uses_grounded_conversational_bridges_and_natural_axis_coverage() -> None:
+    system = str(_prompt()["system"])
+
+    assert "제출하신 자료에서 ~를 언급하셨는데요" in system
+    assert "앞서 ~라고 설명해 주셨는데요" in system
+    assert "지원자의 답변을 미리 평가하거나 정답을 암시하지 않으며" in system
+    for label in ("정확성", "깊이", "CS 기본기", "본인 기여", "설명력"):
+        assert label in system
+    assert "한 질문에 다섯 관점을 모두 담지 않습니다" in system
+
+
 def test_task_payload_round_trips_through_the_message() -> None:
     payload = task_payload_of(_prompt())
 

@@ -316,9 +316,7 @@ function OverviewPage({
   report: ReviewReport;
   stageSummary: InterviewStageSummary[];
 }) {
-  const axes = summarizeAxes(report.items).filter(
-    (axis) => axis.axis !== "communication",
-  );
+  const axes = summarizeAxes(report.items);
   const states = countStates(report.items);
   const communicationScore = report.communicationScore ?? null;
 
@@ -399,23 +397,10 @@ function OverviewPage({
         </section>
       ) : null}
 
-      <section className={REPORT_SECTION} aria-label="축별 평균 점수">
-        <h4 className={REPORT_SECTION_HEADING}>축별 평균</h4>
+      <section className={REPORT_SECTION} aria-label="면접 역량 프로필">
+        <h4 className={REPORT_SECTION_HEADING}>면접 역량 프로필</h4>
         {axes.length > 0 ? (
-          <div className="grid gap-1">
-            {axes.map((axis) => (
-              <div className={AXIS_ROW} key={axis.axis}>
-                <span className={AXIS_LABEL}>{axis.label}</span>
-                <ScoreValue score={axis.score} />
-                <ScoreBar score={axis.score} />
-                <small className={AXIS_META}>
-                  {axis.scoredCount > 0
-                    ? `기준 ${axis.scoredCount}개에서 판단`
-                    : "인용할 답변 없음"}
-                </small>
-              </div>
-            ))}
-          </div>
+          <AxisRadarProfile axes={axes} />
         ) : (
           <p className={REPORT_EMPTY}>
             이 리포트에는 축별 점수가 없습니다. 점수화 이전에 생성된
@@ -1102,6 +1087,197 @@ type AxisSummary = {
   score: number | null;
   scoredCount: number;
 };
+
+const RADAR_AXES = [
+  { axis: "correctness", label: "정확성" },
+  { axis: "depth", label: "깊이" },
+  { axis: "fundamentals", label: "CS 기본기" },
+  { axis: "ownership", label: "본인 기여" },
+  { axis: "communication", label: "설명력" },
+] as const;
+
+const RADAR_WIDTH = 360;
+const RADAR_HEIGHT = 250;
+const RADAR_CENTER_X = RADAR_WIDTH / 2;
+const RADAR_CENTER_Y = 118;
+const RADAR_RADIUS = 78;
+
+/**
+ * The report profile uses the same five named dimensions as the hiring configuration, but it
+ * plots observed interview scores rather than recruiter preferences. Communication stays in the
+ * profile for comparison while the label makes clear that it is not mixed into competency score.
+ */
+function AxisRadarProfile({ axes }: { axes: AxisSummary[] }) {
+  const summaries = new Map(axes.map((axis) => [axis.axis, axis]));
+  const plottedAxes = RADAR_AXES.map((definition) => ({
+    ...definition,
+    score: summaries.get(definition.axis)?.score ?? null,
+    scoredCount: summaries.get(definition.axis)?.scoredCount ?? 0,
+  }));
+  const gridLevels = [25, 50, 75, 100];
+  const dataPoints = plottedAxes.map((axis, index) =>
+    radarPoint(index, axis.score ?? 0),
+  );
+  const hasMissingScore = plottedAxes.some((axis) => axis.score === null);
+
+  return (
+    <div className="grid grid-cols-[minmax(280px,0.95fr)_minmax(220px,1.05fr)] items-center gap-5 rounded-lg bg-surface-muted px-4 py-3 mw-680:grid-cols-[minmax(0,1fr)] mw-680:gap-2 mw-520:px-2.5">
+      <svg
+        aria-label="정확성, 깊이, CS 기본기, 본인 기여, 설명력의 면접 점수 레이더 그래프"
+        className="mx-auto h-auto w-full max-w-[360px] overflow-visible"
+        role="img"
+        viewBox={`0 0 ${RADAR_WIDTH} ${RADAR_HEIGHT}`}
+      >
+        <title>면접 역량 프로필</title>
+        <desc>
+          다섯 평가 축의 100점 만점 점수를 비교합니다. 점이 중심에 있고 점수가
+          표시되지 않은 축은 0점이 아니라 판단 근거가 없는 항목입니다.
+        </desc>
+        {gridLevels.map((level) => (
+          <polygon
+            fill="none"
+            key={level}
+            points={radarPolygon(level)}
+            stroke="var(--color-border-strong)"
+            strokeWidth={level === 100 ? 1.2 : 0.8}
+          />
+        ))}
+        {plottedAxes.map((axis, index) => {
+          const outer = radarPoint(index, 100);
+          return (
+            <line
+              key={axis.axis}
+              stroke="var(--color-border-strong)"
+              strokeWidth="0.8"
+              x1={RADAR_CENTER_X}
+              x2={outer.x}
+              y1={RADAR_CENTER_Y}
+              y2={outer.y}
+            />
+          );
+        })}
+        <polygon
+          fill="var(--color-brand)"
+          fillOpacity="0.16"
+          points={dataPoints.map(pointPair).join(" ")}
+          stroke="var(--color-brand)"
+          strokeDasharray={hasMissingScore ? "4 3" : undefined}
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
+        {dataPoints.map((point, index) => {
+          const axis = plottedAxes[index];
+          return (
+            <circle
+              aria-hidden="true"
+              cx={point.x}
+              cy={point.y}
+              fill={
+                axis.score === null
+                  ? "var(--color-surface)"
+                  : "var(--color-brand)"
+              }
+              key={axis.axis}
+              r={axis.score === null ? 3.5 : 4}
+              stroke="var(--color-brand)"
+              strokeWidth="1.5"
+            />
+          );
+        })}
+        {plottedAxes.map((axis, index) => {
+          const labelPoint = radarPoint(index, 129);
+          return (
+            <g key={axis.axis}>
+              <text
+                fill="var(--color-ink-secondary)"
+                fontSize="10"
+                fontWeight="650"
+                textAnchor="middle"
+                x={labelPoint.x}
+                y={labelPoint.y - 2}
+              >
+                {axis.label}
+              </text>
+              <text
+                fill={
+                  axis.score === null
+                    ? "var(--color-subtle)"
+                    : "var(--color-brand-strong)"
+                }
+                fontSize="9"
+                fontWeight="700"
+                textAnchor="middle"
+                x={labelPoint.x}
+                y={labelPoint.y + 11}
+              >
+                {axis.score === null ? "—" : `${axis.score}점`}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+
+      <div className="grid gap-2.5">
+        <div>
+          <strong className="text-[11px] text-ink">답변에서 확인된 역량</strong>
+          <p className="mt-1 text-[8px] leading-[1.6] text-muted">
+            바깥쪽에 가까울수록 해당 역량이 답변 근거에서 강하게 확인됐습니다.
+            설명력은 직무역량 종합점수와 섞지 않고 별도로 집계합니다.
+          </p>
+        </div>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 mw-520:grid-cols-[minmax(0,1fr)]">
+          {plottedAxes.map((axis) => (
+            <div
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-2 border-b border-border-muted pb-1.5"
+              key={axis.axis}
+            >
+              <dt className="truncate text-[9px] font-[650] text-ink-secondary">
+                {axis.label}
+                {axis.axis === "communication" ? (
+                  <small className="ml-1 text-[7px] font-medium text-brand">
+                    별도
+                  </small>
+                ) : null}
+              </dt>
+              <dd className="text-right">
+                <ScoreValue score={axis.score} />
+                <small className="ml-1 block text-[7px] text-subtle">
+                  {axis.scoredCount > 0
+                    ? `기준 ${axis.scoredCount}개에서 판단`
+                    : "근거 없음"}
+                </small>
+              </dd>
+            </div>
+          ))}
+        </dl>
+        {hasMissingScore ? (
+          <p className="text-[8px] leading-[1.5] text-subtle">
+            — 표시는 0점이 아니라 해당 축을 판단할 인용 근거가 없다는 뜻입니다.
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function radarPoint(index: number, score: number) {
+  const angle = -Math.PI / 2 + (index * Math.PI * 2) / RADAR_AXES.length;
+  const radius = RADAR_RADIUS * (score / 100);
+  return {
+    x: Number((RADAR_CENTER_X + Math.cos(angle) * radius).toFixed(2)),
+    y: Number((RADAR_CENTER_Y + Math.sin(angle) * radius).toFixed(2)),
+  };
+}
+
+function radarPolygon(level: number) {
+  return RADAR_AXES.map((_, index) => pointPair(radarPoint(index, level))).join(
+    " ",
+  );
+}
+
+function pointPair(point: { x: number; y: number }) {
+  return `${point.x},${point.y}`;
+}
 
 /**
  * Average each axis across the criteria that could be judged on it, weighted by criterion.
