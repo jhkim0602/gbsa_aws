@@ -88,12 +88,16 @@ def test_opensearch_adapter_always_filters_company_and_applicant() -> None:
         query="retry",
         query_vector=(1.0, 0.0),
         exact_symbol="PaymentService",
+        embedding_model="gemini-embedding-001",
+        embedding_version="vertex-gemini-v1",
     )
     assert candidates[0].document.source_id == SOURCE_ID
     search_body = json.loads(requests[1][2] or b"{}")
     filters = search_body["query"]["bool"]["filter"]
     assert {"term": {"company_id": str(COMPANY_ID)}} in filters
     assert {"term": {"applicant_id": str(APPLICANT_ID)}} in filters
+    assert {"term": {"embedding_model.keyword": "gemini-embedding-001"}} in filters
+    assert {"term": {"embedding_version.keyword": "vertex-gemini-v1"}} in filters
 
 
 def test_opensearch_deletion_requeries_the_same_tenant_before_verifying() -> None:

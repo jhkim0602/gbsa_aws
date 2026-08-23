@@ -11,10 +11,17 @@ from uuid import UUID
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, ConfigDict, Field
 
+from interview_evidence.interview_engine.application.question_generator import (
+    QuestionGenerationUnavailable,
+)
 from interview_evidence.interview_engine.application.session_service import (
     SessionApplicationService,
 )
 from interview_evidence.interview_engine.domain.session import InterviewSession
+from interview_evidence.shared.aws_clients.task_protection import (
+    NullTaskProtection,
+    TaskProtection,
+)
 from interview_evidence.shared.database import RequestScopedDatabase
 from interview_evidence.shared.ids import new_uuid7
 from interview_evidence.shared.security.principals import (
@@ -193,6 +200,7 @@ class ProtocolStreamHandler:
                     "last_verified_recording_chunk_sequence": (
                         snapshot.last_verified_recording_chunk_sequence
                     ),
+                    "last_recording_end_ms": snapshot.last_recording_end_ms,
                     "allowed_client_messages": ["session.resume"],
                     "degraded_modes": list(snapshot.degraded_modes),
                 },
@@ -367,6 +375,7 @@ def create_interview_websocket_router(
     handler: ProtocolStreamHandler,
     database: RequestScopedDatabase | None = None,
     speech: object | None = None,
+    task_protection: TaskProtection | None = None,
 ) -> APIRouter:
     from interview_evidence.interview_engine.api.streaming_speech import (
         StreamingSpeechConnection,
@@ -376,6 +385,7 @@ def create_interview_websocket_router(
     if speech is not None and not isinstance(speech, WebSocketSpeechRuntime):
         raise TypeError("speech must be a WebSocketSpeechRuntime")
     speech_runtime = speech or WebSocketSpeechRuntime()
+    active_task_protection = task_protection or NullTaskProtection()
     router = APIRouter(prefix="/v1")
 
     @router.websocket("/applicant/interview-sessions/{session_id}/stream")
@@ -411,7 +421,12 @@ def create_interview_websocket_router(
         except (LookupError, PermissionError):
             await websocket.close(code=4003)
             return
-        await websocket.accept()
+        await asyncio.to_thread(active_task_protection.acquire, session_id)
+        try:
+            await websocket.accept()
+        except BaseException:
+            await asyncio.to_thread(active_task_protection.release, session_id)
+            raise
         pending_audio: tuple[WebSocketEnvelope, AudioChunkMetadata] | None = None
         outgoing: asyncio.Queue[ServerEnvelope | bytes] = asyncio.Queue()
 
@@ -424,10 +439,13 @@ def create_interview_websocket_router(
         async def send_outgoing() -> None:
             while True:
                 response = await outgoing.get()
-                if isinstance(response, bytes):
-                    await websocket.send_bytes(response)
-                else:
-                    await websocket.send_json(response.model_dump(mode="json"))
+                try:
+                    if isinstance(response, bytes):
+                        await websocket.send_bytes(response)
+                    else:
+                        await websocket.send_json(response.model_dump(mode="json"))
+                finally:
+                    outgoing.task_done()
 
         sender = asyncio.create_task(send_outgoing())
         streaming = StreamingSpeechConnection(
@@ -527,16 +545,25 @@ def create_interview_websocket_router(
                     response = await _execute_transaction_async(
                         database, partial(handler.handle, context, principal, envelope)
                     )
+                except QuestionGenerationUnavailable as error:
+                    response = _question_generation_error(envelope, error)
                 except (ValueError, TypeError, SpeechProviderError):
                     response = _invalid_message(session_id)
                 await publish_handler_response(response)
+                if response.message_type == "session.completed":
+                    with suppress(TimeoutError):
+                        await asyncio.wait_for(outgoing.join(), timeout=5)
+                    return
         except WebSocketDisconnect:
             return
         finally:
             await streaming.abort()
             sender.cancel()
-            with suppress(asyncio.CancelledError):
-                await sender
+            try:
+                with suppress(asyncio.CancelledError):
+                    await sender
+            finally:
+                await asyncio.to_thread(active_task_protection.release, session_id)
 
     return router
 
@@ -586,6 +613,26 @@ def _invalid_message(session_id: UUID) -> ServerEnvelope:
             "message": "메시지 형식이 올바르지 않습니다.",
             "retryable": False,
             "current_sequence": 0,
+        },
+    )
+
+
+def _question_generation_error(
+    envelope: WebSocketEnvelope,
+    error: QuestionGenerationUnavailable,
+) -> ServerEnvelope:
+    return ServerEnvelope(
+        message_type="error",
+        session_id=envelope.session_id,
+        sequence=envelope.sequence,
+        idempotency_key=f"server:{envelope.idempotency_key}",
+        correlation_id=envelope.correlation_id,
+        sent_at=datetime.now(UTC),
+        payload={
+            "code": "QUESTION_GENERATION_UNAVAILABLE",
+            "message": "다음 질문을 준비하지 못했습니다. 잠시 후 다시 시도합니다.",
+            "retryable": error.retryable,
+            "current_sequence": envelope.sequence,
         },
     )
 

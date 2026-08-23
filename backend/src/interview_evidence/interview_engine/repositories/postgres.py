@@ -273,6 +273,7 @@ class QuestionRationaleRow(Base):
     verification_target_type: Mapped[str] = mapped_column(String(40))
     objective: Mapped[str] = mapped_column(String(4000))
     question_type: Mapped[str] = mapped_column(String(40))
+    interview_stage: Mapped[str] = mapped_column(String(40), server_default="technical")
     retrieval_version: Mapped[str] = mapped_column(String(100))
     generation_version: Mapped[str] = mapped_column(String(100))
     policy_result: Mapped[str] = mapped_column(String(100))
@@ -756,6 +757,7 @@ class SqlAlchemyInterviewRepository:
                 verification_target_type=rationale.verification_target_type,
                 objective=rationale.objective,
                 question_type=rationale.question_type,
+                interview_stage=rationale.interview_stage,
                 retrieval_version=rationale.retrieval_version,
                 generation_version=rationale.generation_version,
                 policy_result=rationale.policy_result,
@@ -995,6 +997,7 @@ class SqlAlchemyInterviewRepository:
             verification_target_type=row.verification_target_type,
             objective=row.objective,
             question_type=row.question_type,
+            interview_stage=row.interview_stage,
             retrieval_version=row.retrieval_version,
             generation_version=row.generation_version,
             policy_result=row.policy_result,

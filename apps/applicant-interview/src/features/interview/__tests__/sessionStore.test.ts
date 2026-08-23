@@ -33,11 +33,13 @@ describe("interview session store", () => {
       serverSequence: 5,
       lastFinalTurnId: "turn-4",
       lastVerifiedRecordingChunkSequence: 2,
+      lastRecordingEndMs: 4200,
       degradedModes: ["context_hot_view"],
     });
 
     expect(store.getState().serverSequence).toBe(5);
     expect(store.getState().localChunks).toHaveLength(1);
+    expect(store.getState().lastRecordingEndMs).toBe(4200);
     expect(store.getState().degradedModes).toEqual(["context_hot_view"]);
   });
 

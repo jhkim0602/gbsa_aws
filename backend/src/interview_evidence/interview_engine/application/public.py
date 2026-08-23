@@ -53,6 +53,7 @@ class QuestionRationaleSnapshot:
     verification_target_type: str
     objective: str
     question_type: str
+    interview_stage: str
     retrieval_version: str
     generation_version: str
     policy_result: str
@@ -180,6 +181,7 @@ class InterviewEnginePublic:
                 verification_target_type=(rationale.verification_target_type),
                 objective=rationale.objective,
                 question_type=rationale.question_type,
+                interview_stage=rationale.interview_stage,
                 retrieval_version=rationale.retrieval_version,
                 generation_version=rationale.generation_version,
                 policy_result=rationale.policy_result,

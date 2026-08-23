@@ -1,9 +1,16 @@
 from datetime import date, datetime
-from typing import Annotated, Protocol
+from typing import Annotated, Literal, Protocol
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from interview_evidence.company_management.adapters.company_auth import CompanyAuthAdapter
 from interview_evidence.company_management.application.company_service import CompanyService
@@ -77,14 +84,26 @@ class PositionCreate(BaseModel):
     description: str = Field(min_length=1, max_length=20_000)
     role_type: str | None = Field(default=None, max_length=100)
     headcount: int | None = Field(default=None, ge=1, le=10_000)
-    interview_capacity: int | None = Field(default=None, ge=1, le=10_000)
+    interview_capacity: int | None = Field(default=None, ge=1, le=400)
     interview_at: datetime | None = None
     recruitment_start_at: date | None = None
     recruitment_end_at: date | None = None
     submission_requirements: tuple[SubmissionRequirement, ...] = DEFAULT_SUBMISSION_REQUIREMENTS
 
+    @field_validator("interview_at")
+    @classmethod
+    def interview_time_must_include_timezone(
+        cls,
+        value: datetime | None,
+    ) -> datetime | None:
+        if value is not None and value.utcoffset() is None:
+            raise ValueError("interview_at must include a timezone")
+        return value
+
 
 class PositionView(PositionCreate):
+    # Historical rows may exceed the current guaranteed reservation ceiling.
+    interview_capacity: int | None = Field(default=None, ge=1, le=10_000)
     position_id: UUID
     status: str
     row_version: int
@@ -170,7 +189,7 @@ class CompetencyModelVersionCreate(BaseModel):
     job_requirements: tuple[JobRequirementInput, ...] = Field(min_length=1, max_length=50)
     criteria: tuple[EvaluationCriterionInput, ...] = Field(min_length=1)
     prohibited_topics: tuple[str, ...]
-    interview_duration_minutes: int = Field(ge=10, le=120)
+    interview_duration_minutes: Literal[30]
     interview_level: InterviewLevel = DEFAULT_INTERVIEW_LEVEL
     #: Declared here because `model_config` forbids extras: the console posts this field, and
     #: without it the whole publish request is rejected as `extra_forbidden` rather than the
@@ -727,6 +746,11 @@ def create_company_router(
             )
         except TenantScopedResourceNotFound as error:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(error),
+            ) from error
         audit.append(
             scope.context,
             action="invitation.batch_created",

@@ -19,6 +19,7 @@ from uuid import UUID
 import yaml
 from interview_evidence.reporting.api.company_routes import _report_view
 from interview_evidence.reporting.domain.report import (
+    COMMUNICATION_SEPARATED_CONFIG_VERSION,
     AssessmentState,
     AxisAssessment,
     Report,
@@ -82,7 +83,7 @@ def report() -> Report:
         kind=ReportKind.AI_ORIGINAL,
         model_version="m",
         prompt_version="p",
-        config_version="c",
+        config_version=COMMUNICATION_SEPARATED_CONFIG_VERSION,
         status=ReportStatus.READY,
         summary="요약",
         created_at=datetime(2026, 8, 20, tzinfo=UTC),

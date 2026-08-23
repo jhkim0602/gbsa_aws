@@ -170,6 +170,8 @@ def _report_view(report: Report, reviews: tuple[HumanReview, ...]) -> dict[str, 
         "summary": report.summary,
         "ai_original_immutable": True,
         "overall_score": report.overall_score,
+        "communication_score": report.communication_score,
+        "communication_scored_criteria_count": (report.communication_aggregate.scored_count),
         # Sent beside the score so a reviewer reading 82 also sees that three criteria
         # were never scored, instead of reading it as a verdict on the whole interview.
         "unscored_criteria_count": len(report.items) - len(report.scored_items),
@@ -188,12 +190,12 @@ def _report_view(report: Report, reviews: tuple[HumanReview, ...]) -> dict[str, 
                 "rationale": item.rationale,
                 "uncertainty": item.uncertainty,
                 "follow_up_question": item.follow_up_question,
-                "average_score": item.average_score,
+                "average_score": report.score_for(item),
                 # What this criterion counted for, and the same arithmetic one level down: the
                 # reviewer opening a criterion asks the same "why this number" question the
                 # report score already answers.
                 "criterion_weight": item.criterion_weight,
-                "axis_breakdown": _aggregate_view(item.axis_aggregate),
+                "axis_breakdown": _aggregate_view(report.axis_aggregate_for(item)),
                 "axis_assessments": [
                     {
                         "axis": axis.axis,
@@ -353,6 +355,7 @@ def create_company_router(
                     "question_rationale": (
                         {
                             "criterion_id": (item.question_rationale.criterion_id),
+                            "interview_stage": (item.question_rationale.interview_stage),
                             "verification_target_type": (
                                 item.question_rationale.verification_target_type
                             ),
@@ -498,7 +501,10 @@ def create_company_router(
                 scope_type=body.scope_type,
                 scope_id=body.scope_id,
                 reason=body.reason,
-                policy_snapshot={"retention_days": 180},
+                policy_snapshot={
+                    "source": "manual_request",
+                    "scope_type": body.scope_type,
+                },
                 occurred_at=clock.now(),
             )
         except LookupError as error:

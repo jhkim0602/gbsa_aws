@@ -1,6 +1,7 @@
 import pytest
 from interview_evidence.company_management.api.company_routes import (
     CompetencyModelVersionCreate,
+    PositionCreate,
 )
 from pydantic import ValidationError
 
@@ -43,6 +44,37 @@ def _payload(criteria: list[dict[str, object]]) -> dict[str, object]:
 def test_criterion_weights_must_total_one_hundred() -> None:
     with pytest.raises(ValidationError, match="criterion weights must total 100"):
         CompetencyModelVersionCreate.model_validate(_payload([_criterion("SYSTEM_DESIGN", 90)]))
+
+
+@pytest.mark.parametrize("duration", [10, 20, 45, 120])
+def test_new_interview_duration_is_fixed_at_thirty_minutes(duration: int) -> None:
+    payload = _payload([_criterion("SYSTEM_DESIGN", 100)])
+    payload["interview_duration_minutes"] = duration
+
+    with pytest.raises(ValidationError, match="Input should be 30"):
+        CompetencyModelVersionCreate.model_validate(payload)
+
+
+def test_position_capacity_cannot_exceed_the_guaranteed_api_ceiling() -> None:
+    with pytest.raises(ValidationError, match="less than or equal to 400"):
+        PositionCreate.model_validate(
+            {
+                "title": "대규모 면접",
+                "description": "예약 용량 한도를 검증합니다.",
+                "interview_capacity": 401,
+            }
+        )
+
+
+def test_position_interview_time_requires_an_explicit_timezone() -> None:
+    with pytest.raises(ValidationError, match="must include a timezone"):
+        PositionCreate.model_validate(
+            {
+                "title": "시간대 없는 면접",
+                "description": "예약 시각의 기준 지역이 필요합니다.",
+                "interview_at": "2026-09-15T14:00:00",
+            }
+        )
 
 
 def test_interviewer_voice_preset_is_kept_in_the_version_request() -> None:

@@ -17,6 +17,7 @@ from interview_evidence.interview_engine.application.idempotency import Idempote
 from interview_evidence.interview_engine.application.interview_plan import (
     InterviewPlan,
     InterviewPlanProvider,
+    InterviewStage,
 )
 from interview_evidence.interview_engine.application.interview_service import InterviewService
 from interview_evidence.interview_engine.application.session_service import (
@@ -102,6 +103,7 @@ class LiveInterviewHandler:
     ) -> ServerEnvelope:
         plan = self._plan(started, context)
         initial_target = plan.initial_target()
+        opening_prompt = plan.opening_prompt
         question_turn = self._repository.save_turn(
             context,
             InterviewTurn(
@@ -111,7 +113,7 @@ class LiveInterviewHandler:
                 sequence=self._next_turn_sequence(context, started.interview_session_id),
                 speaker=TurnSpeaker.INTERVIEWER,
                 status=TurnStatus.FINAL,
-                text=plan.initial_question,
+                text=opening_prompt,
                 target_criterion_id=(
                     initial_target.criterion_id
                     if initial_target is not None
@@ -138,27 +140,6 @@ class LiveInterviewHandler:
                     updated_at=self._clock.now(),
                 ),
             )
-            self._repository.save_question_rationale(
-                context,
-                QuestionRationale(
-                    question_rationale_id=new_uuid7(self._clock.now()),
-                    company_id=started.company_id,
-                    interview_session_id=started.interview_session_id,
-                    question_turn_id=question_turn.turn_id,
-                    applicant_id=started.applicant_id,
-                    competency_model_version_id=(started.competency_model_version_id),
-                    criterion_id=initial_target.criterion_id,
-                    verification_target_id=(initial_target.verification_target_id),
-                    verification_target_type=initial_target.target_type,
-                    objective=initial_target.objective,
-                    question_type="common",
-                    retrieval_version=plan.retrieval_config_version,
-                    generation_version=plan.model_config_version,
-                    policy_result="configured_common_question",
-                    source_reference_ids=(),
-                    created_at=self._clock.now(),
-                ),
-            )
         awaiting = self._state_machine.transition(
             started,
             expected_sequence=started.session_sequence,
@@ -176,7 +157,7 @@ class LiveInterviewHandler:
         )
         speech = self._speech.synthesize(
             context,
-            text=plan.initial_question,
+            text=opening_prompt,
             voice_id=plan.voice_id,
         )
         return self._question_message(
@@ -451,6 +432,36 @@ class LiveInterviewHandler:
             if previous_question is not None
             else None
         )
+        rationales = self._repository.list_question_rationales(
+            context,
+            envelope.session_id,
+        )
+        answered_stage = self._rationale_stage(rationale, fallback=plan.initial_stage)
+        current_stage = answered_stage or plan.initial_stage
+        stage_rationales = tuple(
+            item for item in rationales if item.interview_stage == current_stage.value
+        )
+        stage_elapsed_seconds = (
+            max(
+                0,
+                int(
+                    (
+                        self._clock.now() - min(item.created_at for item in stage_rationales)
+                    ).total_seconds()
+                ),
+            )
+            if stage_rationales
+            else 0
+        )
+        stage_decision = plan.next_stage_question(
+            current_stage=current_stage,
+            stage_question_count=len(stage_rationales),
+            stage_elapsed_seconds=stage_elapsed_seconds,
+            total_elapsed_seconds=self._elapsed_seconds(session),
+            last_question_was_final=(
+                rationale is not None and rationale.question_type == "stage_final"
+            ),
+        )
         progress_rows = self._repository.list_verification_progress(
             context,
             envelope.session_id,
@@ -464,7 +475,7 @@ class LiveInterviewHandler:
         if rationale is not None and plan.verification_targets:
             answered_target = plan.target(rationale.verification_target_id)
             existing_progress = progress_by_target.get(answered_target.verification_target_id)
-            question_target = plan.next_target_after_answer(
+            question_target = plan.next_target_for_question(
                 answered_target_id=answered_target.verification_target_id,
                 follow_up_count=(
                     existing_progress.follow_up_count if existing_progress is not None else 0
@@ -478,42 +489,54 @@ class LiveInterviewHandler:
                         VerificationProgressState.EXHAUSTED,
                     }
                 ),
-                elapsed_seconds=self._elapsed_seconds(session),
+                prefer_new_target=stage_decision.stage is not current_stage,
             )
-            if question_target is None:
-                self._interview_service.finalize_answer_and_complete(
-                    context,
-                    session_id=envelope.session_id,
-                    expected_sequence=envelope.sequence,
-                    answer_turn_id=answer_turn_id,
-                    answer_text=answer.text,
-                    last_recording_chunk_sequence=_non_negative_int(
-                        envelope.payload.get("last_recording_chunk_sequence")
+        elif (
+            previous_question is not None
+            and plan.is_warm_up_question(previous_question.text)
+            and plan.verification_targets
+        ):
+            question_target = plan.initial_target()
+            if question_target is not None:
+                existing_progress = progress_by_target.get(question_target.verification_target_id)
+        elif plan.verification_targets:
+            question_target = plan.initial_target()
+
+        if stage_decision.completes_interview:
+            self._interview_service.finalize_answer_and_complete(
+                context,
+                session_id=envelope.session_id,
+                expected_sequence=envelope.sequence,
+                answer_turn_id=answer_turn_id,
+                answer_text=answer.text,
+                last_recording_chunk_sequence=_non_negative_int(
+                    envelope.payload.get("last_recording_chunk_sequence")
+                ),
+                idempotency_key=envelope.idempotency_key,
+                answered_target=answered_target,
+                answered_stage=answered_stage,
+                existing_progress=existing_progress,
+                occurred_at=self._clock.now(),
+            )
+            completed = self._repository.get_session(
+                context,
+                envelope.session_id,
+            )
+            return self._message(
+                envelope,
+                message_type="session.completed",
+                sequence=completed.session_sequence,
+                payload={
+                    "state": completed.state.value,
+                    "completed_at": (
+                        completed.completed_at.isoformat()
+                        if completed.completed_at is not None
+                        else self._clock.now().isoformat()
                     ),
-                    idempotency_key=envelope.idempotency_key,
-                    answered_target=answered_target,
-                    existing_progress=existing_progress,
-                    occurred_at=self._clock.now(),
-                )
-                completed = self._repository.get_session(
-                    context,
-                    envelope.session_id,
-                )
-                return self._message(
-                    envelope,
-                    message_type="session.completed",
-                    sequence=completed.session_sequence,
-                    payload={
-                        "state": completed.state.value,
-                        "completed_at": (
-                            completed.completed_at.isoformat()
-                            if completed.completed_at is not None
-                            else self._clock.now().isoformat()
-                        ),
-                        "last_turn_id": str(answer_turn_id),
-                        "post_processing_status": "queued",
-                    },
-                )
+                    "last_turn_id": str(answer_turn_id),
+                    "post_processing_status": "queued",
+                },
+            )
         target = (
             question_target.criterion_id
             if question_target is not None
@@ -551,6 +574,9 @@ class LiveInterviewHandler:
             voice_id=plan.voice_id,
             occurred_at=self._clock.now(),
             interview_level=plan.interview_level,
+            interview_stage=stage_decision.stage,
+            question_type=stage_decision.question_type,
+            answered_stage=answered_stage,
             answered_target=answered_target,
             question_target=question_target,
             existing_progress=existing_progress,
@@ -631,6 +657,19 @@ class LiveInterviewHandler:
         if session.started_at is None:
             return 0
         return max(0, int((self._clock.now() - session.started_at).total_seconds()))
+
+    @staticmethod
+    def _rationale_stage(
+        rationale: QuestionRationale | None,
+        *,
+        fallback: InterviewStage,
+    ) -> InterviewStage | None:
+        if rationale is None:
+            return None
+        try:
+            return InterviewStage(rationale.interview_stage)
+        except ValueError:
+            return fallback
 
     def _next_turn_sequence(self, context: TenantContext, session_id: UUID) -> int:
         turns = self._repository.list_turns(context, session_id)

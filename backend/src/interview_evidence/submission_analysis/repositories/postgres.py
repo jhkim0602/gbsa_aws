@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
 from typing import Protocol, TypeVar
 from uuid import UUID
@@ -90,6 +91,14 @@ class Base(DeclarativeBase):
 
 class SubmissionRow(Base):
     __tablename__ = "submissions"
+    __table_args__ = (
+        Index(
+            "ix_submissions_invitation_material",
+            "company_id",
+            "invitation_id",
+            "material_type",
+        ),
+    )
 
     company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     submission_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
@@ -542,6 +551,427 @@ class SubmissionRepository(Protocol):
         resource_type: str,
         resource_id: UUID,
     ) -> bool: ...
+
+
+class InMemorySubmissionRepository:
+    def __init__(self) -> None:
+        self.submissions: dict[UUID, Submission] = {}
+        self.analyses: dict[UUID, SubmissionAnalysis] = {}
+        self.chunks: dict[UUID, SubmissionChunk] = {}
+        self.git_repositories: dict[UUID, GitRepositoryAnalysis] = {}
+        self.git_commits: dict[UUID, GitCommitAnalysis] = {}
+        self.code_units: dict[UUID, CandidateCodeUnit] = {}
+        self.strategies: dict[UUID, InterviewStrategy] = {}
+        self.candidate_claims: dict[UUID, CandidateClaim] = {}
+        self.claim_conflicts: dict[UUID, ClaimConflict] = {}
+        self.verification_targets: dict[UUID, VerificationTarget] = {}
+        self.verification_maps: dict[UUID, CandidateVerificationMap] = {}
+
+    @staticmethod
+    def _scoped(
+        context: TenantContext,
+        values: Mapping[UUID, TenantOwnedT],
+        resource_id: UUID,
+    ) -> TenantOwnedT:
+        tenant = require_tenant_context(context)
+        value = values.get(resource_id)
+        if value is None or value.company_id != tenant.company_id:
+            raise TenantScopedSubmissionNotFound("submission resource not found")
+        return value
+
+    def save_submission(self, context: TenantContext, submission: Submission) -> Submission:
+        require_tenant_context(context).assert_company(submission.company_id)
+        self.submissions[submission.submission_id] = submission
+        return submission
+
+    def get_submission(self, context: TenantContext, submission_id: UUID) -> Submission:
+        return self._scoped(context, self.submissions, submission_id)
+
+    def list_submissions(
+        self, context: TenantContext, applicant_id: UUID
+    ) -> tuple[Submission, ...]:
+        tenant = require_tenant_context(context)
+        if tenant.actor_type.value == "applicant" and tenant.actor_id != applicant_id:
+            raise PermissionError("applicant scope mismatch")
+        return tuple(
+            value
+            for value in self.submissions.values()
+            if value.company_id == tenant.company_id and value.applicant_id == applicant_id
+        )
+
+    def list_submissions_for_invitation(
+        self, context: TenantContext, invitation_id: UUID
+    ) -> tuple[Submission, ...]:
+        tenant = require_tenant_context(context)
+        return tuple(
+            value
+            for value in self.submissions.values()
+            if value.company_id == tenant.company_id and value.invitation_id == invitation_id
+        )
+
+    def save_analysis(
+        self, context: TenantContext, analysis: SubmissionAnalysis
+    ) -> SubmissionAnalysis:
+        require_tenant_context(context).assert_company(analysis.company_id)
+        self.get_submission(context, analysis.submission_id)
+        self.analyses[analysis.analysis_id] = analysis
+        return analysis
+
+    def list_analyses(
+        self, context: TenantContext, submission_ids: frozenset[UUID]
+    ) -> tuple[SubmissionAnalysis, ...]:
+        tenant = require_tenant_context(context)
+        return tuple(
+            analysis
+            for analysis in self.analyses.values()
+            if analysis.company_id == tenant.company_id and analysis.submission_id in submission_ids
+        )
+
+    def save_chunks(
+        self, context: TenantContext, chunks: tuple[SubmissionChunk, ...]
+    ) -> tuple[SubmissionChunk, ...]:
+        for chunk in chunks:
+            require_tenant_context(context).assert_company(chunk.company_id)
+            self.get_submission(context, chunk.submission_id)
+            self.chunks[chunk.chunk_id] = chunk
+        return chunks
+
+    def list_chunks(
+        self, context: TenantContext, applicant_id: UUID
+    ) -> tuple[SubmissionChunk, ...]:
+        tenant = require_tenant_context(context)
+        return tuple(
+            chunk
+            for chunk in self.chunks.values()
+            if chunk.company_id == tenant.company_id and chunk.applicant_id == applicant_id
+        )
+
+    def get_chunk(self, context: TenantContext, chunk_id: UUID) -> SubmissionChunk:
+        return self._scoped(context, self.chunks, chunk_id)
+
+    def save_git_repository_analysis(
+        self,
+        context: TenantContext,
+        analysis: GitRepositoryAnalysis,
+    ) -> GitRepositoryAnalysis:
+        require_tenant_context(context).assert_company(analysis.company_id)
+        self.get_submission(context, analysis.submission_id)
+        self.git_repositories[analysis.repository_analysis_id] = analysis
+        return analysis
+
+    def list_git_repository_analyses(
+        self, context: TenantContext, submission_ids: frozenset[UUID]
+    ) -> tuple[GitRepositoryAnalysis, ...]:
+        tenant = require_tenant_context(context)
+        return tuple(
+            analysis
+            for analysis in self.git_repositories.values()
+            if analysis.company_id == tenant.company_id and analysis.submission_id in submission_ids
+        )
+
+    def save_git_commit_analyses(
+        self,
+        context: TenantContext,
+        analyses: tuple[GitCommitAnalysis, ...],
+    ) -> tuple[GitCommitAnalysis, ...]:
+        for analysis in analyses:
+            require_tenant_context(context).assert_company(analysis.company_id)
+            self.git_commits[analysis.git_commit_analysis_id] = analysis
+        return analyses
+
+    def list_git_commit_analyses(
+        self, context: TenantContext, repository_analysis_ids: frozenset[UUID]
+    ) -> tuple[GitCommitAnalysis, ...]:
+        tenant = require_tenant_context(context)
+        return tuple(
+            analysis
+            for analysis in self.git_commits.values()
+            if analysis.company_id == tenant.company_id
+            and analysis.repository_analysis_id in repository_analysis_ids
+        )
+
+    def save_code_units(
+        self,
+        context: TenantContext,
+        units: tuple[CandidateCodeUnit, ...],
+    ) -> tuple[CandidateCodeUnit, ...]:
+        for unit in units:
+            require_tenant_context(context).assert_company(unit.company_id)
+            self.code_units[unit.code_unit_id] = unit
+        return units
+
+    def list_code_units(
+        self, context: TenantContext, commit_analysis_ids: frozenset[UUID]
+    ) -> tuple[CandidateCodeUnit, ...]:
+        tenant = require_tenant_context(context)
+        return tuple(
+            unit
+            for unit in self.code_units.values()
+            if unit.company_id == tenant.company_id
+            and unit.git_commit_analysis_id in commit_analysis_ids
+        )
+
+    def get_code_unit(self, context: TenantContext, code_unit_id: UUID) -> CandidateCodeUnit:
+        return self._scoped(context, self.code_units, code_unit_id)
+
+    def get_git_commit_analysis(
+        self, context: TenantContext, commit_analysis_id: UUID
+    ) -> GitCommitAnalysis:
+        return self._scoped(context, self.git_commits, commit_analysis_id)
+
+    def save_strategy(
+        self, context: TenantContext, strategy: InterviewStrategy
+    ) -> InterviewStrategy:
+        require_tenant_context(context).assert_company(strategy.company_id)
+        # uq_interview_strategies_invitation_version, enforced here as well because keying
+        # only by strategy id let a second strategy at the same version pass every test on
+        # this double and then fail the Postgres insert.
+        conflict = next(
+            (
+                existing
+                for existing in self.strategies.values()
+                if existing.company_id == strategy.company_id
+                and existing.invitation_id == strategy.invitation_id
+                and existing.strategy_version == strategy.strategy_version
+                and existing.interview_strategy_id != strategy.interview_strategy_id
+            ),
+            None,
+        )
+        if conflict is not None:
+            raise DuplicateStrategyVersion(
+                f"strategy version {strategy.strategy_version} already exists "
+                f"for invitation {strategy.invitation_id}"
+            )
+        self.strategies[strategy.interview_strategy_id] = strategy
+        return strategy
+
+    def latest_strategy(
+        self, context: TenantContext, invitation_id: UUID
+    ) -> InterviewStrategy | None:
+        tenant = require_tenant_context(context)
+        matches = [
+            strategy
+            for strategy in self.strategies.values()
+            if strategy.company_id == tenant.company_id and strategy.invitation_id == invitation_id
+        ]
+        return max(matches, key=lambda value: value.strategy_version, default=None)
+
+    def get_strategy(self, context: TenantContext, strategy_id: UUID) -> InterviewStrategy:
+        return self._scoped(context, self.strategies, strategy_id)
+
+    def save_candidate_claims(
+        self,
+        context: TenantContext,
+        claims: tuple[CandidateClaim, ...],
+    ) -> tuple[CandidateClaim, ...]:
+        tenant = require_tenant_context(context)
+        for claim in claims:
+            tenant.assert_company(claim.company_id)
+            self.candidate_claims[claim.candidate_claim_id] = claim
+        return claims
+
+    def list_candidate_claims(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+    ) -> tuple[CandidateClaim, ...]:
+        tenant = require_tenant_context(context)
+        return tuple(
+            claim
+            for claim in self.candidate_claims.values()
+            if claim.company_id == tenant.company_id
+            and claim.applicant_id == applicant_id
+            and claim.invitation_id == invitation_id
+        )
+
+    def save_claim_conflicts(
+        self,
+        context: TenantContext,
+        conflicts: tuple[ClaimConflict, ...],
+    ) -> tuple[ClaimConflict, ...]:
+        tenant = require_tenant_context(context)
+        for conflict in conflicts:
+            tenant.assert_company(conflict.company_id)
+            self.claim_conflicts[conflict.claim_conflict_id] = conflict
+        return conflicts
+
+    def list_claim_conflicts(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+    ) -> tuple[ClaimConflict, ...]:
+        tenant = require_tenant_context(context)
+        return tuple(
+            conflict
+            for conflict in self.claim_conflicts.values()
+            if conflict.company_id == tenant.company_id
+            and conflict.applicant_id == applicant_id
+            and conflict.invitation_id == invitation_id
+        )
+
+    def save_verification_targets(
+        self,
+        context: TenantContext,
+        targets: tuple[VerificationTarget, ...],
+    ) -> tuple[VerificationTarget, ...]:
+        tenant = require_tenant_context(context)
+        for target in targets:
+            tenant.assert_company(target.company_id)
+            self.verification_targets[target.verification_target_id] = target
+        return targets
+
+    def save_verification_map(
+        self,
+        context: TenantContext,
+        verification_map: CandidateVerificationMap,
+    ) -> CandidateVerificationMap:
+        require_tenant_context(context).assert_company(verification_map.company_id)
+        self.verification_maps[verification_map.candidate_verification_map_id] = verification_map
+        return verification_map
+
+    def get_verification_map(
+        self,
+        context: TenantContext,
+        verification_map_id: UUID,
+    ) -> CandidateVerificationMap:
+        return self._scoped(context, self.verification_maps, verification_map_id)
+
+    def latest_verification_map(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+        competency_model_version_id: UUID,
+    ) -> CandidateVerificationMap | None:
+        tenant = require_tenant_context(context)
+        matches = (
+            verification_map
+            for verification_map in self.verification_maps.values()
+            if verification_map.company_id == tenant.company_id
+            and verification_map.applicant_id == applicant_id
+            and verification_map.invitation_id == invitation_id
+            and verification_map.competency_model_version_id == competency_model_version_id
+        )
+        return max(matches, key=lambda item: item.created_at, default=None)
+
+    def list_verification_maps(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+    ) -> tuple[CandidateVerificationMap, ...]:
+        tenant = require_tenant_context(context)
+        return tuple(
+            verification_map
+            for verification_map in self.verification_maps.values()
+            if verification_map.company_id == tenant.company_id
+            and verification_map.applicant_id == applicant_id
+            and verification_map.invitation_id == invitation_id
+        )
+
+    def list_verification_targets(
+        self,
+        context: TenantContext,
+        verification_map: CandidateVerificationMap,
+    ) -> tuple[VerificationTarget, ...]:
+        require_tenant_context(context).assert_company(verification_map.company_id)
+        return tuple(
+            self._scoped(context, self.verification_targets, target_id)
+            for target_id in verification_map.ordered_target_ids
+        )
+
+    def list_retrieval_document_ids(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+    ) -> tuple[UUID, ...]:
+        require_tenant_context(context)
+        return ()
+
+    def delete_and_verify_target(
+        self,
+        context: TenantContext,
+        *,
+        resource_type: str,
+        resource_id: UUID,
+    ) -> bool:
+        tenant = require_tenant_context(context)
+        if resource_type == "submission":
+            submission = self.submissions.get(resource_id)
+            if submission is not None:
+                tenant.assert_company(submission.company_id)
+                self.submissions.pop(resource_id, None)
+            return resource_id not in self.submissions
+        if resource_type == "submission_analysis":
+            analysis = self.analyses.get(resource_id)
+            if analysis is not None:
+                tenant.assert_company(analysis.company_id)
+                self.analyses.pop(resource_id, None)
+            return resource_id not in self.analyses
+        if resource_type == "submission_chunk":
+            chunk = self.chunks.get(resource_id)
+            if chunk is not None:
+                tenant.assert_company(chunk.company_id)
+                self.chunks.pop(resource_id, None)
+            return resource_id not in self.chunks
+        if resource_type == "git_repository_analysis":
+            repository_analysis = self.git_repositories.get(resource_id)
+            if repository_analysis is not None:
+                tenant.assert_company(repository_analysis.company_id)
+                self.git_repositories.pop(resource_id, None)
+            return resource_id not in self.git_repositories
+        if resource_type == "git_commit_analysis":
+            commit_analysis = self.git_commits.get(resource_id)
+            if commit_analysis is not None:
+                tenant.assert_company(commit_analysis.company_id)
+                self.git_commits.pop(resource_id, None)
+            return resource_id not in self.git_commits
+        if resource_type == "candidate_code_unit":
+            code_unit = self.code_units.get(resource_id)
+            if code_unit is not None:
+                tenant.assert_company(code_unit.company_id)
+                self.code_units.pop(resource_id, None)
+            return resource_id not in self.code_units
+        if resource_type == "interview_strategy":
+            strategy = self.strategies.get(resource_id)
+            if strategy is not None:
+                tenant.assert_company(strategy.company_id)
+                self.strategies.pop(resource_id, None)
+            return resource_id not in self.strategies
+        if resource_type == "candidate_claim":
+            claim = self.candidate_claims.get(resource_id)
+            if claim is not None:
+                tenant.assert_company(claim.company_id)
+                self.candidate_claims.pop(resource_id, None)
+            return resource_id not in self.candidate_claims
+        if resource_type == "claim_conflict":
+            conflict = self.claim_conflicts.get(resource_id)
+            if conflict is not None:
+                tenant.assert_company(conflict.company_id)
+                self.claim_conflicts.pop(resource_id, None)
+            return resource_id not in self.claim_conflicts
+        if resource_type == "verification_target":
+            target = self.verification_targets.get(resource_id)
+            if target is not None:
+                tenant.assert_company(target.company_id)
+                self.verification_targets.pop(resource_id, None)
+            return resource_id not in self.verification_targets
+        if resource_type == "candidate_verification_map":
+            verification_map = self.verification_maps.get(resource_id)
+            if verification_map is not None:
+                tenant.assert_company(verification_map.company_id)
+                self.verification_maps.pop(resource_id, None)
+            return resource_id not in self.verification_maps
+        raise ValueError("unsupported submission deletion target")
+
 
 
 class SqlAlchemySubmissionRepository:

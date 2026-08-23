@@ -1,4 +1,5 @@
 export type RequirementType = "required" | "preferred";
+export type CriterionImportance = "low" | "medium" | "high";
 
 /** How deep the AI interviewer digs. Mirrors the InterviewLevel contract enum. */
 export type InterviewLevel = "entry" | "junior" | "senior";
@@ -90,6 +91,7 @@ export type CriterionDraft = {
   name: string;
   description: string;
   weight: number;
+  importance?: CriterionImportance;
   required: boolean;
   observableDimensions: string;
   strongAnswerSignals: string;
@@ -204,6 +206,7 @@ export function createCriterionDraft(index: number): CriterionDraft {
     name: "",
     description: "",
     weight: index === 1 ? 100 : 20,
+    importance: "medium",
     required: index === 1,
     observableDimensions: "상황\n본인이 직접 수행한 행동\n판단 근거\n결과",
     strongAnswerSignals: "구체적인 상황, 본인 역할, 행동과 결과가 포함됨",

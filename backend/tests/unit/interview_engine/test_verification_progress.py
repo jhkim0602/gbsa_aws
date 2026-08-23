@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from interview_evidence.interview_engine.application.interview_plan import (
+    FIXED_INTERVIEW_DURATION_SECONDS,
     InterviewPlan,
     VerificationTargetPlan,
 )
@@ -64,7 +65,7 @@ def _plan() -> InterviewPlan:
         initial_question="운영 장애를 해결한 경험을 설명해 주세요?",
         prohibited_topics=(),
         fallback_question="본인이 직접 수행한 작업을 설명해 주세요?",
-        remaining_time_seconds=900,
+        remaining_time_seconds=FIXED_INTERVIEW_DURATION_SECONDS,
         model_config_version="question-v2",
         retrieval_config_version="aurora-hybrid-v1",
         voice_id="Seoyeon",
@@ -167,7 +168,6 @@ def test_repository_persists_final_answer_progress_and_question_rationale() -> N
 def _leveled_plan(
     level: InterviewLevel,
     *,
-    remaining_time_seconds: int = 900,
     second_budget_seconds: int = 300,
 ) -> InterviewPlan:
     return InterviewPlan(
@@ -175,7 +175,7 @@ def _leveled_plan(
         initial_question="운영 장애를 해결한 경험을 설명해 주세요?",
         prohibited_topics=(),
         fallback_question="본인이 직접 수행한 작업을 설명해 주세요?",
-        remaining_time_seconds=remaining_time_seconds,
+        remaining_time_seconds=FIXED_INTERVIEW_DURATION_SECONDS,
         model_config_version="question-v2",
         retrieval_config_version="aurora-hybrid-v1",
         voice_id="Seoyeon",
@@ -231,7 +231,6 @@ def test_the_plan_refuses_to_open_a_criterion_the_clock_cannot_finish() -> None:
     """
     plan = _leveled_plan(
         InterviewLevel.JUNIOR,
-        remaining_time_seconds=600,
         second_budget_seconds=300,
     )
 
@@ -241,7 +240,7 @@ def test_the_plan_refuses_to_open_a_criterion_the_clock_cannot_finish() -> None:
             answered_target_id=FIRST_TARGET_ID,
             follow_up_count=2,
             completed_target_ids=frozenset(),
-            elapsed_seconds=400,
+            elapsed_seconds=1600,
         )
         is None
     )
@@ -251,21 +250,21 @@ def test_the_plan_refuses_to_open_a_criterion_the_clock_cannot_finish() -> None:
             answered_target_id=FIRST_TARGET_ID,
             follow_up_count=2,
             completed_target_ids=frozenset(),
-            elapsed_seconds=60,
+            elapsed_seconds=100,
         ).verification_target_id
         == SECOND_TARGET_ID
     )
 
 
 def test_a_spent_clock_ends_the_interview_even_mid_criterion() -> None:
-    plan = _leveled_plan(InterviewLevel.SENIOR, remaining_time_seconds=600)
+    plan = _leveled_plan(InterviewLevel.SENIOR)
 
     assert (
         plan.next_target_after_answer(
             answered_target_id=FIRST_TARGET_ID,
             follow_up_count=0,
             completed_target_ids=frozenset(),
-            elapsed_seconds=600,
+            elapsed_seconds=FIXED_INTERVIEW_DURATION_SECONDS,
         )
         is None
     )

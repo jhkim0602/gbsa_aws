@@ -3,10 +3,16 @@ from __future__ import annotations
 import hashlib
 import time
 from collections.abc import Callable, Mapping
+from functools import partial
+from threading import Event, Thread
 from typing import Protocol
 from uuid import UUID
 
 from interview_evidence.shared.aws_clients.ports import ConsumableQueue, EventQueue
+from interview_evidence.shared.aws_clients.task_protection import (
+    NullTaskProtection,
+    TaskProtection,
+)
 from interview_evidence.shared.ids import Clock
 from interview_evidence.shared.messaging.outbox import (
     Outbox,
@@ -17,6 +23,11 @@ from interview_evidence.shared.operations import MetricRecorder, NullMetricRecor
 from interview_evidence.shared.tenant import ActorType, TenantContext
 
 EventHandler = Callable[[TenantContext, OutboxEvent], object]
+TransactionCallback = Callable[[], None]
+
+
+class MessageRetryRequested(RuntimeError):
+    """A handled delivery that must be retried without being marked processed."""
 
 
 class ProcessedMessageStore(Protocol):
@@ -37,6 +48,35 @@ class ProcessedMessageStore(Protocol):
     ) -> ProcessedMessage: ...
 
     def record(self, message: ProcessedMessage) -> None: ...
+
+
+class InMemoryProcessedMessageStore:
+    def __init__(self) -> None:
+        self._messages: dict[tuple[str, UUID, int], ProcessedMessage] = {}
+
+    def contains(
+        self,
+        *,
+        consumer_name: str,
+        event_id: UUID,
+        event_version: int,
+    ) -> bool:
+        return (consumer_name, event_id, event_version) in self._messages
+
+    def get(
+        self,
+        *,
+        consumer_name: str,
+        event_id: UUID,
+        event_version: int,
+    ) -> ProcessedMessage:
+        return self._messages[(consumer_name, event_id, event_version)]
+
+    def record(self, message: ProcessedMessage) -> None:
+        self._messages.setdefault(
+            (message.consumer_name, message.event_id, message.event_version),
+            message,
+        )
 
 
 class OutboxDispatcher:
@@ -108,6 +148,7 @@ class MessageConsumer:
         clock: Clock,
         queue_name: str | None = None,
         metrics: MetricRecorder | None = None,
+        task_protection: TaskProtection | None = None,
     ) -> None:
         self._consumer_name = consumer_name
         self._queue = queue
@@ -116,8 +157,17 @@ class MessageConsumer:
         self._clock = clock
         self._queue_name = queue_name or consumer_name.removesuffix("-worker")
         self._metrics = metrics or NullMetricRecorder()
+        self._task_protection = task_protection or NullTaskProtection()
 
-    def consume_once(self, *, max_messages: int) -> int:
+    def consume_once(
+        self,
+        *,
+        max_messages: int,
+        commit: TransactionCallback | None = None,
+        rollback: TransactionCallback | None = None,
+    ) -> int:
+        commit_transaction = commit or (lambda: None)
+        rollback_transaction = rollback or (lambda: None)
         completed = 0
         deliveries = self._queue.receive(max_messages=max_messages)
         self._record_queue_depth()
@@ -149,6 +199,7 @@ class MessageConsumer:
                 idempotency_key=delivery.idempotency_key,
                 trace_id=delivery.trace_id,
                 occurred_at=delivery.occurred_at,
+                delivery_attempt=delivery.receive_count,
             )
             context = TenantContext(
                 company_id=delivery.company_id,
@@ -159,12 +210,25 @@ class MessageConsumer:
             )
             started_at = time.perf_counter()
             try:
-                outcome = handler(context, event)
-            except (TimeoutError, ConnectionError):
+                self._task_protection.acquire(delivery.event_id)
+                try:
+                    outcome = self._handle_with_heartbeat(
+                        delivery.receipt_handle,
+                        partial(handler, context, event),
+                    )
+                finally:
+                    self._task_protection.release(delivery.event_id)
+                if _requests_retry(outcome):
+                    raise MessageRetryRequested("handler requested retry")
+            except (MessageRetryRequested, TimeoutError, ConnectionError):
+                rollback_transaction()
                 self._record_latency(delivery.event_type, delivery.event_version, started_at)
                 self._record_delivery("retrying")
                 self._queue.retry(delivery.receipt_handle)
                 continue
+            except BaseException:
+                rollback_transaction()
+                raise
             self._record_latency(delivery.event_type, delivery.event_version, started_at)
             digest = hashlib.sha256(repr(outcome).encode("utf-8")).hexdigest()
             self._processed.record(
@@ -177,10 +241,47 @@ class MessageConsumer:
                     outcome_digest=digest,
                 )
             )
+            try:
+                commit_transaction()
+            except BaseException:
+                rollback_transaction()
+                raise
             self._queue.acknowledge(delivery.receipt_handle)
             self._record_delivery("completed")
             completed += 1
         return completed
+
+    def _handle_with_heartbeat(
+        self,
+        receipt_handle: str,
+        handler: Callable[[], object],
+    ) -> object:
+        extend = getattr(self._queue, "extend_visibility", None)
+        visibility_timeout = int(getattr(self._queue, "visibility_timeout_seconds", 0))
+        if not callable(extend) or visibility_timeout < 3:
+            return handler()
+        stopped = Event()
+        failures: list[BaseException] = []
+
+        def heartbeat() -> None:
+            interval = max(1, visibility_timeout // 3)
+            while not stopped.wait(interval):
+                try:
+                    extend(receipt_handle, visibility_timeout)
+                except BaseException as error:
+                    failures.append(error)
+                    stopped.set()
+
+        thread = Thread(target=heartbeat, name=f"{self._queue_name}-visibility", daemon=True)
+        thread.start()
+        try:
+            outcome = handler()
+        finally:
+            stopped.set()
+            thread.join(timeout=1)
+        if failures:
+            raise ConnectionError("queue visibility heartbeat failed") from failures[0]
+        return outcome
 
     def _record_queue_depth(self) -> None:
         depth_reader = getattr(self._queue, "approximate_depth", None)
@@ -219,3 +320,8 @@ class MessageConsumer:
                 "outcome": outcome,
             },
         )
+
+
+def _requests_retry(outcome: object) -> bool:
+    status = getattr(outcome, "status", None)
+    return getattr(status, "value", status) == "retrying"

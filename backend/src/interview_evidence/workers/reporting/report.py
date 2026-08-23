@@ -12,6 +12,7 @@ from interview_evidence.reporting.application.assessment_service import (
 )
 from interview_evidence.reporting.application.evidence_service import EvidenceService
 from interview_evidence.reporting.domain.report import (
+    COMMUNICATION_SEPARATED_CONFIG_VERSION,
     AssessmentState,
     Evidence,
     EvidenceRangeError,
@@ -36,29 +37,28 @@ from interview_evidence.shared.tenant import TenantContext
 
 
 @dataclass(frozen=True, slots=True)
-class CriterionInput:
-    """One criterion to report on, with the answer that addressed it -- if there was one.
+class CriterionAnswerInput:
+    """One scored applicant answer and the question it followed."""
 
-    ``answer_turn_id`` and ``transcript`` are ``None`` when the interview never produced an
-    answer for this criterion. That is not an error and must not be dropped: the criterion still
-    carries ``weight``, so leaving it out of the report would shrink the divisor the score is
-    read against without saying so. It becomes an ``insufficient_evidence`` item instead, which
-    the report aggregate excludes with its weight visible.
-    """
+    question: str
+    answer_turn_id: UUID
+    transcript: TranscriptSegment
+    video_start_ms: int
+    video_end_ms: int
+    interview_stage: str
+
+
+@dataclass(frozen=True, slots=True)
+class CriterionInput:
+    """One criterion and every non-duplicate answer that addressed it."""
 
     criterion_id: UUID
     observation: str
-    answer_turn_id: UUID | None
-    transcript: TranscriptSegment | None
-    video_start_ms: int = 0
-    video_end_ms: int = 0
+    answers: tuple[CriterionAnswerInput, ...] = ()
     criterion_name: str = ""
     #: What the criterion asks for, so the scorer judges the answer against the company's
     #: own wording rather than against a generic idea of a good answer.
     criterion_text: str = ""
-    #: The question the applicant was actually answering. Without it a terse answer reads
-    #: as evasive when it may have been exactly what was asked for.
-    question: str = ""
     #: What this criterion counts for in the report score, from the published version. Defaults
     #: to 1.0 so a caller that does not pass weights produces the plain mean this used to be.
     weight: float = 1.0
@@ -100,7 +100,7 @@ class ReportGenerator:
             state = AssessmentState.INSUFFICIENT_EVIDENCE
             evidence: tuple[Evidence, ...] = ()
             uncertainty = "유효한 영상·자막 Evidence가 부족함"
-            if criterion.answer_turn_id is None or criterion.transcript is None:
+            if not criterion.answers:
                 # The interview never reached this criterion. Reported rather than omitted:
                 # it carries weight, and a criterion missing from the report would shrink the
                 # divisor without appearing anywhere a reviewer could see it.
@@ -117,37 +117,43 @@ class ReportGenerator:
                     )
                 )
                 continue
-            candidate = Evidence(
-                evidence_id=new_uuid7(occurred_at),
-                company_id=context.company_id,
-                report_item_id=report_item_id,
-                criterion_id=criterion.criterion_id,
-                competency_model_version_id=competency_model_version_id,
-                answer_turn_id=criterion.answer_turn_id,
-                transcript_segment_id=criterion.transcript.transcript_segment_id,
-                video_start_ms=criterion.video_start_ms,
-                video_end_ms=criterion.video_end_ms,
-                observation=criterion.observation,
-                rationale="최종 답변의 자막과 유효 영상 구간에 직접 연결됨",
-                sufficiency=Sufficiency.DIRECT,
-                generation_version="report-v1",
-                created_at=occurred_at,
-            )
-            try:
-                valid = self._evidence_service.validate(
-                    context,
-                    evidence=candidate,
-                    final_answer_turn_id=criterion.answer_turn_id,
-                    transcript=criterion.transcript,
-                    recording=recording,
-                    events=events,
-                )
-            except (EvidenceRangeError, ValueError):
-                pass
-            else:
+            validated: list[Evidence] = []
+            for answer in criterion.answers:
+                try:
+                    candidate = Evidence(
+                        evidence_id=new_uuid7(occurred_at),
+                        company_id=context.company_id,
+                        report_item_id=report_item_id,
+                        criterion_id=criterion.criterion_id,
+                        competency_model_version_id=competency_model_version_id,
+                        answer_turn_id=answer.answer_turn_id,
+                        transcript_segment_id=answer.transcript.transcript_segment_id,
+                        video_start_ms=answer.video_start_ms,
+                        video_end_ms=answer.video_end_ms,
+                        observation=f"{_stage_label(answer.interview_stage)}에서 확인한 답변",
+                        rationale="질문에 이어진 최종 답변의 자막과 영상 구간에 직접 연결됨",
+                        sufficiency=Sufficiency.DIRECT,
+                        generation_version="report-v1",
+                        created_at=occurred_at,
+                    )
+                    valid = self._evidence_service.validate(
+                        context,
+                        evidence=candidate,
+                        final_answer_turn_id=answer.answer_turn_id,
+                        transcript=answer.transcript,
+                        recording=recording,
+                        events=events,
+                    )
+                except (EvidenceRangeError, ValueError):
+                    continue
+                validated.append(valid)
+            evidence = tuple(validated)
+            if evidence:
                 state = AssessmentState.CONFIRMED
-                evidence = (valid,)
-                uncertainty = "AI 원본이며 사람 검토 필요"
+                uncertainty = (
+                    f"답변 {len(criterion.answers)}개 중 검증 가능한 Evidence "
+                    f"{len(evidence)}개를 평가함"
+                )
             assessment = self._assess(
                 context,
                 criterion=criterion,
@@ -199,12 +205,12 @@ class ReportGenerator:
             version=1,
             kind=ReportKind.AI_ORIGINAL,
             model_version="bedrock-model-v1",
-            prompt_version="report-prompt-v1",
-            config_version="report-config-v1",
+            prompt_version="assessment-prompt-v2",
+            config_version=COMMUNICATION_SEPARATED_CONFIG_VERSION,
             status=(
                 ReportStatus.READY if all(item.evidence for item in items) else ReportStatus.PARTIAL
             ),
-            summary="최종 답변 Evidence에 기반한 AI 원본 리포트",
+            summary="평가 질문별 최종 답변 Evidence에 기반한 AI 원본 리포트",
             created_at=occurred_at,
             items=tuple(items),
         )
@@ -262,12 +268,9 @@ class ReportGenerator:
         missing or overlapped a technical failure cannot be played back, so a score citing
         it would be one the reviewer has no way to check.
         """
-        # No transcript means no answer, and Evidence cannot exist without one -- but the type
-        # allows the combination, so it is refused here rather than dereferenced. A scorer given
-        # an empty answer would be invited to invent a judgement.
-        if self._assessor is None or not evidence or criterion.transcript is None:
+        if self._assessor is None or not evidence:
             return None
-        transcript = criterion.transcript
+        answers_by_turn = {answer.answer_turn_id: answer for answer in criterion.answers}
         return self._assessor.assess(
             context,
             criterion_id=criterion.criterion_id,
@@ -276,12 +279,14 @@ class ReportGenerator:
             answers=tuple(
                 AnswerForAssessment(
                     evidence_id=item.evidence_id,
-                    question=criterion.question,
-                    answer_text=transcript.text,
+                    question=answers_by_turn[item.answer_turn_id].question,
+                    answer_text=answers_by_turn[item.answer_turn_id].transcript.text,
                     video_start_ms=item.video_start_ms,
                     video_end_ms=item.video_end_ms,
+                    interview_stage=answers_by_turn[item.answer_turn_id].interview_stage,
                 )
                 for item in evidence
+                if item.answer_turn_id in answers_by_turn
             ),
             model_config_version=model_config_version,
             interview_level=interview_level,
@@ -296,3 +301,11 @@ def _follow_up_for(
     if not evidence:
         return "사람 면접에서 구체적인 사례를 추가로 확인해 주세요."
     return assessment.follow_up_question if assessment is not None else None
+
+
+def _stage_label(stage: str) -> str:
+    return {
+        "technical": "기술 면접",
+        "project_deep_dive": "프로젝트 심층",
+        "behavioral": "협업·인성 면접",
+    }.get(stage, "면접")

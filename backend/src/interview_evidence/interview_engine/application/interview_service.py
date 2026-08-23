@@ -18,6 +18,8 @@ from interview_evidence.interview_engine.application.context_builder import (
 )
 from interview_evidence.interview_engine.application.idempotency import IdempotencyStore
 from interview_evidence.interview_engine.application.interview_plan import (
+    INTERVIEW_STAGE_FOCUS,
+    InterviewStage,
     VerificationTargetPlan,
 )
 from interview_evidence.interview_engine.application.question_generator import (
@@ -48,6 +50,7 @@ from interview_evidence.interview_engine.repositories.postgres import InterviewR
 from interview_evidence.shared.ids import new_uuid7
 from interview_evidence.shared.interview_level import (
     DEFAULT_INTERVIEW_LEVEL,
+    MAX_FOLLOW_UPS,
     InterviewLevel,
 )
 from interview_evidence.shared.messaging.outbox import Outbox, OutboxEvent
@@ -113,6 +116,9 @@ class InterviewService:
         voice_id: str,
         occurred_at: datetime,
         interview_level: InterviewLevel = DEFAULT_INTERVIEW_LEVEL,
+        interview_stage: InterviewStage = InterviewStage.TECHNICAL,
+        question_type: str = "adaptive",
+        answered_stage: InterviewStage | None = None,
         answered_target: VerificationTargetPlan | None = None,
         question_target: VerificationTargetPlan | None = None,
         existing_progress: VerificationProgress | None = None,
@@ -130,6 +136,8 @@ class InterviewService:
                 "target_criterion_id": str(target_criterion_id),
                 "model_config_version": model_config_version,
                 "retrieval_config_version": retrieval_config_version,
+                "interview_stage": interview_stage.value,
+                "question_type": question_type,
             },
             execute=lambda: self._run_pipeline(
                 context,
@@ -152,6 +160,9 @@ class InterviewService:
                 voice_id=voice_id,
                 occurred_at=occurred_at,
                 interview_level=interview_level,
+                interview_stage=interview_stage,
+                question_type=question_type,
+                answered_stage=answered_stage,
                 answered_target=answered_target,
                 question_target=question_target,
                 existing_progress=existing_progress,
@@ -182,6 +193,9 @@ class InterviewService:
         voice_id: str,
         occurred_at: datetime,
         interview_level: InterviewLevel,
+        interview_stage: InterviewStage,
+        question_type: str,
+        answered_stage: InterviewStage | None,
         answered_target: VerificationTargetPlan | None,
         question_target: VerificationTargetPlan | None,
         existing_progress: VerificationProgress | None,
@@ -205,6 +219,8 @@ class InterviewService:
             session_id=session_id,
             applicant_id=session.applicant_id,
             answer_turn_id=answer_turn_id,
+            answered_stage=answered_stage,
+            question_stage=interview_stage,
             answered_target=answered_target,
             question_target=question_target,
             existing_progress=existing_progress,
@@ -216,10 +232,15 @@ class InterviewService:
             invitation_id=session.invitation_id,
             competency_model_version_id=session.competency_model_version_id,
             session_id=session_id,
-            query=answer_text,
+            query=_retrieval_query(
+                answer_text=answer_text,
+                interview_stage=interview_stage,
+                question_target=question_target,
+            ),
             query_vector=query_vector,
             criterion_id=target_criterion_id,
             config_version=retrieval_config_version,
+            interview_stage=interview_stage,
         )
         turns = self._repository.list_final_turns(context, session_id)
         built_context = self._context_builder.build(
@@ -234,6 +255,9 @@ class InterviewService:
             older_summary="",
             remaining_criterion_ids=remaining_criterion_ids,
             remaining_time_seconds=remaining_time_seconds,
+            interview_stage=interview_stage.value,
+            interview_stage_focus=INTERVIEW_STAGE_FOCUS[interview_stage],
+            next_question_type=question_type,
             retrieved_source_ids=tuple(hit.source_id for hit in retrieval.hits),
             retrieved_sources=tuple(
                 RetrievedSourceContext(
@@ -242,6 +266,7 @@ class InterviewService:
                     locator=hit.locator,
                     excerpt=hit.excerpt,
                     score=hit.score,
+                    material_type=hit.material_type,
                 )
                 for hit in retrieval.hits
             ),
@@ -351,13 +376,8 @@ class InterviewService:
                     verification_target_id=(question_target.verification_target_id),
                     verification_target_type=question_target.target_type,
                     objective=question_target.objective,
-                    question_type=(
-                        "follow_up"
-                        if answered_target is not None
-                        and answered_target.verification_target_id
-                        == question_target.verification_target_id
-                        else "personalized"
-                    ),
+                    question_type=question_type,
+                    interview_stage=interview_stage.value,
                     retrieval_version=retrieval_config_version,
                     generation_version=model_config_version,
                     policy_result=(
@@ -426,7 +446,8 @@ class InterviewService:
         answer_text: str,
         last_recording_chunk_sequence: int,
         idempotency_key: str,
-        answered_target: VerificationTargetPlan,
+        answered_target: VerificationTargetPlan | None,
+        answered_stage: InterviewStage | None,
         existing_progress: VerificationProgress | None,
         occurred_at: datetime,
     ) -> RecoveryMessage:
@@ -448,6 +469,8 @@ class InterviewService:
             session_id=session_id,
             applicant_id=session.applicant_id,
             answer_turn_id=answer_turn_id,
+            answered_stage=answered_stage,
+            question_stage=None,
             answered_target=answered_target,
             question_target=None,
             existing_progress=existing_progress,
@@ -504,6 +527,8 @@ class InterviewService:
         session_id: UUID,
         applicant_id: UUID,
         answer_turn_id: UUID,
+        answered_stage: InterviewStage | None,
+        question_stage: InterviewStage | None,
         answered_target: VerificationTargetPlan | None,
         question_target: VerificationTargetPlan | None,
         existing_progress: VerificationProgress | None,
@@ -511,9 +536,32 @@ class InterviewService:
     ) -> None:
         if answered_target is None:
             return
+        if existing_progress is not None and existing_progress.state in {
+            VerificationProgressState.COMPLETED,
+            VerificationProgressState.EXHAUSTED,
+        }:
+            return
         follows_same_target = (
             question_target is not None
             and question_target.verification_target_id == answered_target.verification_target_id
+            and answered_stage is not None
+            and answered_stage is question_stage
+        )
+        previous_follow_up_count = (
+            existing_progress.follow_up_count if existing_progress is not None else 0
+        )
+        next_follow_up_count = min(
+            MAX_FOLLOW_UPS,
+            previous_follow_up_count + (1 if follows_same_target else 0),
+        )
+        progress_state = (
+            VerificationProgressState.EXHAUSTED
+            if follows_same_target and previous_follow_up_count >= MAX_FOLLOW_UPS
+            else (
+                VerificationProgressState.IN_PROGRESS
+                if follows_same_target
+                else VerificationProgressState.COMPLETED
+            )
         )
         self._repository.save_verification_progress(
             context,
@@ -528,15 +576,8 @@ class InterviewService:
                 applicant_id=applicant_id,
                 verification_target_id=(answered_target.verification_target_id),
                 criterion_id=answered_target.criterion_id,
-                state=(
-                    VerificationProgressState.IN_PROGRESS
-                    if follows_same_target
-                    else VerificationProgressState.COMPLETED
-                ),
-                follow_up_count=(
-                    (existing_progress.follow_up_count if existing_progress else 0)
-                    + (1 if follows_same_target else 0)
-                ),
+                state=progress_state,
+                follow_up_count=next_follow_up_count,
                 final_answer_turn_ids=tuple(
                     dict.fromkeys(
                         (
@@ -548,3 +589,25 @@ class InterviewService:
                 updated_at=occurred_at,
             ),
         )
+
+
+def _retrieval_query(
+    *,
+    answer_text: str,
+    interview_stage: InterviewStage,
+    question_target: VerificationTargetPlan | None,
+) -> str:
+    target_parts = (
+        (question_target.objective, *question_target.missing_dimensions)
+        if question_target is not None
+        else ()
+    )
+    return " ".join(
+        part.strip()
+        for part in (
+            INTERVIEW_STAGE_FOCUS[interview_stage],
+            *target_parts,
+            answer_text,
+        )
+        if part.strip()
+    )

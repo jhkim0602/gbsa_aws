@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any, cast
 from uuid import UUID
 
+import pytest
 from interview_evidence.company_management.application.company_service import (
     CompanyManagementPublic,
 )
@@ -92,9 +93,13 @@ def test_finalizer_combines_candidates_from_every_submission() -> None:
     assert finalized is True
     assert model.candidate_count == 2
     assert repository.strategy is not None
-    assert {
+    source_ids = {
         candidate.source_id for candidate in repository.strategy.source_reference_candidates
-    } == {first_candidate.source_id, second_candidate.source_id}
+    }
+    assert source_ids == {
+        first_candidate.source_id,
+        second_candidate.source_id,
+    }
     assert outbox.events[-1].event_type == "strategy.ready"
 
 
@@ -145,6 +150,30 @@ def test_worker_runtime_receives_only_one_message_per_consumer() -> None:
     assert runtime.run_once() == 0
     assert dispatcher.calls == 1
     assert consumer.max_messages == [1]
+
+
+def test_worker_runtime_commits_dispatch_before_consumer_failure() -> None:
+    operations: list[str] = []
+    database = RecordingDatabase(operations)
+    runtime = WorkerRuntime(
+        dispatcher=cast(OutboxDispatcher, OrderedDispatcher(operations)),
+        consumers=(cast(MessageConsumer, FailingConsumer(operations)),),
+        database=cast(Any, database),
+    )
+
+    with pytest.raises(RuntimeError, match="consumer failed"):
+        runtime.run_once()
+
+    assert operations == [
+        "begin",
+        "dispatch",
+        "commit",
+        "end",
+        "begin",
+        "consume",
+        "rollback",
+        "end",
+    ]
 
 
 class FinalizationRepository:
@@ -305,6 +334,57 @@ class RecordingConsumer:
     def consume_once(self, *, max_messages: int) -> int:
         self.max_messages.append(max_messages)
         return 0
+
+
+class OrderedDispatcher:
+    def __init__(self, operations: list[str]) -> None:
+        self.operations = operations
+
+    def dispatch_once(self) -> int:
+        self.operations.append("dispatch")
+        return 1
+
+
+class FailingConsumer:
+    def __init__(self, operations: list[str]) -> None:
+        self.operations = operations
+
+    def consume_once(
+        self,
+        *,
+        max_messages: int,
+        commit: Callable[[], None],
+        rollback: Callable[[], None],
+    ) -> int:
+        assert max_messages == 1
+        del commit
+        self.operations.append("consume")
+        rollback()
+        raise RuntimeError("consumer failed")
+
+
+class RecordingSession:
+    def __init__(self, operations: list[str]) -> None:
+        self.operations = operations
+
+    def commit(self) -> None:
+        self.operations.append("commit")
+
+    def rollback(self) -> None:
+        self.operations.append("rollback")
+
+
+class RecordingDatabase:
+    def __init__(self, operations: list[str]) -> None:
+        self.operations = operations
+        self.session = RecordingSession(operations)
+
+    def begin_scope(self) -> object:
+        self.operations.append("begin")
+        return object()
+
+    def end_scope(self, _token: object) -> None:
+        self.operations.append("end")
 
 
 def _context() -> TenantContext:

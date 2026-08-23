@@ -119,3 +119,8 @@ def test_owned_targets_and_retention_event_are_tenant_scoped() -> None:
     )
     assert event.event_type == "retention.expired"
     assert event.payload["invitation_id"] == str(INVITATION_ID)
+    assert event.payload["policy_snapshot"] == {
+        "policy_snapshot_id": "00000000-0000-7000-8000-000000000011",
+        "retention_days": 180,
+        "expired_at": (NOW + timedelta(days=180)).isoformat(),
+    }

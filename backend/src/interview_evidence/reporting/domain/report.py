@@ -12,6 +12,9 @@ from interview_evidence.reporting.domain.scoring import (
     aggregate,
     weights_for,
 )
+from interview_evidence.shared.assessment_axes import AssessmentAxisKey
+
+COMMUNICATION_SEPARATED_CONFIG_VERSION = "report-config-v2-communication-separated"
 
 
 class AssessmentState(StrEnum):
@@ -169,6 +172,44 @@ class ReportItem:
         )
 
     @property
+    def competency_axis_assessments(self) -> tuple[AxisAssessment, ...]:
+        return tuple(
+            axis
+            for axis in self.axis_assessments
+            if axis.axis != AssessmentAxisKey.COMMUNICATION.value
+        )
+
+    @property
+    def competency_axis_aggregate(self) -> Aggregate:
+        keys = [axis.axis for axis in self.competency_axis_assessments]
+        weights = weights_for(keys, self.axis_weights)
+        return aggregate(
+            [
+                Entry(key=axis.axis, score=axis.score, weight=weight)
+                for axis, weight in zip(
+                    self.competency_axis_assessments,
+                    weights,
+                    strict=True,
+                )
+            ]
+        )
+
+    @property
+    def competency_score(self) -> int | None:
+        return self.competency_axis_aggregate.score
+
+    @property
+    def communication_assessment(self) -> AxisAssessment | None:
+        return next(
+            (
+                axis
+                for axis in self.axis_assessments
+                if axis.axis == AssessmentAxisKey.COMMUNICATION.value
+            ),
+            None,
+        )
+
+    @property
     def average_score(self) -> int | None:
         """Weighted mean of the axes that could be judged, or None when none could.
 
@@ -218,7 +259,15 @@ class Report:
 
     @property
     def scored_items(self) -> tuple[ReportItem, ...]:
-        return tuple(item for item in self.items if item.average_score is not None)
+        return tuple(item for item in self.items if self.score_for(item) is not None)
+
+    def axis_aggregate_for(self, item: ReportItem) -> Aggregate:
+        if self.config_version == COMMUNICATION_SEPARATED_CONFIG_VERSION:
+            return item.competency_axis_aggregate
+        return item.axis_aggregate
+
+    def score_for(self, item: ReportItem) -> int | None:
+        return self.axis_aggregate_for(item).score
 
     @property
     def criterion_aggregate(self) -> Aggregate:
@@ -231,12 +280,33 @@ class Report:
             [
                 Entry(
                     key=str(item.criterion_id),
-                    score=item.average_score,
+                    score=self.score_for(item),
                     weight=item.criterion_weight,
                 )
                 for item in self.items
             ]
         )
+
+    @property
+    def communication_aggregate(self) -> Aggregate:
+        return aggregate(
+            [
+                Entry(
+                    key=str(item.criterion_id),
+                    score=(
+                        item.communication_assessment.score
+                        if item.communication_assessment is not None
+                        else None
+                    ),
+                    weight=item.criterion_weight,
+                )
+                for item in self.items
+            ]
+        )
+
+    @property
+    def communication_score(self) -> int | None:
+        return self.communication_aggregate.score
 
     @property
     def overall_score(self) -> int | None:

@@ -9,13 +9,16 @@ import boto3  # type: ignore[import-untyped]
 from botocore.config import Config  # type: ignore[import-untyped]
 from sqlalchemy import URL
 
+from interview_evidence.capacity_management.scaling import ApplicationAutoScalingClient
 from interview_evidence.interview_engine.adapters.recent_context import (
     DynamoClient,
     DynamoRecentContext,
     RecentContextPort,
 )
+from interview_evidence.runtime.generative_ai import create_generative_ai_dependencies
 from interview_evidence.shared.aws_clients.ports import (
     AIModel,
+    CachingTextEmbedder,
     ConsumableQueue,
     EmailSender,
     ObjectStorage,
@@ -24,16 +27,13 @@ from interview_evidence.shared.aws_clients.ports import (
     TextToSpeech,
 )
 from interview_evidence.shared.aws_clients.production import (
-    AwsBedrockModel,
     AwsCognitoPrincipalProvider,
     AwsMediaConvert,
     AwsPollyTextToSpeech,
     AwsS3ObjectStorage,
     AwsSesEmailSender,
     AwsSqsQueue,
-    AwsTitanTextEmbedder,
     AwsTranscribeSpeechToText,
-    BedrockClient,
     CognitoClient,
     MediaConvertClient,
     PollyClient,
@@ -89,6 +89,7 @@ class AwsRuntimeDependencies:
     text_to_speech: TextToSpeech
     media_convert: MediaConvertPort
     metrics: MetricRecorder
+    application_auto_scaling: ApplicationAutoScalingClient
 
 
 def create_aws_runtime_dependencies(
@@ -124,8 +125,14 @@ def create_aws_runtime_dependencies(
             cast(SqsClient, factory("sqs")),
             queue_url=_required(environment, f"SQS_{name.upper()}_QUEUE_URL"),
             wait_time_seconds=sqs_wait_time_seconds,
+            visibility_timeout_seconds=int(
+                environment.get(
+                    f"SQS_{name.upper()}_VISIBILITY_TIMEOUT_SECONDS",
+                    "900" if name == "media" else "300",
+                )
+            ),
         )
-        for name in ("analysis", "media", "reporting", "deletion")
+        for name in ("analysis", "media", "reporting", "deletion", "capacity")
     }
     principal_provider = AwsCognitoPrincipalProvider(cast(CognitoClient, factory("cognito-idp")))
     object_storage = AwsS3ObjectStorage(
@@ -177,18 +184,13 @@ def create_aws_runtime_dependencies(
         if retrieval_backend == "opensearch"
         else None
     )
-    model = AwsBedrockModel(
-        cast(BedrockClient, factory("bedrock-runtime")),
-        model_id=_required(environment, "BEDROCK_MODEL_ID"),
-        guardrail_id=environment.get("BEDROCK_GUARDRAIL_ID"),
-        guardrail_version=environment.get("BEDROCK_GUARDRAIL_VERSION", "DRAFT"),
+    generative_ai = create_generative_ai_dependencies(
+        environment,
+        aws_client_factory=factory,
     )
-    embedder = AwsTitanTextEmbedder(
-        cast(BedrockClient, factory("bedrock-runtime")),
-        model_id=environment.get(
-            "BEDROCK_EMBEDDING_MODEL_ID",
-            "amazon.titan-embed-text-v2:0",
-        ),
+    embedder = CachingTextEmbedder(
+        generative_ai.embedder,
+        max_entries=int(environment.get("BEDROCK_EMBEDDING_CACHE_ENTRIES", "2048")),
     )
     speech_to_text = AwsTranscribeSpeechToText(
         cast(TranscribeClient, factory("transcribe")),
@@ -226,12 +228,16 @@ def create_aws_runtime_dependencies(
         recent_context=recent_context,
         search_index=search_index,
         queues=queues,
-        model=model,
+        model=generative_ai.model,
         embedder=embedder,
         speech_to_text=speech_to_text,
         text_to_speech=text_to_speech,
         media_convert=media_convert,
         metrics=metrics,
+        application_auto_scaling=cast(
+            ApplicationAutoScalingClient,
+            factory("application-autoscaling"),
+        ),
     )
 
 

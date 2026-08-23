@@ -88,6 +88,7 @@ def _scoring_inputs(report: Report) -> dict[str, object]:
     be empty for every report that already exists.
     """
     aggregate = report.criterion_aggregate
+    communication = report.communication_aggregate
     return {
         "criteria": [
             {
@@ -116,6 +117,13 @@ def _scoring_inputs(report: Report) -> dict[str, object]:
             str(item.criterion_id): dict(item.axis_weights)
             for item in report.items
             if item.axis_weights
+        },
+        "communication": {
+            "score": communication.score,
+            "numerator": communication.numerator,
+            "denominator": communication.denominator,
+            "scored_criteria": [item.key for item in communication.contributions],
+            "unscored_criteria": [item.key for item in communication.exclusions],
         },
     }
 

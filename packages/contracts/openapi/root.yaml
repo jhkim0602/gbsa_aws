@@ -20,6 +20,7 @@ tags:
 - name: Submission
 - name: Interview
 - name: Reporting
+- name: Assistant
 - name: Privacy
 paths:
   /me:
@@ -86,6 +87,12 @@ paths:
     $ref: ./paths/reporting/paths.yaml#/~1interview-sessions~1{session_id}~1review-artifacts
   /invitations/{invitation_id}/final-decisions:
     $ref: ./paths/reporting/paths.yaml#/~1invitations~1{invitation_id}~1final-decisions
+  /assistant/search:
+    $ref: ./paths/assistant/paths.yaml#/~1assistant~1search
+  /assistant/answers:
+    $ref: ./paths/assistant/paths.yaml#/~1assistant~1answers
+  /assistant/answers/stream:
+    $ref: ./paths/assistant/paths.yaml#/~1assistant~1answers~1stream
   /privacy/deletion-requests:
     $ref: ./paths/reporting/paths.yaml#/~1privacy~1deletion-requests
   /privacy/deletion-requests/{deletion_request_id}:
@@ -187,6 +194,141 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorEnvelope'
   schemas:
+    AssistantSearchRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - scope
+      - query
+      properties:
+        scope:
+          type: string
+          enum:
+          - company
+          - position
+        position_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        query:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 8
+    AssistantSearchSource:
+      type: object
+      additionalProperties: false
+      required:
+      - source_id
+      - position_id
+      - applicant_id
+      - invitation_id
+      - report_id
+      - report_item_id
+      - criterion_id
+      - document_type
+      - excerpt
+      - score
+      - score_components
+      - metadata
+      properties:
+        source_id:
+          type: string
+          format: uuid
+        position_id:
+          type: string
+          format: uuid
+        applicant_id:
+          type: string
+          format: uuid
+        invitation_id:
+          type: string
+          format: uuid
+        report_id:
+          type: string
+          format: uuid
+        report_item_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        criterion_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        document_type:
+          type: string
+        excerpt:
+          type: string
+        score:
+          type: number
+          minimum: 0
+          maximum: 1
+        score_components:
+          type: object
+          additionalProperties:
+            type: number
+        metadata:
+          type: object
+          additionalProperties: true
+    AssistantSearchResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - scope
+      - position_id
+      - sources
+      properties:
+        scope:
+          type: string
+          enum:
+          - company
+          - position
+        position_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssistantSearchSource'
+    AssistantAnswerResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - scope
+      - position_id
+      - answer
+      - sources
+      - degraded_mode
+      properties:
+        scope:
+          type: string
+          enum:
+          - company
+          - position
+        position_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        answer:
+          type: string
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssistantSearchSource'
+        degraded_mode:
+          type:
+          - string
+          - 'null'
     ErrorEnvelope:
       type: object
       additionalProperties: false
@@ -285,7 +427,7 @@ components:
           - integer
           - 'null'
           minimum: 1
-          maximum: 10000
+          maximum: 400
         interview_at:
           type:
           - string
@@ -339,7 +481,7 @@ components:
           - integer
           - 'null'
           minimum: 1
-          maximum: 10000
+          maximum: 400
         interview_at:
           type:
           - string
@@ -691,8 +833,9 @@ components:
             type: string
         interview_duration_minutes:
           type: integer
-          minimum: 10
-          maximum: 120
+          enum:
+          - 30
+          description: All newly configured interviews use the fixed 30-minute format.
         interview_level:
           $ref: '#/components/schemas/InterviewLevel'
         axis_weights:
@@ -1390,6 +1533,7 @@ components:
         - source_type
         - material_type
         - public_url
+        - candidate_identity_inputs
         properties:
           material_type:
             $ref: '#/components/schemas/SubmissionMaterialType'
@@ -1397,12 +1541,33 @@ components:
             type: string
             enum:
             - public_git
-            - public_url
           public_url:
             type: string
             format: uri
           candidate_identity_inputs:
             type: object
+            additionalProperties: false
+            required:
+            - claimed_handles
+            properties:
+              claimed_handles:
+                type: array
+                minItems: 1
+                maxItems: 1
+                items:
+                  type: string
+                  pattern: ^(?!-)(?!.*--)[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$
+              claimed_names:
+                type: array
+                maxItems: 20
+                items:
+                  type: string
+              claimed_emails:
+                type: array
+                maxItems: 20
+                items:
+                  type: string
+                  format: email
     SubmissionView:
       type: object
       additionalProperties: false
@@ -2036,6 +2201,18 @@ components:
           - 'null'
           minimum: 0
           maximum: 100
+        communication_score:
+          description: Communication score calculated separately from competency scores.
+            null means the answers did not provide enough evidence to judge delivery.
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          maximum: 100
+        communication_scored_criteria_count:
+          description: Number of criteria whose answers supported a communication score.
+          type: integer
+          minimum: 0
         unscored_criteria_count:
           description: How many criteria produced no score, so the reviewer can see
             what overall_score does not cover.
@@ -2055,6 +2232,7 @@ components:
       additionalProperties: false
       required:
       - criterion_id
+      - interview_stage
       - verification_target_type
       - objective
       - question_type
@@ -2066,6 +2244,12 @@ components:
         criterion_id:
           type: string
           format: uuid
+        interview_stage:
+          type: string
+          enum:
+          - technical
+          - project_deep_dive
+          - behavioral
         verification_target_type:
           type: string
           enum:
@@ -2085,6 +2269,9 @@ components:
           - personalized
           - follow_up
           - degraded
+          - stage_opening
+          - adaptive
+          - stage_final
         retrieval_version:
           type: string
           minLength: 1
@@ -2312,6 +2499,7 @@ components:
           - dynamodb
           - s3
           - opensearch
+          - retrieval
         target_type:
           type: string
         status:

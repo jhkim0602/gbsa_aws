@@ -72,10 +72,6 @@ class SubmissionValidator:
             address = None
         if address is not None and not address.is_global:
             raise SubmissionValidationError("private addresses are prohibited")
-        if source_type is SourceType.PUBLIC_GIT and hostname not in {
-            "github.com",
-            "gitlab.com",
-            "bitbucket.org",
-        }:
-            raise SubmissionValidationError("unsupported public Git host")
+        if source_type is SourceType.PUBLIC_GIT and hostname != "github.com":
+            raise SubmissionValidationError("only public GitHub repositories are supported")
         return parsed.geturl()

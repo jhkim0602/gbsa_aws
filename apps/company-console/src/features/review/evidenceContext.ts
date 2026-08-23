@@ -1,6 +1,7 @@
 import type {
   ReviewAnswerQuote,
   ReviewEvidenceContext,
+  InterviewStage,
   ReviewQuestionSource,
   ReviewTimelineEntry,
 } from "./types";
@@ -17,15 +18,22 @@ export function buildEvidenceContext(
   entries: ReviewTimelineEntry[],
 ): ReviewEvidenceContext {
   const answersBySegmentId: Record<string, ReviewAnswerQuote> = {};
+  const stageBySegmentId: Record<string, InterviewStage> = {};
   const sourcesByCriterionId: Record<string, ReviewQuestionSource[]> = {};
+  let pendingStage: InterviewStage | undefined;
 
   for (const entry of entries) {
+    if (entry.type === "question") {
+      pendingStage = entry.questionRationale?.interviewStage;
+    }
     if (entry.type === "answer" && entry.text) {
       answersBySegmentId[entry.entryId] = {
         text: entry.text,
         startMs: entry.startMs,
         endMs: entry.endMs,
       };
+      if (pendingStage) stageBySegmentId[entry.entryId] = pendingStage;
+      pendingStage = undefined;
     }
 
     const rationale = entry.questionRationale;
@@ -39,5 +47,5 @@ export function buildEvidenceContext(
     }
   }
 
-  return { answersBySegmentId, sourcesByCriterionId };
+  return { answersBySegmentId, stageBySegmentId, sourcesByCriterionId };
 }

@@ -28,6 +28,9 @@ EXPECTED_OPERATION_IDS = {
     "recordHumanFinalDecision",
     "createDeletionRequest",
     "getDeletionRequest",
+    "searchRecruitingAssistantSources",
+    "answerRecruitingAssistantQuestion",
+    "streamRecruitingAssistantAnswer",
 }
 
 
@@ -58,6 +61,7 @@ def test_main_composes_all_lane_routers_boundaries_and_workers() -> None:
         "submission_interview",
         "interview_reporting",
         "reporting_company",
+        "recruiting_assistant",
     }
     assert set(runtime.worker_handlers) == {
         "invitation_email",

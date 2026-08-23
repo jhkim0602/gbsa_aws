@@ -28,7 +28,11 @@ import {
   type LocalMediaBuffer,
   type StoredMediaChunk,
 } from "./media";
-import { InterviewProtocolClient, type SocketLike } from "./protocolClient";
+import {
+  InterviewProtocolClient,
+  type InterviewProtocolError,
+  type SocketLike,
+} from "./protocolClient";
 import { createInterviewSessionStore } from "./sessionStore";
 
 export interface RecordingUploadApi {
@@ -86,6 +90,7 @@ export type InterviewSessionDependencies = Readonly<{
     onQuestionAudioChunk?(chunk: ArrayBuffer): void;
     onQuestionAudioEnd?(): void;
     onQuestionAudioError?(): void;
+    onError?(error: InterviewProtocolError): void;
   }): ProtocolClient;
 }>;
 
@@ -100,7 +105,7 @@ export function InterviewSession({
   onComplete,
 }: {
   sessionId: string;
-  equipmentCheckId: string;
+  equipmentCheckId?: string;
   websocketUrl: string;
   recordingApi: RecordingUploadApi;
   interviewerLevel?: InterviewerLevel;
@@ -118,6 +123,8 @@ export function InterviewSession({
   const [questionTurnId, setQuestionTurnId] = useState<string | null>(null);
   const [transcript, setTranscript] = useState("");
   const [interviewerSpeaking, setInterviewerSpeaking] = useState(false);
+  const [questionPlaybackComplete, setQuestionPlaybackComplete] =
+    useState(false);
   const [automationStatus, setAutomationStatus] = useState("");
   const [automationRunVersion, setAutomationRunVersion] = useState(0);
   const mediaBuffer = useMemo(
@@ -138,9 +145,13 @@ export function InterviewSession({
   const lastRecordingEndMsRef = useRef(0);
   const completionNotifiedRef = useRef(false);
   const automatedQuestionRef = useRef<string | null>(null);
+  const currentQuestionTurnIdRef = useRef<string | null>(null);
   const automatedAnswerIndexRef = useRef(0);
+  const automationRetryCountRef = useRef(0);
+  const automationRetryTimerRef = useRef<number | null>(null);
   const automationRunningRef = useRef(false);
   const reconnectRunningRef = useRef(false);
+  const recoveryPendingRef = useRef(false);
   const automatedMediaRef = useRef<AutomatedMedia | null>(null);
 
   const resolved = useMemo<InterviewSessionDependencies>(
@@ -188,13 +199,27 @@ export function InterviewSession({
       socketFactory: resolved.socketFactory,
       store,
       onQuestion(nextQuestion) {
+        if (currentQuestionTurnIdRef.current !== nextQuestion.questionTurnId) {
+          if (currentQuestionTurnIdRef.current !== null) {
+            automatedAnswerIndexRef.current += 1;
+          }
+          currentQuestionTurnIdRef.current = nextQuestion.questionTurnId;
+          automationRetryCountRef.current = 0;
+          if (automationRetryTimerRef.current !== null) {
+            window.clearTimeout(automationRetryTimerRef.current);
+            automationRetryTimerRef.current = null;
+          }
+        }
         setQuestion(nextQuestion.text);
         setQuestionTurnId(nextQuestion.questionTurnId);
+        setQuestionPlaybackComplete(nextQuestion.textOnly);
+        if (nextQuestion.textOnly) setInterviewerSpeaking(false);
       },
       onTranscript(text) {
         setTranscript(text);
       },
       onQuestionAudioStart(format) {
+        setQuestionPlaybackComplete(false);
         const player = audioPlayerRef.current ?? resolved.createAudioPlayer();
         audioPlayerRef.current = player;
         audioPlaybackChainRef.current = audioPlaybackChainRef.current
@@ -202,10 +227,12 @@ export function InterviewSession({
           .then(() =>
             player.start(format.sampleRateHz, (state: AudioPlaybackState) => {
               setInterviewerSpeaking(state === "playing");
+              if (state === "idle") setQuestionPlaybackComplete(true);
             }),
           )
           .catch(() => {
             setInterviewerSpeaking(false);
+            setQuestionPlaybackComplete(true);
           });
       },
       onQuestionAudioChunk(chunk) {
@@ -224,9 +251,31 @@ export function InterviewSession({
       },
       onQuestionAudioError() {
         setInterviewerSpeaking(false);
+        setQuestionPlaybackComplete(true);
         audioPlaybackChainRef.current = audioPlaybackChainRef.current
           .catch(() => undefined)
           .then(() => audioPlayerRef.current?.stop());
+      },
+      onError(error) {
+        if (!automationMode) return;
+        if (!error.retryable) {
+          setAutomationStatus(`자동 면접 오류: ${error.message}`);
+          return;
+        }
+        automatedQuestionRef.current = null;
+        const retryCount = automationRetryCountRef.current;
+        automationRetryCountRef.current += 1;
+        const retryDelaySeconds = Math.min(30, 5 * 2 ** retryCount);
+        setAutomationStatus(
+          `${error.message} ${retryDelaySeconds}초 후 다시 시도합니다.`,
+        );
+        if (automationRetryTimerRef.current !== null) {
+          window.clearTimeout(automationRetryTimerRef.current);
+        }
+        automationRetryTimerRef.current = window.setTimeout(() => {
+          automationRetryTimerRef.current = null;
+          setAutomationRunVersion((version) => version + 1);
+        }, retryDelaySeconds * 1000);
       },
     });
     clientRef.current = client;
@@ -235,17 +284,50 @@ export function InterviewSession({
       client.disconnect();
       stopMedia(audioCaptureRef, recorderRef, streamRef, answerTurnIdRef);
       automatedMediaRef.current?.dispose();
+      if (automationRetryTimerRef.current !== null) {
+        window.clearTimeout(automationRetryTimerRef.current);
+      }
       void audioPlayerRef.current?.stop();
     };
-  }, [equipmentCheckId, resolved, sessionId, store]);
+  }, [automationMode, equipmentCheckId, resolved, sessionId, store]);
 
   useEffect(() => {
+    if (!automationMode) return;
+    if (snapshot.connectionState === "reconnecting") {
+      recoveryPendingRef.current = true;
+      automatedQuestionRef.current = null;
+      return;
+    }
+    if (
+      snapshot.connectionState === "connected" &&
+      recoveryPendingRef.current
+    ) {
+      recoveryPendingRef.current = false;
+      setAutomationStatus("연결을 복구했습니다. 자동 면접을 계속합니다.");
+      setAutomationRunVersion((version) => version + 1);
+    }
+  }, [automationMode, snapshot.connectionState]);
+
+  useEffect(() => {
+    lastRecordingSequenceRef.current = Math.max(
+      lastRecordingSequenceRef.current,
+      snapshot.lastVerifiedRecordingChunkSequence,
+    );
+    lastRecordingEndMsRef.current = Math.max(
+      lastRecordingEndMsRef.current,
+      snapshot.lastRecordingEndMs,
+    );
     if (snapshot.lastVerifiedRecordingChunkSequence === 0) return;
     void mediaBuffer.removeVerified(
       sessionId,
       snapshot.lastVerifiedRecordingChunkSequence,
     );
-  }, [mediaBuffer, sessionId, snapshot.lastVerifiedRecordingChunkSequence]);
+  }, [
+    mediaBuffer,
+    sessionId,
+    snapshot.lastRecordingEndMs,
+    snapshot.lastVerifiedRecordingChunkSequence,
+  ]);
 
   useEffect(() => {
     const terminal =
@@ -263,6 +345,7 @@ export function InterviewSession({
       snapshot.connectionState !== "connected" ||
       snapshot.state !== "awaiting_answer" ||
       !questionTurnId ||
+      !questionPlaybackComplete ||
       automatedQuestionRef.current === questionTurnId ||
       automationRunningRef.current
     ) {
@@ -288,6 +371,7 @@ export function InterviewSession({
   }, [
     automationMode,
     automationRunVersion,
+    questionPlaybackComplete,
     questionTurnId,
     snapshot.connectionState,
     snapshot.state,
@@ -320,7 +404,7 @@ export function InterviewSession({
   }
 
   async function startAnswer(): Promise<void> {
-    if (streamRef.current) return;
+    if (streamRef.current || !questionPlaybackComplete) return;
     const stream = await resolved.mediaDevices.getUserMedia({
       audio: true,
       video: true,
@@ -393,7 +477,7 @@ export function InterviewSession({
     if (!automationMode) return;
     await delay(900);
     const answerIndex = automatedAnswerIndexRef.current;
-    const answer = automatedAnswer(question, answerIndex);
+    const answer = automatedAnswer(answerIndex);
     setTranscript(answer);
     setAutomationStatus(
       automationMode === "speech"
@@ -450,7 +534,6 @@ export function InterviewSession({
           lastRecordingChunkSequence: lastRecordingSequenceRef.current,
         });
       }
-      automatedAnswerIndexRef.current += 1;
     } finally {
       if (recorder && !recorderStopped) {
         await Promise.resolve(recorder.stop()).catch(() => undefined);
@@ -489,6 +572,7 @@ export function InterviewSession({
 
   function addExplanation(): void {
     if (questionTurnId) {
+      setQuestionPlaybackComplete(false);
       clientRef.current?.repeatQuestion(questionTurnId, "clarify");
     }
   }
@@ -497,7 +581,7 @@ export function InterviewSession({
     <>
       {automationMode ? (
         <p
-          className="fixed top-3 left-1/2 z-200 -translate-x-1/2 rounded-full bg-[#243019] px-4 py-2 text-[11px] font-semibold text-white shadow-lg"
+          className="fixed top-3 left-1/2 z-200 -translate-x-1/2 rounded-full bg-brand-strong px-4 py-2 text-[11px] font-semibold text-white shadow-lg"
           role="status"
         >
           {automationStatus || "자동 면접을 준비하고 있습니다."}
@@ -507,6 +591,7 @@ export function InterviewSession({
         question={question}
         transcript={transcript}
         interviewerSpeaking={interviewerSpeaking}
+        questionInProgress={!questionPlaybackComplete}
         state={snapshot.state}
         connectionState={snapshot.connectionState}
         textOnly={snapshot.degradedModes.includes("text_only")}

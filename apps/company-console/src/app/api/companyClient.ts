@@ -26,6 +26,15 @@ export async function companyRequest<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
+  const response = await companyFetch(path, init);
+  if (response.status === 204) return undefined as T;
+  return (await response.json()) as T;
+}
+
+export async function companyFetch(
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
   const token = companyAuthConfig
     ? getCompanyAccessToken(localStorage)
     : ((import.meta.env.VITE_LOCAL_COMPANY_TOKEN?.trim() ||
@@ -52,8 +61,7 @@ export async function companyRequest<T>(
     }
     throw new CompanyRequestError(response.status, detail);
   }
-  if (response.status === 204) return undefined as T;
-  return (await response.json()) as T;
+  return response;
 }
 
 export const companyWorkspaceApi: CompanyWorkspaceApi = {

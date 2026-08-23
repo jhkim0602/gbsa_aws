@@ -159,12 +159,15 @@ module "compute" {
   worker_image                  = var.worker_image
   api_desired_count             = 4
   worker_desired_count          = 4
-  enable_deletion_protection    = true
-  task_role_arn                 = module.identity.application_runtime_role_arn
-  task_role_name                = module.identity.application_runtime_role_name
-  create_task_role              = false
-  secret_arns                   = [module.data.application_secret_arn, module.data.aurora_master_secret_arn]
-  kms_key_arns                  = [module.data.kms_key_arn]
+  worker_queue_names = toset([
+    for arn in values(module.async_workflow.queue_arns) : element(reverse(split(":", arn)), 0)
+  ])
+  enable_deletion_protection = true
+  task_role_arn              = module.identity.application_runtime_role_arn
+  task_role_name             = module.identity.application_runtime_role_name
+  create_task_role           = false
+  secret_arns                = [module.data.application_secret_arn, module.data.aurora_master_secret_arn]
+  kms_key_arns               = [module.data.kms_key_arn]
   data_resource_arns = concat(
     values(module.data.bucket_arns),
     [for arn in values(module.data.bucket_arns) : "${arn}/*"],
@@ -200,6 +203,10 @@ module "compute" {
     SQS_DELETION_QUEUE_URL     = module.async_workflow.queue_urls["deletion"]
     SQS_MEDIA_QUEUE_URL        = module.async_workflow.queue_urls["media"]
     SQS_REPORTING_QUEUE_URL    = module.async_workflow.queue_urls["reporting"]
+    SQS_CAPACITY_QUEUE_URL     = module.async_workflow.queue_urls["capacity"]
+    ECS_CLUSTER_NAME           = local.name
+    ECS_API_SERVICE_NAME       = "${local.name}-api"
+    ECS_WORKER_SERVICE_NAME    = "${local.name}-worker"
   }
   # A GitHub credential, so it is referenced rather than passed: the analysis worker
   # needs it to read a candidate's public repository above the 60-request anonymous

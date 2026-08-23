@@ -7,6 +7,7 @@ import { ReportView } from "./ReportView";
 import { TimelineView } from "./TimelineView";
 import type {
   AssessmentState,
+  InterviewStageSummary,
   ReviewApi,
   ReviewDeletion,
   ReviewHistoryEntry,
@@ -67,6 +68,10 @@ export function ReviewWorkspace({
     () => buildEvidenceContext(timeline.entries),
     [timeline.entries],
   );
+  const stageSummary = useMemo(
+    () => summarizeInterviewStages(timeline.entries, report, evidenceContext),
+    [evidenceContext, report, timeline.entries],
+  );
 
   /**
    * Record a reviewer overruling the AI's assessment, with the reason they gave.
@@ -110,7 +115,7 @@ export function ReviewWorkspace({
       </header>
 
       <div className={WORKSPACE_LAYOUT}>
-        <div className="min-w-0 [grid-area:timeline] sticky top-3 mw-820:static print:hidden">
+        <div className="min-w-0 [grid-area:timeline] print:hidden">
           <TimelineView
             entries={timeline.entries}
             playbackStatus={timeline.playback.status}
@@ -122,6 +127,7 @@ export function ReviewWorkspace({
         <div className="min-w-0 [grid-area:report]">
           <ReportView
             report={report}
+            stageSummary={stageSummary}
             evidenceContext={evidenceContext}
             onOverride={overrideAssessment}
             onSelectEvidence={setSelectedStartMs}
@@ -138,6 +144,50 @@ export function ReviewWorkspace({
       </div>
     </div>
   );
+}
+
+export function summarizeInterviewStages(
+  entries: ReviewTimeline["entries"],
+  report?: ReviewReport,
+  evidenceContext?: ReturnType<typeof buildEvidenceContext>,
+): InterviewStageSummary[] {
+  const stages: InterviewStageSummary[] = [
+    {
+      stage: "technical",
+      label: "기술 면접",
+      questionCount: 0,
+      evidenceCount: 0,
+    },
+    {
+      stage: "project_deep_dive",
+      label: "프로젝트 심층",
+      questionCount: 0,
+      evidenceCount: 0,
+    },
+    {
+      stage: "behavioral",
+      label: "협업·인성",
+      questionCount: 0,
+      evidenceCount: 0,
+    },
+  ];
+  for (const entry of entries) {
+    const stage = entry.questionRationale?.interviewStage;
+    if (!stage) continue;
+    const summary = stages.find((item) => item.stage === stage);
+    if (summary) summary.questionCount += 1;
+  }
+  if (report && evidenceContext) {
+    for (const item of report.items) {
+      for (const evidence of item.evidence) {
+        const stage =
+          evidenceContext.stageBySegmentId?.[evidence.transcriptSegmentId];
+        const summary = stages.find((candidate) => candidate.stage === stage);
+        if (summary) summary.evidenceCount += 1;
+      }
+    }
+  }
+  return stages;
 }
 
 function shortSessionId(sessionId: string) {

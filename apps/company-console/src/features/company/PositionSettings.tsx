@@ -1,4 +1,11 @@
-import { CheckCircle2, LockKeyhole, Save, X } from "lucide-react";
+import {
+  CalendarX2,
+  CheckCircle2,
+  LockKeyhole,
+  Save,
+  ServerCog,
+  X,
+} from "lucide-react";
 import {
   useEffect,
   useRef,
@@ -20,6 +27,11 @@ import {
   toCriteriaConfiguration,
   type HiringDraft,
 } from "../hiring";
+import {
+  estimateInterviewCapacity,
+  formatEstimatedKrw,
+  MAX_GUARANTEED_INTERVIEW_CONCURRENCY,
+} from "../hiring/interviewCapacityEstimate";
 import type {
   CompanyCriterionVersion,
   CompanyOperationsApi,
@@ -61,6 +73,13 @@ const FIELD_CONTROL = `${FIELD_BASE} min-h-[42px] px-[11px]`;
 const FIELD_TEXTAREA = `${FIELD_BASE} min-h-[118px] resize-y p-[11px] leading-[1.55]`;
 const FORM_WIDE = "col-[1/-1] mw-720:col-[1]";
 const FORM_NOTE = "mx-5 mb-[14px] text-[11px] text-muted";
+const CAPACITY_NOTICE =
+  "col-[1/-1] grid grid-cols-[auto_minmax(0,1fr)] gap-3 rounded-lg border" +
+  " border-[color-mix(in_srgb,var(--color-link)_18%,var(--color-border))]" +
+  " bg-[color-mix(in_srgb,var(--color-link)_4%,white)] p-3 mw-720:col-[1]";
+const CANCELLATION_CONFIRM =
+  "mx-5 mb-4 grid gap-3 rounded-lg border border-[color-mix(in_srgb,var(--color-danger)_28%,var(--color-border))]" +
+  " bg-[color-mix(in_srgb,var(--color-danger)_4%,white)] p-4";
 
 const MODAL_ACTIONS =
   "flex min-h-[66px] items-center justify-end gap-[9px] border-t border-border" +
@@ -86,11 +105,13 @@ export function PositionQuickEditModal({
   const [form, setForm] = useState(() => positionForm(position));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [confirmingCancellation, setConfirmingCancellation] = useState(false);
 
   useEffect(() => {
     if (open) {
       setForm(positionForm(position));
       setError("");
+      setConfirmingCancellation(false);
     }
   }, [open, position]);
 
@@ -101,13 +122,13 @@ export function PositionQuickEditModal({
     !form.recruitmentStartAt ||
     !form.recruitmentEndAt ||
     form.recruitmentEndAt >= form.recruitmentStartAt;
+  const capacityEstimate = estimateInterviewCapacity(form.interviewCapacity);
 
-  async function savePosition(
-    event: Pick<FormEvent, "preventDefault">,
+  async function persistPosition(
     status: "draft" | "active" | "closed",
-    action: "save" | "activate" | "close",
+    action: "save" | "activate" | "close" | "cancelReservation",
+    interviewAt: string | null,
   ) {
-    event.preventDefault();
     if (!periodValid) return;
     setSaving(true);
     setError("");
@@ -119,7 +140,7 @@ export function PositionQuickEditModal({
         roleType: form.roleType || null,
         headcount: form.headcount || null,
         interviewCapacity: form.interviewCapacity || null,
-        interviewAt: form.interviewAt || null,
+        interviewAt,
         recruitmentStartAt: form.recruitmentStartAt || null,
         recruitmentEndAt: form.recruitmentEndAt || null,
         submissionRequirements: position.submissionRequirements,
@@ -132,7 +153,9 @@ export function PositionQuickEditModal({
           ? "채용을 확정하고 운영을 시작했습니다."
           : action === "close"
             ? "채용을 마감했습니다."
-            : "포지션 정보를 저장했습니다.",
+            : action === "cancelReservation"
+              ? "면접 예약을 취소했습니다. 예약 확장 계획도 함께 해제됩니다."
+              : "포지션 정보를 저장했습니다.",
       );
       onClose();
     } catch (error) {
@@ -140,6 +163,15 @@ export function PositionQuickEditModal({
     } finally {
       setSaving(false);
     }
+  }
+
+  function savePosition(
+    event: Pick<FormEvent, "preventDefault">,
+    status: "draft" | "active" | "closed",
+    action: "save" | "activate" | "close",
+  ) {
+    event.preventDefault();
+    return persistPosition(status, action, form.interviewAt || null);
   }
 
   return (
@@ -199,7 +231,7 @@ export function PositionQuickEditModal({
                 className={FIELD_CONTROL}
                 type="number"
                 min={1}
-                max={10000}
+                max={MAX_GUARANTEED_INTERVIEW_CONCURRENCY}
                 value={form.headcount}
                 onChange={(event) =>
                   setForm((current) => ({
@@ -215,7 +247,7 @@ export function PositionQuickEditModal({
                 className={FIELD_CONTROL}
                 type="number"
                 min={1}
-                max={10000}
+                max={MAX_GUARANTEED_INTERVIEW_CONCURRENCY}
                 value={form.interviewCapacity}
                 onChange={(event) =>
                   setForm((current) => ({
@@ -225,6 +257,28 @@ export function PositionQuickEditModal({
                 }
               />
             </label>
+            <aside
+              aria-label="예약 오토스케일링 예상 비용"
+              className={CAPACITY_NOTICE}
+            >
+              <span className="grid size-8 place-items-center rounded-full bg-brand-soft text-brand">
+                <ServerCog aria-hidden="true" size={16} />
+              </span>
+              <div>
+                <strong className="text-[11px] text-ink">
+                  API {capacityEstimate.apiTasks}개 · Worker{" "}
+                  {capacityEstimate.workerTasks}개 예약 · 추가 비용 약{" "}
+                  {formatEstimatedKrw(
+                    capacityEstimate.estimatedIncrementalCostKrw,
+                  )}
+                  원/회
+                </strong>
+                <p className="mt-1 text-[9px] leading-[1.5] text-muted">
+                  API는 면접 15분 전부터 55분, Worker는 종료 5분 전부터 50분간
+                  확보합니다. 실제 대기 작업량·환율에 따라 달라질 수 있습니다.
+                </p>
+              </div>
+            </aside>
             <label className={FORM_LABEL}>
               <span className={FORM_LABEL_TEXT}>면접 시각</span>
               <input
@@ -302,6 +356,47 @@ export function PositionQuickEditModal({
             면접 기준을 저장한 뒤 채용을 확정할 수 있습니다.
           </p>
         ) : null}
+        {confirmingCancellation ? (
+          <section
+            aria-label="면접 예약 취소 확인"
+            className={CANCELLATION_CONFIRM}
+          >
+            <div>
+              <strong className="text-[12px] text-danger">
+                면접 예약 시각을 취소할까요?
+              </strong>
+              <p className="mt-1 text-[10px] leading-[1.55] text-muted">
+                포지션과 지원자 초대는 유지됩니다. 미래 사전 확장만 취소되며,
+                이미 진행 중인 면접 세션은 종료시키지 않습니다.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                className={BUTTON_SECONDARY}
+                type="button"
+                disabled={saving}
+                onClick={() => setConfirmingCancellation(false)}
+              >
+                돌아가기
+              </button>
+              <button
+                className={BUTTON_SECONDARY_DANGER}
+                type="button"
+                disabled={saving}
+                onClick={() =>
+                  void persistPosition(
+                    position.status as "draft" | "active",
+                    "cancelReservation",
+                    null,
+                  )
+                }
+              >
+                <CalendarX2 size={15} aria-hidden="true" />
+                예약 취소 확정
+              </button>
+            </div>
+          </section>
+        ) : null}
 
         <footer className={MODAL_ACTIONS}>
           {closed ? (
@@ -311,6 +406,17 @@ export function PositionQuickEditModal({
             </span>
           ) : (
             <>
+              {form.interviewAt && !confirmingCancellation ? (
+                <button
+                  className={BUTTON_SECONDARY_DANGER}
+                  type="button"
+                  disabled={saving}
+                  onClick={() => setConfirmingCancellation(true)}
+                >
+                  <CalendarX2 size={15} aria-hidden="true" />
+                  면접 예약 취소
+                </button>
+              ) : null}
               <button
                 className={BUTTON_SECONDARY}
                 type="submit"
@@ -512,7 +618,7 @@ function ModalShell({
 
 function savePositionErrorMessage(
   error: unknown,
-  action: "save" | "activate" | "close",
+  action: "save" | "activate" | "close" | "cancelReservation",
   hasCriteria: boolean,
 ) {
   const status =
@@ -524,6 +630,9 @@ function savePositionErrorMessage(
   }
   if (action === "activate" && !hasCriteria) {
     return "채용을 확정하려면 면접 기준을 먼저 저장해야 합니다.";
+  }
+  if (action === "cancelReservation") {
+    return "면접 예약을 취소하지 못했습니다. 최신 일정을 다시 확인해 주세요.";
   }
   return "포지션 정보를 저장하지 못했습니다. 최신 값을 다시 확인해 주세요.";
 }

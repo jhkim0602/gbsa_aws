@@ -138,6 +138,12 @@ class CompanyDeletionTargets:
         expired_at: datetime,
     ) -> OutboxEvent:
         self._repository.get_invitation(context, invitation_id)
+        consent = self._repository.get_latest_consent(context, invitation_id)
+        policy_snapshot = {
+            "policy_snapshot_id": str(policy_snapshot_id),
+            "retention_days": consent.retention_days if consent is not None else None,
+            "expired_at": expired_at.isoformat(),
+        }
         event = OutboxEvent(
             outbox_event_id=new_uuid7(self._clock.now()),
             company_id=context.company_id,
@@ -150,6 +156,7 @@ class CompanyDeletionTargets:
                 "invitation_id": str(invitation_id),
                 "applicant_id": str(applicant_id),
                 "policy_snapshot_id": str(policy_snapshot_id),
+                "policy_snapshot": policy_snapshot,
                 "expired_at": expired_at.isoformat(),
             },
             idempotency_key=f"retention-expired-{invitation_id}",

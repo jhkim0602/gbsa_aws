@@ -1,11 +1,26 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from typing import Protocol, cast
 from uuid import UUID
 
+from interview_evidence.capacity_management.event_handler import (
+    PositionCapacityChangedHandler,
+)
+from interview_evidence.capacity_management.planner import (
+    CapacityPlanner,
+    CapacityPlannerConfig,
+)
+from interview_evidence.capacity_management.repository import (
+    SqlAlchemyCapacityRepository,
+)
+from interview_evidence.capacity_management.scaling import (
+    AwsEcsScheduledScaling,
+    InMemoryScheduledScaling,
+)
 from interview_evidence.company_management.application.company_service import (
     CompanyManagementPublic,
 )
@@ -15,17 +30,24 @@ from interview_evidence.integration.interview_reporting import (
     InterviewReportingBoundary,
 )
 from interview_evidence.interview_engine.application.public import InterviewEnginePublic
+from interview_evidence.recruiting_assistant.application import ReportSearchProjector
 from interview_evidence.reporting.api import LaneDRuntime
 from interview_evidence.reporting.application.assessment_service import CriterionAssessor
 from interview_evidence.reporting.application.deletion_service import DeletionService
 from interview_evidence.reporting.application.evidence_service import EvidenceService
+from interview_evidence.reporting.domain.timeline import TranscriptSegment
 from interview_evidence.runtime.document_ai import create_document_extractor
-from interview_evidence.shared.aws_clients.ports import ConsumableQueue
+from interview_evidence.shared.aws_clients.ports import ConsumableQueue, InMemoryQueue
+from interview_evidence.shared.aws_clients.task_protection import (
+    TaskProtection,
+    create_task_protection,
+)
 from interview_evidence.shared.database import RequestScopedDatabase
-from interview_evidence.shared.ids import Clock, new_uuid7
-from interview_evidence.shared.messaging.outbox import Outbox, OutboxEvent
+from interview_evidence.shared.ids import Clock, SystemClock, new_uuid7
+from interview_evidence.shared.messaging.outbox import InMemoryOutbox, Outbox, OutboxEvent
 from interview_evidence.shared.messaging.worker import (
     EventHandler,
+    InMemoryProcessedMessageStore,
     MessageConsumer,
     OutboxDispatcher,
     ProcessedMessageStore,
@@ -47,9 +69,14 @@ from interview_evidence.workers.analysis.git_fetch import (
 )
 from interview_evidence.workers.analysis.handlers import AnalysisJobHandler
 from interview_evidence.workers.analysis.pipeline import SubmissionAnalysisPipeline
-from interview_evidence.workers.reporting.report import CriterionInput, ReportGenerator
+from interview_evidence.workers.reporting.report import (
+    CriterionAnswerInput,
+    CriterionInput,
+    ReportGenerator,
+)
 
 EVENT_QUEUE_ROUTING = {
+    "system.parity_probe": "analysis",
     "invitation.consent_completed": "analysis",
     "submission.analysis_requested": "analysis",
     "submission.analysis_completed": "analysis",
@@ -64,7 +91,18 @@ EVENT_QUEUE_ROUTING = {
     "deletion.target_requested": "deletion",
     "deletion.target_verified": "deletion",
     "retention.expired": "deletion",
+    "position.capacity_changed": "capacity",
+    "capacity.reconcile_requested": "capacity",
 }
+
+
+class ParityProbeEventHandler:
+    def __call__(self, context: TenantContext, event: OutboxEvent) -> object:
+        context.assert_company(event.company_id)
+        probe_id = UUID(str(event.payload["probe_id"]))
+        if event.aggregate_type != "system_parity" or probe_id != event.aggregate_id:
+            raise ValueError("invalid parity probe event")
+        return {"probe_id": str(probe_id), "status": "processed"}
 
 
 @dataclass(slots=True)
@@ -76,9 +114,30 @@ class WorkerRuntime:
     def run_once(self) -> int:
         if self.database is None:
             return self._run_without_transaction()
+        completed = self._run_in_transaction(self.dispatcher.dispatch_once)
+        for consumer in self.consumers:
+            completed += self._run_consumer(consumer)
+        return completed
+
+    def _run_consumer(self, consumer: MessageConsumer) -> int:
+        if self.database is None:
+            return consumer.consume_once(max_messages=1)
         token = self.database.begin_scope()
         try:
-            completed = self._run_without_transaction()
+            return consumer.consume_once(
+                max_messages=1,
+                commit=self.database.session.commit,
+                rollback=self.database.session.rollback,
+            )
+        finally:
+            self.database.end_scope(token)
+
+    def _run_in_transaction(self, operation: Callable[[], int]) -> int:
+        if self.database is None:
+            return operation()
+        token = self.database.begin_scope()
+        try:
+            completed = operation()
             self.database.session.commit()
             return completed
         except BaseException:
@@ -189,30 +248,49 @@ class ReportRequestedEventHandler:
         reporting: LaneDRuntime,
         generator: ReportGenerator,
         clock: Clock,
+        assistant_projector: ReportSearchProjector | None = None,
     ) -> None:
         self._company = company
         self._interview = interview
         self._reporting = reporting
         self._generator = generator
         self._clock = clock
+        self._assistant_projector = assistant_projector
 
     def __call__(self, context: TenantContext, event: OutboxEvent) -> object:
         session_id = UUID(str(event.payload["interview_session_id"]))
-        existing = self._reporting.repository.get_report_for_session(context, session_id)
-        if existing is not None:
-            return existing
         snapshot = self._interview.get_session_snapshot(context, session_id=session_id)
         criterion = self._company.get_criterion_version(
             context,
             snapshot.competency_model_version_id,
         )
+        subject = self._company.get_recruiting_assistant_subject(
+            context,
+            snapshot.invitation_id,
+        )
+        existing = self._reporting.repository.get_report_for_session(context, session_id)
+        if existing is not None:
+            if self._assistant_projector is not None:
+                self._assistant_projector.project(
+                    context,
+                    position_id=subject.position_id,
+                    position_title=subject.position_title,
+                    applicant_id=subject.applicant_id,
+                    applicant_display_name=subject.applicant_display_name,
+                    report=existing,
+                )
+            return existing
         final_turns = self._interview.list_final_turns(context, session_id=session_id)
         turns = tuple(turn for turn in final_turns if turn.speaker.value == "applicant")
-        questions = _questions_by_answer(final_turns)
         transcripts = {
             segment.turn_id: segment
             for segment in self._reporting.repository.list_transcripts(context, session_id)
         }
+        answers_by_criterion = _criterion_answers_by_criterion(
+            final_turns,
+            self._interview.list_question_rationales(context, session_id=session_id),
+            transcripts,
+        )
         recording = next(
             (
                 asset
@@ -225,44 +303,22 @@ class ReportRequestedEventHandler:
         )
         if recording is None or not turns:
             raise TimeoutError("report inputs are not ready")
-        # `strict=False` is load-bearing and lossy: an interview that produced fewer answers
-        # than the position has criteria pairs only the leading ones, and the trailing criteria
-        # silently disappear. That used to cost nothing but coverage; now those criteria carry
-        # weight, so a dropped one would quietly shrink the divisor the score is read against.
-        #
-        # So the pairing is made explicit. Every criterion becomes an input; the ones with no
-        # answer to pair with get no Evidence, which `ReportGenerator` already records as
-        # `insufficient_evidence` -- and `Report.criterion_aggregate` then excludes them *with
-        # their weight visible*, which is what the calculator has to show.
-        paired = {
-            criterion_item.criterion_id: turn
-            for criterion_item, turn in zip(criterion.criteria, turns, strict=False)
-            if turn.turn_id in transcripts
-        }
-        if not paired:
-            raise TimeoutError("report transcript inputs are not ready")
         inputs = tuple(
             CriterionInput(
                 criterion_id=criterion_item.criterion_id,
                 criterion_name=criterion_item.name,
                 criterion_text=criterion_item.description,
-                question=questions.get(turn.turn_id, "") if turn is not None else "",
                 observation=(
-                    "지원자의 최종 답변에서 관찰된 내용"
-                    if turn is not None
+                    "면접 질문에 대한 지원자의 답변들을 종합한 결과"
+                    if answers_by_criterion.get(criterion_item.criterion_id)
                     else "이 기준을 확인할 답변이 면접에서 나오지 않았습니다"
                 ),
-                # None, not a placeholder: there is no answer, so there is no turn and no
-                # transcript. `ReportGenerator` records the item as `insufficient_evidence`
-                # rather than trying to build an Evidence range out of nothing.
-                answer_turn_id=turn.turn_id if turn is not None else None,
-                transcript=transcripts[turn.turn_id] if turn is not None else None,
+                answers=answers_by_criterion.get(criterion_item.criterion_id, ()),
                 weight=criterion_item.weight,
             )
             for criterion_item in criterion.criteria
-            for turn in (paired.get(criterion_item.criterion_id),)
         )
-        return self._generator.generate(
+        report = self._generator.generate(
             context,
             session_id=session_id,
             invitation_id=snapshot.invitation_id,
@@ -274,6 +330,16 @@ class ReportRequestedEventHandler:
             interview_level=criterion.interview_level,
             axis_weights=criterion.axis_weights,
         )
+        if self._assistant_projector is not None:
+            self._assistant_projector.project(
+                context,
+                position_id=subject.position_id,
+                position_title=subject.position_title,
+                applicant_id=subject.applicant_id,
+                applicant_display_name=subject.applicant_display_name,
+                report=report,
+            )
+        return report
 
 
 class _TurnLike(Protocol):
@@ -294,22 +360,85 @@ class _SpeakerLike(Protocol):
     def value(self) -> str: ...
 
 
-def _questions_by_answer(turns: Sequence[_TurnLike]) -> dict[UUID, str]:
-    """Pair each applicant answer with the question it followed.
+class _RationaleLike(Protocol):
+    @property
+    def question_turn_id(self) -> UUID: ...
 
-    Turns arrive in session order, so the interviewer turn most recently before an answer
-    is the one it answers. The scorer needs this: the same answer is strong for one
-    question and evasive for another, and judging it without the question asked would
-    penalise a candidate for being exactly as brief as we asked them to be.
-    """
-    paired: dict[UUID, str] = {}
-    asked = ""
+    @property
+    def criterion_id(self) -> UUID: ...
+
+    @property
+    def interview_stage(self) -> str: ...
+
+
+def _criterion_answers_by_criterion(
+    turns: Sequence[_TurnLike],
+    rationales: Sequence[_RationaleLike],
+    transcripts: Mapping[UUID, TranscriptSegment],
+) -> dict[UUID, tuple[CriterionAnswerInput, ...]]:
+    """Group every answered scoring question, removing only repeated question-answer pairs."""
+    rationale_by_turn = {item.question_turn_id: item for item in rationales}
+    grouped: dict[UUID, list[CriterionAnswerInput]] = {}
+    question: _TurnLike | None = None
     for turn in turns:
         if turn.speaker.value == "interviewer":
-            asked = turn.text or asked
-        elif turn.speaker.value == "applicant":
-            paired[turn.turn_id] = asked
-    return paired
+            question = turn
+            continue
+        if turn.speaker.value != "applicant" or question is None:
+            continue
+        transcript = transcripts.get(turn.turn_id)
+        rationale = rationale_by_turn.get(question.turn_id)
+        if transcript is None:
+            question = None
+            continue
+        if rationale_by_turn and rationale is None:
+            # The current flow deliberately leaves the greeting/warm-up without a scoring
+            # rationale. It can steer retrieval but must not silently become the whole report.
+            question = None
+            continue
+        criterion_id = (
+            rationale.criterion_id
+            if rationale is not None
+            else getattr(question, "target_criterion_id", None)
+        )
+        if criterion_id is None:
+            question = None
+            continue
+        candidate = CriterionAnswerInput(
+            question=question.text or "",
+            answer_turn_id=turn.turn_id,
+            transcript=transcript,
+            video_start_ms=transcript.session_start_ms,
+            video_end_ms=transcript.session_end_ms,
+            interview_stage=(rationale.interview_stage if rationale is not None else "unknown"),
+        )
+        collected = grouped.setdefault(criterion_id, [])
+        if not any(_same_question_and_answer(candidate, seen) for seen in collected):
+            collected.append(candidate)
+        question = None
+    return {criterion_id: tuple(answers) for criterion_id, answers in grouped.items()}
+
+
+def _same_question_and_answer(
+    left: CriterionAnswerInput,
+    right: CriterionAnswerInput,
+) -> bool:
+    return (
+        _text_similarity(left.question, right.question) >= 0.92
+        and _text_similarity(
+            left.transcript.text,
+            right.transcript.text,
+        )
+        >= 0.88
+    )
+
+
+def _text_similarity(left: str, right: str) -> float:
+    normalized_left = "".join(character.casefold() for character in left if character.isalnum())
+    normalized_right = "".join(character.casefold() for character in right if character.isalnum())
+    if not normalized_left or not normalized_right:
+        return float(normalized_left == normalized_right)
+    return SequenceMatcher(None, normalized_left, normalized_right, autojunk=False).ratio()
 
 
 class DeletionRequestedEventHandler:
@@ -344,6 +473,7 @@ def create_worker_runtime(
     clock: Clock,
     database: RequestScopedDatabase | None = None,
     metrics: MetricRecorder | None = None,
+    task_protection: TaskProtection | None = None,
 ) -> WorkerRuntime:
     active_metrics = metrics or NullMetricRecorder()
     consumers = tuple(
@@ -359,6 +489,7 @@ def create_worker_runtime(
             },
             clock=clock,
             metrics=active_metrics,
+            task_protection=task_protection,
         )
         for queue_name, queue in queues.items()
     )
@@ -403,6 +534,7 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
     company = runtime.boundaries["company_management"]
     interview = runtime.boundaries["interview_engine"]
     reporting_boundary = runtime.boundaries["interview_reporting"]
+    assistant_projector = runtime.resources["assistant_projector"]
     lane_d = runtime.lanes["reporting"]
     if not isinstance(lane_b, LaneBRuntime):
         raise TypeError("production analysis runtime is invalid")
@@ -414,6 +546,8 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
         raise TypeError("production reporting projection is invalid")
     if not isinstance(lane_d, LaneDRuntime):
         raise TypeError("production reporting runtime is invalid")
+    if not isinstance(assistant_projector, ReportSearchProjector):
+        raise TypeError("production assistant projector is invalid")
     deletion_service = lane_d.deletion_service
     document_extractor = create_document_extractor(
         environment,
@@ -440,6 +574,45 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
         outbox,
         clock,
         max_attempts=3,
+    )
+    capacity_repository = SqlAlchemyCapacityRepository(database.session)
+    capacity_scaling = (
+        InMemoryScheduledScaling()
+        if environment.get("APP_ENVIRONMENT", "").strip().casefold()
+        in {"local", "local-production", "test"}
+        else AwsEcsScheduledScaling(
+            aws.application_auto_scaling,
+            cluster_name=_required_worker_setting(environment, "ECS_CLUSTER_NAME"),
+            api_service_name=_required_worker_setting(
+                environment,
+                "ECS_API_SERVICE_NAME",
+            ),
+            worker_service_name=_required_worker_setting(
+                environment,
+                "ECS_WORKER_SERVICE_NAME",
+            ),
+        )
+    )
+    capacity_planner = CapacityPlanner(
+        CapacityPlannerConfig(
+            api_baseline_tasks=int(environment.get("CAPACITY_API_BASELINE_TASKS", "2")),
+            api_max_tasks=int(environment.get("CAPACITY_API_MAX_TASKS", "20")),
+            api_safe_sessions_per_task=int(
+                environment.get("CAPACITY_API_SAFE_SESSIONS_PER_TASK", "25")
+            ),
+            worker_baseline_tasks=int(environment.get("CAPACITY_WORKER_BASELINE_TASKS", "1")),
+            worker_max_tasks=int(environment.get("CAPACITY_WORKER_MAX_TASKS", "30")),
+            worker_safe_completions_per_task=int(
+                environment.get("CAPACITY_WORKER_SAFE_COMPLETIONS_PER_TASK", "25")
+            ),
+        )
+    )
+    capacity_handler = PositionCapacityChangedHandler(
+        capacity_repository,
+        capacity_planner,
+        capacity_scaling,
+        clock,
+        metrics,
     )
     return create_worker_runtime(
         outbox=outbox,
@@ -473,9 +646,10 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
                 generator=ReportGenerator(
                     lane_d.repository,
                     EvidenceService(lane_d.repository),
-                    CriterionAssessor(aws.model),
+                    CriterionAssessor(aws.model, metrics=metrics),
                 ),
                 clock=clock,
+                assistant_projector=assistant_projector,
             ),
             "deletion.requested": DeletionRequestedEventHandler(
                 deletion_service,
@@ -485,11 +659,38 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
                 deletion_service,
                 clock,
             ),
+            "position.capacity_changed": capacity_handler,
+            "capacity.reconcile_requested": capacity_handler,
         },
         clock=clock,
         database=database,
         metrics=metrics,
+        task_protection=create_task_protection(
+            agent_uri=environment.get("ECS_AGENT_URI"),
+            service="worker",
+            metrics=metrics,
+        ),
     )
+
+
+def create_local_worker_runtime() -> WorkerRuntime:
+    queues = {
+        name: InMemoryQueue() for name in ("analysis", "media", "reporting", "deletion", "capacity")
+    }
+    return create_worker_runtime(
+        outbox=InMemoryOutbox(),
+        queues=queues,
+        processed=InMemoryProcessedMessageStore(),
+        handlers={"system.parity_probe": ParityProbeEventHandler()},
+        clock=SystemClock(),
+    )
+
+
+def _required_worker_setting(environment: Mapping[str, str], name: str) -> str:
+    value = environment.get(name, "").strip()
+    if not value:
+        raise RuntimeError(f"required worker setting is missing: {name}")
+    return value
 
 
 def create_environment_worker_runtime(
@@ -500,4 +701,9 @@ def create_environment_worker_runtime(
     # sidecar is running. Installed here rather than in `worker.main` so that every entry point
     # into a worker runtime gets it.
     configure_worker_tracing(active_environment)
+    runtime_mode = active_environment.get("WORKER_RUNTIME_MODE", "production").strip().casefold()
+    if runtime_mode == "in-memory":
+        return create_local_worker_runtime()
+    if runtime_mode != "production":
+        raise RuntimeError("WORKER_RUNTIME_MODE must be production or in-memory")
     return create_production_worker_runtime(active_environment)

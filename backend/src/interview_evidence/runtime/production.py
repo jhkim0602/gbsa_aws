@@ -71,6 +71,15 @@ from interview_evidence.interview_engine.application.idempotency import (
 )
 from interview_evidence.interview_engine.application.public import InterviewEnginePublic
 from interview_evidence.main import Runtime, create_app
+from interview_evidence.recruiting_assistant.api import create_assistant_router
+from interview_evidence.recruiting_assistant.application import (
+    AssistantAnswerService,
+    AssistantSearchService,
+    ReportSearchProjector,
+)
+from interview_evidence.recruiting_assistant.repository import (
+    SQLAlchemyAssistantDocumentRepository,
+)
 from interview_evidence.reporting.adapters.playback import (
     RecordingPresigner,
     ScopedPlaybackLocator,
@@ -100,6 +109,7 @@ from interview_evidence.shared.aws_clients.ports import (
     TextEmbedder,
     TextToSpeech,
 )
+from interview_evidence.shared.aws_clients.task_protection import create_task_protection
 from interview_evidence.shared.database import RequestScopedDatabase
 from interview_evidence.shared.ids import SystemClock
 from interview_evidence.shared.operations import (
@@ -338,9 +348,18 @@ def create_production_runtime(
         audit=audit,
         clock=clock,
     )
+    assistant_documents = SQLAlchemyAssistantDocumentRepository(session)
+    assistant_projector = ReportSearchProjector(assistant_documents, embedder)
+    assistant_search = AssistantSearchService(
+        assistant_documents,
+        embedder,
+        minimum_score=float(environment.get("ASSISTANT_MIN_RELEVANCE_SCORE", "0")),
+    )
+    assistant_answers = AssistantAnswerService(assistant_search, model)
     base_reporting_public = ReportingPublic(
         repository=base_lane_d.repository,
         deletion_service=base_lane_d.deletion_service,
+        assistant_documents=assistant_documents,
     )
     privacy_deletion = PrivacyDeletionBoundary(
         company=company_public,
@@ -380,6 +399,7 @@ def create_production_runtime(
     reporting_public = ReportingPublic(
         repository=lane_d.repository,
         deletion_service=lane_d.deletion_service,
+        assistant_documents=assistant_documents,
     )
     reporting_company = ReportingCompanyBoundary(reporting_public)
 
@@ -452,6 +472,11 @@ def create_production_runtime(
                 handler=lane_c.stream_handler,
                 database=database,
                 speech=lane_c.websocket_speech,
+                task_protection=create_task_protection(
+                    agent_uri=environment.get("ECS_AGENT_URI"),
+                    service="api",
+                    metrics=active_metrics,
+                ),
             ),
             create_reporting_router(
                 principal_provider=principals,
@@ -467,6 +492,14 @@ def create_production_runtime(
                 # provider here the response carries no question rationale, so the console
                 # shows each question with nothing behind it -- as if the AI made it up.
                 rationale_provider=interview_public,
+            ),
+            create_assistant_router(
+                principal_provider=principals,
+                company_service=lane_a.company_service,
+                search_service=assistant_search,
+                answer_service=assistant_answers,
+                audit=audit,
+                clock=clock,
             ),
         ],
         readiness=readiness,
@@ -490,6 +523,7 @@ def create_production_runtime(
             "submission_interview": submission_interview,
             "interview_reporting": interview_reporting,
             "reporting_company": reporting_company,
+            "recruiting_assistant": assistant_search,
         },
         worker_handlers={
             "invitation_email": InvitationEmailHandler(lane_a.email_sender),
@@ -497,7 +531,7 @@ def create_production_runtime(
             "report_generation": ReportGenerator(
                 lane_d.repository,
                 EvidenceService(lane_d.repository),
-                CriterionAssessor(model),
+                CriterionAssessor(model, metrics=active_metrics),
             ),
             "privacy_deletion": lane_d.deletion_service,
         },
@@ -509,6 +543,9 @@ def create_production_runtime(
             "object_storage": object_storage,
             "search_index": search_index,
             "text_embedder": embedder,
+            "assistant_documents": assistant_documents,
+            "assistant_projector": assistant_projector,
+            "assistant_answers": assistant_answers,
             "privacy_deletion": privacy_deletion,
             "metrics": active_metrics,
             "readiness": readiness,

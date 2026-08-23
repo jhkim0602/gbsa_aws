@@ -1,12 +1,13 @@
 SHELL := /bin/bash
 UV_CACHE_DIR ?= .uv-cache
 WORKER_CONCURRENCY ?= 4
-.PHONY: bootstrap dev-install up down local-infra api worker infra-format-check infra-validate migrate
+.PHONY: bootstrap dev-install up down local-infra api worker assistant-backfill infra-format-check infra-validate migrate
 
 # Every target below that runs application code loads `.env` first. `set -a` exports what the
 # file assigns, so `os.environ` carries it -- without that the runtime reads none of it and
-# fails on the first required setting.
-RUN_WITH_ENV = set -a && source .env && set +a &&
+# fails on the first required setting. Keep the source tree explicit as well so host commands
+# always run the current checkout even if an editable-install path is stale or unavailable.
+RUN_WITH_ENV = set -a && source .env && set +a && export PYTHONPATH="$(CURDIR)/backend/src$${PYTHONPATH:+:$${PYTHONPATH}}" &&
 
 # `--no-editable`, matching CI and the image: this installs a copy of `backend/src` into the
 # virtualenv. Use `make dev-install` for a working copy where edits take effect.
@@ -31,7 +32,7 @@ up:
 down:
 	docker compose down
 
-# Creates the two S3 buckets (with the CORS rules the browser upload needs), the four SQS
+# Creates the two S3 buckets (with the CORS rules the browser upload needs), the five SQS
 # queues and the DynamoDB table. Nothing seeds application data: there is no demo company or
 # position, so a fresh database starts empty and the first company comes from a real signup.
 local-infra:
@@ -56,6 +57,11 @@ worker:
 		pids="$$pids $$!"; \
 	done; \
 	wait
+
+# Backfill recruiter-assistant search documents for reports created before the projection existed
+# or before the configured embedding provider/version changed. The operation is idempotent.
+assistant-backfill:
+	$(RUN_WITH_ENV) UV_CACHE_DIR=$(UV_CACHE_DIR) uv run --no-sync python -m interview_evidence.runtime.assistant_backfill
 
 # Alembic reads MIGRATION_DATABASE_URL from the environment (`backend/alembic/env.py`), so this
 # needs `.env` too. Not `interview_evidence.migrate`: that entry point resolves the credential

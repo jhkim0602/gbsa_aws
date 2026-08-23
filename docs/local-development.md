@@ -73,17 +73,18 @@ both and goes to the account your credentials name:
 
 | Service | Locally | Consequence |
 |---|---|---|
-| **Bedrock** | real AWS | Question generation and criterion assessment are billed per call. `BEDROCK_MODEL_ID` must be enabled in `AWS_REGION` or every call fails `AccessDenied`. |
+| **Vertex AI Gemini** | real GCP by default | Question generation, criterion assessment, and 1024-dimensional embeddings are billed per call. |
+| **Bedrock** | optional real AWS fallback | Set `AI_PROVIDER=aws` and `EMBEDDING_PROVIDER=aws` to restore Claude and Titan. `BEDROCK_MODEL_ID` must be enabled in `AWS_REGION`. |
 | **Cognito** | real AWS | Production uses it; local company-console auth uses the fixed local identity below. |
 | Speech-to-Text / Text-to-Speech | real GCP | Billed. One streaming STT connection is opened per answer; question PCM is streamed back over the interview WebSocket. |
-| Textract | real AWS | Billed. Needed only for document submission analysis. |
+| Document AI | real GCP fallback | Native text PDFs stay local; scanned or image-heavy PDFs use billed Document AI OCR. |
 | MediaConvert | real AWS | The placeholder role ARN fails at job submission; a real ARN is needed to post-process a recording. |
 | Invitation email | Mailpit SMTP | Delivered to the local mailbox at `http://127.0.0.1:8025`. Production continues to use SES. |
 
 There is no deterministic model substitute. Commit `7d977f7` removed the `local-production`
 runtime that provided one (along with the demo seed), and restoring it means ~1,300 lines that no
 longer match the current domain — `Invitation.create()` now requires `submission_requirements`,
-`ApplicantSessionAdapter` requires `store`. If local Bedrock cost becomes a problem, writing a
+`ApplicantSessionAdapter` requires `store`. If local model cost becomes a problem, writing a
 small `AIModel` stub is the cheaper path, not reviving that tree.
 
 ## Logging in
@@ -116,14 +117,19 @@ This provider cannot activate in staging or production: any `APP_ENVIRONMENT` ot
 continues to use Cognito. The ids still need to name a company user in your local Postgres; the
 provider authenticates the request but does not seed application data.
 
-## GCP speech locally
+## GCP AI, documents, and speech locally
 
-Enable Speech-to-Text, Text-to-Speech, and Document AI in the personal GCP project, then store
-the service account JSON outside the repository. Create a Document OCR processor and point the
-ignored root `.env` at that file and processor:
+Enable Vertex AI, Speech-to-Text, Text-to-Speech, and Document AI in the personal GCP project.
+Grant the service account Vertex AI User access, store its JSON outside the repository, create a
+Document OCR processor, and point the ignored root `.env` at that file and processor:
 
 ```bash
 GOOGLE_APPLICATION_CREDENTIALS=$HOME/.config/whyyou/gcp-service-account.json
+AI_PROVIDER=gcp
+EMBEDDING_PROVIDER=gcp
+GCP_VERTEX_AI_LOCATION=global
+GCP_VERTEX_AI_MODEL_ID=gemini-2.5-flash
+GCP_VERTEX_AI_EMBEDDING_MODEL_ID=gemini-embedding-001
 STT_PROVIDER=gcp_streaming
 TTS_PROVIDER=gcp_streaming
 DOCUMENT_OCR_PROVIDER=gcp_document_ai
@@ -133,10 +139,30 @@ GCP_DOCUMENT_AI_PROCESSOR_ID=your-document-ocr-processor-id
 GCP_TTS_VOICE_NAME=ko-KR-Chirp3-HD-Achernar
 ```
 
+Vertex AI defaults to `GCP_DOCUMENT_AI_PROJECT_ID`; set `GCP_VERTEX_AI_PROJECT_ID` only when the
+generation project differs. Switching embedding providers requires existing materials to be
+analyzed again. Retrieval filters by embedding model and version so GCP and Titan vectors are
+never compared with each other.
+
 The browser sends 16 kHz mono PCM in roughly 40 ms packets. The API keeps one GCP recognition
 stream open until `answer.complete`, persists the combined final transcript once, and sends GCP
-TTS PCM back through the same WebSocket. Set both providers to `aws_legacy` to use the previous
-AWS path without reverting code.
+TTS PCM back through the same WebSocket. Set both speech providers to `aws_legacy` to use the
+previous AWS speech path without reverting code.
+
+## Backfill existing AI-assistant reports
+
+Reports created before the recruiting-assistant projection existed, or before switching the
+embedding provider, do not belong to the current vector search space. The UI distinguishes this
+state from a position that has no final reports. Backfill only the missing/current-provider
+projections with:
+
+```bash
+make assistant-backfill
+```
+
+The command is idempotent. It skips reports that already have documents for the configured
+`EMBEDDING_PROVIDER` model and version, and replaces stale-provider projections using deterministic
+document ids.
 
 ## Automated interview locally
 

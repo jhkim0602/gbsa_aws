@@ -24,6 +24,7 @@ export type ServerState = Readonly<{
   serverSequence: number;
   lastFinalTurnId: string | null;
   lastVerifiedRecordingChunkSequence: number;
+  lastRecordingEndMs?: number;
   degradedModes: string[];
 }>;
 
@@ -32,6 +33,7 @@ export type InterviewSessionStore = {
   serverSequence: number;
   lastFinalTurnId: string | null;
   lastVerifiedRecordingChunkSequence: number;
+  lastRecordingEndMs: number;
   degradedModes: string[];
   connectionState: ConnectionState;
   localChunks: BufferedChunk[];
@@ -48,6 +50,7 @@ export function createInterviewSessionStore(): StoreApi<InterviewSessionStore> {
     serverSequence: 0,
     lastFinalTurnId: null,
     lastVerifiedRecordingChunkSequence: 0,
+    lastRecordingEndMs: 0,
     degradedModes: [],
     connectionState: "disconnected",
     localChunks: [],
@@ -59,6 +62,8 @@ export function createInterviewSessionStore(): StoreApi<InterviewSessionStore> {
         lastFinalTurnId: snapshot.lastFinalTurnId,
         lastVerifiedRecordingChunkSequence:
           snapshot.lastVerifiedRecordingChunkSequence,
+        lastRecordingEndMs:
+          snapshot.lastRecordingEndMs ?? get().lastRecordingEndMs,
         degradedModes: [...snapshot.degradedModes],
       });
     },
@@ -70,6 +75,8 @@ export function createInterviewSessionStore(): StoreApi<InterviewSessionStore> {
         lastFinalTurnId: snapshot.lastFinalTurnId,
         lastVerifiedRecordingChunkSequence:
           snapshot.lastVerifiedRecordingChunkSequence,
+        lastRecordingEndMs:
+          snapshot.lastRecordingEndMs ?? get().lastRecordingEndMs,
         degradedModes: [...snapshot.degradedModes],
         localChunks: get().localChunks.filter(
           ({ sequence }) =>

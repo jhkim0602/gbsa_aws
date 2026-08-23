@@ -9,6 +9,7 @@ describe("company feature routes", () => {
     ["/auth/login", "기업 로그인"],
     ["/auth/signup", "기업 회원가입"],
     ["/company", "채용 운영 대시보드"],
+    ["/ai-assistant", "AI 채용 어시스턴트"],
     ["/hiring", "포지션 만들기"],
     ["/review/00000000-0000-7000-8000-000000000001", "지원자 검토"],
     ["/settings/invitation-email", "초대 메일 템플릿"],
@@ -38,13 +39,15 @@ describe("company feature routes", () => {
     expect(screen.getByRole("link", { name: "대시보드" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "채용 포지션" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "지원자 관리" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "AI 어시스턴트" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "채용 관리" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "초대 메일 템플릿" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "AI 면접관" })).toBeNull();
     expect(screen.getAllByRole("link", { name: "지원자 화면" })).toHaveLength(
       2,
     );
-    expect(screen.getByText("InterviewEP")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "WhyYou 홈" })).toBeTruthy();
+    expect(screen.getByRole("img", { name: "WhyYou" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "사용자 메뉴" })).toBeTruthy();
   });
 

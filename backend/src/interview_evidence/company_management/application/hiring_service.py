@@ -49,6 +49,8 @@ class HiringService:
         expires_at: datetime,
     ) -> tuple[InvitationIssuance, ...]:
         position = self._repository.get_position(context, position_id)
+        if not position.accepts_new_applications_on(self._clock.now().date()):
+            raise ValueError("position is not accepting new applications")
         versions = self._repository.list_criterion_versions(context, position_id)
         published = [version for version in versions if version.status == "published"]
         if not published:

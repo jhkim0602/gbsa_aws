@@ -82,6 +82,8 @@ class AwsOpenSearchIndex:
                     str(document.criterion_id) if document.criterion_id is not None else None
                 ),
                 "material_type": document.material_type,
+                "embedding_model": document.embedding_model,
+                "embedding_version": document.embedding_version,
             },
         )
 
@@ -148,6 +150,8 @@ class AwsOpenSearchIndex:
         invitation_id: UUID | None = None,
         competency_model_version_id: UUID | None = None,
         criterion_id: UUID | None = None,
+        embedding_model: str | None = None,
+        embedding_version: str | None = None,
     ) -> tuple[SearchCandidate, ...]:
         tenant = require_tenant_context(context)
         if tenant.actor_type.value == "applicant" and tenant.actor_id != applicant_id:
@@ -187,6 +191,10 @@ class AwsOpenSearchIndex:
                     }
                 }
             )
+        if embedding_model is not None:
+            filters.append({"term": {"embedding_model.keyword": embedding_model}})
+        if embedding_version is not None:
+            filters.append({"term": {"embedding_version.keyword": embedding_version}})
         response = self._request(
             "POST",
             f"/{self._index_name}/_search",
@@ -205,6 +213,8 @@ class AwsOpenSearchIndex:
                     "competency_model_version_id",
                     "criterion_id",
                     "material_type",
+                    "embedding_model",
+                    "embedding_version",
                 ],
                 "query": {
                     "bool": {
@@ -316,6 +326,8 @@ def _candidate(
                 UUID(str(source["criterion_id"])) if source.get("criterion_id") else None
             ),
             material_type=(str(source["material_type"]) if source.get("material_type") else None),
+            embedding_model=str(source.get("embedding_model", "unknown")),
+            embedding_version=str(source.get("embedding_version", "unknown")),
         )
     except (KeyError, TypeError, ValueError):
         return None

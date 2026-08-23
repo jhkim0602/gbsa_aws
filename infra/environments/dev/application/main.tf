@@ -170,11 +170,14 @@ module "compute" {
   application_security_group_id = data.terraform_remote_state.foundation.outputs.network.application_security_group_id
   api_image                     = var.api_image
   worker_image                  = var.worker_image
-  task_role_arn                 = local.identity.application_runtime_role_arn
-  task_role_name                = local.identity.application_runtime_role_name
-  create_task_role              = false
-  secret_arns                   = [local.data.application_secret_arn, local.data.aurora_master_secret_arn]
-  kms_key_arns                  = [local.data.kms_key_arn]
+  worker_queue_names = toset([
+    for arn in values(local.workflow.queue_arns) : element(reverse(split(":", arn)), 0)
+  ])
+  task_role_arn    = local.identity.application_runtime_role_arn
+  task_role_name   = local.identity.application_runtime_role_name
+  create_task_role = false
+  secret_arns      = [local.data.application_secret_arn, local.data.aurora_master_secret_arn]
+  kms_key_arns     = [local.data.kms_key_arn]
   data_resource_arns = concat(
     local.bucket_resources,
     [local.data.dynamodb_table_arn],
@@ -223,6 +226,10 @@ module "compute" {
     SQS_DELETION_QUEUE_URL  = local.workflow.queue_urls["deletion"]
     SQS_MEDIA_QUEUE_URL     = local.workflow.queue_urls["media"]
     SQS_REPORTING_QUEUE_URL = local.workflow.queue_urls["reporting"]
+    SQS_CAPACITY_QUEUE_URL  = local.workflow.queue_urls["capacity"]
+    ECS_CLUSTER_NAME        = local.name
+    ECS_API_SERVICE_NAME    = "${local.name}-api"
+    ECS_WORKER_SERVICE_NAME = "${local.name}-worker"
   }
   # A GitHub credential, so it is referenced rather than passed: the analysis worker
   # needs it to read a candidate's public repository above the 60-request anonymous

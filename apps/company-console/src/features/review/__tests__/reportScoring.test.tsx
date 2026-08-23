@@ -13,6 +13,7 @@ import { ReportView } from "../ReportView";
 import type {
   AxisAssessment,
   EvidenceRange,
+  InterviewStageSummary,
   ReviewReport,
   ReviewReportItem,
 } from "../types";
@@ -67,6 +68,8 @@ function report(overrides: Partial<ReviewReport> = {}): ReviewReport {
     summary: "면접 답변을 근거로 기준을 검토했습니다.",
     status: "ready",
     overallScore: 78,
+    communicationScore: null,
+    communicationScoredCriteriaCount: 0,
     unscoredCriteriaCount: 0,
     scoringBreakdown: null,
     items: [item()],
@@ -74,8 +77,17 @@ function report(overrides: Partial<ReviewReport> = {}): ReviewReport {
   };
 }
 
-function renderReport(value: ReviewReport) {
-  render(<ReportView report={value} onSelectEvidence={vi.fn()} />);
+function renderReport(
+  value: ReviewReport,
+  stageSummary: InterviewStageSummary[] = [],
+) {
+  render(
+    <ReportView
+      report={value}
+      stageSummary={stageSummary}
+      onSelectEvidence={vi.fn()}
+    />,
+  );
 }
 
 describe("report scoring", () => {
@@ -96,6 +108,57 @@ describe("report scoring", () => {
     expect(
       screen.getByText(/기준 3개는 인용할 답변이 없어/, { exact: false }),
     ).toBeTruthy();
+  });
+
+  it("shows communication separately from competency and lists interview stages", () => {
+    renderReport(
+      report({
+        overallScore: 84,
+        communicationScore: 63,
+        communicationScoredCriteriaCount: 2,
+        items: [
+          item({
+            axisAssessments: [
+              axis(),
+              axis({
+                axis: "communication",
+                label: "설명력",
+                score: 63,
+              }),
+            ],
+          }),
+        ],
+      }),
+      [
+        {
+          stage: "technical",
+          label: "기술 면접",
+          questionCount: 4,
+          evidenceCount: 3,
+        },
+        {
+          stage: "project_deep_dive",
+          label: "프로젝트 심층",
+          questionCount: 5,
+          evidenceCount: 4,
+        },
+        {
+          stage: "behavioral",
+          label: "협업·인성",
+          questionCount: 3,
+          evidenceCount: 2,
+        },
+      ],
+    );
+
+    expect(screen.getByText("직무 역량")).toBeTruthy();
+    expect(screen.getAllByText("설명력").length).toBeGreaterThan(0);
+    expect(screen.getByText("84")).toBeTruthy();
+    expect(screen.getByText("63")).toBeTruthy();
+    expect(screen.getByText("기준 2개에서 판단")).toBeTruthy();
+    expect(screen.getByText("질문 5개 · 평가 근거 4개")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "기준별 평가" }));
+    expect(screen.getByText("별도 집계")).toBeTruthy();
   });
 
   it("says a null score is unjudged rather than showing a zero", () => {
@@ -139,7 +202,7 @@ describe("report scoring", () => {
     );
 
     // Counting the unjudged criterion as zero would print 40.
-    expect(screen.getByText("80점")).toBeTruthy();
+    expect(screen.getAllByText("80점").length).toBeGreaterThan(0);
     expect(screen.getByText("기준 1개에서 판단")).toBeTruthy();
   });
 
@@ -340,6 +403,11 @@ describe("report scoring", () => {
     );
 
     // 0.9*90 + 0.1*10 = 82. A plain mean would have printed 50.
-    expect(screen.getByText("82점")).toBeTruthy();
+    expect(screen.getAllByText("82점").length).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("img", {
+        name: /면접 점수 레이더 그래프/,
+      }),
+    ).toBeTruthy();
   });
 });

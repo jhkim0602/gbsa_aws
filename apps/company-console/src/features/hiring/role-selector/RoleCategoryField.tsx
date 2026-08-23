@@ -1,4 +1,5 @@
 import { Check, ChevronRight } from "lucide-react";
+import { useEffect, useRef } from "react";
 
 import { ROLE_TRACK_CATEGORIES } from "./role-taxonomy";
 import { getRoleCategoryVisual, getRoleDetailIcon } from "./role-visuals";
@@ -50,16 +51,25 @@ function resolveSelection(value: string) {
 
 export function RoleCategoryField({
   value,
+  focusCustomRole = false,
   onChange,
+  onRequestClose,
 }: {
   value: string;
+  focusCustomRole?: boolean;
   onChange: (value: string, suggestedTitle?: string) => void;
+  onRequestClose?: () => void;
 }) {
+  const customRoleInputRef = useRef<HTMLInputElement>(null);
   const {
     category: selectedCategory,
     customRole,
     role: selectedRole,
   } = resolveSelection(value);
+
+  useEffect(() => {
+    if (focusCustomRole) customRoleInputRef.current?.focus();
+  }, [focusCustomRole]);
 
   return (
     <div className="overflow-hidden border-y border-border bg-surface">
@@ -138,6 +148,7 @@ export function RoleCategoryField({
                   세부 직무 직접 입력
                 </strong>
                 <input
+                  ref={customRoleInputRef}
                   className="mt-1 min-h-9 w-full border-0 border-b border-border bg-transparent px-0 text-sm outline-none focus:border-brand"
                   value={customRole}
                   placeholder={`예: ${
@@ -152,6 +163,9 @@ export function RoleCategoryField({
                         : selectedCategory.label,
                       next || undefined,
                     );
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") onRequestClose?.();
                   }}
                 />
               </label>

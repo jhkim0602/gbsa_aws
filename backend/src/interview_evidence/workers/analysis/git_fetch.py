@@ -192,15 +192,10 @@ class GitHubPublicTransport:
         # author-filtered analysis still records which repository state it read.
         pinned_head_sha = _required_string(branch_page[0], "sha")
         authored = self._authored_pool(api_root, default_branch, limits, identity)
-        # Falling back to the branch pages it out too, so an applicant whose handle did
-        # not match is still sampled across a history rather than out of its first page.
-        # The page already read is reused, so a matched identity pays nothing for this.
+        if identity is not None and not authored:
+            raise GitFetchError("candidate_github_identity_has_no_commits")
         listed = authored or self._paged_listing(
-            api_root,
-            default_branch,
-            limits,
-            author=None,
-            first_page=branch_page,
+            api_root, default_branch, limits, author=None, first_page=branch_page
         )
         order = _sampling_order(listed, limits, _sample_seed(repository_url, identity))
         selected = self._screened_details(api_root, order, limits)
@@ -327,9 +322,8 @@ class GitHubPublicTransport:
 
         GitHub's ``author`` filter takes one login or address at a time, so the claimed
         identities are tried in turn and the first that matches wins. An identity that
-        matches nothing returns an empty list, which the caller reads as "fall back to
-        the branch listing" -- ownership classification then marks those commits as
-        unattributed instead of the analysis failing outright.
+        matches nothing returns an empty list and the caller rejects the submission;
+        unrelated branch commits must never be sent to the embedding model.
         """
         if identity is None:
             return []

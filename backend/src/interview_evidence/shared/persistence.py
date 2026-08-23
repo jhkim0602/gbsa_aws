@@ -176,6 +176,7 @@ class SQLOutbox:
             # current transaction and let the other dispatchers skip them; without this every
             # process publishes the same event before any of them commits `published`.
             .with_for_update(skip_locked=True)
+            .limit(100)
         )
         return tuple(self._domain(row) for row in rows)
 

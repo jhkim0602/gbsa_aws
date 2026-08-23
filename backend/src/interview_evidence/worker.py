@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import signal
 from pathlib import Path
 from threading import Event
@@ -9,6 +10,7 @@ from threading import Event
 from interview_evidence.runtime.worker import create_environment_worker_runtime
 
 READY_FILE = Path("/tmp/iep-worker-ready")
+LOGGER = logging.getLogger(__name__)
 
 
 def main() -> None:
@@ -23,7 +25,10 @@ def main() -> None:
     signal.signal(signal.SIGINT, request_stop)
     try:
         while not stopped.is_set():
-            runtime.run_once()
+            try:
+                runtime.run_once()
+            except Exception:
+                LOGGER.exception("worker cycle failed; delivery remains available for retry")
             stopped.wait(timeout=1)
     finally:
         READY_FILE.unlink(missing_ok=True)

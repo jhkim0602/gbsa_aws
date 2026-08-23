@@ -73,6 +73,7 @@ def test_empty_database_upgrades_to_single_merged_head(tmp_path: Path) -> None:
         "candidate_verification_maps",
         "verification_progress",
         "question_rationales",
+        "assistant_retrieval_documents",
     } <= tables
 
 

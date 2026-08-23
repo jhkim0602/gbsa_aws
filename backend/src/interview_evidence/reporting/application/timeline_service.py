@@ -31,6 +31,7 @@ class QuestionSourceProjection:
 @dataclass(frozen=True, slots=True)
 class QuestionRationaleProjection:
     criterion_id: UUID
+    interview_stage: str
     verification_target_type: str
     objective: str
     question_type: str
@@ -59,6 +60,7 @@ class QuestionSourceSnapshot(Protocol):
 class QuestionRationaleSnapshot(Protocol):
     question_turn_id: UUID
     criterion_id: UUID
+    interview_stage: str
     verification_target_type: str
     objective: str
     question_type: str
@@ -138,6 +140,7 @@ def _project_rationale(
 ) -> QuestionRationaleProjection:
     return QuestionRationaleProjection(
         criterion_id=rationale.criterion_id,
+        interview_stage=rationale.interview_stage,
         verification_target_type=rationale.verification_target_type,
         objective=rationale.objective,
         question_type=rationale.question_type,

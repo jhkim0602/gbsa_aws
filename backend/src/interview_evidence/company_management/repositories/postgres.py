@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Any, Protocol, TypeVar
 from uuid import UUID
 
@@ -70,6 +70,10 @@ from interview_evidence.shared.tenant import TenantContext, require_tenant_conte
 
 class TenantScopedResourceNotFound(LookupError):
     """Raised without disclosing whether another tenant owns the identifier."""
+
+
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 class TenantOwned(Protocol):
@@ -1050,7 +1054,7 @@ class SqlAlchemyCompanyRepository:
             role_type=row.role_type,
             headcount=row.headcount,
             interview_capacity=row.interview_capacity,
-            interview_at=row.interview_at,
+            interview_at=_aware(row.interview_at) if row.interview_at is not None else None,
             recruitment_start_at=row.recruitment_start_at,
             recruitment_end_at=row.recruitment_end_at,
             submission_requirements=submission_requirements_from_json(row.submission_requirements),

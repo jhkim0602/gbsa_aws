@@ -12,9 +12,8 @@ const ANSWERS = [
   "결과적으로 핵심 지표가 개선됐지만 단기 성과만으로 끝내지 않았습니다. 자동화된 점검 항목을 추가하고 운영 기준을 문서화했습니다. 이후 유사한 문제가 발생했을 때 탐지와 대응 시간이 줄어든 것을 확인했습니다.",
 ] as const;
 
-export function automatedAnswer(question: string, index: number) {
-  const base = ANSWERS[index % ANSWERS.length];
-  return `${base} 질문에서 말씀하신 ${question.trim()} 부분은 당시 판단 근거와 제가 직접 수행한 행동을 중심으로 설명드릴 수 있습니다.`;
+export function automatedAnswer(index: number) {
+  return ANSWERS[index % ANSWERS.length];
 }
 
 export async function createAutomatedMedia(
@@ -30,15 +29,15 @@ export async function createAutomatedMedia(
   let frame = 0;
   const draw = () => {
     frame += 1;
-    context.fillStyle = "#eef4e7";
+    context.fillStyle = "#f2f3ff";
     context.fillRect(0, 0, canvas.width, canvas.height);
-    context.fillStyle = "#547735";
+    context.fillStyle = "#4653bd";
     context.font = "bold 26px sans-serif";
     context.fillText("LOCAL AUTOMATED INTERVIEW", 42, 82);
-    context.fillStyle = "#243019";
+    context.fillStyle = "#1a1f36";
     context.font = "18px sans-serif";
     wrapText(context, label, 42, 132, 550, 30);
-    context.fillStyle = "#82ad4e";
+    context.fillStyle = "#5966ce";
     context.beginPath();
     context.arc(52 + (frame % 520), 316, 8, 0, Math.PI * 2);
     context.fill();

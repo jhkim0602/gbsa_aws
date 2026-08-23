@@ -459,13 +459,8 @@ def test_the_candidate_s_own_commits_are_requested_from_github() -> None:
     assert snapshot.pinned_head_sha == someone_else
 
 
-def test_an_identity_that_matches_nothing_falls_back_to_the_branch() -> None:
-    """An unmatched handle must not turn into an empty analysis.
-
-    Applicants mistype handles and commit under addresses they no longer use. The
-    ownership classifier already marks unattributed commits as such, so falling back
-    yields evidence to ask about instead of a failed submission.
-    """
+def test_an_identity_that_matches_nothing_rejects_unattributed_commits() -> None:
+    """A mistyped handle must not analyze another contributor's branch commits."""
     sha = _sha("a")
     transport = RecordingTransport(
         _responses(
@@ -475,13 +470,12 @@ def test_an_identity_that_matches_nothing_falls_back_to_the_branch() -> None:
         )
     )
 
-    snapshot = transport.fetch(
-        REPOSITORY_URL,
-        limits=GitFetchLimits(),
-        identity=CommitIdentityInput(claimed_handles=("ghost",)),
-    )
-
-    assert [commit.commit_sha for commit in snapshot.commits] == [sha]
+    with pytest.raises(GitFetchError, match="candidate_github_identity_has_no_commits"):
+        transport.fetch(
+            REPOSITORY_URL,
+            limits=GitFetchLimits(),
+            identity=CommitIdentityInput(claimed_handles=("ghost",)),
+        )
 
 
 def test_a_repository_with_a_single_root_commit_is_analyzable() -> None:

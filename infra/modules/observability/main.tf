@@ -290,6 +290,65 @@ resource "aws_xray_group" "errors" {
   tags = local.tags
 }
 
+resource "aws_cloudwatch_metric_alarm" "capacity_saturated" {
+  for_each = toset(["api", "worker"])
+
+  alarm_name          = "${var.name}-${each.value}-scheduled-capacity-saturated"
+  alarm_description   = "A reservation requires more ${each.value} tasks than the configured ECS maximum."
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "scheduled_capacity_saturated"
+  namespace           = "InterviewEvidencePlatform"
+  period              = 60
+  statistic           = "Sum"
+  threshold           = 0
+  alarm_actions       = [aws_sns_topic.alarms.arn]
+  treat_missing_data  = "notBreaching"
+  dimensions = {
+    service = each.value
+  }
+  tags = local.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "task_protection_error" {
+  for_each = toset(["api", "worker"])
+
+  alarm_name          = "${var.name}-${each.value}-task-protection-error"
+  alarm_description   = "The ${each.value} task could not protect active interview work from ECS scale-in."
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "ecs_task_protection_change"
+  namespace           = "InterviewEvidencePlatform"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 0
+  alarm_actions       = [aws_sns_topic.alarms.arn]
+  treat_missing_data  = "notBreaching"
+  dimensions = {
+    service = each.value
+    outcome = "error"
+  }
+  tags = local.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "assessment_citation_withheld" {
+  alarm_name          = "${var.name}-assessment-citation-withheld"
+  alarm_description   = "AI assessment citations did not resolve, so one or more scores were withheld."
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "ai_assessment_axis_count"
+  namespace           = "InterviewEvidencePlatform"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 10
+  alarm_actions       = [aws_sns_topic.alarms.arn]
+  treat_missing_data  = "notBreaching"
+  dimensions = {
+    outcome = "citation_withheld"
+  }
+  tags = local.tags
+}
+
 resource "aws_cloudwatch_dashboard" "operations" {
   dashboard_name = "${var.name}-operations"
   dashboard_body = jsonencode({
@@ -301,7 +360,79 @@ resource "aws_cloudwatch_dashboard" "operations" {
         width  = 24
         height = 2
         properties = {
-          markdown = "# Interview Evidence Platform\nMonitor WebSocket sessions, queue age, DLQs, Evidence rejection, and deletion residue."
+          markdown = "# Interview Evidence Platform\n예약 용량, Worker 적체, ECS 작업 보호, Evidence 인용 검증을 한 화면에서 확인합니다."
+        }
+      },
+      {
+        type   = "metric"
+        x      = 0
+        y      = 2
+        width  = 12
+        height = 6
+        properties = {
+          title  = "예약으로 보장한 ECS 최소 작업 수"
+          view   = "timeSeries"
+          region = data.aws_region.current.name
+          stat   = "Maximum"
+          period = 60
+          metrics = [
+            ["InterviewEvidencePlatform", "scheduled_capacity_minimum", "service", "api"],
+            [".", ".", ".", "worker"],
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 2
+        width  = 12
+        height = 6
+        properties = {
+          title  = "SQS 대기 작업 및 DLQ"
+          view   = "timeSeries"
+          region = data.aws_region.current.name
+          stat   = "Maximum"
+          period = 60
+          metrics = concat(
+            [for name, arn in var.queue_arns : ["AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", element(reverse(split(":", arn)), 0), { label = "${name} 대기" }]],
+            [for name, arn in var.dlq_arns : ["AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", element(reverse(split(":", arn)), 0), { label = "${name} DLQ" }]],
+          )
+        }
+      },
+      {
+        type   = "metric"
+        x      = 0
+        y      = 8
+        width  = 12
+        height = 6
+        properties = {
+          title  = "AI 평가 Evidence 인용 검증"
+          view   = "timeSeries"
+          region = data.aws_region.current.name
+          stat   = "Sum"
+          period = 300
+          metrics = [
+            ["InterviewEvidencePlatform", "ai_assessment_axis_count", "outcome", "evidence_verified"],
+            [".", ".", ".", "citation_withheld"],
+          ]
+        }
+      },
+      {
+        type   = "metric"
+        x      = 12
+        y      = 8
+        width  = 12
+        height = 6
+        properties = {
+          title  = "ECS 작업 보호 변경"
+          view   = "timeSeries"
+          region = data.aws_region.current.name
+          stat   = "Sum"
+          period = 300
+          metrics = [
+            ["InterviewEvidencePlatform", "ecs_task_protection_change", "service", "api", "outcome", "error"],
+            [".", ".", ".", "worker", ".", "."],
+          ]
         }
       }
     ]

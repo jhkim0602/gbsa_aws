@@ -8,6 +8,8 @@ import type {
   AxisAssessment,
   EvidenceRange,
   EvidenceSufficiency,
+  InterviewStage,
+  InterviewStageSummary,
   ReviewEvidenceContext,
   ReviewQuestionSource,
   ReviewReport,
@@ -141,18 +143,21 @@ const sufficiencyTone: Record<EvidenceSufficiency, string> = {
 
 const EMPTY_CONTEXT: ReviewEvidenceContext = {
   answersBySegmentId: {},
+  stageBySegmentId: {},
   sourcesByCriterionId: {},
 };
 
 export function ReportView({
   report,
   evidenceContext = EMPTY_CONTEXT,
+  stageSummary = [],
   onSelectEvidence,
   onOverride,
 }: {
   report: ReviewReport;
   /** Resolves a citation to the answer it quoted. Absent leaves the spans unresolved. */
   evidenceContext?: ReviewEvidenceContext;
+  stageSummary?: InterviewStageSummary[];
   onSelectEvidence(startMs: number): void;
   onOverride?(
     reportItemId: string,
@@ -274,7 +279,9 @@ export function ReportView({
           </header>
 
           <div className="grid content-start gap-4 px-[18mm] py-[10mm] mw-1180:px-4 mw-1180:py-3.5">
-            {activeTab === "overview" ? <OverviewPage report={report} /> : null}
+            {activeTab === "overview" ? (
+              <OverviewPage report={report} stageSummary={stageSummary} />
+            ) : null}
             {activeTab === "criteria" ? (
               <CriteriaPage
                 report={report}
@@ -302,15 +309,22 @@ export function ReportView({
   );
 }
 
-function OverviewPage({ report }: { report: ReviewReport }) {
+function OverviewPage({
+  report,
+  stageSummary,
+}: {
+  report: ReviewReport;
+  stageSummary: InterviewStageSummary[];
+}) {
   const axes = summarizeAxes(report.items);
   const states = countStates(report.items);
+  const communicationScore = report.communicationScore ?? null;
 
   return (
     <div className="grid gap-4">
-      <div className="grid grid-cols-[132px_minmax(0,1fr)] items-center gap-4 mw-520:grid-cols-[minmax(0,1fr)]">
+      <div className="grid grid-cols-[132px_132px_minmax(0,1fr)] items-center gap-3 mw-680:grid-cols-[repeat(2,minmax(0,1fr))] mw-520:grid-cols-[minmax(0,1fr)]">
         <div className="grid justify-items-center gap-0.5 rounded-lg border border-border-muted bg-surface-muted px-2.5 py-[14px] text-center">
-          <span className="text-[9px] font-[650] text-muted">종합 점수</span>
+          <span className="text-[9px] font-[650] text-muted">직무 역량</span>
           <strong
             className={`text-[34px] font-bold leading-[1.1] ${toneText[toneOf(report.overallScore)]}`}
           >
@@ -324,7 +338,20 @@ function OverviewPage({ report }: { report: ReviewReport }) {
               : coverageLabel(report)}
           </small>
         </div>
-        <p className="text-[11px] leading-[1.75] text-ink-secondary">
+        <div className="grid justify-items-center gap-0.5 rounded-lg border border-border-muted bg-brand-soft px-2.5 py-[14px] text-center">
+          <span className="text-[9px] font-[650] text-muted">설명력</span>
+          <strong
+            className={`text-[34px] font-bold leading-[1.1] ${toneText[toneOf(communicationScore)]}`}
+          >
+            {communicationScore ?? "—"}
+          </strong>
+          <small className="text-[8px] leading-[1.4] text-subtle">
+            {communicationScore === null
+              ? "판단 근거 없음"
+              : `기준 ${report.communicationScoredCriteriaCount ?? 0}개에서 판단`}
+          </small>
+        </div>
+        <p className="text-[11px] leading-[1.75] text-ink-secondary mw-680:col-span-2 mw-520:col-span-1">
           {report.summary}
         </p>
       </div>
@@ -332,9 +359,9 @@ function OverviewPage({ report }: { report: ReviewReport }) {
       {/* Sits under the score because the number is the thing most easily misread as a
           hiring verdict, which the constitution reserves for a person. */}
       <p className="rounded-e-[5px] border-l-2 border-brand bg-brand-soft px-3 py-2.5 text-[9px] leading-[1.65] text-ink-secondary">
-        합격 여부를 판단한 점수가 아닙니다. AI가 지원자의 실제 답변만 읽고 매긴
-        판단 근거이며, {PASSING_BAND}점 이상은 해당 축을 답변에서 보여줬다는
-        뜻입니다. 최종 결정은 담당자가 근거를 직접 확인한 뒤 기록합니다.
+        합격 여부를 판단한 점수가 아닙니다. 직무 역량과 설명력은 서로 섞지 않고
+        실제 답변 근거로 각각 계산합니다. {PASSING_BAND}점 이상은 해당 축을
+        답변에서 보여줬다는 뜻이며, 최종 결정은 담당자가 직접 기록합니다.
         {report.unscoredCriteriaCount > 0
           ? ` 기준 ${report.unscoredCriteriaCount}개는 인용할 답변이 없어 이 점수에 포함되지 않았습니다.`
           : ""}
@@ -345,23 +372,35 @@ function OverviewPage({ report }: { report: ReviewReport }) {
         score={report.overallScore}
       />
 
-      <section className={REPORT_SECTION} aria-label="축별 평균 점수">
-        <h4 className={REPORT_SECTION_HEADING}>축별 평균</h4>
-        {axes.length > 0 ? (
-          <div className="grid gap-1">
-            {axes.map((axis) => (
-              <div className={AXIS_ROW} key={axis.axis}>
-                <span className={AXIS_LABEL}>{axis.label}</span>
-                <ScoreValue score={axis.score} />
-                <ScoreBar score={axis.score} />
-                <small className={AXIS_META}>
-                  {axis.scoredCount > 0
-                    ? `기준 ${axis.scoredCount}개에서 판단`
-                    : "인용할 답변 없음"}
+      {stageSummary.length > 0 ? (
+        <section className={REPORT_SECTION} aria-label="면접 단계 요약">
+          <h4 className={REPORT_SECTION_HEADING}>면접 단계</h4>
+          <ol className="grid grid-cols-3 gap-2 mw-520:grid-cols-[minmax(0,1fr)]">
+            {stageSummary.map((stage, index) => (
+              <li
+                className="rounded-md border border-border-muted bg-surface-muted px-3 py-2.5"
+                key={stage.stage}
+              >
+                <small className="font-mono text-[8px] text-brand">
+                  단계 {index + 1}
                 </small>
-              </div>
+                <strong className="mt-0.5 block text-[10px]">
+                  {stage.label}
+                </strong>
+                <span className="mt-1 block text-[8px] text-muted">
+                  질문 {stage.questionCount}개 · 평가 근거 {stage.evidenceCount}
+                  개
+                </span>
+              </li>
             ))}
-          </div>
+          </ol>
+        </section>
+      ) : null}
+
+      <section className={REPORT_SECTION} aria-label="면접 역량 프로필">
+        <h4 className={REPORT_SECTION_HEADING}>면접 역량 프로필</h4>
+        {axes.length > 0 ? (
+          <AxisRadarProfile axes={axes} />
         ) : (
           <p className={REPORT_EMPTY}>
             이 리포트에는 축별 점수가 없습니다. 점수화 이전에 생성된
@@ -583,13 +622,21 @@ function CriteriaPage({
               <div className="grid gap-1">
                 {item.axisAssessments.map((axis) => (
                   <div className={AXIS_ROW_DETAILED} key={axis.axis}>
-                    <span className={AXIS_LABEL}>{axis.label}</span>
+                    <span className={`${AXIS_LABEL} flex items-center gap-1.5`}>
+                      {axis.label}
+                      {axis.axis === "communication" ? (
+                        <small className="rounded-full bg-brand-soft px-1.5 py-0.5 text-[7px] text-brand-strong">
+                          별도 집계
+                        </small>
+                      ) : null}
+                    </span>
                     <ScoreValue score={axis.score} />
                     <ScoreBar score={axis.score} />
                     <p className={AXIS_RATIONALE}>{axis.rationale}</p>
                     <AxisCitations
                       axis={axis}
                       evidenceById={evidenceById}
+                      stageBySegmentId={evidenceContext.stageBySegmentId}
                       followedEvidenceId={followedEvidenceId}
                       onFollow={followEvidence}
                     />
@@ -621,6 +668,11 @@ function CriteriaPage({
                       evidence.transcriptSegmentId
                     ]
                   }
+                  interviewStage={
+                    evidenceContext.stageBySegmentId?.[
+                      evidence.transcriptSegmentId
+                    ]
+                  }
                   isFollowed={followedEvidenceId === evidence.evidenceId}
                   onFollow={followEvidence}
                 />
@@ -648,11 +700,13 @@ function CriteriaPage({
 function AxisCitations({
   axis,
   evidenceById,
+  stageBySegmentId,
   followedEvidenceId,
   onFollow,
 }: {
   axis: AxisAssessment;
   evidenceById: Map<string, EvidenceRange>;
+  stageBySegmentId?: Record<string, InterviewStage>;
   followedEvidenceId: string | null;
   onFollow(evidence: EvidenceRange): void;
 }) {
@@ -686,6 +740,7 @@ function AxisCitations({
           );
         }
         const isFollowed = followedEvidenceId === evidence.evidenceId;
+        const stage = stageBySegmentId?.[evidence.transcriptSegmentId];
         return (
           // `.axis-citation.is-followed` is declared after `.axis-citation:hover` at equal
           // specificity, so a followed chip keeps its 18% fill on hover. A `hover:` utility
@@ -704,6 +759,7 @@ function AxisCitations({
           >
             <Quote size={11} aria-hidden="true" />
             근거 {index + 1}
+            {stage ? ` · ${interviewStageLabels[stage]}` : ""}
             <small className="font-mono text-[7px] font-semibold text-muted">
               {formatTime(evidence.startMs)}
             </small>
@@ -718,11 +774,13 @@ function AxisCitations({
 function EvidenceCard({
   evidence,
   answer,
+  interviewStage,
   isFollowed,
   onFollow,
 }: {
   evidence: EvidenceRange;
   answer?: { text: string; startMs: number; endMs: number };
+  interviewStage?: InterviewStage;
   isFollowed: boolean;
   onFollow(evidence: EvidenceRange): void;
 }) {
@@ -737,11 +795,18 @@ function EvidenceCard({
       aria-current={isFollowed ? "true" : undefined}
     >
       <header className="flex items-center justify-between gap-2">
-        <span
-          className={`rounded-sm px-1.5 py-0.5 text-[8px] font-[650] ${sufficiencyTone[evidence.sufficiency]}`}
-          title="AI가 이 답변을 기준의 근거로 얼마나 직접적으로 봤는지"
-        >
-          {sufficiencyLabels[evidence.sufficiency]}
+        <span className="flex flex-wrap items-center gap-1.5">
+          <span
+            className={`rounded-sm px-1.5 py-0.5 text-[8px] font-[650] ${sufficiencyTone[evidence.sufficiency]}`}
+            title="AI가 이 답변을 기준의 근거로 얼마나 직접적으로 봤는지"
+          >
+            {sufficiencyLabels[evidence.sufficiency]}
+          </span>
+          {interviewStage ? (
+            <span className="rounded-sm bg-brand-soft px-1.5 py-0.5 text-[8px] font-[650] text-brand-strong">
+              {interviewStageLabels[interviewStage]}
+            </span>
+          ) : null}
         </span>
         <button
           type="button"
@@ -782,6 +847,12 @@ function EvidenceCard({
     </article>
   );
 }
+
+const interviewStageLabels: Record<InterviewStage, string> = {
+  technical: "기술",
+  project_deep_dive: "프로젝트",
+  behavioral: "협업·인성",
+};
 
 /**
  * The submitted material the interview drew this criterion's questions from.
@@ -1016,6 +1087,197 @@ type AxisSummary = {
   score: number | null;
   scoredCount: number;
 };
+
+const RADAR_AXES = [
+  { axis: "correctness", label: "정확성" },
+  { axis: "depth", label: "깊이" },
+  { axis: "fundamentals", label: "CS 기본기" },
+  { axis: "ownership", label: "본인 기여" },
+  { axis: "communication", label: "설명력" },
+] as const;
+
+const RADAR_WIDTH = 360;
+const RADAR_HEIGHT = 250;
+const RADAR_CENTER_X = RADAR_WIDTH / 2;
+const RADAR_CENTER_Y = 118;
+const RADAR_RADIUS = 78;
+
+/**
+ * The report profile uses the same five named dimensions as the hiring configuration, but it
+ * plots observed interview scores rather than recruiter preferences. Communication stays in the
+ * profile for comparison while the label makes clear that it is not mixed into competency score.
+ */
+function AxisRadarProfile({ axes }: { axes: AxisSummary[] }) {
+  const summaries = new Map(axes.map((axis) => [axis.axis, axis]));
+  const plottedAxes = RADAR_AXES.map((definition) => ({
+    ...definition,
+    score: summaries.get(definition.axis)?.score ?? null,
+    scoredCount: summaries.get(definition.axis)?.scoredCount ?? 0,
+  }));
+  const gridLevels = [25, 50, 75, 100];
+  const dataPoints = plottedAxes.map((axis, index) =>
+    radarPoint(index, axis.score ?? 0),
+  );
+  const hasMissingScore = plottedAxes.some((axis) => axis.score === null);
+
+  return (
+    <div className="grid grid-cols-[minmax(280px,0.95fr)_minmax(220px,1.05fr)] items-center gap-5 rounded-lg bg-surface-muted px-4 py-3 mw-680:grid-cols-[minmax(0,1fr)] mw-680:gap-2 mw-520:px-2.5">
+      <svg
+        aria-label="정확성, 깊이, CS 기본기, 본인 기여, 설명력의 면접 점수 레이더 그래프"
+        className="mx-auto h-auto w-full max-w-[360px] overflow-visible"
+        role="img"
+        viewBox={`0 0 ${RADAR_WIDTH} ${RADAR_HEIGHT}`}
+      >
+        <title>면접 역량 프로필</title>
+        <desc>
+          다섯 평가 축의 100점 만점 점수를 비교합니다. 점이 중심에 있고 점수가
+          표시되지 않은 축은 0점이 아니라 판단 근거가 없는 항목입니다.
+        </desc>
+        {gridLevels.map((level) => (
+          <polygon
+            fill="none"
+            key={level}
+            points={radarPolygon(level)}
+            stroke="var(--color-border-strong)"
+            strokeWidth={level === 100 ? 1.2 : 0.8}
+          />
+        ))}
+        {plottedAxes.map((axis, index) => {
+          const outer = radarPoint(index, 100);
+          return (
+            <line
+              key={axis.axis}
+              stroke="var(--color-border-strong)"
+              strokeWidth="0.8"
+              x1={RADAR_CENTER_X}
+              x2={outer.x}
+              y1={RADAR_CENTER_Y}
+              y2={outer.y}
+            />
+          );
+        })}
+        <polygon
+          fill="var(--color-brand)"
+          fillOpacity="0.16"
+          points={dataPoints.map(pointPair).join(" ")}
+          stroke="var(--color-brand)"
+          strokeDasharray={hasMissingScore ? "4 3" : undefined}
+          strokeLinejoin="round"
+          strokeWidth="2"
+        />
+        {dataPoints.map((point, index) => {
+          const axis = plottedAxes[index];
+          return (
+            <circle
+              aria-hidden="true"
+              cx={point.x}
+              cy={point.y}
+              fill={
+                axis.score === null
+                  ? "var(--color-surface)"
+                  : "var(--color-brand)"
+              }
+              key={axis.axis}
+              r={axis.score === null ? 3.5 : 4}
+              stroke="var(--color-brand)"
+              strokeWidth="1.5"
+            />
+          );
+        })}
+        {plottedAxes.map((axis, index) => {
+          const labelPoint = radarPoint(index, 129);
+          return (
+            <g key={axis.axis}>
+              <text
+                fill="var(--color-ink-secondary)"
+                fontSize="10"
+                fontWeight="650"
+                textAnchor="middle"
+                x={labelPoint.x}
+                y={labelPoint.y - 2}
+              >
+                {axis.label}
+              </text>
+              <text
+                fill={
+                  axis.score === null
+                    ? "var(--color-subtle)"
+                    : "var(--color-brand-strong)"
+                }
+                fontSize="9"
+                fontWeight="700"
+                textAnchor="middle"
+                x={labelPoint.x}
+                y={labelPoint.y + 11}
+              >
+                {axis.score === null ? "—" : `${axis.score}점`}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+
+      <div className="grid gap-2.5">
+        <div>
+          <strong className="text-[11px] text-ink">답변에서 확인된 역량</strong>
+          <p className="mt-1 text-[8px] leading-[1.6] text-muted">
+            바깥쪽에 가까울수록 해당 역량이 답변 근거에서 강하게 확인됐습니다.
+            설명력은 직무역량 종합점수와 섞지 않고 별도로 집계합니다.
+          </p>
+        </div>
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 mw-520:grid-cols-[minmax(0,1fr)]">
+          {plottedAxes.map((axis) => (
+            <div
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-2 border-b border-border-muted pb-1.5"
+              key={axis.axis}
+            >
+              <dt className="truncate text-[9px] font-[650] text-ink-secondary">
+                {axis.label}
+                {axis.axis === "communication" ? (
+                  <small className="ml-1 text-[7px] font-medium text-brand">
+                    별도
+                  </small>
+                ) : null}
+              </dt>
+              <dd className="text-right">
+                <ScoreValue score={axis.score} />
+                <small className="ml-1 block text-[7px] text-subtle">
+                  {axis.scoredCount > 0
+                    ? `기준 ${axis.scoredCount}개에서 판단`
+                    : "근거 없음"}
+                </small>
+              </dd>
+            </div>
+          ))}
+        </dl>
+        {hasMissingScore ? (
+          <p className="text-[8px] leading-[1.5] text-subtle">
+            — 표시는 0점이 아니라 해당 축을 판단할 인용 근거가 없다는 뜻입니다.
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function radarPoint(index: number, score: number) {
+  const angle = -Math.PI / 2 + (index * Math.PI * 2) / RADAR_AXES.length;
+  const radius = RADAR_RADIUS * (score / 100);
+  return {
+    x: Number((RADAR_CENTER_X + Math.cos(angle) * radius).toFixed(2)),
+    y: Number((RADAR_CENTER_Y + Math.sin(angle) * radius).toFixed(2)),
+  };
+}
+
+function radarPolygon(level: number) {
+  return RADAR_AXES.map((_, index) => pointPair(radarPoint(index, level))).join(
+    " ",
+  );
+}
+
+function pointPair(point: { x: number; y: number }) {
+  return `${point.x},${point.y}`;
+}
 
 /**
  * Average each axis across the criteria that could be judged on it, weighted by criterion.

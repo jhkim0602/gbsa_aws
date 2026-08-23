@@ -53,6 +53,12 @@ variable "worker_desired_count" {
   default = 1
 }
 
+variable "worker_queue_names" {
+  description = "SQS queues whose visible backlog should add Worker tasks before CPU rises."
+  type        = set(string)
+  default     = []
+}
+
 variable "enable_deletion_protection" {
   type    = bool
   default = false
@@ -479,6 +485,17 @@ resource "aws_iam_role_policy" "task" {
         }
       },
       {
+        Sid    = "ManageScheduledCapacity"
+        Effect = "Allow"
+        Action = [
+          "application-autoscaling:DeleteScheduledAction",
+          "application-autoscaling:PutScheduledAction",
+          "application-autoscaling:RegisterScalableTarget",
+          "ecs:UpdateTaskProtection",
+        ]
+        Resource = "*"
+      },
+      {
         Sid      = "PassMediaConvertRole"
         Effect   = "Allow"
         Action   = ["iam:PassRole"]
@@ -556,11 +573,12 @@ resource "aws_lb" "api" {
 }
 
 resource "aws_lb_target_group" "api" {
-  name        = substr("${var.name}-api", 0, 32)
-  port        = 8000
-  protocol    = "HTTP"
-  target_type = "ip"
-  vpc_id      = var.vpc_id
+  name                 = substr("${var.name}-api", 0, 32)
+  port                 = 8000
+  protocol             = "HTTP"
+  target_type          = "ip"
+  vpc_id               = var.vpc_id
+  deregistration_delay = 120
 
   health_check {
     path                = "/health/ready"
@@ -595,9 +613,10 @@ resource "aws_ecs_task_definition" "api" {
   task_role_arn            = local.effective_task_role_arn
 
   container_definitions = jsonencode(concat([{
-    name      = "api"
-    image     = var.api_image
-    essential = true
+    name        = "api"
+    image       = var.api_image
+    essential   = true
+    stopTimeout = 120
     command = [
       "uv",
       "run",
@@ -639,9 +658,10 @@ resource "aws_ecs_task_definition" "worker" {
   task_role_arn            = local.effective_task_role_arn
 
   container_definitions = jsonencode(concat([{
-    name      = "worker"
-    image     = var.worker_image
-    essential = true
+    name        = "worker"
+    image       = var.worker_image
+    essential   = true
+    stopTimeout = 120
     # The image installs the package into a uv virtualenv, so a bare `python` cannot
     # import it -- the task would crash-loop on ModuleNotFoundError. Matches the api
     # command above and the worker CMD in backend/Containerfile.
@@ -731,6 +751,11 @@ resource "aws_appautoscaling_target" "api" {
   resource_id        = "service/${aws_ecs_cluster.this.name}/${aws_ecs_service.api.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
+
+  lifecycle {
+    # Runtime scheduled actions own the reservation floor; Terraform owns its initial value.
+    ignore_changes = [min_capacity]
+  }
 }
 
 resource "aws_appautoscaling_policy" "api_cpu" {
@@ -754,6 +779,11 @@ resource "aws_appautoscaling_target" "worker" {
   resource_id        = "service/${aws_ecs_cluster.this.name}/${aws_ecs_service.worker.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
+
+  lifecycle {
+    # Queue pressure and reservation windows must survive an unrelated Terraform apply.
+    ignore_changes = [min_capacity]
+  }
 }
 
 resource "aws_appautoscaling_policy" "worker_cpu" {
@@ -769,6 +799,60 @@ resource "aws_appautoscaling_policy" "worker_cpu" {
       predefined_metric_type = "ECSServiceAverageCPUUtilization"
     }
   }
+}
+
+resource "aws_appautoscaling_policy" "worker_queue_pressure" {
+  name               = "${var.name}-worker-queue-pressure"
+  policy_type        = "StepScaling"
+  resource_id        = aws_appautoscaling_target.worker.resource_id
+  scalable_dimension = aws_appautoscaling_target.worker.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.worker.service_namespace
+
+  step_scaling_policy_configuration {
+    adjustment_type         = "ChangeInCapacity"
+    cooldown                = 60
+    metric_aggregation_type = "Maximum"
+
+    step_adjustment {
+      metric_interval_lower_bound = 0
+      metric_interval_upper_bound = 15
+      scaling_adjustment          = 1
+    }
+
+    step_adjustment {
+      metric_interval_lower_bound = 15
+      metric_interval_upper_bound = 90
+      scaling_adjustment          = 3
+    }
+
+    step_adjustment {
+      metric_interval_lower_bound = 90
+      scaling_adjustment          = 6
+    }
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "worker_queue_pressure" {
+  for_each = var.worker_queue_names
+
+  alarm_name          = "${var.name}-${each.value}-worker-scale-out"
+  alarm_description   = "Visible work is waiting; add Worker tasks before CPU target tracking reacts."
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  namespace           = "AWS/SQS"
+  period              = 60
+  statistic           = "Maximum"
+  threshold           = 10
+  alarm_actions = concat(
+    [aws_appautoscaling_policy.worker_queue_pressure.arn],
+    var.alarm_topic_arn == null ? [] : [var.alarm_topic_arn],
+  )
+  treat_missing_data = "notBreaching"
+  dimensions = {
+    QueueName = each.value
+  }
+  tags = local.tags
 }
 
 /**

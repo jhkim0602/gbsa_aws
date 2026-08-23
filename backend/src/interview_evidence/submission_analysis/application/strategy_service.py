@@ -27,6 +27,9 @@ class StrategyGenerationError(ValueError):
     """Raised when model output escapes the fixed criterion or source axes."""
 
 
+MAX_STRATEGY_PROMPT_SOURCES = 24
+
+
 class StrategyService:
     def __init__(
         self,
@@ -58,6 +61,7 @@ class StrategyService:
         source_candidates: tuple[SourceReferenceCandidate, ...],
         strategy_version: int,
     ) -> InterviewStrategy:
+        prompt_candidates = _select_prompt_candidates(source_candidates)
         try:
             result = parse_strategy_response(
                 self._model.generate(
@@ -66,7 +70,7 @@ class StrategyService:
                         invitation_id=invitation_id,
                         competency_model_version_id=competency_model_version_id,
                         criterion_ids=criterion_ids,
-                        source_candidates=source_candidates,
+                        source_candidates=prompt_candidates,
                         model_config_version=self._model_config_version,
                     ),
                 )
@@ -74,7 +78,7 @@ class StrategyService:
         except (TypeError, ValueError) as error:
             raise StrategyGenerationError("invalid structured strategy output") from error
         allowed_criteria = set(criterion_ids)
-        allowed_sources = {candidate.source_id for candidate in source_candidates}
+        allowed_sources = {candidate.source_id for candidate in prompt_candidates}
         try:
             verification_points = tuple(
                 VerificationPoint.model_validate(item) for item in result["verification_points"]
@@ -138,3 +142,28 @@ class StrategyService:
                 )
             )
         return strategy
+
+
+def _select_prompt_candidates(
+    candidates: tuple[SourceReferenceCandidate, ...],
+) -> tuple[SourceReferenceCandidate, ...]:
+    selected: list[SourceReferenceCandidate] = []
+    seen_hashes: set[str] = set()
+    ordered = sorted(
+        candidates,
+        key=lambda candidate: (
+            -candidate.relevance_score,
+            -candidate.ownership_confidence,
+            candidate.source_type,
+            candidate.content_hash,
+            str(candidate.source_id),
+        ),
+    )
+    for candidate in ordered:
+        if candidate.content_hash in seen_hashes:
+            continue
+        selected.append(candidate)
+        seen_hashes.add(candidate.content_hash)
+        if len(selected) == MAX_STRATEGY_PROMPT_SOURCES:
+            break
+    return tuple(selected)

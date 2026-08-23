@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { HiringWorkspace, type HiringWorkspaceApi } from "../index";
@@ -10,8 +10,7 @@ function createApi(): HiringWorkspaceApi {
   };
 }
 
-async function advanceToEvaluation(api: HiringWorkspaceApi) {
-  render(<HiringWorkspace api={api} />);
+function completePositionBasics() {
   fireEvent.change(screen.getByLabelText("포지션명"), {
     target: { value: "백엔드 플랫폼 엔지니어" },
   });
@@ -21,6 +20,27 @@ async function advanceToEvaluation(api: HiringWorkspaceApi) {
   fireEvent.change(screen.getByLabelText("모집 종료일"), {
     target: { value: "2026-09-30" },
   });
+}
+
+async function advanceToPositionDescription() {
+  fireEvent.click(screen.getByLabelText("포지션명"));
+  fireEvent.click(
+    screen.getByRole("button", { name: /서비스 백엔드 사용자 기능/ }),
+  );
+  completePositionBasics();
+  fireEvent.click(screen.getByRole("button", { name: "다음" }));
+  await screen.findByRole("heading", {
+    name: "주요 기술 스택을 선택해 주세요",
+  });
+  fireEvent.click(screen.getByRole("button", { name: "백엔드" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Spring Boot" }));
+  fireEvent.click(screen.getByRole("button", { name: "다음" }));
+  await screen.findByRole("heading", { name: "포지션 상세" });
+}
+
+async function advanceToEvaluation(api: HiringWorkspaceApi) {
+  render(<HiringWorkspace api={api} />);
+  await advanceToPositionDescription();
   fireEvent.change(screen.getByLabelText("포지션 설명"), {
     target: { value: "ECS 기반 서비스의 안정성과 운영 품질을 개선합니다." },
   });
@@ -34,9 +54,70 @@ async function advanceToEvaluation(api: HiringWorkspaceApi) {
 }
 
 describe("HiringWorkspace", () => {
-  it("can insert the long-form position description example", () => {
+  it("shows one position question at a time and keeps the active step number visible", async () => {
     const api = createApi();
     render(<HiringWorkspace api={api} />);
+
+    expect(screen.getByText("포지션명과 모집 기간")).toBeTruthy();
+    expect(
+      screen
+        .getByText("채용할 직무를 선택해 주세요")
+        .closest("#position-role-picker")
+        ?.getAttribute("aria-hidden"),
+    ).toBe("true");
+    expect(screen.queryByText("주요 기술 스택을 선택해 주세요")).toBeNull();
+    expect(screen.queryByText("포지션 상세")).toBeNull();
+
+    const progress = screen.getByRole("navigation", {
+      name: "채용 설정 진행 단계",
+    });
+    const currentStep = within(progress).getByText("1");
+    expect(currentStep.className).toContain("text-[11px]");
+    expect(currentStep.className).toContain("!text-white");
+
+    fireEvent.click(screen.getByLabelText("포지션명"));
+    expect(await screen.findByText("채용할 직무를 선택해 주세요")).toBeTruthy();
+    const customRoleInput = screen.getByLabelText("세부 직무 직접 입력");
+    expect(customRoleInput).toBe(document.activeElement);
+    fireEvent.keyDown(customRoleInput, { key: "Escape" });
+    expect(
+      screen
+        .getByText("채용할 직무를 선택해 주세요")
+        .closest("#position-role-picker")
+        ?.getAttribute("aria-hidden"),
+    ).toBe("true");
+
+    fireEvent.click(screen.getByLabelText("포지션명"));
+    fireEvent.click(
+      screen.getByRole("button", { name: /서비스 백엔드 사용자 기능/ }),
+    );
+    expect((screen.getByLabelText("포지션명") as HTMLInputElement).value).toBe(
+      "서비스 백엔드",
+    );
+    expect(
+      screen
+        .getByText("채용할 직무를 선택해 주세요")
+        .closest("#position-role-picker")
+        ?.getAttribute("aria-hidden"),
+    ).toBe("true");
+
+    completePositionBasics();
+    fireEvent.click(screen.getByRole("button", { name: "다음" }));
+    expect(
+      await screen.findByText("주요 기술 스택을 선택해 주세요"),
+    ).toBeTruthy();
+    expect(screen.getByLabelText("기술 스택 검색")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "기술 추가" })).toBeNull();
+    expect(screen.queryByText("포지션명과 모집 기간")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "이전" }));
+    expect(await screen.findByText("포지션명과 모집 기간")).toBeTruthy();
+  });
+
+  it("can insert the long-form position description example", async () => {
+    const api = createApi();
+    render(<HiringWorkspace api={api} />);
+    await advanceToPositionDescription();
 
     fireEvent.click(
       screen.getByRole("button", { name: "포지션 상세 예시 적용" }),
@@ -83,11 +164,33 @@ describe("HiringWorkspace", () => {
     fireEvent.change(screen.getByLabelText("자격요건 1"), {
       target: { value: "ECS 운영 장애 대응 경험" },
     });
+    fireEvent.change(screen.getByRole("slider", { name: "깊이 관점 강도" }), {
+      target: { value: "100" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "다음" }));
     await screen.findByText("면접은 어떻게 진행할까요?");
     expect(screen.queryByText("내부 면접 정책")).toBeNull();
     expect(screen.queryByLabelText("금지 주제")).toBeNull();
     expect(screen.queryByLabelText("면접 시간(분)")).toBeNull();
+    expect(screen.getByText("면접 시간 안내")).toBeTruthy();
+    expect(
+      screen.getByText("모든 면접은 30분을 기준으로 진행됩니다"),
+    ).toBeTruthy();
+    expect(screen.getByText("9분 · 12분 · 9분 = 총 30분")).toBeTruthy();
+    expect(screen.getByText("1. 기술 면접 · 9분")).toBeTruthy();
+    expect(screen.getByText("2. 프로젝트 심층 · 12분")).toBeTruthy();
+    expect(screen.getByText("3. 협업·인성 · 9분")).toBeTruthy();
+    const timeExplanation = screen
+      .getByText("시간 배분은 어떻게 동작하나요?")
+      .closest("details");
+    expect(timeExplanation?.hasAttribute("open")).toBe(false);
+    fireEvent.click(screen.getByText("시간 배분은 어떻게 동작하나요?"));
+    expect(timeExplanation?.hasAttribute("open")).toBe(true);
+    expect(screen.getByText("가중치 4/10 → 12분")).toBeTruthy();
+    expect(screen.getByText("질문 최대 8개")).toBeTruthy();
+    expect(
+      screen.getByText(/답변을 마친 뒤 다음 단계로 이동하므로/),
+    ).toBeTruthy();
     expect(screen.getByAltText("신입 AI 면접관").getAttribute("src")).toBe(
       "/interviewers/entry_eyes_open_mouth_closed.webp",
     );
@@ -103,8 +206,33 @@ describe("HiringWorkspace", () => {
     fireEvent.change(screen.getByLabelText("면접 정원"), {
       target: { value: "4" },
     });
+    expect(
+      screen.getByLabelText("예약 오토스케일링 예상 비용").textContent,
+    ).toContain("추가 증설 없음 · 0원");
+    fireEvent.change(screen.getByLabelText("면접 정원"), {
+      target: { value: "100" },
+    });
+    expect(
+      screen.getByLabelText("예약 오토스케일링 예상 비용").textContent,
+    ).toContain("필요 최소 용량 · API 5개 · Worker 5개");
+    expect(
+      screen.getByLabelText("예약 오토스케일링 예상 비용").textContent,
+    ).toContain("예약 증설 약 484원/회");
+    fireEvent.change(screen.getByLabelText("면접 정원"), {
+      target: { value: "4" },
+    });
     fireEvent.change(screen.getByLabelText("면접 시각"), {
       target: { value: "2026-09-15T14:00" },
+    });
+    fireEvent.change(screen.getByLabelText("면접 정원"), {
+      target: { value: "401" },
+    });
+    expect(
+      (screen.getByRole("button", { name: "포지션 게시" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    fireEvent.change(screen.getByLabelText("면접 정원"), {
+      target: { value: "4" },
     });
     fireEvent.change(screen.getByLabelText("면접 난이도"), {
       target: { value: "senior" },
@@ -177,11 +305,11 @@ describe("HiringWorkspace", () => {
       // but refuses a partial one, so sending fewer than five would be a 422 rather than a
       // default.
       axisWeights: {
-        correctness: 20,
-        depth: 20,
-        fundamentals: 20,
-        ownership: 20,
-        communication: 20,
+        correctness: 17,
+        depth: 33,
+        fundamentals: 17,
+        ownership: 17,
+        communication: 16,
       },
       personaDefinition: {
         name: "심층형 면접관",
@@ -198,25 +326,54 @@ describe("HiringWorkspace", () => {
     const api = createApi();
     await advanceToEvaluation(api);
 
-    fireEvent.click(screen.getByRole("button", { name: "자격요건 추가" }));
+    fireEvent.click(screen.getByRole("button", { name: "자격요건 행 추가" }));
     fireEvent.change(screen.getByLabelText("자격요건 2"), {
       target: { value: "대규모 API 설계 경험" },
     });
+    expect(screen.getByText("대규모 API 설계 경험")).toBeTruthy();
     expect(screen.queryByLabelText("연결 평가기준 2")).toBeNull();
     expect(screen.queryByLabelText("평가 축 2")).toBeNull();
+    expect(screen.getByRole("list", { name: "자격요건 목록" })).toBeTruthy();
+    expect(screen.getByText("필 2")).toBeTruthy();
+    expect(screen.getByText("우 0")).toBeTruthy();
+    const secondType = screen.getByRole("group", {
+      name: "자격요건 2 구분",
+    });
     expect(
-      screen
-        .getAllByRole("button", { name: "우대 사항" })[1]
+      within(secondType)
+        .getByRole("button", { name: "필수" })
         .getAttribute("aria-pressed"),
     ).toBe("true");
-    expect(screen.getByText("가중치 합계").parentElement?.textContent).toBe(
-      "가중치 합계100",
+    fireEvent.click(within(secondType).getByRole("button", { name: "우대" }));
+    expect(
+      within(secondType)
+        .getByRole("button", { name: "우대" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(screen.getByText("필 1")).toBeTruthy();
+    expect(screen.getByText("우 1")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "우대 사항" })).toBeNull();
+    expect(
+      screen.getByRole("img", {
+        name: "자격요건별 자동 가중치 원그래프",
+      }),
+    ).toBeTruthy();
+    const firstImportance = screen.getByRole("group", {
+      name: "자격요건 1 중요도",
+    });
+    expect(
+      within(firstImportance)
+        .getByRole("button", { name: "보통" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    fireEvent.click(
+      within(firstImportance).getByRole("button", { name: "높음" }),
     );
-    expect((screen.getByLabelText("가중치 1") as HTMLInputElement).value).toBe(
-      "80",
+    expect(screen.getByLabelText("자격요건 1 자동 가중치").textContent).toBe(
+      "67%",
     );
-    expect((screen.getByLabelText("가중치 2") as HTMLInputElement).value).toBe(
-      "20",
+    expect(screen.getByLabelText("자격요건 2 자동 가중치").textContent).toBe(
+      "33%",
     );
   });
 
@@ -225,7 +382,7 @@ describe("HiringWorkspace", () => {
     await advanceToEvaluation(api);
 
     const addEvaluationItem = screen.getByRole("button", {
-      name: "자격요건 추가",
+      name: "자격요건 행 추가",
     });
     expect(addEvaluationItem.textContent).toContain("자격요건 추가");
     fireEvent.click(addEvaluationItem);
@@ -234,23 +391,42 @@ describe("HiringWorkspace", () => {
     fireEvent.change(qualification, {
       target: { value: "끝까지 파고드는 태도" },
     });
+    expect(screen.getByText("어떤 기준으로 평가할까요?")).toBeTruthy();
+    fireEvent.click(
+      within(
+        screen.getByRole("group", { name: "자격요건 1 중요도" }),
+      ).getByRole("button", { name: "낮음" }),
+    );
+
+    expect(screen.getByLabelText("자격요건 1 자동 가중치").textContent).toBe(
+      "33%",
+    );
+    expect(screen.getByLabelText("자격요건 2 자동 가중치").textContent).toBe(
+      "67%",
+    );
+    expect(screen.queryByLabelText("가중치 1 직접 입력")).toBeNull();
+  });
+
+  it("continues input inside the same requirement group with Enter", async () => {
+    const api = createApi();
+    await advanceToEvaluation(api);
+
+    const qualification = screen.getByLabelText("자격요건 1");
     qualification.focus();
     fireEvent.keyDown(qualification, { key: "Enter", code: "Enter" });
-    expect(document.activeElement).not.toBe(qualification);
-    expect(screen.getByText("어떤 기준으로 평가할까요?")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("가중치 1 직접 입력"), {
-      target: { value: "35" },
-    });
 
-    expect(screen.getByText("가중치 합계").parentElement?.textContent).toBe(
-      "가중치 합계100",
-    );
-    expect((screen.getByLabelText("가중치 1") as HTMLInputElement).value).toBe(
-      "35",
-    );
-    expect((screen.getByLabelText("가중치 2") as HTMLInputElement).value).toBe(
-      "65",
-    );
+    expect(screen.getByLabelText("자격요건 2")).toBe(document.activeElement);
+    const typeGroups = screen.getAllByRole("group", {
+      name: /자격요건 \d 구분/,
+    });
+    expect(typeGroups).toHaveLength(2);
+    typeGroups.forEach((group) => {
+      expect(
+        within(group)
+          .getByRole("button", { name: "필수" })
+          .getAttribute("aria-pressed"),
+      ).toBe("true");
+    });
   });
 
   it("keeps the five scoring axes at a total of 100 and sends all of them", async () => {
@@ -259,31 +435,29 @@ describe("HiringWorkspace", () => {
     const api = createApi();
     await advanceToEvaluation(api);
 
-    fireEvent.change(screen.getByLabelText("깊이 비중 직접 입력"), {
-      target: { value: "40" },
+    const control = screen.getByRole("group", {
+      name: "답변 평가 관점 오각형",
     });
+    const accuracy = screen.getByRole("slider", {
+      name: "정확성 관점 강도",
+    }) as HTMLInputElement;
+    const depth = screen.getByRole("slider", {
+      name: "깊이 관점 강도",
+    }) as HTMLInputElement;
 
-    expect(screen.getByText("비중 합계").parentElement?.textContent).toBe(
-      "비중 합계100",
-    );
-    expect((screen.getByLabelText("깊이 비중") as HTMLInputElement).value).toBe(
-      "40",
-    );
-    // The untouched four keep their ratios to each other -- they were equal, so they stay equal.
-    expect(
-      (screen.getByLabelText("정확성 비중") as HTMLInputElement).value,
-    ).toBe("15");
+    expect(accuracy.value).toBe("50");
+    expect(depth.value).toBe("50");
+    fireEvent.change(depth, { target: { value: "100" } });
+    expect(depth.value).toBe("100");
+    expect(accuracy.value).toBe("50");
+    expect(within(control).queryByText(/합계/)).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("CS 기본기 비중 직접 입력"), {
-      target: { value: "0" },
-    });
-
-    expect(screen.getByText("비중 합계").parentElement?.textContent).toBe(
-      "비중 합계100",
-    );
-    expect(
-      (screen.getByLabelText("CS 기본기 비중") as HTMLInputElement).value,
-    ).toBe("0");
+    const fundamentals = screen.getByRole("slider", {
+      name: "CS 기본기 관점 강도",
+    }) as HTMLInputElement;
+    fireEvent.change(fundamentals, { target: { value: "0" } });
+    expect(fundamentals.value).toBe("0");
+    expect(accuracy.value).toBe("50");
   });
 
   it("axes cannot be added or removed by the recruiter", async () => {
@@ -293,7 +467,10 @@ describe("HiringWorkspace", () => {
     const api = createApi();
     await advanceToEvaluation(api);
 
-    expect(screen.getByText("답변을 읽는 다섯 가지 축")).toBeTruthy();
+    expect(screen.getByText(/WhyYou는 답변의 근거를/)).toBeTruthy();
+    expect(
+      screen.getByRole("group", { name: "답변 평가 관점 오각형" }),
+    ).toBeTruthy();
     expect(screen.queryByRole("button", { name: /채점축 추가/ })).toBeNull();
     for (const label of [
       "정확성",
@@ -302,7 +479,7 @@ describe("HiringWorkspace", () => {
       "본인 기여",
       "설명력",
     ]) {
-      expect(screen.getByLabelText(`${label} 비중`)).toBeTruthy();
+      expect(screen.getByLabelText(`${label} 관점 강도`)).toBeTruthy();
     }
   });
 });

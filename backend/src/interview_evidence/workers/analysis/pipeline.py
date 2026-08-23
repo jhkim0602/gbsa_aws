@@ -5,11 +5,16 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from interview_evidence.shared.aws_clients.ports import AIModel, TextEmbedder
+from interview_evidence.shared.aws_clients.ports import (
+    AIModel,
+    EmbeddingProviderError,
+    TextEmbedder,
+)
 from interview_evidence.shared.ids import Clock, new_uuid7
 from interview_evidence.shared.messaging.outbox import Outbox
 from interview_evidence.shared.tenant import TenantContext
 from interview_evidence.submission_analysis.adapters.search import (
+    CurrentDocumentLookup,
     SearchDocument,
     SearchIndex,
 )
@@ -90,6 +95,7 @@ RETRYABLE_SOURCE_CODES = frozenset(
 )
 SOURCE_FAILURE_SUMMARY = "제출 자료를 분석할 수 없어 해당 자료는 면접 준비에서 제외됩니다."
 SOURCE_CANDIDATE_CLAIM = "source_reference_candidate"
+MAX_EMBEDDING_CHARACTERS = 50_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +128,17 @@ class AnalysisAxis:
     version_number: int = 1
     criteria: tuple[AnalysisCriterion, ...] = ()
     requirements: tuple[AnalysisRequirement, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _PendingAxisDocument:
+    document_id: str
+    source_id: UUID
+    text: str
+    locator: dict[str, object]
+    criterion_id: UUID | None
+    document_type: str
+    content_hash: str
 
 
 class AnalysisAxisProvider(Protocol):
@@ -164,6 +181,16 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
         bounded_text = text[:MAX_EMBEDDING_INPUT_CHARACTERS]
         return self._text_embedder.embed(context, bounded_text, dimensions=1024)
 
+    def embed_many(
+        self,
+        context: TenantContext,
+        texts: tuple[str, ...],
+    ) -> tuple[tuple[float, ...], ...]:
+        batch_embed = getattr(self._text_embedder, "embed_many", None)
+        if callable(batch_embed):
+            return tuple(batch_embed(context, texts, dimensions=1024))
+        return tuple(self.embed(context, text) for text in texts)
+
     def process(self, context: TenantContext, job: AnalysisJob) -> AnalysisResult:
         existing = next(
             (
@@ -204,6 +231,8 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                 raise RetryableAnalysisError(code) from error
             self._record_failed(context, job.submission_id, code)
             raise NonRetryableAnalysisError(code) from error
+        except EmbeddingProviderError as error:
+            raise RetryableAnalysisError("embedding_provider_unavailable") from error
 
     def _process_document(
         self,
@@ -214,7 +243,6 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
         if submission.content_hash is None:
             raise NonRetryableAnalysisError("document_integrity_metadata_missing")
         analyzing = self._to_analyzing(submission)
-        self._repository.save_submission(context, analyzing)
         pages = self._extractor.extract(context, submission.source_uri)
         drafts = chunk_document(
             pages,
@@ -228,6 +256,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
             invitation_id=submission.invitation_id,
         )
         self._index_criterion_axis(context, axis)
+        vectors = self.embed_many(context, tuple(draft.text for draft in drafts))
         occurred_at = self._clock.now()
         analysis = SubmissionAnalysis(
             analysis_id=new_uuid7(occurred_at),
@@ -256,7 +285,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                 source_hash=draft.source_hash,
                 chunk_hash=draft.chunk_hash,
                 embedding_model=self._text_embedder.model_id,
-                embedding_version="titan-v2",
+                embedding_version=self._text_embedder.embedding_version,
                 index_document_id=str(new_uuid7(occurred_at)),
             )
             for draft in drafts
@@ -272,6 +301,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
             )
             for chunk in chunks
         )
+        self._repository.save_submission(context, analyzing)
         analysis = self._repository.save_analysis(
             context,
             analysis.model_copy(
@@ -284,7 +314,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
             ),
         )
         self._repository.save_chunks(context, chunks)
-        for draft, chunk in zip(drafts, chunks, strict=True):
+        for draft, chunk, vector in zip(drafts, chunks, vectors, strict=True):
             locator = chunk.source_location.model_dump(mode="json", exclude_none=True)
             self._search_index.add(
                 SearchDocument(
@@ -293,7 +323,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     applicant_id=submission.applicant_id,
                     source_id=chunk.chunk_id,
                     text=draft.text,
-                    vector=self.embed(context, draft.text),
+                    vector=vector,
                     symbols=(),
                     locator=locator,
                     ownership_confidence=1.0,
@@ -304,7 +334,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     source_version=str(job.analysis_version),
                     content_hash=chunk.chunk_hash,
                     embedding_model=self._text_embedder.model_id,
-                    embedding_version="titan-v2",
+                    embedding_version=self._text_embedder.embedding_version,
                     material_type=submission.material_type.value,
                 )
             )
@@ -476,6 +506,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     changed_line_ranges=ranges,
                     related_files=related,
                 ):
+                    excerpt = self._code_unit_excerpt(source, expanded.line_range)
                     code_unit_id = new_uuid7(occurred_at)
                     document_id = str(code_unit_id)
                     unit = CandidateCodeUnit(
@@ -517,8 +548,8 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                             company_id=context.company_id,
                             applicant_id=submission.applicant_id,
                             source_id=unit.code_unit_id,
-                            text=f"{unit.symbol} {source}",
-                            vector=self.embed(context, source),
+                            text=f"{unit.symbol}\n{excerpt}",
+                            vector=self.embed(context, excerpt),
                             symbols=(unit.symbol,),
                             locator=locator,
                             ownership_confidence=commit_analysis.ownership_confidence,
@@ -527,9 +558,9 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                             document_type="code_unit",
                             source_type="candidate_code_unit",
                             source_version=commit_sha,
-                            content_hash=submission.content_hash or "0" * 64,
+                            content_hash=hashlib.sha256(excerpt.encode("utf-8")).hexdigest(),
                             embedding_model=self._text_embedder.model_id,
-                            embedding_version="titan-v2",
+                            embedding_version=self._text_embedder.embedding_version,
                             path=unit.path,
                             symbol=unit.symbol,
                         )
@@ -539,7 +570,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                             source_id=unit.code_unit_id,
                             source_type="candidate_code_unit",
                             locator=locator,
-                            content_hash=hashlib.sha256(source.encode("utf-8")).hexdigest(),
+                            content_hash=hashlib.sha256(excerpt.encode("utf-8")).hexdigest(),
                             relevance_score=1.0,
                             ownership_confidence=commit_analysis.ownership_confidence,
                         )
@@ -611,11 +642,21 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
         except SyntaxError:
             return ()
 
+    @staticmethod
+    def _code_unit_excerpt(source: str, line_range: tuple[int, int]) -> str:
+        lines = source.splitlines()
+        start, end = line_range
+        excerpt = "\n".join(lines[max(0, start - 1) : min(len(lines), end)]).strip()
+        if not excerpt:
+            raise NonRetryableAnalysisError("public_git_code_unit_empty")
+        return excerpt[:MAX_EMBEDDING_CHARACTERS]
+
     def _index_criterion_axis(
         self,
         context: TenantContext,
         axis: AnalysisAxis,
     ) -> None:
+        pending: list[_PendingAxisDocument] = []
         for criterion in axis.criteria:
             text = " ".join(
                 (
@@ -625,64 +666,91 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     *criterion.follow_up_directions,
                 )
             )
-            self._search_index.add(
-                SearchDocument(
-                    document_id=str(
-                        uuid5(
-                            NAMESPACE_URL,
-                            (
-                                f"{axis.competency_model_version_id}:"
-                                f"criterion:{criterion.criterion_id}"
-                            ),
-                        )
-                    ),
-                    company_id=context.company_id,
-                    applicant_id=UUID(int=0),
+            document_id = str(
+                uuid5(
+                    NAMESPACE_URL,
+                    f"{axis.competency_model_version_id}:criterion:{criterion.criterion_id}",
+                )
+            )
+            content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            if self._axis_document_is_current(context, document_id, content_hash):
+                continue
+            pending.append(
+                _PendingAxisDocument(
+                    document_id=document_id,
                     source_id=criterion.criterion_id,
                     text=text,
-                    vector=self.embed(context, text),
-                    symbols=(),
                     locator={"criterion_code": criterion.code},
-                    ownership_confidence=1.0,
-                    competency_model_version_id=axis.competency_model_version_id,
                     criterion_id=criterion.criterion_id,
                     document_type="criterion_guide",
-                    source_type="criterion_guide",
-                    source_version=str(axis.version_number),
-                    content_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
-                    embedding_model=self._text_embedder.model_id,
-                    embedding_version="titan-v2",
+                    content_hash=content_hash,
                 )
             )
         for requirement in axis.requirements:
-            self._search_index.add(
-                SearchDocument(
-                    document_id=str(
-                        uuid5(
-                            NAMESPACE_URL,
-                            (
-                                f"{axis.competency_model_version_id}:"
-                                f"requirement:{requirement.job_requirement_id}"
-                            ),
-                        )
+            document_id = str(
+                uuid5(
+                    NAMESPACE_URL,
+                    (
+                        f"{axis.competency_model_version_id}:"
+                        f"requirement:{requirement.job_requirement_id}"
                     ),
-                    company_id=context.company_id,
-                    applicant_id=UUID(int=0),
-                    source_id=requirement.job_requirement_id,
-                    text=requirement.statement,
-                    vector=self.embed(context, requirement.statement),
-                    symbols=(),
-                    locator={"criterion_code": requirement.criterion_code},
-                    ownership_confidence=1.0,
-                    competency_model_version_id=axis.competency_model_version_id,
-                    document_type="job_requirement",
-                    source_type="job_requirement",
-                    source_version=str(axis.version_number),
-                    content_hash=hashlib.sha256(requirement.statement.encode("utf-8")).hexdigest(),
-                    embedding_model=self._text_embedder.model_id,
-                    embedding_version="titan-v2",
                 )
             )
+            content_hash = hashlib.sha256(requirement.statement.encode("utf-8")).hexdigest()
+            if self._axis_document_is_current(context, document_id, content_hash):
+                continue
+            pending.append(
+                _PendingAxisDocument(
+                    document_id=document_id,
+                    source_id=requirement.job_requirement_id,
+                    text=requirement.statement,
+                    locator={"criterion_code": requirement.criterion_code},
+                    criterion_id=None,
+                    document_type="job_requirement",
+                    content_hash=content_hash,
+                )
+            )
+        if not pending:
+            return
+        vectors = self.embed_many(context, tuple(item.text for item in pending))
+        for item, vector in zip(pending, vectors, strict=True):
+            self._search_index.add(
+                SearchDocument(
+                    document_id=item.document_id,
+                    company_id=context.company_id,
+                    applicant_id=UUID(int=0),
+                    source_id=item.source_id,
+                    text=item.text,
+                    vector=vector,
+                    symbols=(),
+                    locator=item.locator,
+                    ownership_confidence=1.0,
+                    competency_model_version_id=axis.competency_model_version_id,
+                    criterion_id=item.criterion_id,
+                    document_type=item.document_type,
+                    source_type=item.document_type,
+                    source_version=str(axis.version_number),
+                    content_hash=item.content_hash,
+                    embedding_model=self._text_embedder.model_id,
+                    embedding_version=self._text_embedder.embedding_version,
+                )
+            )
+
+    def _axis_document_is_current(
+        self,
+        context: TenantContext,
+        document_id: str,
+        content_hash: str,
+    ) -> bool:
+        if not isinstance(self._search_index, CurrentDocumentLookup):
+            return False
+        return self._search_index.has_current_document(
+            company_id=context.company_id,
+            document_id=document_id,
+            content_hash=content_hash,
+            embedding_model=self._text_embedder.model_id,
+            embedding_version=self._text_embedder.embedding_version,
+        )
 
     def finalize_invitation(
         self,
@@ -871,7 +939,11 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
     ) -> None:
         """Leave a terminal state so the applicant is not stuck on 분석 중 forever."""
         submission = self._repository.get_submission(context, submission_id)
-        if submission.status is not SubmissionStatus.ANALYZING:
+        if submission.status not in {
+            SubmissionStatus.RECEIVED,
+            SubmissionStatus.VALIDATING,
+            SubmissionStatus.ANALYZING,
+        }:
             return
         self._repository.save_submission(
             context,

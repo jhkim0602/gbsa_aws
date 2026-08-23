@@ -103,6 +103,8 @@ class VerificationMapBuilder:
                     dimensions=1024,
                 ),
                 criterion_id=criterion.criterion_id,
+                embedding_model=self._embedder.model_id,
+                embedding_version=self._embedder.embedding_version,
                 limit=5,
             )
             claims = tuple(
@@ -210,7 +212,7 @@ class VerificationMapBuilder:
             material_version=material_version,
             retrieval_version=self._retrieval_version,
             embedding_model=self._embedder.model_id,
-            embedding_version="titan-v2",
+            embedding_version=self._embedder.embedding_version,
             generation_version=self._generation_version,
             ordered_target_ids=tuple(target.verification_target_id for target in ordered),
             time_budget_seconds=sum(criterion.time_budget_seconds for criterion in criteria),

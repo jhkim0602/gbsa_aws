@@ -13,6 +13,7 @@ import {
   completeCompanyLogin,
   getCompanyAccessToken,
 } from "../features/company/cognitoAuth";
+import { AiRecruitingAssistant } from "../features/assistant";
 import {
   ApplicantDetail,
   ApplicantManagement,
@@ -143,7 +144,7 @@ const hiringApi: HiringWorkspaceApi = {
           required: criterion.required,
         })),
         prohibited_topics: input.prohibitedTopics,
-        interview_duration_minutes: input.interviewDurationMinutes,
+        interview_duration_minutes: 30,
         interview_level: input.interviewLevel,
         // All five axes, always. The API accepts an empty mapping as equal weight for versions
         // published before weights existed, but refuses a partial one — no reading of the
@@ -489,7 +490,7 @@ const companyOperationsApi: CompanyOperationsApi = {
         commonQuestions: criterion.common_questions ?? [],
       })),
       prohibitedTopics: version.prohibited_topics,
-      interviewDurationMinutes: version.interview_duration_minutes,
+      interviewDurationMinutes: 30,
       // Versions published before the difficulty toggle existed omit the field.
       interviewLevel: version.interview_level ?? "junior",
       // Versions published before axis weights existed carry no mapping, and were scored with
@@ -673,6 +674,9 @@ function toReviewReport(report: ReportResponse): ReviewReport {
     summary: report.summary,
     status: report.status,
     overallScore: report.overall_score ?? null,
+    communicationScore: report.communication_score ?? null,
+    communicationScoredCriteriaCount:
+      report.communication_scored_criteria_count ?? 0,
     unscoredCriteriaCount: report.unscored_criteria_count ?? 0,
     scoringBreakdown: toScoreBreakdown(report.scoring_breakdown),
     items: report.items.map((item) => ({
@@ -720,6 +724,7 @@ function toReviewTimeline(timeline: TimelineResponse): ReviewTimeline {
       questionRationale: entry.question_rationale
         ? {
             criterionId: entry.question_rationale.criterion_id,
+            interviewStage: entry.question_rationale.interview_stage,
             verificationTargetType:
               entry.question_rationale.verification_target_type,
             objective: entry.question_rationale.objective,
@@ -840,6 +845,13 @@ export function ApplicantManagementRoute() {
     return <Navigate replace to="/auth/login" />;
   }
   return <ApplicantManagement api={recruitingOperationsApi} />;
+}
+
+export function AiRecruitingAssistantRoute() {
+  if (AUTH_CONFIG && !getCompanyAccessToken(localStorage)) {
+    return <Navigate replace to="/auth/login" />;
+  }
+  return <AiRecruitingAssistant api={recruitingOperationsApi} />;
 }
 
 export function ApplicantDetailRoute() {

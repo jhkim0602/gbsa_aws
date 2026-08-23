@@ -4,6 +4,15 @@ export type AssessmentState =
   | "insufficient_evidence"
   | "needs_follow_up";
 
+export type InterviewStage = "technical" | "project_deep_dive" | "behavioral";
+
+export type InterviewStageSummary = {
+  stage: InterviewStage;
+  label: string;
+  questionCount: number;
+  evidenceCount: number;
+};
+
 /** How far the quoted answer carries the criterion, as the AI graded the citation. */
 export type EvidenceSufficiency = "direct" | "supporting" | "weak";
 
@@ -113,6 +122,9 @@ export type ReviewReport = {
   status: string;
   /** Weighted mean across the criteria that could be scored. Never a hiring verdict. */
   overallScore: number | null;
+  /** Answer delivery score, kept separate from technical and role competency scores. */
+  communicationScore?: number | null;
+  communicationScoredCriteriaCount?: number;
   /** Read beside `overallScore` so the number is not mistaken for the whole interview. */
   unscoredCriteriaCount: number;
   /** How `overallScore` was reached, and what it leaves out. Null on pre-scoring reports. */
@@ -128,6 +140,7 @@ export type ReviewTimelineEntry = {
   text: string | null;
   questionRationale?: {
     criterionId: string;
+    interviewStage?: InterviewStage;
     verificationTargetType:
       | "not_mentioned"
       | "claim_found"
@@ -157,6 +170,8 @@ export type ReviewAnswerQuote = {
  */
 export type ReviewEvidenceContext = {
   answersBySegmentId: Record<string, ReviewAnswerQuote>;
+  /** The scored question immediately before each applicant answer. */
+  stageBySegmentId: Record<string, InterviewStage>;
   /** Submission excerpts the interview drew on, grouped by the criterion they served. */
   sourcesByCriterionId: Record<string, ReviewQuestionSource[]>;
 };

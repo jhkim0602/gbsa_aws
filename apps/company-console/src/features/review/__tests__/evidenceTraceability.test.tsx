@@ -102,6 +102,7 @@ const TIMELINE: ReviewTimelineEntry[] = [
     text: "ECS 장애의 원인을 어떻게 좁혔나요?",
     questionRationale: {
       criterionId: "criterion-1",
+      interviewStage: "technical",
       verificationTargetType: "detail_missing",
       objective: "이력서에 없는 장애 대응 과정을 확인",
       questionType: "planned",
@@ -131,6 +132,7 @@ const TIMELINE: ReviewTimelineEntry[] = [
     text: "롤백은 누가 결정했나요?",
     questionRationale: {
       criterionId: "criterion-1",
+      interviewStage: "project_deep_dive",
       verificationTargetType: "ownership_uncertain",
       objective: "복구 결정의 본인 기여를 확인",
       questionType: "follow_up",
@@ -191,6 +193,8 @@ describe("evidence traceability", () => {
     // How far the citation carries the criterion, in the reviewer's words.
     expect(screen.getByText("직접 근거")).toBeTruthy();
     expect(screen.getByText("보조 근거")).toBeTruthy();
+    expect(screen.getAllByText("기술").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("프로젝트").length).toBeGreaterThan(0);
   });
 
   it("resolves a citation to the applicant's own words from the transcript", () => {

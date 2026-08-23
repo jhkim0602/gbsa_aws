@@ -46,6 +46,7 @@ class ResumeSnapshot(BaseModel):
     last_final_turn_id: UUID | None
     pending_turn: dict[str, object] | None
     last_verified_recording_chunk_sequence: int
+    last_recording_end_ms: int
     degraded_modes: tuple[str, ...]
 
 
@@ -228,14 +229,28 @@ class SessionApplicationService:
                 "turn_id": str(turn.turn_id),
                 "speaker": turn.speaker.value,
                 "status": turn.status.value,
+                "text": turn.text or "",
+                "text_only": True,
             }
+        recording_chunks = self._repository.list_recording_chunks(context, session_id)
+        latest_recording = max(
+            recording_chunks,
+            key=lambda chunk: chunk.sequence,
+            default=None,
+        )
         return ResumeSnapshot(
             interview_session_id=session_id,
             state=session.state.value,
             server_sequence=session.session_sequence,
             last_final_turn_id=reconciled.last_final_turn_id,
             pending_turn=pending_turn,
-            last_verified_recording_chunk_sequence=reconciled.last_media_chunk_sequence,
+            last_verified_recording_chunk_sequence=max(
+                reconciled.last_media_chunk_sequence,
+                latest_recording.sequence if latest_recording is not None else 0,
+            ),
+            last_recording_end_ms=(
+                latest_recording.session_end_ms if latest_recording is not None else 0
+            ),
             degraded_modes=tuple(
                 dict.fromkeys((*session.degraded_modes, *reconciled.degraded_modes))
             ),

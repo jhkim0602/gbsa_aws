@@ -33,6 +33,7 @@ TargetEnumerator = Callable[
 TargetExecutor = Callable[[TenantContext, DeletionTarget], bool]
 
 _DELETION_TARGET_PRIORITY = {
+    "assistant_retrieval_document": 10,
     "verification_target": 10,
     "claim_conflict": 10,
     "candidate_code_unit": 10,
