@@ -13,6 +13,18 @@ import {
 } from "../InterviewSession";
 import type { StoredMediaChunk } from "../media";
 
+function generatedAnswer(
+  questionTurnId: string,
+  text = "제출 자료에 근거해 생성한 자동 면접 답변입니다.",
+) {
+  return {
+    questionTurnId,
+    text,
+    sourceReferenceCount: 2,
+    grounded: true,
+  };
+}
+
 describe("InterviewSession", () => {
   it("connects server state to media capture and answer completion", async () => {
     const protocol = {
@@ -22,6 +34,7 @@ describe("InterviewSession", () => {
       completeAnswer: vi.fn(),
       sendAudioFrame: vi.fn(),
       repeatQuestion: vi.fn(),
+      requestAutomatedAnswer: vi.fn(),
       submitAutomatedAnswer: vi.fn(),
     };
     const stopTrack = vi.fn();
@@ -141,6 +154,7 @@ describe("InterviewSession", () => {
       completeAnswer: vi.fn(),
       sendAudioFrame: vi.fn(),
       repeatQuestion: vi.fn(),
+      requestAutomatedAnswer: vi.fn(),
       submitAutomatedAnswer: vi.fn(),
     };
     const dependencies: Partial<InterviewSessionDependencies> = {
@@ -184,6 +198,11 @@ describe("InterviewSession", () => {
         completeAnswer: vi.fn(),
         sendAudioFrame: vi.fn(),
         repeatQuestion: vi.fn(),
+        requestAutomatedAnswer: vi
+          .fn()
+          .mockResolvedValue(
+            generatedAnswer("00000000-0000-7000-8000-000000000522"),
+          ),
         submitAutomatedAnswer: vi.fn(),
       };
       const stream = {
@@ -285,6 +304,11 @@ describe("InterviewSession", () => {
         completeAnswer: vi.fn(),
         sendAudioFrame: vi.fn(),
         repeatQuestion: vi.fn(),
+        requestAutomatedAnswer: vi.fn().mockResolvedValue({
+          ...generatedAnswer("00000000-0000-7000-8000-000000000542"),
+          pcm: new Int16Array(),
+          sampleRateHz: 24_000,
+        }),
         submitAutomatedAnswer: vi.fn(),
       };
       const stream = {
@@ -322,7 +346,6 @@ describe("InterviewSession", () => {
           stream,
           dispose: vi.fn(),
         }),
-        loadAutomatedPcm: vi.fn().mockResolvedValue(new Int16Array()),
         createProtocolClient: vi.fn((input) => {
           onQuestion = input.onQuestion;
           onQuestionAudioStart = input.onQuestionAudioStart;
@@ -413,6 +436,17 @@ describe("InterviewSession", () => {
         completeAnswer: vi.fn(),
         sendAudioFrame: vi.fn(),
         repeatQuestion: vi.fn(),
+        requestAutomatedAnswer: vi.fn(
+          ({ questionTurnId }: { questionTurnId: string }) =>
+            Promise.resolve(
+              generatedAnswer(
+                questionTurnId,
+                questionTurnId.endsWith("525")
+                  ? "원인 분석 자료를 바탕으로 두 번째 답변을 생성했습니다."
+                  : "문제 발견 자료를 바탕으로 첫 번째 답변을 생성했습니다.",
+              ),
+            ),
+        ),
         submitAutomatedAnswer: vi.fn(() => {
           onQuestion?.({
             questionTurnId: "00000000-0000-7000-8000-000000000525",
@@ -517,6 +551,11 @@ describe("InterviewSession", () => {
         completeAnswer: vi.fn(),
         sendAudioFrame: vi.fn(),
         repeatQuestion: vi.fn(),
+        requestAutomatedAnswer: vi
+          .fn()
+          .mockResolvedValue(
+            generatedAnswer("00000000-0000-7000-8000-000000000542"),
+          ),
         submitAutomatedAnswer: vi.fn(),
       };
       const stream = {
@@ -575,7 +614,8 @@ describe("InterviewSession", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(3100);
       });
-      const firstAnswer = protocol.submitAutomatedAnswer.mock.calls[0]?.[0].text;
+      const firstAnswer =
+        protocol.submitAutomatedAnswer.mock.calls[0]?.[0].text;
 
       act(() => {
         onError?.({
@@ -628,6 +668,11 @@ describe("InterviewSession", () => {
         completeAnswer: vi.fn(),
         sendAudioFrame: vi.fn(),
         repeatQuestion: vi.fn(),
+        requestAutomatedAnswer: vi
+          .fn()
+          .mockResolvedValue(
+            generatedAnswer("00000000-0000-7000-8000-000000000532"),
+          ),
         submitAutomatedAnswer: vi.fn(),
       };
       const failedRecorder = {

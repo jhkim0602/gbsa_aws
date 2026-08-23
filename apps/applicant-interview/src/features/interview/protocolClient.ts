@@ -47,9 +47,34 @@ export type QuestionAudioFormat = Readonly<{
   channelCount: 1;
 }>;
 
+export type GeneratedAutomatedAnswer = Readonly<{
+  questionTurnId: string;
+  text: string;
+  sourceReferenceCount: number;
+  grounded: boolean;
+  pcm?: Int16Array;
+  sampleRateHz?: number;
+}>;
+
+type PendingAutomatedAnswer = {
+  resolve(answer: GeneratedAutomatedAnswer): void;
+  reject(error: Error): void;
+  text?: string;
+  sourceReferenceCount?: number;
+  grounded?: boolean;
+  sampleRateHz?: number;
+  chunks: ArrayBuffer[];
+};
+
 export class InterviewProtocolClient {
   private socket: SocketLike | null = null;
   private startRequested = false;
+  private readonly pendingAutomatedAnswers = new Map<
+    string,
+    PendingAutomatedAnswer
+  >();
+  private binaryStream: "question" | "automated" | null = null;
+  private automatedAudioQuestionTurnId: string | null = null;
 
   constructor(
     private readonly options: Readonly<{
@@ -92,6 +117,7 @@ export class InterviewProtocolClient {
     const markDisconnected = () => {
       if (this.socket !== socket) return;
       this.socket = null;
+      this.rejectAutomatedAnswers("자동 답변 연결이 끊어졌습니다.");
       this.options.store.getState().setConnectionState("reconnecting");
     };
     socket.onclose = markDisconnected;
@@ -107,6 +133,7 @@ export class InterviewProtocolClient {
   disconnect(): void {
     const socket = this.socket;
     this.socket = null;
+    this.rejectAutomatedAnswers("자동 답변 연결이 종료되었습니다.");
     if (socket?.readyState === 0 || socket?.readyState === 1) socket.close();
     this.options.store.getState().setConnectionState("disconnected");
   }
@@ -139,6 +166,40 @@ export class InterviewProtocolClient {
       last_recording_chunk_sequence: input.lastRecordingChunkSequence,
       expected_state: "awaiting_answer",
     });
+  }
+
+  requestAutomatedAnswer(
+    input: Readonly<{
+      questionTurnId: string;
+      includeAudio: boolean;
+    }>,
+  ): Promise<GeneratedAutomatedAnswer> {
+    const existing = this.pendingAutomatedAnswers.get(input.questionTurnId);
+    if (existing) {
+      return Promise.reject(new Error("자동 답변을 이미 준비하고 있습니다."));
+    }
+    const request = new Promise<GeneratedAutomatedAnswer>((resolve, reject) => {
+      this.pendingAutomatedAnswers.set(input.questionTurnId, {
+        resolve,
+        reject,
+        chunks: [],
+      });
+    });
+    try {
+      this.sendEnvelope("answer.automated.generate", {
+        question_turn_id: input.questionTurnId,
+        include_audio: input.includeAudio,
+      });
+    } catch (error) {
+      const pending = this.pendingAutomatedAnswers.get(input.questionTurnId);
+      this.pendingAutomatedAnswers.delete(input.questionTurnId);
+      pending?.reject(
+        error instanceof Error
+          ? error
+          : new Error("자동 답변 요청을 전송하지 못했습니다."),
+      );
+    }
+    return request;
   }
 
   startAnswer(
@@ -214,7 +275,16 @@ export class InterviewProtocolClient {
 
   private handleServerMessage(raw: string | ArrayBuffer): void {
     if (raw instanceof ArrayBuffer) {
-      this.options.onQuestionAudioChunk?.(raw);
+      if (
+        this.binaryStream === "automated" &&
+        this.automatedAudioQuestionTurnId
+      ) {
+        this.pendingAutomatedAnswers
+          .get(this.automatedAudioQuestionTurnId)
+          ?.chunks.push(raw);
+      } else if (this.binaryStream === "question") {
+        this.options.onQuestionAudioChunk?.(raw);
+      }
       return;
     }
     const envelope = parseEnvelope(raw, this.options.sessionId);
@@ -243,7 +313,28 @@ export class InterviewProtocolClient {
 
     if (envelope.message_type === "error") {
       const error = parseProtocolError(envelope.payload);
-      if (error) this.options.onError?.(error);
+      if (error) {
+        if (error.code.startsWith("AUTOMATED_ANSWER_")) {
+          this.rejectAutomatedAnswers(error.message);
+        }
+        this.options.onError?.(error);
+      }
+      return;
+    }
+
+    if (envelope.message_type === "answer.automated.ready") {
+      const questionTurnId = readString(envelope.payload.question_turn_id);
+      const text = readString(envelope.payload.text);
+      if (!questionTurnId || !text) return;
+      const pending = this.pendingAutomatedAnswers.get(questionTurnId);
+      if (!pending) return;
+      pending.text = text;
+      pending.sourceReferenceCount =
+        readInteger(envelope.payload.source_reference_count) ?? 0;
+      pending.grounded = envelope.payload.grounded === true;
+      if (envelope.payload.audio_stream !== true) {
+        this.resolveAutomatedAnswer(questionTurnId);
+      }
       return;
     }
 
@@ -281,17 +372,54 @@ export class InterviewProtocolClient {
 
     if (envelope.message_type === "question.audio.begin") {
       const format = parseQuestionAudioFormat(envelope.payload);
-      if (format) this.options.onQuestionAudioStart?.(format);
+      if (format) {
+        this.binaryStream = "question";
+        this.options.onQuestionAudioStart?.(format);
+      }
       return;
     }
 
     if (envelope.message_type === "question.audio.end") {
+      this.binaryStream = null;
       this.options.onQuestionAudioEnd?.();
       return;
     }
 
     if (envelope.message_type === "question.audio.error") {
+      this.binaryStream = null;
       this.options.onQuestionAudioError?.();
+      return;
+    }
+
+    if (envelope.message_type === "answer.automated.audio.begin") {
+      const format = parseQuestionAudioFormat(envelope.payload);
+      if (!format || !this.pendingAutomatedAnswers.has(format.questionTurnId)) {
+        return;
+      }
+      const pending = this.pendingAutomatedAnswers.get(format.questionTurnId);
+      if (!pending) return;
+      pending.sampleRateHz = format.sampleRateHz;
+      pending.chunks = [];
+      this.binaryStream = "automated";
+      this.automatedAudioQuestionTurnId = format.questionTurnId;
+      return;
+    }
+
+    if (envelope.message_type === "answer.automated.audio.end") {
+      const questionTurnId = readString(envelope.payload.question_turn_id);
+      if (!questionTurnId) return;
+      this.binaryStream = null;
+      this.automatedAudioQuestionTurnId = null;
+      this.resolveAutomatedAnswer(questionTurnId);
+      return;
+    }
+
+    if (envelope.message_type === "answer.automated.audio.error") {
+      const questionTurnId = readString(envelope.payload.question_turn_id);
+      if (!questionTurnId) return;
+      this.binaryStream = null;
+      this.automatedAudioQuestionTurnId = null;
+      this.resolveAutomatedAnswer(questionTurnId);
       return;
     }
 
@@ -340,6 +468,52 @@ export class InterviewProtocolClient {
       });
     }
   }
+
+  private resolveAutomatedAnswer(questionTurnId: string): void {
+    const pending = this.pendingAutomatedAnswers.get(questionTurnId);
+    if (!pending?.text) return;
+    this.pendingAutomatedAnswers.delete(questionTurnId);
+    pending.resolve({
+      questionTurnId,
+      text: pending.text,
+      sourceReferenceCount: pending.sourceReferenceCount ?? 0,
+      grounded: pending.grounded ?? false,
+      ...(pending.chunks.length > 0
+        ? {
+            pcm: decodePcm(pending.chunks),
+            sampleRateHz: pending.sampleRateHz,
+          }
+        : {}),
+    });
+  }
+
+  private rejectAutomatedAnswers(message: string): void {
+    for (const pending of this.pendingAutomatedAnswers.values()) {
+      pending.reject(new Error(message));
+    }
+    this.pendingAutomatedAnswers.clear();
+    this.binaryStream = null;
+    this.automatedAudioQuestionTurnId = null;
+  }
+}
+
+function decodePcm(chunks: ArrayBuffer[]): Int16Array {
+  const byteLength = chunks.reduce(
+    (total, chunk) => total + chunk.byteLength,
+    0,
+  );
+  const bytes = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(new Uint8Array(chunk), offset);
+    offset += chunk.byteLength;
+  }
+  const samples = new Int16Array(Math.floor(bytes.byteLength / 2));
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  for (let index = 0; index < samples.length; index += 1) {
+    samples[index] = view.getInt16(index * 2, true);
+  }
+  return samples;
 }
 
 function parseEnvelope(raw: string, sessionId: string): Envelope | null {

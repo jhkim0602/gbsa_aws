@@ -73,6 +73,16 @@ def response(message_type: str) -> ServerEnvelope:
 
 
 class AutomatedHandler:
+    def generate_automated_answer(
+        self,
+        request_context: TenantContext,
+        applicant: ApplicantPrincipal,
+        request: WebSocketEnvelope,
+    ) -> ServerEnvelope:
+        assert request_context.company_id == COMPANY_ID
+        assert applicant.session_id == SESSION_ID
+        return response("answer.automated.ready")
+
     def complete_automated_answer(
         self,
         request_context: TenantContext,
@@ -94,6 +104,26 @@ def test_protocol_routes_local_automated_answers_to_the_opted_in_handler() -> No
     result = protocol.handle(context(), principal(), envelope())
 
     assert result.message_type == "session.completed"
+
+
+def test_protocol_routes_local_automated_answer_generation() -> None:
+    request = envelope().model_copy(
+        update={
+            "message_type": "answer.automated.generate",
+            "payload": {
+                "question_turn_id": "00000000-0000-7000-8000-000000000009",
+                "include_audio": True,
+            },
+        }
+    )
+    protocol = ProtocolStreamHandler(
+        session_service=cast(SessionApplicationService, object()),
+        automated_answer_handler=AutomatedHandler(),
+    )
+
+    result = protocol.handle(context(), principal(), request)
+
+    assert result.message_type == "answer.automated.ready"
 
 
 def test_live_handler_records_text_before_completing_the_answer() -> None:

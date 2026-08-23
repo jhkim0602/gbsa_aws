@@ -24,6 +24,9 @@ from interview_evidence.interview_engine.api.websocket import (
 from interview_evidence.interview_engine.application.authorization import (
     InterviewAuthorizationPort,
 )
+from interview_evidence.interview_engine.application.automated_answer_generator import (
+    AutomatedAnswerGenerator,
+)
 from interview_evidence.interview_engine.application.checkpoints import CheckpointService
 from interview_evidence.interview_engine.application.context_builder import ContextBuilder
 from interview_evidence.interview_engine.application.context_reconciliation import (
@@ -148,16 +151,17 @@ def create_lane_c_runtime(
             checkpoints=checkpoints,
             reconciler=reconciler,
         )
+        retrieval = RetrievalClient(
+            cast(SubmissionRetrieval, retrieval_provider),
+            embedder=text_embedder,
+        )
         interview_service = InterviewService(
             repository=active_repository,
             idempotency=active_idempotency,
             recovery=recovery,
             checkpoints=checkpoints,
             context_builder=ContextBuilder(token_budget=2400),
-            retrieval=RetrievalClient(
-                cast(SubmissionRetrieval, retrieval_provider),
-                embedder=text_embedder,
-            ),
+            retrieval=retrieval,
             generator=QuestionGenerator(cast(AIModel, model)),
             policy=QuestionPolicy(),
             speech=speech,
@@ -173,6 +177,15 @@ def create_lane_c_runtime(
             idempotency=active_idempotency,
             checkpoints=checkpoints,
             clock=active_clock,
+            automated_answer_generator=(
+                AutomatedAnswerGenerator(
+                    repository=active_repository,
+                    retrieval=retrieval,
+                    model=cast(AIModel, model),
+                )
+                if allow_automated_answers
+                else None
+            ),
         )
         stream_handler = ProtocolStreamHandler(
             session_service=service,

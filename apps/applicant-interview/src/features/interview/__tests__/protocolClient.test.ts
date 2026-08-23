@@ -267,6 +267,163 @@ describe("interview protocol client", () => {
     });
   });
 
+  it("requests and receives a question-grounded automated answer", async () => {
+    const socket = new FakeSocket();
+    const sessionId = "00000000-0000-7000-8000-000000000430";
+    const questionTurnId = "00000000-0000-7000-8000-000000000431";
+    const client = new InterviewProtocolClient({
+      sessionId,
+      socketFactory: () => socket,
+      store: createInterviewSessionStore(),
+      onQuestion: vi.fn(),
+    });
+    client.connect();
+    socket.open();
+
+    const answerPromise = client.requestAutomatedAnswer({
+      questionTurnId,
+      includeAudio: false,
+    });
+    expect(JSON.parse(String(socket.sent[1]))).toMatchObject({
+      message_type: "answer.automated.generate",
+      payload: {
+        question_turn_id: questionTurnId,
+        include_audio: false,
+      },
+    });
+
+    socket.serverMessage({
+      protocol_version: "1.0",
+      message_type: "answer.automated.ready",
+      session_id: sessionId,
+      sequence: 2,
+      idempotency_key: "server-answer-generated-0001",
+      correlation_id: "00000000-0000-7000-8000-000000000432",
+      sent_at: "2026-08-23T10:00:00Z",
+      payload: {
+        question_turn_id: questionTurnId,
+        text: "제출 자료의 장애 대응 경험을 바탕으로 답변했습니다.",
+        source_reference_count: 3,
+        grounded: true,
+        audio_stream: false,
+      },
+    });
+
+    await expect(answerPromise).resolves.toEqual({
+      questionTurnId,
+      text: "제출 자료의 장애 대응 경험을 바탕으로 답변했습니다.",
+      sourceReferenceCount: 3,
+      grounded: true,
+    });
+  });
+
+  it("buffers generated answer audio separately from interviewer audio", async () => {
+    const socket = new FakeSocket();
+    const sessionId = "00000000-0000-7000-8000-000000000433";
+    const questionTurnId = "00000000-0000-7000-8000-000000000434";
+    const onQuestionAudioChunk = vi.fn();
+    const client = new InterviewProtocolClient({
+      sessionId,
+      socketFactory: () => socket,
+      store: createInterviewSessionStore(),
+      onQuestion: vi.fn(),
+      onQuestionAudioChunk,
+    });
+    client.connect();
+    socket.open();
+
+    const answerPromise = client.requestAutomatedAnswer({
+      questionTurnId,
+      includeAudio: true,
+    });
+    socket.serverMessage({
+      protocol_version: "1.0",
+      message_type: "answer.automated.ready",
+      session_id: sessionId,
+      sequence: 2,
+      idempotency_key: "server-answer-generated-0002",
+      correlation_id: "00000000-0000-7000-8000-000000000435",
+      sent_at: "2026-08-23T10:00:00Z",
+      payload: {
+        question_turn_id: questionTurnId,
+        text: "음성으로 변환할 자료 기반 답변입니다.",
+        source_reference_count: 1,
+        grounded: true,
+        audio_stream: true,
+      },
+    });
+    socket.serverMessage({
+      protocol_version: "1.0",
+      message_type: "answer.automated.audio.begin",
+      session_id: sessionId,
+      sequence: 2,
+      idempotency_key: "server-answer-audio-begin-0001",
+      correlation_id: "00000000-0000-7000-8000-000000000435",
+      sent_at: "2026-08-23T10:00:00Z",
+      payload: {
+        question_turn_id: questionTurnId,
+        encoding: "pcm_s16le",
+        sample_rate_hz: 24000,
+        channel_count: 1,
+      },
+    });
+    socket.serverBinary(new Uint8Array([1, 0, 255, 255]).buffer);
+    socket.serverMessage({
+      protocol_version: "1.0",
+      message_type: "answer.automated.audio.end",
+      session_id: sessionId,
+      sequence: 2,
+      idempotency_key: "server-answer-audio-end-0001",
+      correlation_id: "00000000-0000-7000-8000-000000000435",
+      sent_at: "2026-08-23T10:00:00Z",
+      payload: {
+        question_turn_id: questionTurnId,
+        sample_rate_hz: 24000,
+      },
+    });
+
+    const answer = await answerPromise;
+    expect(Array.from(answer.pcm ?? [])).toEqual([1, -1]);
+    expect(answer.sampleRateHz).toBe(24000);
+    expect(onQuestionAudioChunk).not.toHaveBeenCalled();
+  });
+
+  it("rejects a pending generated answer when the server cannot prepare it", async () => {
+    const socket = new FakeSocket();
+    const sessionId = "00000000-0000-7000-8000-000000000436";
+    const client = new InterviewProtocolClient({
+      sessionId,
+      socketFactory: () => socket,
+      store: createInterviewSessionStore(),
+      onQuestion: vi.fn(),
+    });
+    client.connect();
+    socket.open();
+
+    const answerPromise = client.requestAutomatedAnswer({
+      questionTurnId: "00000000-0000-7000-8000-000000000437",
+      includeAudio: false,
+    });
+    socket.serverMessage({
+      protocol_version: "1.0",
+      message_type: "error",
+      session_id: sessionId,
+      sequence: 2,
+      idempotency_key: "server-answer-generated-error-0001",
+      correlation_id: "00000000-0000-7000-8000-000000000438",
+      sent_at: "2026-08-23T10:00:00Z",
+      payload: {
+        code: "AUTOMATED_ANSWER_GENERATION_UNAVAILABLE",
+        message: "질문에 맞는 자동 답변을 준비하지 못했습니다.",
+        retryable: true,
+      },
+    });
+
+    await expect(answerPromise).rejects.toThrow(
+      "질문에 맞는 자동 답변을 준비하지 못했습니다.",
+    );
+  });
+
   it("applies question and resume messages, preserving text-only degraded mode", () => {
     const socket = new FakeSocket();
     const store = createInterviewSessionStore();

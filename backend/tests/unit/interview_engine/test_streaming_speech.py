@@ -247,6 +247,62 @@ async def test_streaming_connection_sends_question_audio_in_order() -> None:
     assert begin.payload["sample_rate_hz"] == 24000
 
 
+class FakeAutomatedAnswerTextToSpeech:
+    def synthesize_stream(
+        self,
+        context: TenantContext,
+        text: str,
+        *,
+        voice_id: str,
+    ) -> AsyncIterator[SpeechAudioChunk]:
+        assert context == _context()
+        assert text == "제출 자료를 바탕으로 만든 답변입니다."
+        assert voice_id == "automated_applicant"
+        return self._chunks()
+
+    async def _chunks(self) -> AsyncIterator[SpeechAudioChunk]:
+        yield SpeechAudioChunk(content=b"answer-one", sample_rate_hz=24000)
+        yield SpeechAudioChunk(content=b"answer-two", sample_rate_hz=24000)
+
+
+@pytest.mark.asyncio
+async def test_streaming_connection_sends_generated_answer_audio_separately() -> None:
+    published: list[ServerEnvelope | bytes] = []
+    connection = StreamingSpeechConnection(
+        context=_context(),
+        runtime=WebSocketSpeechRuntime(text_to_speech=FakeAutomatedAnswerTextToSpeech()),
+        publish=_publisher(published),
+    )
+    response = ServerEnvelope(
+        message_type="answer.automated.ready",
+        session_id=SESSION_ID,
+        sequence=4,
+        idempotency_key="server:answer-automated-ready-0001",
+        correlation_id=UUID("00000000-0000-7000-8000-000000000009"),
+        sent_at=_envelope().sent_at,
+        payload={
+            "question_turn_id": "00000000-0000-7000-8000-000000000008",
+            "text": "제출 자료를 바탕으로 만든 답변입니다.",
+            "audio_requested": True,
+            "voice_id": "automated_applicant",
+        },
+    )
+
+    prepared = connection.prepare_automated_answer_response(response)
+    await connection.start_automated_answer_audio(prepared)
+    await connection.wait_for_question_audio()
+
+    assert prepared.payload["audio_stream"] is True
+    assert [
+        item.message_type if isinstance(item, ServerEnvelope) else item for item in published
+    ] == [
+        "answer.automated.audio.begin",
+        b"answer-one",
+        b"answer-two",
+        "answer.automated.audio.end",
+    ]
+
+
 def _publisher(
     messages: list[ServerEnvelope | bytes],
 ):

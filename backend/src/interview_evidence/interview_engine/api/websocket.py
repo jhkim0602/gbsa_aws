@@ -81,6 +81,13 @@ class AnswerCompletionHandler(Protocol):
 
 
 class AutomatedAnswerHandler(Protocol):
+    def generate_automated_answer(
+        self,
+        context: TenantContext,
+        principal: ApplicantPrincipal,
+        envelope: WebSocketEnvelope,
+    ) -> ServerEnvelope: ...
+
     def complete_automated_answer(
         self,
         context: TenantContext,
@@ -250,6 +257,15 @@ class ProtocolStreamHandler:
                     "answer_turn_id": str(answer_turn_id),
                     "state": "recording",
                 },
+            )
+        if (
+            envelope.message_type == "answer.automated.generate"
+            and self._automated_answer_handler is not None
+        ):
+            return self._automated_answer_handler.generate_automated_answer(
+                context,
+                principal,
+                envelope,
             )
         if (
             envelope.message_type == "answer.automated"
@@ -456,8 +472,10 @@ def create_interview_websocket_router(
 
         async def publish_handler_response(response: ServerEnvelope) -> None:
             prepared = streaming.prepare_question_response(response)
+            prepared = streaming.prepare_automated_answer_response(prepared)
             await publish(prepared)
             await streaming.start_question_audio(prepared)
+            await streaming.start_automated_answer_audio(prepared)
 
         try:
             while True:

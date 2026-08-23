@@ -161,6 +161,16 @@ class StreamingSpeechConnection:
         )
         return response.model_copy(update={"payload": payload})
 
+    def prepare_automated_answer_response(self, response: ServerEnvelope) -> ServerEnvelope:
+        if response.message_type != "answer.automated.ready":
+            return response
+        payload = dict(response.payload)
+        payload["audio_stream"] = bool(
+            self._runtime.text_to_speech is not None
+            and response.payload.get("audio_requested") is True
+        )
+        return response.model_copy(update={"payload": payload})
+
     async def start_question_audio(self, response: ServerEnvelope) -> None:
         provider = self._runtime.text_to_speech
         if provider is None or response.message_type != "question.ready":
@@ -175,6 +185,30 @@ class StreamingSpeechConnection:
         voice_id = response.payload.get("voice_id")
         self._speech_task = asyncio.create_task(
             self._stream_question_audio(
+                response,
+                text=text,
+                voice_id=voice_id if isinstance(voice_id, str) else "default",
+            )
+        )
+
+    async def start_automated_answer_audio(self, response: ServerEnvelope) -> None:
+        provider = self._runtime.text_to_speech
+        if (
+            provider is None
+            or response.message_type != "answer.automated.ready"
+            or response.payload.get("audio_stream") is not True
+        ):
+            return
+        text = response.payload.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return
+        if self._speech_task is not None:
+            self._speech_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._speech_task
+        voice_id = response.payload.get("voice_id")
+        self._speech_task = asyncio.create_task(
+            self._stream_automated_answer_audio(
                 response,
                 text=text,
                 voice_id=voice_id if isinstance(voice_id, str) else "default",
@@ -285,6 +319,63 @@ class StreamingSpeechConnection:
                         "question_turn_id": question_turn_id,
                         "code": "SPEECH_SYNTHESIS_UNAVAILABLE",
                         "message": "음성 질문을 재생하지 못해 텍스트로 계속 진행합니다.",
+                    },
+                )
+            )
+
+    async def _stream_automated_answer_audio(
+        self,
+        response: ServerEnvelope,
+        *,
+        text: str,
+        voice_id: str,
+    ) -> None:
+        provider = self._runtime.text_to_speech
+        if provider is None:
+            return
+        question_turn_id = str(response.payload.get("question_turn_id", ""))
+        began = False
+        sample_rate_hz = 0
+        try:
+            async for chunk in provider.synthesize_stream(
+                self._context,
+                text,
+                voice_id=voice_id,
+            ):
+                if not began:
+                    sample_rate_hz = chunk.sample_rate_hz
+                    await self._publish(
+                        _message(
+                            response,
+                            message_type="answer.automated.audio.begin",
+                            payload=_audio_payload(question_turn_id, chunk),
+                        )
+                    )
+                    began = True
+                await self._publish(chunk.content)
+            if not began:
+                raise SpeechProviderError("speech synthesis returned no audio")
+            await self._publish(
+                _message(
+                    response,
+                    message_type="answer.automated.audio.end",
+                    payload={
+                        "question_turn_id": question_turn_id,
+                        "sample_rate_hz": sample_rate_hz,
+                    },
+                )
+            )
+        except asyncio.CancelledError:
+            raise
+        except SpeechProviderError:
+            await self._publish(
+                _message(
+                    response,
+                    message_type="answer.automated.audio.error",
+                    payload={
+                        "question_turn_id": question_turn_id,
+                        "code": "AUTOMATED_SPEECH_SYNTHESIS_UNAVAILABLE",
+                        "message": "자동 답변 음성을 만들지 못해 텍스트로 진행합니다.",
                     },
                 )
             )

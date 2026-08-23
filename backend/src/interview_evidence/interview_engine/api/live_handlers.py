@@ -12,6 +12,10 @@ from interview_evidence.interview_engine.api.websocket import (
     ServerEnvelope,
     WebSocketEnvelope,
 )
+from interview_evidence.interview_engine.application.automated_answer_generator import (
+    AutomatedAnswerGenerationUnavailable,
+    AutomatedAnswerGenerator,
+)
 from interview_evidence.interview_engine.application.checkpoints import CheckpointService
 from interview_evidence.interview_engine.application.idempotency import IdempotencyStore
 from interview_evidence.interview_engine.application.interview_plan import (
@@ -57,6 +61,7 @@ class LiveInterviewHandler:
         idempotency: IdempotencyStore,
         checkpoints: CheckpointService,
         clock: Clock,
+        automated_answer_generator: AutomatedAnswerGenerator | None = None,
     ) -> None:
         self._repository = repository
         self._session_service = session_service
@@ -67,6 +72,7 @@ class LiveInterviewHandler:
         self._idempotency = idempotency
         self._checkpoints = checkpoints
         self._clock = clock
+        self._automated_answer_generator = automated_answer_generator
         self._state_machine = SessionStateMachine()
 
     def initial_question(
@@ -377,6 +383,72 @@ class LiveInterviewHandler:
             last_chunk_sequence=0,
         )
         return self.complete_answer(context, principal, envelope)
+
+    def generate_automated_answer(
+        self,
+        context: TenantContext,
+        principal: ApplicantPrincipal,
+        envelope: WebSocketEnvelope,
+    ) -> ServerEnvelope:
+        generator = self._automated_answer_generator
+        if generator is None:
+            return self._error(
+                envelope,
+                code="AUTOMATED_ANSWER_UNAVAILABLE",
+                message="자동 답변 생성을 사용할 수 없습니다.",
+                retryable=False,
+            )
+        try:
+            question_turn_id = UUID(str(envelope.payload["question_turn_id"]))
+        except (KeyError, TypeError, ValueError):
+            return self._error(
+                envelope,
+                code="AUTOMATED_ANSWER_INVALID",
+                message="자동 답변을 만들 질문이 올바르지 않습니다.",
+                retryable=False,
+            )
+        try:
+            self._session_service.resume(
+                context,
+                principal,
+                session_id=envelope.session_id,
+            )
+            session = self._repository.get_session(context, envelope.session_id)
+            plan = self._plan(session, context)
+            generated = generator.generate(
+                context,
+                session_id=envelope.session_id,
+                question_turn_id=question_turn_id,
+                retrieval_config_version=plan.retrieval_config_version,
+                fallback_stage=plan.initial_stage,
+            )
+        except AutomatedAnswerGenerationUnavailable:
+            return self._error(
+                envelope,
+                code="AUTOMATED_ANSWER_GENERATION_UNAVAILABLE",
+                message="질문에 맞는 자동 답변을 준비하지 못했습니다.",
+                retryable=True,
+            )
+        except (LookupError, PermissionError, ValueError):
+            return self._error(
+                envelope,
+                code="AUTOMATED_ANSWER_INVALID",
+                message="현재 질문에 대한 자동 답변을 만들 수 없습니다.",
+                retryable=False,
+            )
+        return self._message(
+            envelope,
+            message_type="answer.automated.ready",
+            sequence=session.session_sequence,
+            payload={
+                "question_turn_id": str(question_turn_id),
+                "text": generated.text,
+                "source_reference_count": generated.source_reference_count,
+                "grounded": generated.grounded,
+                "audio_requested": envelope.payload.get("include_audio") is True,
+                "voice_id": "automated_applicant",
+            },
+        )
 
     def _complete_answer_once(
         self,

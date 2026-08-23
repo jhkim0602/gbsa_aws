@@ -9,10 +9,9 @@ import {
 
 import type { InterviewerLevel } from "./Avatar";
 import {
-  automatedAnswer,
   createAutomatedMedia,
   delay,
-  loadAutomatedPcm,
+  resampleAutomatedPcm,
   sendAutomatedPcm,
   type AutomatedInterviewMode,
   type AutomatedMedia,
@@ -30,6 +29,7 @@ import {
 } from "./media";
 import {
   InterviewProtocolClient,
+  type GeneratedAutomatedAnswer,
   type InterviewProtocolError,
   type SocketLike,
 } from "./protocolClient";
@@ -47,6 +47,7 @@ type ProtocolClient = Pick<
   | "startAnswer"
   | "sendAudioFrame"
   | "repeatQuestion"
+  | "requestAutomatedAnswer"
   | "submitAutomatedAnswer"
 >;
 
@@ -74,7 +75,6 @@ export type InterviewSessionDependencies = Readonly<{
   createAudioCapture(): AudioCapture;
   createAudioPlayer(): AudioPlayer;
   createAutomatedMedia(label: string): Promise<AutomatedMedia>;
-  loadAutomatedPcm(): Promise<Int16Array>;
   createProtocolClient(input: {
     sessionId: string;
     equipmentCheckId?: string;
@@ -147,6 +147,9 @@ export function InterviewSession({
   const automatedQuestionRef = useRef<string | null>(null);
   const currentQuestionTurnIdRef = useRef<string | null>(null);
   const automatedAnswerIndexRef = useRef(0);
+  const generatedAnswersRef = useRef(
+    new Map<string, GeneratedAutomatedAnswer>(),
+  );
   const automationRetryCountRef = useRef(0);
   const automationRetryTimerRef = useRef<number | null>(null);
   const automationRunningRef = useRef(false);
@@ -184,7 +187,6 @@ export function InterviewSession({
         dependencies?.createAudioPlayer ?? (() => new PcmAudioWorkletPlayer()),
       createAutomatedMedia:
         dependencies?.createAutomatedMedia ?? createAutomatedMedia,
-      loadAutomatedPcm: dependencies?.loadAutomatedPcm ?? loadAutomatedPcm,
       createProtocolClient:
         dependencies?.createProtocolClient ??
         ((input) => new InterviewProtocolClient(input)),
@@ -274,6 +276,7 @@ export function InterviewSession({
         }
         automationRetryTimerRef.current = window.setTimeout(() => {
           automationRetryTimerRef.current = null;
+          automatedQuestionRef.current = null;
           setAutomationRunVersion((version) => version + 1);
         }, retryDelaySeconds * 1000);
       },
@@ -355,8 +358,12 @@ export function InterviewSession({
     automationRunningRef.current = true;
     void runAutomatedAnswer()
       .catch((error: unknown) => {
-        automatedQuestionRef.current = null;
         automationRunningRef.current = false;
+        if (automationRetryTimerRef.current !== null) {
+          automatedQuestionRef.current = questionTurnId;
+          return;
+        }
+        automatedQuestionRef.current = null;
         setAutomationStatus(
           error instanceof Error
             ? `자동 면접 오류: ${error.message}`
@@ -474,15 +481,30 @@ export function InterviewSession({
   }
 
   async function runAutomatedAnswer(): Promise<void> {
-    if (!automationMode) return;
+    if (!automationMode || !questionTurnId) return;
     await delay(900);
     const answerIndex = automatedAnswerIndexRef.current;
-    const answer = automatedAnswer(answerIndex);
+    const client = clientRef.current;
+    if (!client) throw new Error("자동 면접 연결을 찾을 수 없습니다.");
+    setAutomationStatus(
+      "현재 질문과 제출 자료를 바탕으로 답변을 준비하고 있습니다.",
+    );
+    const generated =
+      generatedAnswersRef.current.get(questionTurnId) ??
+      (await client.requestAutomatedAnswer({
+        questionTurnId,
+        includeAudio: automationMode === "speech",
+      }));
+    generatedAnswersRef.current.set(questionTurnId, generated);
+    const answer = generated.text;
     setTranscript(answer);
+    const evidenceStatus = generated.grounded
+      ? `제출 자료 근거 ${generated.sourceReferenceCount}개`
+      : "확인 가능한 제출 자료 없음";
     setAutomationStatus(
       automationMode === "speech"
-        ? `음성 자동 답변 ${answerIndex + 1}개를 전송하고 있습니다.`
-        : `빠른 자동 답변 ${answerIndex + 1}개를 처리하고 있습니다.`,
+        ? `음성 자동 답변 ${answerIndex + 1}개를 전송하고 있습니다. (${evidenceStatus})`
+        : `빠른 자동 답변 ${answerIndex + 1}개를 처리하고 있습니다. (${evidenceStatus})`,
     );
 
     const media = await resolved.createAutomatedMedia(answer);
@@ -495,7 +517,11 @@ export function InterviewSession({
       answerTurnIdRef.current = answerTurnId;
       audioSequenceRef.current = 0;
       audioSendChainRef.current = Promise.resolve();
-      if (automationMode === "speech") {
+      const speechPcm =
+        automationMode === "speech" && generated.pcm && generated.sampleRateHz
+          ? resampleAutomatedPcm(generated.pcm, generated.sampleRateHz)
+          : null;
+      if (speechPcm) {
         clientRef.current?.startAnswer({ answerTurnId, sampleRateHz: 16000 });
       }
 
@@ -509,9 +535,8 @@ export function InterviewSession({
       recorderRef.current = recorder;
       recorder.start(media.stream);
 
-      if (automationMode === "speech") {
-        const pcm = await resolved.loadAutomatedPcm();
-        await sendAutomatedPcm(pcm, queueAudioFrame);
+      if (speechPcm) {
+        await sendAutomatedPcm(speechPcm, queueAudioFrame);
       } else {
         await delay(2200);
       }
@@ -521,13 +546,18 @@ export function InterviewSession({
       recorderRef.current = null;
       await audioSendChainRef.current;
 
-      if (automationMode === "speech") {
+      if (speechPcm) {
         clientRef.current?.completeAnswer({
           answerTurnId,
           lastAudioChunkSequence: audioSequenceRef.current,
           lastRecordingChunkSequence: lastRecordingSequenceRef.current,
         });
       } else {
+        if (automationMode === "speech") {
+          setAutomationStatus(
+            "자동 답변 음성을 만들지 못해 생성된 텍스트로 계속 진행합니다.",
+          );
+        }
         clientRef.current?.submitAutomatedAnswer({
           answerTurnId,
           text: answer,
