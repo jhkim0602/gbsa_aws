@@ -93,8 +93,7 @@ def test_finalizer_combines_candidates_from_every_submission() -> None:
     assert model.candidate_count == 2
     assert repository.strategy is not None
     assert {
-        candidate.source_id
-        for candidate in repository.strategy.source_reference_candidates
+        candidate.source_id for candidate in repository.strategy.source_reference_candidates
     } == {first_candidate.source_id, second_candidate.source_id}
     assert outbox.events[-1].event_type == "strategy.ready"
 

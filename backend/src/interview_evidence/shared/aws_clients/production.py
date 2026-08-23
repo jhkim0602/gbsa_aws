@@ -340,7 +340,9 @@ class AwsSqsQueue(ConsumableQueue):
                 QueueUrl=self._queue_url,
                 MaxNumberOfMessages=max(1, min(max_messages, 10)),
                 WaitTimeSeconds=self._wait_time_seconds,
-                VisibilityTimeout=60,
+                # Repository analysis and OCR can take several minutes. A one-minute lease made
+                # an in-progress delivery visible again, so another worker repeated the same job.
+                VisibilityTimeout=900,
             )
         except Exception as error:
             raise AwsAdapterError("queue receive unavailable") from error

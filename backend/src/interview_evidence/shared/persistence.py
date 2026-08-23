@@ -172,6 +172,10 @@ class SQLOutbox:
             select(OutboxEventRow)
             .where(OutboxEventRow.publish_status == PublishStatus.PENDING.value)
             .order_by(OutboxEventRow.occurred_at, OutboxEventRow.outbox_event_id)
+            # Several worker processes dispatch from the same outbox. Lock the rows for the
+            # current transaction and let the other dispatchers skip them; without this every
+            # process publishes the same event before any of them commits `published`.
+            .with_for_update(skip_locked=True)
         )
         return tuple(self._domain(row) for row in rows)
 

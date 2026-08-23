@@ -26,9 +26,18 @@ class PostgresHybridSearchIndex:
     def add(self, document: SearchDocument) -> None:
         if len(document.vector) != 1024:
             raise ValueError("semantic embeddings must contain 1024 dimensions")
+        document_id = _document_uuid(document.document_id)
+        if self._session.bind is not None and self._session.bind.dialect.name == "postgresql":
+            # `Session.merge` is a read followed by an insert and therefore races when several
+            # submissions index the same deterministic criterion document. Serialize only that
+            # document key; unrelated chunks remain fully parallel.
+            lock_key = f"{document.company_id}:{document_id}"
+            self._session.execute(
+                select(func.pg_advisory_xact_lock(func.hashtextextended(lock_key, 0)))
+            )
         self._session.merge(
             RetrievalDocumentRow(
-                retrieval_document_id=_document_uuid(document.document_id),
+                retrieval_document_id=document_id,
                 company_id=document.company_id,
                 applicant_id=document.applicant_id,
                 invitation_id=document.invitation_id,

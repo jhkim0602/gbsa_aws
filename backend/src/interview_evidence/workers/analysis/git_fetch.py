@@ -8,7 +8,7 @@ from hashlib import sha256
 from random import Random
 from typing import Final, Protocol, cast
 from urllib.error import HTTPError
-from urllib.parse import quote, urlencode, urlparse
+from urllib.parse import quote, unquote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from interview_evidence.submission_analysis.domain.git_analysis import CommitIdentityInput
@@ -181,10 +181,10 @@ class GitHubPublicTransport:
         limits: GitFetchLimits,
         identity: CommitIdentityInput | None = None,
     ) -> RepositorySnapshot:
-        owner, repository = _github_repository(repository_url)
+        owner, repository, requested_branch = _github_repository(repository_url)
         api_root = f"https://api.github.com/repos/{quote(owner)}/{quote(repository)}"
         metadata = self._json_dict(api_root, limits.timeout_seconds)
-        default_branch = _required_string(metadata, "default_branch")
+        default_branch = requested_branch or _required_string(metadata, "default_branch")
         branch_page = self._commit_listing(api_root, default_branch, limits, author=None)
         if not branch_page:
             raise GitFetchError("repository_has_no_commits")
@@ -530,14 +530,16 @@ class BoundedGitFetcher:
         )
 
 
-def _github_repository(repository_url: str) -> tuple[str, str]:
+def _github_repository(repository_url: str) -> tuple[str, str, str | None]:
     parsed = urlparse(repository_url)
     if parsed.scheme != "https" or parsed.hostname != "github.com":
         raise GitFetchError("only_public_github_https_is_supported")
     parts = tuple(part for part in parsed.path.removesuffix(".git").split("/") if part)
-    if len(parts) != 2:
-        raise GitFetchError("github_repository_url_invalid")
-    return parts[0], parts[1]
+    if len(parts) == 2:
+        return parts[0], parts[1], None
+    if len(parts) >= 4 and parts[2] == "tree":
+        return parts[0], parts[1], unquote("/".join(parts[3:]))
+    raise GitFetchError("github_repository_url_invalid")
 
 
 def _listed_shas(listing: list[dict[str, object]]) -> tuple[str, ...]:

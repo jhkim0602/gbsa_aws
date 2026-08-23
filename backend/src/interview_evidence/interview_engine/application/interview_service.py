@@ -24,7 +24,10 @@ from interview_evidence.interview_engine.application.question_generator import (
     QuestionGenerationUnavailable,
     QuestionGenerator,
 )
-from interview_evidence.interview_engine.application.question_policy import QuestionPolicy
+from interview_evidence.interview_engine.application.question_policy import (
+    QuestionDraft,
+    QuestionPolicy,
+)
 from interview_evidence.interview_engine.application.recovery_service import (
     RecoveryMessage,
     RecoveryService,
@@ -258,28 +261,21 @@ class InterviewService:
             )
         except QuestionGenerationUnavailable:
             current = self._repository.get_session(context, session_id)
-            paused = self._state_machine.transition(
-                current,
-                expected_sequence=current.session_sequence,
-                target=InterviewSessionState.PAUSED,
-            ).model_copy(
+            degraded = current.model_copy(
                 update={
                     "degraded_modes": tuple(
                         dict.fromkeys((*current.degraded_modes, "question_generation"))
                     )
                 }
             )
-            self._repository.save_session(context, paused)
-            self._checkpoints.create(
-                context,
-                session_id=session_id,
-                last_final_turn_id=answer.last_final_turn_id,
-                last_media_chunk_sequence=last_recording_chunk_sequence,
-                pending_turn_id=None,
-                hot_view_sync_status=HotViewSyncStatus.PENDING,
-                occurred_at=occurred_at,
+            self._repository.save_session(context, degraded)
+            draft = QuestionDraft(
+                text=fallback_question,
+                target_criterion_id=target_criterion_id,
+                source_reference_ids=(),
+                model_config_version=model_config_version,
+                retrieval_config_version=retrieval_config_version,
             )
-            raise
         retrieved_by_id = {hit.source_id: hit for hit in retrieval.hits}
         draft = draft.model_copy(
             update={

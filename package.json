@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Interview Evidence Platform.",
+  "prettier": {
+    "endOfLine": "auto"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -15,11 +18,11 @@
     "build": "npm run build --workspaces --if-present",
     "dev:applicant": "npm run dev --workspace @iep/applicant-interview",
     "dev:company": "npm run dev --workspace @iep/company-console",
-    "format": "prettier --write . && UV_CACHE_DIR=.uv-cache uv run --no-sync ruff format .",
-    "format:check": "prettier --check . && UV_CACHE_DIR=.uv-cache uv run --no-sync ruff format --check .",
-    "lint": "eslint . && UV_CACHE_DIR=.uv-cache uv run --no-sync ruff check .",
-    "test": "npm run test --workspaces --if-present && UV_CACHE_DIR=.uv-cache uv run --no-sync pytest",
-    "typecheck": "npm run typecheck --workspaces --if-present && UV_CACHE_DIR=.uv-cache uv run --no-sync mypy backend/src"
+    "format": "prettier --write . && uv run --cache-dir .uv-cache --no-sync ruff format .",
+    "format:check": "prettier --check . && uv run --cache-dir .uv-cache --no-sync ruff format --check .",
+    "lint": "eslint . && uv run --cache-dir .uv-cache --no-sync ruff check .",
+    "test": "npm run test --workspaces --if-present && uv run --cache-dir .uv-cache --no-sync pytest",
+    "typecheck": "npm run typecheck --workspaces --if-present && uv run --cache-dir .uv-cache --no-sync mypy backend/src"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
