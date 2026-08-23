@@ -297,6 +297,83 @@ describe("SubmissionWorkspace", () => {
     expect(screen.getByText("원본 JSON 보기")).toBeTruthy();
     expect(getAnalysisDebug).toHaveBeenCalledOnce();
   });
+
+  it("keeps a submitted material submitted while its inputs are edited", async () => {
+    // Editing reset the material to `idle`, which also erased the state seeded from the server:
+    // one keystroke made an accepted submission read as 미제출, the required count went
+    // backwards, and applicants re-submitted -- which the server then rejected for exceeding the
+    // per-invitation limit, reported on screen as a problem with their id and url.
+    const api: SubmissionWorkspaceApi = {
+      uploadDocument: vi.fn(),
+      registerRepository: vi.fn(),
+      getReadiness: vi
+        .fn()
+        .mockResolvedValue({ overallStatus: "ready", interviewReady: true }),
+      getWorkspace: vi.fn(),
+    };
+
+    render(
+      <SubmissionWorkspace
+        api={api}
+        requirements={[{ id: "projects", required: true, enabled: true }]}
+        submittedMaterials={[
+          {
+            materialId: "projects",
+            status: "ready",
+            sourceUrl: "https://github.com/example/repo",
+          },
+        ]}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getAllByText("제출 완료").length).toBeGreaterThan(0);
+    // Seeded from the server, so a reload no longer shows a blank required field under the
+    // "제출되었습니다" confirmation.
+    const url = screen.getByLabelText("GitHub 저장소 URL");
+    expect((url as HTMLInputElement).value).toBe(
+      "https://github.com/example/repo",
+    );
+
+    fireEvent.change(url, {
+      target: { value: "https://github.com/example/other" },
+    });
+
+    expect(screen.getAllByText("제출 완료").length).toBeGreaterThan(0);
+    expect(screen.queryByText("미제출")).toBeNull();
+  });
+
+  it("clears a previous failure when the applicant edits the input", async () => {
+    const api: SubmissionWorkspaceApi = {
+      uploadDocument: vi.fn(),
+      registerRepository: vi.fn(),
+      getReadiness: vi
+        .fn()
+        .mockResolvedValue({ overallStatus: "waiting", interviewReady: false }),
+      getWorkspace: vi.fn(),
+    };
+
+    render(
+      <SubmissionWorkspace
+        api={api}
+        requirements={[{ id: "projects", required: true, enabled: true }]}
+        submittedMaterials={[{ materialId: "projects", status: "failed" }]}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getAllByText("확인 필요").length).toBeGreaterThan(0);
+
+    fireEvent.change(screen.getByLabelText("GitHub 저장소 URL"), {
+      target: { value: "https://github.com/example/repo" },
+    });
+
+    expect(screen.queryByText("확인 필요")).toBeNull();
+  });
 });
 
 const READINESS_POLL_INTERVAL_MS_FOR_TEST = 2_000;

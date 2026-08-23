@@ -52,6 +52,8 @@ export type SubmissionWorkspaceData = Readonly<{
   submissions: readonly {
     materialId: SubmissionMaterialId;
     status: string;
+    /** Set for repository submissions, so a reload can show what was submitted. */
+    sourceUrl?: string | null;
   }[];
 }>;
 
@@ -347,7 +349,8 @@ function RepositorySubmissionEditor({
   onGithubUsernameChange(value: string): void;
   onSubmit(event: FormEvent<HTMLFormElement>): void;
 }) {
-  const readyToSubmit = url.trim().length > 0 && githubUsername.trim().length > 0;
+  const readyToSubmit =
+    url.trim().length > 0 && githubUsername.trim().length > 0;
 
   return (
     <form className="space-y-4" onSubmit={onSubmit}>
@@ -765,7 +768,15 @@ export function SubmissionWorkspace({
   const [selectedMaterial, setSelectedMaterial] =
     useState<SubmissionMaterialId>(initialMaterial);
   const [files, setFiles] = useState(INITIAL_FILES);
-  const [repositoryUrl, setRepositoryUrl] = useState("");
+  // Seeded from the server so a reload shows the repository that was submitted. Left empty
+  // before, which put two blank required fields under "GitHub 프로젝트가 제출되었습니다." —
+  // applicants read that as the submission having been lost and entered it again.
+  const [repositoryUrl, setRepositoryUrl] = useState(
+    () =>
+      submittedMaterials.find(
+        (submission) => submission.materialId === "projects",
+      )?.sourceUrl ?? "",
+  );
   const [githubUsername, setGithubUsername] = useState("");
   const [materialStates, setMaterialStates] = useState(() => ({
     ...INITIAL_STATES,
@@ -847,6 +858,25 @@ export function SubmissionWorkspace({
     setMaterialStates((current) => ({ ...current, [materialId]: state }));
   }
 
+  /**
+   * Editing an input clears a previous failure, and nothing else.
+   *
+   * Editing used to reset the material to `idle` outright, which also erased the state seeded
+   * from the server. Typing one character into a field made a submission the server had already
+   * accepted read as unsubmitted: the badge went back to 미제출, the required-materials count
+   * and progress bar went backwards, and the "환경 점검으로 이동" button disappeared. Applicants
+   * concluded the submission had been cancelled and sent it again, which the server then
+   * rejected for exceeding the per-invitation limit -- reported on screen as a problem with
+   * their GitHub id and url.
+   */
+  function clearSubmissionFailure(materialId: SubmissionMaterialId) {
+    setMaterialStates((current) =>
+      current[materialId] === "error"
+        ? { ...current, [materialId]: "idle" }
+        : current,
+    );
+  }
+
   async function uploadPdf(
     event: FormEvent<HTMLFormElement>,
     materialId: PdfMaterialId,
@@ -886,12 +916,12 @@ export function SubmissionWorkspace({
 
   function updateRepositoryUrl(value: string) {
     setRepositoryUrl(value);
-    updateMaterialState("projects", "idle");
+    clearSubmissionFailure("projects");
   }
 
   function updateGithubUsername(value: string) {
     setGithubUsername(value);
-    updateMaterialState("projects", "idle");
+    clearSubmissionFailure("projects");
   }
 
   async function refreshAnalysisDebug() {
@@ -1137,7 +1167,7 @@ export function SubmissionWorkspace({
                       ...current,
                       [activeMaterial.id]: file,
                     }));
-                    updateMaterialState(activeMaterial.id, "idle");
+                    clearSubmissionFailure(activeMaterial.id);
                   }}
                   onSubmit={(event) =>
                     void uploadPdf(event, activeMaterial.id as PdfMaterialId)

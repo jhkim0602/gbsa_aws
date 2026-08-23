@@ -388,6 +388,7 @@ def create_production_runtime(
         clock=clock,
         deletion_service=deletion_service,
         rationale_provider=interview_public,
+        invitations=company_public,
     )
     media_processor = MediaPostProcessor(lane_d.repository)
     interview_reporting = InterviewReportingBoundary(

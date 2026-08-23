@@ -195,6 +195,10 @@ export type ReviewHistoryEntry = {
   type: string;
   createdBy: string;
   createdAt: string;
+  /** What was recorded — the decision taken, or the note that was written. */
+  detail?: string;
+  /** The reviewer's own justification, present on overrides and final decisions. */
+  reason?: string;
 };
 
 export type ReviewApi = {

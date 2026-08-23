@@ -43,7 +43,7 @@ from interview_evidence.shared.aws_clients.task_protection import (
     create_task_protection,
 )
 from interview_evidence.shared.database import RequestScopedDatabase
-from interview_evidence.shared.ids import Clock, SystemClock, new_uuid7
+from interview_evidence.shared.ids import Clock, CommandMeta, SystemClock, new_uuid7
 from interview_evidence.shared.messaging.outbox import InMemoryOutbox, Outbox, OutboxEvent
 from interview_evidence.shared.messaging.worker import (
     EventHandler,
@@ -211,13 +211,20 @@ class MediaRequestedEventHandler:
 
 
 class InterviewCompletedEventHandler:
-    def __init__(self, outbox: Outbox, clock: Clock) -> None:
+    def __init__(
+        self,
+        outbox: Outbox,
+        clock: Clock,
+        company: CompanyManagementPublic | None = None,
+    ) -> None:
         self._outbox = outbox
         self._clock = clock
+        self._company = company
 
     def __call__(self, context: TenantContext, event: OutboxEvent) -> object:
         session_id = UUID(str(event.payload["interview_session_id"]))
         occurred_at = self._clock.now()
+        self._close_invitation(context, event)
         requested = OutboxEvent(
             outbox_event_id=new_uuid7(occurred_at),
             company_id=context.company_id,
@@ -237,6 +244,66 @@ class InterviewCompletedEventHandler:
         )
         self._outbox.append(requested)
         return requested
+
+    def _close_invitation(self, context: TenantContext, event: OutboxEvent) -> None:
+        """Move the finished interview's invitation to `completed`, i.e. awaiting review.
+
+        Nothing did this before, so an applicant who finished their interview stayed at whatever
+        state the analysis pipeline had left them in. The console counts "검토 대기" as
+        `status == "completed"` and "검토 완료" as `reviewed`, so both stayed at zero however many
+        interviews were run, and the reviewer had no way to tell which applicants were waiting.
+
+        `interviewing` is passed through rather than skipped: the domain only allows
+        `ready → interviewing → completed`, and going straight to `completed` would be rejected.
+        A live interview never announced itself, so this is the first point at which the invitation
+        can be told the interview happened at all.
+        """
+        if self._company is None:
+            return
+        raw_invitation_id = event.payload.get("invitation_id")
+        if not isinstance(raw_invitation_id, str):
+            return
+        invitation_id = UUID(raw_invitation_id)
+        # Every state the interview could legitimately be left in, including the two this method
+        # produces: the event is delivered at least once and re-running it must be a no-op.
+        authorization = self._company.authorize_invitation(
+            context,
+            invitation_id,
+            required_state=frozenset(
+                {"ready", "interviewing", "interrupted", "completed", "reviewed"}
+            ),
+        )
+        if authorization.state in {"completed", "reviewed"}:
+            return
+        if authorization.state not in {"ready", "interviewing", "interrupted"}:
+            # An unexpected state is left alone rather than raised: raising would requeue the
+            # event forever, and the media post-processing this handler also requests is not
+            # conditional on the invitation.
+            return
+        row_version = authorization.row_version
+        if authorization.state == "ready":
+            row_version = self._company.advance_invitation_state(
+                context,
+                invitation_id,
+                from_state="ready",
+                to_state="interviewing",
+                meta=CommandMeta.create(
+                    f"interview-started-{invitation_id}",
+                    expected_version=row_version,
+                    clock=self._clock,
+                ),
+            ).row_version
+        self._company.advance_invitation_state(
+            context,
+            invitation_id,
+            from_state="interviewing" if authorization.state != "interrupted" else "interrupted",
+            to_state="completed",
+            meta=CommandMeta.create(
+                f"interview-completed-{invitation_id}",
+                expected_version=row_version,
+                clock=self._clock,
+            ),
+        )
 
 
 class ReportRequestedEventHandler:
@@ -632,6 +699,7 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
             "interview.completed": InterviewCompletedEventHandler(
                 outbox,
                 clock,
+                company,
             ),
             "media.postprocess_requested": MediaRequestedEventHandler(
                 interview,

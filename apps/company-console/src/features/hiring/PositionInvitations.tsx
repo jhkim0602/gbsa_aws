@@ -556,9 +556,24 @@ export function PositionInvitations({
         applicants,
         resolveInvitationValidityDays(interviewAt),
       );
-      setNotice(`${result.acceptedCount}명의 초대를 발송했습니다.`);
+      // `rejectedCount` has always been in the response and was never rendered, so a batch
+      // where most of the mail failed reported as a plain success -- and with the draft rows
+      // cleared there was no longer any way to see who had been left out. `0명의 초대를
+      // 발송했습니다.` even appeared as a success banner. The invitations themselves exist;
+      // it is delivery that failed, which the list's re-invite action can retry.
       setDraftRows([createDraftRow()]);
+      // Refresh first: `loadInvitations` clears the error line, so anything reported about this
+      // batch has to be written after it or it disappears before the reviewer sees it.
       await loadInvitations();
+      if (result.acceptedCount > 0) {
+        setNotice(`${result.acceptedCount}명에게 초대 메일을 발송했습니다.`);
+      }
+      if (result.rejectedCount > 0) {
+        setError(
+          `${result.rejectedCount}명은 초대가 만들어졌지만 메일이 발송되지 않았습니다.` +
+            " 아래 목록에서 다시 초대해 주세요.",
+        );
+      }
     } catch {
       setError(
         "초대 발송을 완료하지 못했습니다. 이메일 형식과 채용 관리 상태를 확인해 주세요.",

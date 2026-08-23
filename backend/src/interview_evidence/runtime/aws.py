@@ -16,6 +16,10 @@ from interview_evidence.interview_engine.adapters.recent_context import (
     RecentContextPort,
 )
 from interview_evidence.runtime.generative_ai import create_generative_ai_dependencies
+from interview_evidence.runtime.queue_topology import (
+    WORKFLOW_QUEUE_NAMES,
+    queue_visibility_timeout_seconds,
+)
 from interview_evidence.shared.aws_clients.ports import (
     AIModel,
     CachingTextEmbedder,
@@ -125,14 +129,9 @@ def create_aws_runtime_dependencies(
             cast(SqsClient, factory("sqs")),
             queue_url=_required(environment, f"SQS_{name.upper()}_QUEUE_URL"),
             wait_time_seconds=sqs_wait_time_seconds,
-            visibility_timeout_seconds=int(
-                environment.get(
-                    f"SQS_{name.upper()}_VISIBILITY_TIMEOUT_SECONDS",
-                    "900" if name == "media" else "300",
-                )
-            ),
+            visibility_timeout_seconds=queue_visibility_timeout_seconds(name, environment),
         )
-        for name in ("analysis", "media", "reporting", "deletion", "capacity")
+        for name in WORKFLOW_QUEUE_NAMES
     }
     principal_provider = AwsCognitoPrincipalProvider(cast(CognitoClient, factory("cognito-idp")))
     object_storage = AwsS3ObjectStorage(

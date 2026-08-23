@@ -109,6 +109,14 @@ def _owns_analysis_state_transition(
     submission: Submission,
     submissions: tuple[Submission, ...],
 ) -> bool:
+    """Elects one submission of a batch to move the invitation to `analyzing`.
+
+    Note that the elected submission usually cannot: the invitation only reaches
+    `materials_submitted` once the last required material arrives, which is after the earliest
+    submission's analysis event. `AnalysisCompletedEventHandler` therefore makes the move itself
+    when it finds the invitation still at `materials_submitted`, and this election only takes
+    effect for a submission added to an invitation that already reached that state.
+    """
     return submission.submission_id == min(item.submission_id for item in submissions)
 
 
@@ -167,13 +175,35 @@ class AnalysisCompletedEventHandler:
             submission_ids=frozenset(submission.submission_id for submission in included),
         ):
             return {"status": "strategy_not_ready"}
-        snapshot = self._company.authorize_invitation(
+        authorization = self._company.authorize_invitation(
             context,
             invitation_id,
-            required_state=frozenset({"analyzing", "ready"}),
+            required_state=frozenset({"materials_submitted", "analyzing", "ready"}),
         )
-        if snapshot.state != "analyzing":
-            return {"status": snapshot.state}
+        state = authorization.state
+        row_version = authorization.row_version
+        if state == "materials_submitted":
+            # `AnalysisRequestedEventHandler` is supposed to have made this move when the first
+            # analysis started, and cannot: the invitation only reaches `materials_submitted`
+            # once every required material is in, which is after the earliest submission's
+            # analysis event -- the one that handler gives the transition to -- has been and
+            # gone. Every analysis is finished by the time we get here, so `analyzing` is a
+            # formality; without it `ready` is unreachable and the applicant is never
+            # interviewable.
+            advanced = self._company.advance_invitation_state(
+                context,
+                invitation_id,
+                from_state="materials_submitted",
+                to_state="analyzing",
+                meta=CommandMeta.create(
+                    f"analysis-started-{invitation_id}",
+                    expected_version=row_version,
+                ),
+            )
+            state = advanced.state
+            row_version = advanced.row_version
+        if state != "analyzing":
+            return {"status": state}
         self._company.advance_invitation_state(
             context,
             invitation_id,
@@ -181,7 +211,7 @@ class AnalysisCompletedEventHandler:
             to_state="ready",
             meta=CommandMeta.create(
                 f"analysis-ready-{invitation_id}",
-                expected_version=snapshot.row_version,
+                expected_version=row_version,
             ),
         )
         return {"status": "ready"}

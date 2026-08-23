@@ -3,6 +3,7 @@ import { type KeyboardEvent, useState } from "react";
 
 import { BUTTON_SECONDARY } from "../../app/styles/primitives";
 import { formatLocator, sourceTypeLabel } from "./questionSources";
+import { reviewErrorMessage } from "./reviewErrors";
 import type {
   AssessmentState,
   AxisAssessment,
@@ -163,7 +164,7 @@ export function ReportView({
     reportItemId: string,
     assessmentState: AssessmentState,
     reason: string,
-  ): void;
+  ): Promise<void>;
 }) {
   const [activeTab, setActiveTab] = useState<ReportTab>("overview");
   const activeIndex = reportTabs.findIndex((tab) => tab.id === activeTab);
@@ -488,13 +489,35 @@ function AssessmentOverride({
     reportItemId: string,
     assessmentState: AssessmentState,
     reason: string,
-  ): void;
+  ): Promise<void>;
 }) {
   const [state, setState] = useState<AssessmentState>(item.assessmentState);
   const [reason, setReason] = useState("");
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
   const changed = state !== item.assessmentState;
-  const ready = changed && reason.trim().length > 0;
+  const ready = changed && reason.trim().length > 0 && !saving;
+
+  async function save() {
+    // The guard is on the handler, not only on `disabled`: the attribute reflects the last
+    // render, so a second click landing before React re-renders would submit twice.
+    if (saving) return;
+    setSaving(true);
+    setSaved(false);
+    setError("");
+    try {
+      await onOverride(item.reportItemId, state, reason.trim());
+      setSaved(true);
+    } catch (cause) {
+      // The only record of the failure other than this message: nothing in the console logs
+      // review writes, so a silent rejection left no trace at all.
+      console.error("assessment override failed", cause);
+      setError(reviewErrorMessage(cause, "사람 평가를 기록하지 못했습니다."));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     // `.report-item .compact-field` is hidden when printed: an editable control is not part of
@@ -538,12 +561,9 @@ function AssessmentOverride({
             className={`${BUTTON_SECONDARY} justify-self-start`}
             disabled={!ready}
             type="button"
-            onClick={() => {
-              onOverride(item.reportItemId, state, reason.trim());
-              setSaved(true);
-            }}
+            onClick={() => void save()}
           >
-            사람 평가 저장
+            {saving ? "저장 중…" : "사람 평가 저장"}
           </button>
         </>
       ) : null}
@@ -551,6 +571,12 @@ function AssessmentOverride({
       {saved ? (
         <p className="text-[9px] text-success" role="status">
           사람 평가를 기록했습니다. AI 원본 리포트는 그대로 유지됩니다.
+        </p>
+      ) : null}
+
+      {error ? (
+        <p className="text-[9px] text-danger" role="alert">
+          {error}
         </p>
       ) : null}
     </div>
@@ -570,7 +596,7 @@ function CriteriaPage({
     reportItemId: string,
     assessmentState: AssessmentState,
     reason: string,
-  ): void;
+  ): Promise<void>;
 }) {
   // Which citation the reviewer is following, so the axis they clicked and the answer it
   // rests on are highlighted together instead of the reviewer having to match ids by eye.

@@ -80,13 +80,16 @@ export function ReviewWorkspace({
    * accepted a real one, so every override in the audit trail said the same thing — which is the
    * same as recording nothing. A reviewer disagreeing with a score is exactly the case where the
    * next person needs to know why.
+   *
+   * Returned rather than fired and forgotten: the control renders its confirmation from the
+   * resolved promise, so a rejected write reaches the reviewer instead of being discarded.
    */
   function overrideAssessment(
     reportItemId: string,
     assessmentState: AssessmentState,
     reason: string,
-  ) {
-    void api.overrideAssessment(reportItemId, assessmentState, reason);
+  ): Promise<void> {
+    return api.overrideAssessment(reportItemId, assessmentState, reason);
   }
 
   return (

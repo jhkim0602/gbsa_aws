@@ -139,6 +139,58 @@ def test_completed_event_waits_until_all_submissions_finish() -> None:
     assert company.transitions == [("analyzing", "ready")]
 
 
+def test_completed_event_starts_analysis_state_the_request_handler_could_not() -> None:
+    """The invitation reaches `materials_submitted` only after the last required material, which
+    is later than the earliest submission's analysis event -- and that event is the one
+    `AnalysisRequestedEventHandler` elects to make the `analyzing` move. So nothing moved it, and
+    `ready` was unreachable: applicants finished analysis and were never interviewable."""
+    repository = SubmissionStatusRepository(
+        submissions=(
+            _submission(RESUME_ID, SubmissionMaterialType.RESUME, SubmissionStatus.READY),
+            _submission(
+                COVER_LETTER_ID,
+                SubmissionMaterialType.COVER_LETTER,
+                SubmissionStatus.READY,
+            ),
+        )
+    )
+    company = RecordingCompany(state="materials_submitted", row_version=4)
+    handler = AnalysisCompletedEventHandler(
+        cast(LaneBRuntime, SimpleNamespace(repository=repository)),
+        cast(InvitationAnalysisFinalizer, RecordingFinalizer()),
+        cast(CompanyManagementPublic, company),
+    )
+
+    assert handler(_context(), _completed_event()) == {"status": "ready"}
+    assert company.transitions == [
+        ("materials_submitted", "analyzing"),
+        ("analyzing", "ready"),
+    ]
+
+
+def test_completed_event_leaves_an_already_interviewable_invitation_alone() -> None:
+    """Redelivery is normal, and the applicant may already be interviewing by the time it lands."""
+    repository = SubmissionStatusRepository(
+        submissions=(
+            _submission(RESUME_ID, SubmissionMaterialType.RESUME, SubmissionStatus.READY),
+            _submission(
+                COVER_LETTER_ID,
+                SubmissionMaterialType.COVER_LETTER,
+                SubmissionStatus.READY,
+            ),
+        )
+    )
+    company = RecordingCompany(state="ready", row_version=6)
+    handler = AnalysisCompletedEventHandler(
+        cast(LaneBRuntime, SimpleNamespace(repository=repository)),
+        cast(InvitationAnalysisFinalizer, RecordingFinalizer()),
+        cast(CompanyManagementPublic, company),
+    )
+
+    assert handler(_context(), _completed_event()) == {"status": "ready"}
+    assert company.transitions == []
+
+
 def test_worker_runtime_receives_only_one_message_per_consumer() -> None:
     dispatcher = RecordingDispatcher()
     consumer = RecordingConsumer()
@@ -283,7 +335,9 @@ class RecordingFinalizer:
 
 
 class RecordingCompany:
-    def __init__(self) -> None:
+    def __init__(self, state: str = "analyzing", row_version: int = 3) -> None:
+        self.state = state
+        self.row_version = row_version
         self.transitions: list[tuple[str, str]] = []
 
     def get_submission_requirements(
@@ -304,7 +358,7 @@ class RecordingCompany:
         _invitation_id: UUID,
         **_kwargs: Any,
     ) -> SimpleNamespace:
-        return SimpleNamespace(state="analyzing", row_version=3)
+        return SimpleNamespace(state=self.state, row_version=self.row_version)
 
     def advance_invitation_state(
         self,
@@ -314,8 +368,13 @@ class RecordingCompany:
         from_state: str,
         to_state: str,
         **_kwargs: Any,
-    ) -> None:
+    ) -> SimpleNamespace:
+        if self.state != from_state:
+            raise ValueError("invitation state does not match the requested transition")
         self.transitions.append((from_state, to_state))
+        self.state = to_state
+        self.row_version += 1
+        return SimpleNamespace(state=self.state, row_version=self.row_version)
 
 
 class RecordingDispatcher:

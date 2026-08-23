@@ -41,6 +41,7 @@ import {
 import {
   ReviewWorkspace,
   type ReviewApi,
+  type ReviewHistoryEntry,
   type ReviewReport,
   type ReviewTimeline,
   type ScoreBreakdown,
@@ -669,6 +670,84 @@ function toScoreBreakdown(
   };
 }
 
+const reviewTypeLabels: Record<string, string> = {
+  final_decision: "최종 결정",
+  assessment_override: "평가 수정",
+  bookmark: "검토 메모",
+  note: "메모",
+};
+
+/**
+ * The reviews already recorded against this report, for the 검토 이력 panel.
+ *
+ * `history` is an optional prop that nothing ever passed, so the panel read "아직 기록된 검토
+ * 이력이 없습니다." however many decisions and notes had been saved — the writes worked and were
+ * simply never read back. The report response has carried `human_reviews` all along.
+ *
+ */
+function toReviewHistory(report: ReportResponse): ReviewHistoryEntry[] {
+  return [...(report.human_reviews ?? [])]
+    .sort((left, right) => right.created_at.localeCompare(left.created_at))
+    .map((review) => {
+      const detail = reviewDetail(review.review_type, review.value);
+      return {
+        id: review.human_review_id,
+        type: reviewTypeLabels[review.review_type] ?? review.review_type,
+        // The endpoint identifies the author by id only; the full uuid crowds the line out.
+        createdBy: `검토자 ${review.created_by.slice(0, 8)}`,
+        createdAt: formatReviewTimestamp(review.created_at),
+        ...(detail ? { detail } : {}),
+        ...(review.reason?.trim() ? { reason: review.reason.trim() } : {}),
+      };
+    });
+}
+
+const decisionLabels: Record<string, string> = {
+  advance: "진행",
+  hold: "보류",
+  reject: "불합격",
+  withdrawn: "지원 철회",
+};
+
+/** The recorded content, read out of the shape each review type stores it in. */
+function reviewDetail(
+  reviewType: string,
+  value: Readonly<Record<string, unknown>> | undefined,
+): string | undefined {
+  if (!value) return undefined;
+  if (reviewType === "final_decision") {
+    const decision = value.decision;
+    return typeof decision === "string"
+      ? (decisionLabels[decision] ?? decision)
+      : undefined;
+  }
+  if (reviewType === "assessment_override") {
+    const state = value.assessment_state;
+    return typeof state === "string"
+      ? (assessmentStateLabels[state] ?? state)
+      : undefined;
+  }
+  const text = value.text;
+  return typeof text === "string" && text.trim() ? text.trim() : undefined;
+}
+
+const assessmentStateLabels: Record<string, string> = {
+  confirmed: "확인됨",
+  partially_confirmed: "부분 확인",
+  insufficient_evidence: "근거 부족",
+  needs_follow_up: "추가 확인 필요",
+};
+
+function formatReviewTimestamp(value: string): string {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleString("ko-KR", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+}
+
 function toReviewReport(report: ReportResponse): ReviewReport {
   return {
     summary: report.summary,
@@ -1027,6 +1106,7 @@ export function ReviewRoute() {
           api={reviewApi}
           report={toReviewReport(report)}
           timeline={toReviewTimeline(timeline)}
+          history={toReviewHistory(report)}
           deletion={{
             status: "not_requested",
             verifiedTargets: 0,

@@ -853,8 +853,12 @@ export interface components {
             readonly created_by: string;
             /** Format: uuid */
             readonly human_review_id: string;
+            /** @description The reviewer's own justification, required when overruling the AI or recording a final decision. Stored since those endpoints existed but not previously returned, so the console had no way to show it back. */
+            readonly reason?: string | null;
             /** @enum {string} */
             readonly review_type: "assessment_override" | "note" | "bookmark" | "final_decision";
+            /** @description What was recorded: the decision for a final_decision, the note text for a bookmark, the new assessment state for an override. Without it the review history can say a decision was made and not which one. */
+            readonly value?: Readonly<Record<string, never>> | Readonly<Record<string, unknown>>;
         };
         readonly InterviewerProfile: components["schemas"]["InterviewerProfileCreate"] & {
             /** Format: date-time */
