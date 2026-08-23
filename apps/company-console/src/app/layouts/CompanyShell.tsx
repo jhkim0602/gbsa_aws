@@ -63,10 +63,14 @@ const SIDEBAR =
   " border-r-border bg-surface transition-[width,transform] duration-[160ms]" +
   " mw-760:top-0 mw-760:h-screen mw-760:w-[min(292px,88vw)] mw-760:shadow-float" +
   " print:hidden";
-const SIDEBAR_DESKTOP_OPEN = "w-56 translate-x-0";
-const SIDEBAR_DESKTOP_CLOSED = "w-16 translate-x-0";
-const SIDEBAR_MOBILE_OPEN = "mw-760:translate-x-0";
-const SIDEBAR_MOBILE_CLOSED = "mw-760:-translate-x-[105%]";
+// Tailwind v4's translate utilities emit the individual `translate:` property. Older Chrome
+// builds can apply the mobile width media query while ignoring that property, leaving a closed
+// drawer visible over the workspace. Use the widely supported transform function for this
+// structural movement; the responsive rule still owns whether the drawer is on or off canvas.
+const SIDEBAR_DESKTOP_OPEN = "w-56 [transform:translateX(0)]";
+const SIDEBAR_DESKTOP_CLOSED = "w-16 [transform:translateX(0)]";
+const SIDEBAR_MOBILE_OPEN = "mw-760:[transform:translateX(0)]";
+const SIDEBAR_MOBILE_CLOSED = "mw-760:[transform:translateX(-105%)]";
 const SIDEBAR_TOGGLE =
   "absolute top-[30px] right-2 z-10 grid size-6 place-items-center border-0" +
   " bg-transparent p-0 text-subtle transition-colors hover:text-brand";
