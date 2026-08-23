@@ -15,15 +15,16 @@ import {
   ReviewRoute,
 } from "./routeAdapters";
 import { CompanyShell } from "./layouts/CompanyShell";
+import { LandingPage } from "../features/landing";
 
 export const companyRouteObjects: RouteObject[] = [
+  { path: "/", Component: LandingPage },
   { path: "/auth/login", Component: CompanyLoginRoute },
   { path: "/auth/signup", Component: CompanySignupRoute },
   { path: "/auth/callback", Component: CompanyAuthCallbackRoute },
   {
     Component: CompanyShell,
     children: [
-      { path: "/", Component: CompanyHomeRoute },
       { path: "/company", Component: CompanyHomeRoute },
       { path: "/positions", Component: CompanyPositionsRoute },
       {
