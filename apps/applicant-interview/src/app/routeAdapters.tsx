@@ -459,6 +459,11 @@ export function InterviewRoute() {
   const [sessionStarting, setSessionStarting] = useState(false);
   const autoStartRequestedRef = useRef(false);
   const sessionStartPendingRef = useRef(false);
+  // `start` puts the new session id in the query string, which is what recovery keys off. That
+  // makes it indistinguishable from a reload unless the session started in this very mount is
+  // marked: recovery cannot know the equipment check id, so letting it replace a locally
+  // started session drops the id and the socket never sends `session.start`.
+  const locallyStartedRef = useRef(false);
   const strategyId = strategyIdFromSearch || resolvedStrategyId;
 
   useEffect(() => {
@@ -492,7 +497,7 @@ export function InterviewRoute() {
   }, [roomPreview, strategyIdFromSearch]);
 
   useEffect(() => {
-    if (roomPreview || !sessionIdFromSearch) {
+    if (roomPreview || !sessionIdFromSearch || locallyStartedRef.current) {
       setSessionRestoring(false);
       return;
     }
@@ -532,13 +537,7 @@ export function InterviewRoute() {
     }
     autoStartRequestedRef.current = true;
     void start(AUTOMATED_EQUIPMENT_RESULT, automationMode);
-  }, [
-    automationMode,
-    session,
-    sessionRestoring,
-    strategyId,
-    strategyLoading,
-  ]);
+  }, [automationMode, session, sessionRestoring, strategyId, strategyLoading]);
 
   if (roomPreview) {
     return (
@@ -593,6 +592,7 @@ export function InterviewRoute() {
           ),
         ),
       });
+      locallyStartedRef.current = true;
       setSession({
         sessionId: session.interview_session_id,
         equipmentCheckId: check.equipment_check_id,
