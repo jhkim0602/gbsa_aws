@@ -231,8 +231,8 @@ class SubmissionInterviewBoundary:
 
 
 def _as_question(value: str) -> str:
-    text = value.strip()
-    return text if text.endswith("?") else f"{text}?"
+    text = value.strip().rstrip(".!？? ")
+    return f"{text}?"
 
 
 def _criterion_text(

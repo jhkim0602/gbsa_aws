@@ -85,3 +85,45 @@ def test_policy_blocks_non_question_and_overlong_output() -> None:
 
     assert result.accepted is False
     assert set(result.reason_codes) == {"not_a_question", "question_too_long"}
+
+
+def test_policy_never_replays_an_already_used_fallback_question() -> None:
+    previous = (
+        "최근 프로젝트에서 장애를 진단한 과정을 설명해 주세요?",
+        "문제를 해결한 과정을 설명해 주세요?",
+    )
+
+    result = QuestionPolicy().evaluate(
+        draft("최근 프로젝트에서 장애를 진단한 과정을 설명해 주세요?"),
+        allowed_criterion_ids=frozenset({CRITERION_A}),
+        prohibited_topics=(),
+        previous_questions=previous,
+        fallback_question="문제를 해결한 과정을 설명해 주세요?",
+        fallback_criterion_id=CRITERION_A,
+    )
+
+    assert result.accepted is False
+    assert result.question.text not in previous
+    assert result.question.text.endswith("?")
+
+
+def test_policy_rejects_a_near_verbatim_question_rewrite() -> None:
+    previous = (
+        "Gemini Live와 Google Cloud Speech-to-Text를 함께 사용한 과정에서 직접 "
+        "수행한 분석과 복구 작업을 구체적으로 설명해 주세요?",
+    )
+
+    result = QuestionPolicy().evaluate(
+        draft(
+            "Gemini Live와 Google Cloud Speech-to-Text를 함께 사용한 과정에서 "
+            "지원자님이 직접 수행한 분석과 복구 작업을 구체적으로 설명해 주세요?"
+        ),
+        allowed_criterion_ids=frozenset({CRITERION_A}),
+        prohibited_topics=(),
+        previous_questions=previous,
+        fallback_question="문제를 해결한 과정을 설명해 주세요?",
+        fallback_criterion_id=CRITERION_A,
+    )
+
+    assert result.accepted is False
+    assert "duplicate_question" in result.reason_codes
