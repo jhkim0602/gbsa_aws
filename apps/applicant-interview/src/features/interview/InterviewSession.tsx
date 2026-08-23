@@ -127,6 +127,8 @@ export function InterviewSession({
     useState(false);
   const [automationStatus, setAutomationStatus] = useState("");
   const [automationRunVersion, setAutomationRunVersion] = useState(0);
+  const [automationReconnectVersion, setAutomationReconnectVersion] =
+    useState(0);
   const mediaBuffer = useMemo(
     () => dependencies?.mediaBuffer ?? new IndexedDbMediaBuffer(),
     [dependencies?.mediaBuffer],
@@ -152,6 +154,8 @@ export function InterviewSession({
   );
   const automationRetryCountRef = useRef(0);
   const automationRetryTimerRef = useRef<number | null>(null);
+  const automationReconnectAttemptRef = useRef(0);
+  const automationReconnectTimerRef = useRef<number | null>(null);
   const automationRunningRef = useRef(false);
   const reconnectRunningRef = useRef(false);
   const recoveryPendingRef = useRef(false);
@@ -290,6 +294,9 @@ export function InterviewSession({
       if (automationRetryTimerRef.current !== null) {
         window.clearTimeout(automationRetryTimerRef.current);
       }
+      if (automationReconnectTimerRef.current !== null) {
+        window.clearTimeout(automationReconnectTimerRef.current);
+      }
       void audioPlayerRef.current?.stop();
     };
   }, [automationMode, equipmentCheckId, resolved, sessionId, store]);
@@ -299,17 +306,38 @@ export function InterviewSession({
     if (snapshot.connectionState === "reconnecting") {
       recoveryPendingRef.current = true;
       automatedQuestionRef.current = null;
-      return;
+      if (
+        automationReconnectTimerRef.current === null &&
+        !reconnectRunningRef.current
+      ) {
+        const attempt = automationReconnectAttemptRef.current;
+        const retryDelayMs = Math.min(10_000, 1_000 * 2 ** attempt);
+        automationReconnectAttemptRef.current += 1;
+        setAutomationStatus(
+          `연결이 잠시 끊겼습니다. ${retryDelayMs / 1000}초 후 자동으로 복구합니다.`,
+        );
+        automationReconnectTimerRef.current = window.setTimeout(() => {
+          automationReconnectTimerRef.current = null;
+          reconnect();
+        }, retryDelayMs);
+      }
+      return () => {
+        if (automationReconnectTimerRef.current !== null) {
+          window.clearTimeout(automationReconnectTimerRef.current);
+          automationReconnectTimerRef.current = null;
+        }
+      };
     }
     if (
       snapshot.connectionState === "connected" &&
       recoveryPendingRef.current
     ) {
+      automationReconnectAttemptRef.current = 0;
       recoveryPendingRef.current = false;
       setAutomationStatus("연결을 복구했습니다. 자동 면접을 계속합니다.");
       setAutomationRunVersion((version) => version + 1);
     }
-  }, [automationMode, snapshot.connectionState]);
+  }, [automationMode, automationReconnectVersion, snapshot.connectionState]);
 
   useEffect(() => {
     lastRecordingSequenceRef.current = Math.max(
@@ -577,6 +605,10 @@ export function InterviewSession({
   }
 
   function reconnect(): void {
+    if (automationReconnectTimerRef.current !== null) {
+      window.clearTimeout(automationReconnectTimerRef.current);
+      automationReconnectTimerRef.current = null;
+    }
     if (reconnectRunningRef.current) return;
     reconnectRunningRef.current = true;
     if (automationMode) {
@@ -597,6 +629,12 @@ export function InterviewSession({
       })
       .finally(() => {
         reconnectRunningRef.current = false;
+        if (
+          automationMode &&
+          store.getState().connectionState === "reconnecting"
+        ) {
+          setAutomationReconnectVersion((version) => version + 1);
+        }
       });
   }
 

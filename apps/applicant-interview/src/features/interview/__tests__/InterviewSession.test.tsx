@@ -188,6 +188,77 @@ describe("InterviewSession", () => {
     expect(protocol.connect).toHaveBeenCalledTimes(2);
   });
 
+  it("automatically reconnects an interrupted automated interview", async () => {
+    vi.useFakeTimers();
+    try {
+      let sessionStore:
+        | Parameters<
+            InterviewSessionDependencies["createProtocolClient"]
+          >[0]["store"]
+        | undefined;
+      const protocol = {
+        connect: vi.fn(() => {
+          sessionStore?.getState().setConnectionState("connected");
+        }),
+        disconnect: vi.fn(),
+        startAnswer: vi.fn(),
+        completeAnswer: vi.fn(),
+        sendAudioFrame: vi.fn(),
+        repeatQuestion: vi.fn(),
+        requestAutomatedAnswer: vi.fn(),
+        submitAutomatedAnswer: vi.fn(),
+      };
+      const dependencies: Partial<InterviewSessionDependencies> = {
+        socketFactory: vi.fn(),
+        mediaDevices: { getUserMedia: vi.fn() },
+        mediaBuffer: {
+          put: vi.fn(),
+          list: vi.fn().mockResolvedValue([]),
+          removeVerified: vi.fn().mockResolvedValue(undefined),
+        },
+        createRecorder: vi.fn(),
+        createAudioCapture: vi.fn(),
+        createProtocolClient: vi.fn((input) => {
+          sessionStore = input.store;
+          input.store.getState().setConnectionState("connected");
+          return protocol;
+        }),
+      };
+
+      render(
+        <InterviewSession
+          sessionId="00000000-0000-7000-8000-000000000504"
+          equipmentCheckId="00000000-0000-7000-8000-000000000514"
+          websocketUrl="ws://localhost/session"
+          recordingApi={{ upload: vi.fn() }}
+          dependencies={dependencies}
+          automationMode="fast"
+        />,
+      );
+
+      expect(protocol.connect).toHaveBeenCalledOnce();
+      act(() => {
+        sessionStore?.getState().setConnectionState("reconnecting");
+      });
+      expect(screen.getByText(/1초 후 자동으로 복구합니다/)).toBeTruthy();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(999);
+      });
+      expect(protocol.connect).toHaveBeenCalledOnce();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(protocol.connect).toHaveBeenCalledTimes(2);
+      expect(
+        screen.getByText("연결을 복구했습니다. 자동 면접을 계속합니다."),
+      ).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("runs the fast local interview without camera or microphone access", async () => {
     vi.useFakeTimers();
     try {
@@ -743,9 +814,7 @@ describe("InterviewSession", () => {
         await vi.advanceTimersByTimeAsync(3100);
       });
 
-      expect(
-        screen.getByText("자동 면접 오류: applicant request failed: 409"),
-      ).toBeTruthy();
+      expect(screen.getByText(/1초 후 자동으로 복구합니다/)).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "다시 연결" }));
       await act(async () => {
         await vi.advanceTimersByTimeAsync(0);
