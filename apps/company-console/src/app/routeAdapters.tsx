@@ -13,6 +13,10 @@ import {
   completeCompanyLogin,
   getCompanyAccessToken,
 } from "../features/company/cognitoAuth";
+import {
+  CompanyAuthStatusView,
+  CompanyAuthView,
+} from "../features/company/CompanyAuthView";
 import { AiRecruitingAssistant } from "../features/assistant";
 import {
   ApplicantDetail,
@@ -49,6 +53,7 @@ import {
   mockCompanyOperationsApi,
   mockInvitationEmailTemplateApi,
   mockPositionInvitationApi,
+  mockRecruitingAssistantApi,
 } from "../mocks/recruitingApi";
 import type { components } from "@iep/contracts/generated/typescript/openapi";
 
@@ -67,17 +72,7 @@ import {
   PAGE_HEADER_TITLE,
 } from "./styles/primitives";
 
-const AUTH_PAGE = "grid min-h-screen place-items-center bg-surface-muted p-6";
-const AUTH_PANEL =
-  "grid w-[min(100%,400px)] gap-4 rounded-lg border border-border bg-white p-7 shadow-float";
-// `.auth-panel p` — every paragraph in the panel, including the status and error lines.
-const AUTH_TEXT = "text-[13px] leading-[1.6] text-muted";
-const AUTH_PRIMARY_ACTION =
-  "min-h-[38px] rounded-lg border border-brand bg-brand font-[650] text-white" +
-  " hover:bg-brand-strong";
-const BRAND_MARK =
-  "grid size-9 flex-[0_0_36px] place-items-center rounded-panel bg-brand text-[12px]" +
-  " font-extrabold text-white";
+const DEMO_COMPANY_EMAIL = import.meta.env.VITE_DEMO_COMPANY_EMAIL?.trim();
 
 const hiringApi: HiringWorkspaceApi = {
   async createPosition(input) {
@@ -851,7 +846,14 @@ export function AiRecruitingAssistantRoute() {
   if (AUTH_CONFIG && !getCompanyAccessToken(localStorage)) {
     return <Navigate replace to="/auth/login" />;
   }
-  return <AiRecruitingAssistant api={recruitingOperationsApi} />;
+  return (
+    <AiRecruitingAssistant
+      api={recruitingOperationsApi}
+      assistantApi={
+        useMockRecruitingData ? mockRecruitingAssistantApi : undefined
+      }
+    />
+  );
 }
 
 export function ApplicantDetailRoute() {
@@ -1047,10 +1049,14 @@ function isPendingReport(
 }
 
 export function CompanyLoginRoute() {
+  const navigate = useNavigate();
   const [error, setError] = useState(false);
 
   async function login() {
-    if (!AUTH_CONFIG) return;
+    if (!AUTH_CONFIG) {
+      navigate("/company", { replace: true });
+      return;
+    }
     try {
       await beginCompanyLogin(AUTH_CONFIG, {
         sessionStorage,
@@ -1061,46 +1067,41 @@ export function CompanyLoginRoute() {
     }
   }
 
+  async function demoLogin() {
+    if (!AUTH_CONFIG) {
+      navigate("/company", { replace: true });
+      return;
+    }
+    try {
+      await beginCompanyLogin(
+        AUTH_CONFIG,
+        {
+          sessionStorage,
+          navigate: (location) => window.location.assign(location),
+        },
+        {
+          loginHint: DEMO_COMPANY_EMAIL || undefined,
+          prompt: "login",
+        },
+      );
+    } catch {
+      setError(true);
+    }
+  }
+
   return (
-    <main className={AUTH_PAGE}>
-      <section className={AUTH_PANEL}>
-        <span className={BRAND_MARK} aria-hidden="true">
-          G
-        </span>
-        <h1>기업 로그인</h1>
-        <p className={AUTH_TEXT}>
-          기업 계정으로 로그인해 채용 포지션과 지원자 검토를 시작합니다.
-        </p>
-        {AUTH_CONFIG ? (
-          <button
-            className={AUTH_PRIMARY_ACTION}
-            type="button"
-            onClick={() => void login()}
-          >
-            로그인
-          </button>
-        ) : (
-          <p className={AUTH_TEXT} role="status">
-            로컬 개발 인증을 사용하고 있습니다.
-          </p>
-        )}
-        <p className={`${AUTH_TEXT} text-center`}>
-          처음 이용하시나요?{" "}
-          <Link className="font-[650] text-brand" to="/auth/signup">
-            회원가입
-          </Link>
-        </p>
-        {error && (
-          <p className={AUTH_TEXT} role="alert">
-            로그인을 시작할 수 없습니다.
-          </p>
-        )}
-      </section>
-    </main>
+    <CompanyAuthView
+      mode="login"
+      cognitoEnabled={Boolean(AUTH_CONFIG)}
+      error={error}
+      onPrimary={() => void login()}
+      onDemo={() => void demoLogin()}
+    />
   );
 }
 
 export function CompanySignupRoute() {
+  const navigate = useNavigate();
   const [error, setError] = useState(false);
 
   async function signup() {
@@ -1115,42 +1116,36 @@ export function CompanySignupRoute() {
     }
   }
 
+  async function demoLogin() {
+    if (!AUTH_CONFIG) {
+      navigate("/company", { replace: true });
+      return;
+    }
+    try {
+      await beginCompanyLogin(
+        AUTH_CONFIG,
+        {
+          sessionStorage,
+          navigate: (location) => window.location.assign(location),
+        },
+        {
+          loginHint: DEMO_COMPANY_EMAIL || undefined,
+          prompt: "login",
+        },
+      );
+    } catch {
+      setError(true);
+    }
+  }
+
   return (
-    <main className={AUTH_PAGE}>
-      <section className={AUTH_PANEL}>
-        <span className={BRAND_MARK} aria-hidden="true">
-          G
-        </span>
-        <h1>기업 회원가입</h1>
-        <p className={AUTH_TEXT}>
-          기업 계정을 만들고 바로 채용 운영을 시작하세요.
-        </p>
-        {AUTH_CONFIG ? (
-          <button
-            className={AUTH_PRIMARY_ACTION}
-            type="button"
-            onClick={() => void signup()}
-          >
-            기업 계정 만들기
-          </button>
-        ) : (
-          <p className={AUTH_TEXT} role="status">
-            배포된 데모 환경에서 회원가입할 수 있습니다.
-          </p>
-        )}
-        <p className={`${AUTH_TEXT} text-center`}>
-          이미 계정이 있나요?{" "}
-          <Link className="font-[650] text-brand" to="/auth/login">
-            로그인
-          </Link>
-        </p>
-        {error && (
-          <p className={AUTH_TEXT} role="alert">
-            회원가입을 시작할 수 없습니다.
-          </p>
-        )}
-      </section>
-    </main>
+    <CompanyAuthView
+      mode="signup"
+      cognitoEnabled={Boolean(AUTH_CONFIG)}
+      error={error}
+      onPrimary={() => void signup()}
+      onDemo={() => void demoLogin()}
+    />
   );
 }
 
@@ -1179,19 +1174,5 @@ export function CompanyAuthCallbackRoute() {
       .catch(() => setError(true));
   }, [navigate, search]);
 
-  return (
-    <main className={AUTH_PAGE}>
-      <section className={AUTH_PANEL}>
-        <span className={BRAND_MARK} aria-hidden="true">
-          G
-        </span>
-        <h1>기업 로그인 확인</h1>
-        <p className={AUTH_TEXT} role={error ? "alert" : "status"}>
-          {error
-            ? "로그인 응답을 확인할 수 없습니다."
-            : "기업 계정 로그인을 확인하고 있습니다."}
-        </p>
-      </section>
-    </main>
-  );
+  return <CompanyAuthStatusView error={error} />;
 }

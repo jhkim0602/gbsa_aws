@@ -1,0 +1,98 @@
+:root {
+  --p2m-duration: 1400ms;
+  --p2m-ease-enter: cubic-bezier(0, 0, 0.2, 1);
+  --p2m-ease-settle: cubic-bezier(0.4, 0, 0.2, 1);
+  --p2m-overshoot: 1;
+}
+
+#wordmark-dark,
+#question-mark,
+#wordmark-blue,
+#question-dot,
+#letter-w,
+#letter-h,
+#letter-y,
+#letter-o,
+#letter-u {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+#wordmark-dark {
+  animation: p2m-dark-assemble var(--p2m-duration) both;
+}
+
+#question-mark {
+  animation: p2m-question-arrive var(--p2m-duration) both;
+}
+
+#question-dot {
+  animation: p2m-dot-settle var(--p2m-duration) both;
+}
+
+#letter-y { animation: p2m-letter-arrive var(--p2m-duration) 0ms both; }
+#letter-o { animation: p2m-letter-arrive var(--p2m-duration) 55ms both; }
+#letter-u { animation: p2m-letter-arrive var(--p2m-duration) 105ms both; }
+
+@keyframes p2m-dark-assemble {
+  0%, 12% {
+    opacity: 0;
+    transform: translateX(-18px);
+    clip-path: inset(0 100% 0 0);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1); /* enter */
+  }
+  48%, 100% {
+    opacity: 1;
+    transform: translateX(0);
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes p2m-question-arrive {
+  0%, 20% {
+    opacity: 0;
+    transform: translateY(18px) scale(.92);
+    filter: blur(5px);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1); /* enter */
+  }
+  65% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.012);
+    filter: blur(0);
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1); /* settle */
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes p2m-dot-settle {
+  0%, 54% {
+    opacity: 0;
+    transform: translateY(-24px) scale(.72);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1); /* enter */
+  }
+  80% {
+    opacity: 1;
+    transform: translateY(2px) scale(1.025);
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1); /* settle */
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes p2m-letter-arrive {
+  0%, 42% {
+    opacity: 0;
+    transform: translateY(14px);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1); /* enter */
+  }
+  76%, 100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

@@ -7,6 +7,10 @@ import type {
   CompanySubmission,
   CompanyUser,
 } from "../features/company";
+import type {
+  AssistantAnswerResponse,
+  RecruitingAssistantApi,
+} from "../features/assistant/api";
 import type { ReviewReport, ReviewTimeline } from "../features/review";
 import type {
   CriteriaConfiguration,
@@ -32,6 +36,73 @@ type RecruitingFixture = {
 };
 
 let fixturePromise: Promise<RecruitingFixture> | null = null;
+
+const mockAssistantAnswer: AssistantAnswerResponse = {
+  scope: "company",
+  positionId: null,
+  answer:
+    "김민준 지원자는 백엔드 플랫폼 엔지니어 포지션에서 시스템 설계와 장애 대응 근거가 가장 구체적으로 확인됩니다.\n\n트래픽 급증 상황에서 병목 지표를 좁히고 ECS 오토 스케일링 정책을 조정한 판단 과정이 답변과 리포트에 함께 남아 있습니다. 최종 판단 전 연결된 원문 근거를 검토해 주세요.",
+  degradedMode: null,
+  sources: [
+    {
+      sourceId: "mock-assistant-source-summary",
+      positionId: "mock-position-backend",
+      applicantId: "mock-applicant-minjun",
+      invitationId: "mock-invitation-001",
+      reportId: "mock-report-001",
+      reportItemId: null,
+      criterionId: null,
+      documentType: "report_summary",
+      excerpt:
+        "김민준 지원자는 대규모 트래픽 대응 경험을 구체적인 지표와 운영 판단으로 설명했습니다. 종합 점수 87점, 답변 근거가 충분히 확인됩니다.",
+      score: 0.97,
+      scoreComponents: { vector: 0.98, lexical: 0.95 },
+      metadata: {
+        applicant_name: "김민준",
+        position_title: "백엔드 플랫폼 엔지니어",
+        overall_score: 87,
+      },
+    },
+    {
+      sourceId: "mock-assistant-source-system-design",
+      positionId: "mock-position-backend",
+      applicantId: "mock-applicant-minjun",
+      invitationId: "mock-invitation-001",
+      reportId: "mock-report-001",
+      reportItemId: "mock-report-item-system-design",
+      criterionId: "system-design",
+      documentType: "report_criterion",
+      excerpt:
+        "ECS 운영 중 트래픽 급증으로 발생한 장애에서 CPU, 응답 지연, 태스크 수 지표를 순서대로 비교해 병목을 좁혔습니다.",
+      score: 0.94,
+      scoreComponents: { vector: 0.96, lexical: 0.9 },
+      metadata: {
+        applicant_name: "김민준",
+        criterion_name: "시스템 설계",
+        score: 92,
+      },
+    },
+    {
+      sourceId: "mock-assistant-source-operation",
+      positionId: "mock-position-backend",
+      applicantId: "mock-applicant-minjun",
+      invitationId: "mock-invitation-001",
+      reportId: "mock-report-001",
+      reportItemId: "mock-report-item-operation",
+      criterionId: "operation",
+      documentType: "report_criterion",
+      excerpt:
+        "오토 스케일링 임계값을 조정하고 재발 방지를 위해 CloudWatch 경보와 부하 테스트 기준을 함께 개선했습니다.",
+      score: 0.91,
+      scoreComponents: { vector: 0.93, lexical: 0.87 },
+      metadata: {
+        applicant_name: "김민준",
+        criterion_name: "문제 해결력",
+        score: 89,
+      },
+    },
+  ],
+};
 
 function loadFixture() {
   fixturePromise ??= fetch(
@@ -172,6 +243,36 @@ export const mockCompanyOperationsApi: CompanyOperationsApi = {
     };
   },
 };
+
+export const mockRecruitingAssistantApi: RecruitingAssistantApi = {
+  async answerQuestion(request) {
+    return answerForScope(request.positionId);
+  },
+  async streamAnswer(request, handlers) {
+    const response = answerForScope(request.positionId);
+    handlers.onStart?.({ archivedScope: false });
+    const sentences = [
+      "김민준 지원자는 백엔드 플랫폼 엔지니어 포지션에서 시스템 설계와 장애 대응 근거가 가장 구체적으로 확인됩니다. ",
+      "트래픽 급증 상황에서 병목 지표를 좁히고 ECS 오토 스케일링 정책을 조정한 판단 과정이 답변과 리포트에 함께 남아 있습니다. ",
+      "최종 판단 전 연결된 원문 근거를 검토해 주세요.",
+    ];
+    let accumulated = "";
+    for (const sentence of sentences) {
+      accumulated += sentence;
+      handlers.onDelta?.(sentence, accumulated);
+    }
+    handlers.onSources?.(response.sources);
+    return response;
+  },
+};
+
+function answerForScope(positionId?: string): AssistantAnswerResponse {
+  return {
+    ...mockAssistantAnswer,
+    scope: positionId ? "position" : "company",
+    positionId: positionId ?? null,
+  };
+}
 
 export const mockPositionInvitationApi: PositionInvitationApi = {
   async listInvitations(positionId) {

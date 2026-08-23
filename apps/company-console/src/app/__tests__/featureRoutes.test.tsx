@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
@@ -6,8 +6,9 @@ import { CompanyRoutes } from "../App";
 
 describe("company feature routes", () => {
   it.each([
+    ["/", "면접의 이유를, 근거로 확인하세요."],
     ["/auth/login", "기업 로그인"],
-    ["/auth/signup", "기업 회원가입"],
+    ["/auth/signup", "기업 계정 만들기"],
     ["/company", "채용 운영 대시보드"],
     ["/ai-assistant", "AI 채용 어시스턴트"],
     ["/hiring", "포지션 만들기"],
@@ -59,5 +60,38 @@ describe("company feature routes", () => {
     );
 
     expect(screen.queryByLabelText("기업 콘솔 주 탐색")).toBeNull();
+  });
+
+  it("opens the local company console through the judge demo action", async () => {
+    render(
+      <MemoryRouter initialEntries={["/auth/login"]}>
+        <CompanyRoutes />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("img", { name: "WhyYou" })).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "데모 아이디로 들어가기" }),
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "채용 운영 대시보드" }),
+    ).toBeTruthy();
+  });
+
+  it("keeps the public landing page outside the enterprise shell", () => {
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <CompanyRoutes />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByLabelText("기업 콘솔 주 탐색")).toBeNull();
+    expect(
+      screen.getAllByRole("link", { name: "기업 콘솔 로그인" }),
+    ).toHaveLength(2);
+    expect(
+      screen.getByRole("navigation", { name: "랜딩페이지 탐색" }),
+    ).toBeTruthy();
   });
 });
