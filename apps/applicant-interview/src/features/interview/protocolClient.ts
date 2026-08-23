@@ -49,6 +49,7 @@ export type QuestionAudioFormat = Readonly<{
 
 export class InterviewProtocolClient {
   private socket: SocketLike | null = null;
+  private startRequested = false;
 
   constructor(
     private readonly options: Readonly<{
@@ -79,12 +80,7 @@ export class InterviewProtocolClient {
     this.socket = socket;
     socket.onopen = () => {
       this.options.store.getState().setConnectionState("connected");
-      if (this.options.equipmentCheckId) {
-        this.sendEnvelope("session.start", {
-          equipment_check_id: this.options.equipmentCheckId,
-          expected_state: "preparing",
-        });
-      }
+      this.startRequested = false;
       const snapshot = this.options.store.getState();
       this.sendEnvelope("session.resume", {
         last_applied_server_sequence: snapshot.serverSequence,
@@ -228,8 +224,19 @@ export class InterviewProtocolClient {
       const snapshot = parseServerState(envelope.payload);
       if (snapshot) {
         this.options.store.getState().applyResumeSnapshot(snapshot);
+        if (snapshot.state === "preparing" && !this.startRequested) {
+          this.startRequested = true;
+          this.sendEnvelope("session.start", {
+            ...(this.options.equipmentCheckId
+              ? { equipment_check_id: this.options.equipmentCheckId }
+              : {}),
+            expected_state: "preparing",
+          });
+        }
       }
-      const pendingQuestion = parsePendingQuestion(envelope.payload.pending_turn);
+      const pendingQuestion = parsePendingQuestion(
+        envelope.payload.pending_turn,
+      );
       if (pendingQuestion) this.options.onQuestion(pendingQuestion);
       return;
     }

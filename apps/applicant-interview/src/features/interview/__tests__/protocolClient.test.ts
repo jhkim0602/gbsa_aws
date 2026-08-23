@@ -76,7 +76,7 @@ describe("interview protocol client", () => {
     expect(complete.idempotency_key).toBeTruthy();
   });
 
-  it("starts a newly created session before requesting its recovery snapshot", () => {
+  it("starts a newly created session after confirming it is still preparing", () => {
     const socket = new FakeSocket();
     const client = new InterviewProtocolClient({
       sessionId: "00000000-0000-7000-8000-000000000411",
@@ -89,7 +89,28 @@ describe("interview protocol client", () => {
     client.connect();
     socket.open();
 
-    expect(JSON.parse(String(socket.sent[0]))).toMatchObject({
+    expect(JSON.parse(String(socket.sent[0])).message_type).toBe(
+      "session.resume",
+    );
+
+    socket.serverMessage({
+      protocol_version: "1.0",
+      message_type: "resume.snapshot",
+      session_id: "00000000-0000-7000-8000-000000000411",
+      sequence: 0,
+      idempotency_key: "server-resume-preparing",
+      correlation_id: "00000000-0000-7000-8000-000000000413",
+      sent_at: "2026-08-23T10:00:00Z",
+      payload: {
+        state: "preparing",
+        server_sequence: 0,
+        last_final_turn_id: null,
+        last_verified_recording_chunk_sequence: 0,
+        degraded_modes: [],
+      },
+    });
+
+    expect(JSON.parse(String(socket.sent[1]))).toMatchObject({
       message_type: "session.start",
       sequence: 0,
       payload: {
@@ -97,8 +118,43 @@ describe("interview protocol client", () => {
         expected_state: "preparing",
       },
     });
-    expect(JSON.parse(String(socket.sent[1])).message_type).toBe(
-      "session.resume",
+  });
+
+  it("starts a restored preparing session without the original equipment check id", () => {
+    const socket = new FakeSocket();
+    const client = new InterviewProtocolClient({
+      sessionId: "00000000-0000-7000-8000-000000000414",
+      socketFactory: () => socket,
+      store: createInterviewSessionStore(),
+      onQuestion: vi.fn(),
+    });
+
+    client.connect();
+    socket.open();
+    socket.serverMessage({
+      protocol_version: "1.0",
+      message_type: "resume.snapshot",
+      session_id: "00000000-0000-7000-8000-000000000414",
+      sequence: 0,
+      idempotency_key: "server-resume-restored-preparing",
+      correlation_id: "00000000-0000-7000-8000-000000000415",
+      sent_at: "2026-08-23T10:00:00Z",
+      payload: {
+        state: "preparing",
+        server_sequence: 0,
+        last_final_turn_id: null,
+        last_verified_recording_chunk_sequence: 0,
+        degraded_modes: [],
+      },
+    });
+
+    expect(JSON.parse(String(socket.sent[1]))).toMatchObject({
+      message_type: "session.start",
+      sequence: 0,
+      payload: { expected_state: "preparing" },
+    });
+    expect(JSON.parse(String(socket.sent[1])).payload).not.toHaveProperty(
+      "equipment_check_id",
     );
   });
 
