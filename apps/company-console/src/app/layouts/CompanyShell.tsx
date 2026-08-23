@@ -44,14 +44,10 @@ const pageTitles = [
   { path: "/settings/invitation-email", title: "초대 메일 템플릿" },
 ] as const;
 
-/*
- * On paper only the page content is the document — the sidebar and topbar are navigation, and
- * printing a review report used to repeat them on every sheet. The `print:` variant emits
- * after `mw-760:`, so the print rules win at every width without extra specificity.
- */
+/* On paper only the page content is the document; navigation stays outside the report. */
 const SHELL =
-  "grid min-h-screen bg-canvas transition-[grid-template-columns] duration-[160ms]" +
-  " mw-760:block print:block print:bg-transparent";
+  "company-shell-layout min-h-screen bg-canvas transition-[grid-template-columns]" +
+  " duration-[160ms] print:block print:bg-transparent";
 const SHELL_EXPANDED = `${SHELL} grid-cols-[224px_minmax(0,1fr)]`;
 const SHELL_COLLAPSED = `${SHELL} grid-cols-[64px_minmax(0,1fr)]`;
 const SKIP_LINK =
@@ -59,18 +55,10 @@ const SKIP_LINK =
   " px-[11px] py-[7px] text-surface focus-visible:translate-y-0 print:hidden";
 
 const SIDEBAR =
-  "fixed inset-[0_auto_0_0] z-40 flex h-screen flex-col overflow-hidden border-r" +
-  " border-r-border bg-surface transition-[width,transform] duration-[160ms]" +
-  " mw-760:top-0 mw-760:h-screen mw-760:w-[min(292px,88vw)] mw-760:shadow-float" +
-  " print:hidden";
-// Tailwind v4's translate utilities emit the individual `translate:` property. Older Chrome
-// builds can apply the mobile width media query while ignoring that property, leaving a closed
-// drawer visible over the workspace. Use the widely supported transform function for this
-// structural movement; the responsive rule still owns whether the drawer is on or off canvas.
-const SIDEBAR_DESKTOP_OPEN = "w-56 [transform:translateX(0)]";
-const SIDEBAR_DESKTOP_CLOSED = "w-16 [transform:translateX(0)]";
-const SIDEBAR_MOBILE_OPEN = "mw-760:[transform:translateX(0)]";
-const SIDEBAR_MOBILE_CLOSED = "mw-760:[transform:translateX(-105%)]";
+  "company-sidebar-layout z-40 flex flex-col overflow-hidden border-r border-r-border" +
+  " bg-surface transition-[width,transform] duration-[160ms] print:hidden";
+const SIDEBAR_DESKTOP_OPEN = "w-56";
+const SIDEBAR_DESKTOP_CLOSED = "w-16";
 const SIDEBAR_TOGGLE =
   "absolute top-[30px] right-2 z-10 grid size-6 place-items-center border-0" +
   " bg-transparent p-0 text-subtle transition-colors hover:text-brand";
@@ -154,7 +142,6 @@ export function CompanyShell() {
   const sidebarClassName = [
     SIDEBAR,
     sidebarCollapsed ? SIDEBAR_DESKTOP_CLOSED : SIDEBAR_DESKTOP_OPEN,
-    mobileMenuOpen ? SIDEBAR_MOBILE_OPEN : SIDEBAR_MOBILE_CLOSED,
   ].join(" ");
   const compactSidebar = sidebarCollapsed && !mobileMenuOpen;
 
@@ -164,7 +151,11 @@ export function CompanyShell() {
         본문으로 이동
       </a>
 
-      <aside aria-label="기업 콘솔 주 탐색" className={sidebarClassName}>
+      <aside
+        aria-label="기업 콘솔 주 탐색"
+        className={sidebarClassName}
+        data-mobile-open={mobileMenuOpen}
+      >
         <div className={compactSidebar ? BRAND_ROW_COLLAPSED : BRAND_ROW}>
           {compactSidebar ? null : (
             <NavLink className={BRAND} to="/company" aria-label="WhyYou 홈">

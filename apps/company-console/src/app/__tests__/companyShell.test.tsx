@@ -19,16 +19,12 @@ describe("CompanyShell", () => {
     const navigation = screen.getByLabelText("기업 콘솔 주 탐색");
     const shell = navigation.parentElement!;
 
-    expect(navigation.className).toContain(
-      "mw-760:[transform:translateX(-105%)]",
-    );
+    expect(navigation.getAttribute("data-mobile-open")).toBe("false");
 
     fireEvent.click(screen.getByRole("button", { name: "탐색 열기" }));
-    expect(navigation.className).toContain("mw-760:[transform:translateX(0)]");
+    expect(navigation.getAttribute("data-mobile-open")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "탐색 닫기" }));
-    expect(navigation.className).toContain(
-      "mw-760:[transform:translateX(-105%)]",
-    );
+    expect(navigation.getAttribute("data-mobile-open")).toBe("false");
 
     fireEvent.click(screen.getByRole("button", { name: "탐색 접기" }));
 
