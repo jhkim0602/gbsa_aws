@@ -57,8 +57,11 @@ const SKIP_LINK =
 const SIDEBAR =
   "company-sidebar-layout z-40 flex flex-col overflow-hidden border-r border-r-border" +
   " bg-surface transition-[width,transform] duration-[160ms] print:hidden";
-const SIDEBAR_DESKTOP_OPEN = "w-56";
-const SIDEBAR_DESKTOP_CLOSED = "w-16";
+// These widths must match SHELL_EXPANDED/SHELL_COLLAPSED exactly. Spacing-scale widths use
+// rem units, so a browser default font size above 16px makes the sidebar wider than its grid
+// column and lets it cover the workspace.
+const SIDEBAR_DESKTOP_OPEN = "w-[224px]";
+const SIDEBAR_DESKTOP_CLOSED = "w-[64px]";
 const SIDEBAR_TOGGLE =
   "absolute top-[30px] right-2 z-10 grid size-6 place-items-center border-0" +
   " bg-transparent p-0 text-subtle transition-colors hover:text-brand";

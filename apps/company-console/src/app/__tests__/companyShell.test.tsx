@@ -29,7 +29,7 @@ describe("CompanyShell", () => {
     fireEvent.click(screen.getByRole("button", { name: "탐색 접기" }));
 
     expect(navigation.getAttribute("aria-hidden")).toBeNull();
-    expect(navigation.className).toContain("w-16");
+    expect(navigation.className).toContain("w-[64px]");
     expect(shell.className).toContain("grid-cols-[64px_minmax(0,1fr)]");
     expect(screen.queryByText("대시보드")).toBeNull();
     expect(
@@ -39,7 +39,7 @@ describe("CompanyShell", () => {
     fireEvent.click(screen.getByRole("button", { name: "탐색 펼치기" }));
 
     expect(navigation.getAttribute("aria-hidden")).toBeNull();
-    expect(navigation.className).toContain("w-56");
+    expect(navigation.className).toContain("w-[224px]");
     expect(shell.className).toContain("grid-cols-[224px_minmax(0,1fr)]");
 
     const applicantLinks = screen.getAllByRole("link", {
