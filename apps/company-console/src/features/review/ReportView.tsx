@@ -64,7 +64,7 @@ const PANEL_HEADER =
 const PANEL_EYEBROW = "font-mono text-[8px] font-semibold uppercase text-muted";
 
 const TAB_BUTTON =
-  "relative flex-[0_0_auto] px-0.5 text-[10px] font-[650] text-muted" +
+  "relative min-w-0 justify-self-stretch px-0.5 text-[10px] font-[650] whitespace-nowrap text-muted" +
   " aria-selected:text-brand" +
   // `::after` is the 2px underline; transparent until the tab is selected.
   " after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:bg-transparent" +
@@ -120,8 +120,8 @@ const CITATION_CHIP =
 const reportTabs = [
   { id: "overview", label: "종합평가" },
   { id: "criteria", label: "기준별 평가" },
-  { id: "followups", label: "추가 확인" },
   { id: "timeline", label: "면접 타임라인" },
+  { id: "followups", label: "추가 확인" },
 ] as const;
 
 type ReportTab = (typeof reportTabs)[number]["id"];
@@ -237,7 +237,7 @@ export function ReportView({
       </header>
 
       <div
-        className="flex min-h-[42px] gap-[22px] overflow-x-auto border-b border-border bg-surface px-[14px] print:hidden"
+        className="grid min-h-[42px] grid-flow-col auto-cols-fr overflow-hidden border-b border-border bg-surface px-[14px] print:hidden"
         role="tablist"
         aria-label="리포트 항목"
       >

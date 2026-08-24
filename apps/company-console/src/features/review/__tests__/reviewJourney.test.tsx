@@ -281,6 +281,16 @@ describe("Lane D review journey", () => {
     expect(timelinePanel?.parentElement?.className).not.toContain("sticky");
     expect(humanReviewPanel?.parentElement?.className).toContain("sticky");
 
+    const reportTabList = screen.getByRole("tablist", {
+      name: "리포트 항목",
+    });
+    expect(
+      within(reportTabList)
+        .getAllByRole("tab")
+        .map((tab) => tab.textContent),
+    ).toEqual(["종합평가", "기준별 평가", "면접 타임라인", "추가 확인"]);
+    expect(reportTabList.className).not.toContain("overflow-x-auto");
+
     fireEvent.click(screen.getByRole("tab", { name: "면접 타임라인" }));
     const expandedTimeline = screen.getByRole("tabpanel", {
       name: "면접 타임라인",
