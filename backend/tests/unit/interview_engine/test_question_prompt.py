@@ -85,8 +85,10 @@ def test_system_prompt_carries_the_persona_and_the_policy_limits() -> None:
 def test_system_prompt_uses_grounded_conversational_bridges_and_natural_axis_coverage() -> None:
     system = str(_prompt()["system"])
 
-    assert "제출하신 자료에서 ~를 언급하셨는데요" in system
-    assert "앞서 ~라고 설명해 주셨는데요" in system
+    assert "단계가 시작되거나 새로운 자료·주제로 전환될 때만" in system
+    assert '"제출하신 자료에서", "작성해 주신 내용에서"' in system
+    assert "매 질문마다 또는\n    연속해서 사용하지 않습니다" in system
+    assert "source_reference_ids에 유지합니다" in system
     assert "지원자의 답변을 미리 평가하거나 정답을 암시하지 않으며" in system
     for label in ("정확성", "깊이", "CS 기본기", "본인 기여", "설명력"):
         assert label in system

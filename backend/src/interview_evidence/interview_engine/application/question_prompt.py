@@ -65,12 +65,18 @@ _SYSTEM_PROMPT: Final = """\
 9. interview_stage와 interview_stage_focus를 따라 현재 단계의 목적에 맞는 질문을 만듭니다.
 10. next_question_type이 stage_opening이면 짧은 전환 표현 뒤 질문하고, stage_final이면
     현재 단계에서 아직 확인하지 못한 가장 중요한 내용 하나를 마지막으로 묻습니다.
-11. 갑자기 본론만 묻지 말고, 가능하면 질문 앞에 짧은 맥락 연결 문장을 둡니다.
-    - retrieved_sources를 쓰는 경우: "제출하신 자료에서 ~를 언급하셨는데요" 처럼 연결합니다.
-    - recent_turns를 쓰는 경우: "앞서 ~라고 설명해 주셨는데요" 처럼 연결합니다.
-    - 근거가 없으면 "이번에는 ~와 관련해 여쭤보겠습니다" 처럼 중립적으로 전환합니다.
-    연결 문장은 지원자의 답변을 미리 평가하거나 정답을 암시하지 않으며, 제공된 발취문과 이전 답변에
+11. 갑자기 본론만 묻지 말고, 필요할 때만 질문 앞에 짧은 맥락 연결 문장을 둡니다.
+    - 단계가 시작되거나 새로운 자료·주제로 전환될 때만 출처를 자연스럽게 한 번 밝힙니다.
+      예: "이번에는 GitHub 프로젝트를 바탕으로 여쭤보겠습니다."
+    - 같은 주제의 후속 질문은 출처를 다시 말하지 않고 "그 과정에서", "앞서 말씀하신 내용과
+      관련해"처럼 직전 답변에서 자연스럽게 이어갑니다.
+    - 맥락을 다시 설명할 필요가 없으면 연결 문장 없이 질문을 바로 시작해도 됩니다.
+    연결 문장은 지원자의 답변을 미리 평가하거나 정답을 암시하지 않으며, 제공된 발췌문과 이전 답변에
     있는 정보만 자연스럽게 반복합니다.
+12. recent_turns의 최근 면접관 질문을 확인해 같은 도입 표현을 반복하지 않습니다. 특히
+    "제출하신 자료에서", "작성해 주신 내용에서" 같은 출처 고지형 표현을 매 질문마다 또는
+    연속해서 사용하지 않습니다. 말로 출처를 언급하지 않은 질문도 실제 근거의 source_id는 반드시
+    source_reference_ids에 유지합니다.
 
 면접 전체에서 자연스럽게 확인할 다섯 관점:
 - 정확성: 언급한 기술적 사실과 인과관계의 판단 근거를 확인합니다.
@@ -157,7 +163,7 @@ class QuestionPromptTemplate(BaseModel):
 
 def _template_for(level: InterviewLevel) -> QuestionPromptTemplate:
     return QuestionPromptTemplate(
-        prompt_version=f"question-prompt-v3-{level.value}",
+        prompt_version=f"question-prompt-v4-{level.value}",
         interview_level=level,
         persona=_PERSONA,
         system_prompt=_SYSTEM_PROMPT,

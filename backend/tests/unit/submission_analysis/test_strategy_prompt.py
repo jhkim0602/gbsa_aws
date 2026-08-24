@@ -48,6 +48,8 @@ def test_strategy_prompt_requests_natural_five_axis_coverage_without_inventing_c
         assert label in system
     assert "한 질문에 다섯 관점을 모두 억지로 담지 않습니다" in system
     assert "검증되지 않은 사실을 확정적으로 말하지 않습니다" in system
+    assert '"제출하신 자료에서" 같은 고정 도입 표현을 검증 포인트마다 반복하지 않습니다' in system
+    assert "자료 근거는 말로 매번 고지하지 않더라도 source_id로 계속 유지합니다" in system
 
 
 def test_strategy_response_parses_anthropic_json_content() -> None:
