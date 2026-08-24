@@ -95,6 +95,10 @@ describe("SubmissionWorkspace", () => {
       "projects",
       "candidate-dev",
     );
+    expect(
+      screen.getByText("https://github.com/example/project-one"),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "프로젝트 제출" })).toBeNull();
 
     expect((await screen.findAllByText("일부 완료")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "분석 상태 확인" })).toBeNull();
@@ -373,11 +377,7 @@ describe("SubmissionWorkspace", () => {
     expect(getAnalysisDebug).toHaveBeenCalledOnce();
   });
 
-  it("keeps a submitted material submitted while its inputs are edited", async () => {
-    // Editing reset the material to `idle`, which also erased the state seeded from the server:
-    // one keystroke made an accepted submission read as 미제출, the required count went
-    // backwards, and applicants re-submitted -- which the server then rejected for exceeding the
-    // per-invitation limit, reported on screen as a problem with their id and url.
+  it("shows a submitted repository without another submission action", async () => {
     const api: SubmissionWorkspaceApi = {
       uploadDocument: vi.fn(),
       registerRepository: vi.fn(),
@@ -405,19 +405,10 @@ describe("SubmissionWorkspace", () => {
     });
 
     expect(screen.getAllByText("제출 완료").length).toBeGreaterThan(0);
-    // Seeded from the server, so a reload no longer shows a blank required field under the
-    // "제출되었습니다" confirmation.
-    const url = screen.getByLabelText("GitHub 저장소 URL");
-    expect((url as HTMLInputElement).value).toBe(
-      "https://github.com/example/repo",
-    );
-
-    fireEvent.change(url, {
-      target: { value: "https://github.com/example/other" },
-    });
-
-    expect(screen.getAllByText("제출 완료").length).toBeGreaterThan(0);
-    expect(screen.queryByText("미제출")).toBeNull();
+    expect(screen.getByText("등록된 공개 저장소")).toBeTruthy();
+    expect(screen.getByText("https://github.com/example/repo")).toBeTruthy();
+    expect(screen.queryByLabelText("GitHub 저장소 URL")).toBeNull();
+    expect(screen.queryByRole("button", { name: "프로젝트 제출" })).toBeNull();
   });
 
   it("clears a previous failure when the applicant edits the input", async () => {

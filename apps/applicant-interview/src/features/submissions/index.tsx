@@ -352,6 +352,34 @@ function RepositorySubmissionEditor({
   onGithubUsernameChange(value: string): void;
   onSubmit(event: FormEvent<HTMLFormElement>): void;
 }) {
+  if (state === "success") {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-start gap-3 rounded-md border border-success/25 bg-success-soft px-4 py-3">
+          <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-surface text-success">
+            <CheckCircle2 aria-hidden="true" size={17} />
+          </span>
+          <div className="min-w-0">
+            <p className="m-0 text-xs font-semibold text-success">
+              등록된 공개 저장소
+            </p>
+            <p className="mt-1 break-all text-sm font-medium text-ink">{url}</p>
+          </div>
+        </div>
+        <p
+          className="flex items-center gap-2 text-xs font-medium text-success"
+          role="status"
+        >
+          <CheckCircle2 aria-hidden="true" size={15} />
+          GitHub 프로젝트가 제출되었습니다.
+        </p>
+        <p className="text-[11px] leading-4 text-muted">
+          등록된 저장소의 분석 상태는 아래에서 자동으로 갱신됩니다.
+        </p>
+      </div>
+    );
+  }
+
   const readyToSubmit =
     url.trim().length > 0 && githubUsername.trim().length > 0;
 
@@ -414,16 +442,6 @@ function RepositorySubmissionEditor({
           </button>
         ) : null}
       </div>
-
-      {state === "success" ? (
-        <p
-          className="flex items-center gap-2 text-xs font-medium text-success"
-          role="status"
-        >
-          <CheckCircle2 aria-hidden="true" size={15} />
-          GitHub 프로젝트가 제출되었습니다.
-        </p>
-      ) : null}
 
       {state === "error" ? (
         <p
