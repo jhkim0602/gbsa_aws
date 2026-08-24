@@ -39,6 +39,12 @@ class RecordingChunkSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class RecordingCheckpointSnapshot:
+    last_final_turn_id: UUID | None
+    last_media_chunk_sequence: int
+
+
+@dataclass(frozen=True, slots=True)
 class QuestionSourceReferenceSnapshot:
     source_id: UUID
     source_type: str
@@ -159,6 +165,20 @@ class InterviewEnginePublic:
             )
             for chunk in self._repository.list_recording_chunks(context, session_id)
             if chunk.upload_status.value == "verified"
+        )
+
+    def list_recording_checkpoints(
+        self,
+        context: TenantContext,
+        *,
+        session_id: UUID,
+    ) -> tuple[RecordingCheckpointSnapshot, ...]:
+        return tuple(
+            RecordingCheckpointSnapshot(
+                last_final_turn_id=checkpoint.last_final_turn_id,
+                last_media_chunk_sequence=checkpoint.last_media_chunk_sequence,
+            )
+            for checkpoint in self._repository.list_checkpoints(context, session_id)
         )
 
     def list_question_rationales(

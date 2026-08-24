@@ -25,10 +25,7 @@ from interview_evidence.company_management.application.company_service import (
     CompanyManagementPublic,
 )
 from interview_evidence.integration.company_analysis import CompanyAnalysisAxisProvider
-from interview_evidence.integration.interview_reporting import (
-    FinalTurnRange,
-    InterviewReportingBoundary,
-)
+from interview_evidence.integration.interview_reporting import InterviewReportingBoundary
 from interview_evidence.interview_engine.application.public import InterviewEnginePublic
 from interview_evidence.recruiting_assistant.application import ReportSearchProjector
 from interview_evidence.reporting.api import LaneDRuntime
@@ -172,19 +169,9 @@ class MediaRequestedEventHandler:
         chunks = self._interview.resolve_recording_chunks(context, session_id=session_id)
         if not turns or not chunks:
             raise TimeoutError("completed session projection is not ready")
-        ranges = tuple(
-            FinalTurnRange(
-                turn_id=turn.turn_id,
-                session_start_ms=chunks[min(index, len(chunks) - 1)].session_start_ms,
-                session_end_ms=chunks[min(index, len(chunks) - 1)].session_end_ms,
-                confidence=0.9,
-            )
-            for index, turn in enumerate(turns)
-        )
         projection = self._reporting.project_completed_session(
             context,
             session_id=session_id,
-            turn_ranges=ranges,
             occurred_at=self._clock.now(),
         )
         occurred_at = self._clock.now()

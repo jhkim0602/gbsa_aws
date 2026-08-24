@@ -161,6 +161,7 @@ from interview_evidence.submission_analysis.application.retrieval import (
     HybridRetriever,
 )
 from interview_evidence.workers.reporting.media import (
+    FfmpegWebMRemuxer,
     MediaObjectStore,
     MediaPostProcessor,
     RecordingAssembler,
@@ -395,7 +396,10 @@ def create_production_runtime(
         interview=interview_public,
         transcript_service=TranscriptService(lane_d.repository),
         media_processor=media_processor,
-        assembler=RecordingAssembler(cast(MediaObjectStore, media_storage)),
+        assembler=RecordingAssembler(
+            cast(MediaObjectStore, media_storage),
+            FfmpegWebMRemuxer(),
+        ),
     )
     reporting_public = ReportingPublic(
         repository=lane_d.repository,

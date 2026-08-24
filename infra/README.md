@@ -86,7 +86,8 @@ and cannot be planned before `dev/foundation` is applied.
 ## Known Grant Without a Consumer
 
 `aws_iam_role.media_convert` in `modules/compute` is provisioned and its ARN passed to the task, but
-no application code starts a MediaConvert job: recording playback concatenates the applicant's
-`MediaRecorder` chunks in the worker and needs no transcode. The role is a real grant with nothing
-behind it, which is why it is recorded as T311 rather than left unremarked. Removing it means removing
-the adapter, the port and the wiring in the same change; it is not this tree's decision alone.
+no application code starts a MediaConvert job: the worker remuxes the applicant's `MediaRecorder`
+segments with its bundled FFmpeg binary and does not use an AWS-managed transcode. The role is a real
+grant with nothing behind it, which is why it is recorded as T311 rather than left unremarked. Removing
+it means removing the adapter, the port and the wiring in the same change; it is not this tree's
+decision alone.
