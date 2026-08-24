@@ -343,7 +343,7 @@ const DRAFT_VALIDATION_TONE = {
   duplicate: `${DRAFT_VALIDATION} text-warning`,
 } as const;
 const MAILCARD =
-  "rounded-[7px] border border-border bg-surface m-[0_14px_12px]";
+  "m-[12px_14px_12px] rounded-[7px] border border-border bg-surface";
 const MAILCARD_TOP =
   "flex items-center gap-2.5 border-b border-b-border-muted p-[10px_12px]";
 const MAILCARD_LOGO =
@@ -680,7 +680,10 @@ export function PositionInvitations({
 
       <div className={view === "invite" ? "p-5 mw-720:p-3" : CONTENT}>
         {notice ? (
-          <p className={formAlertClass("panel", "success")} role="status">
+          <p
+            className={`${formAlertClass("panel", "success")} mb-4`}
+            role="status"
+          >
             {notice}
           </p>
         ) : null}

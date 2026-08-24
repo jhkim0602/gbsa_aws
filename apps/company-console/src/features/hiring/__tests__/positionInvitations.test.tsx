@@ -182,9 +182,10 @@ describe("PositionInvitations", () => {
         7,
       ),
     );
-    expect(
-      await screen.findByText("1명에게 초대 메일을 발송했습니다."),
-    ).toBeTruthy();
+    const successNotice = await screen.findByText(
+      "1명에게 초대 메일을 발송했습니다.",
+    );
+    expect(successNotice.className).toContain("mb-4");
 
     fireEvent.change(screen.getByLabelText("지원자 검색"), {
       target: { value: "김개발" },
@@ -270,6 +271,10 @@ describe("PositionInvitations", () => {
       await screen.findByText("[{{회사명}}] {{포지션명}} 면접 안내"),
     ).toBeTruthy();
     expect(screen.getByText("전사 기본 문구")).toBeTruthy();
+    const mailPreview =
+      screen.getByText("발송될 메일").parentElement?.parentElement
+        ?.parentElement;
+    expect(mailPreview?.className).toContain("m-[12px_14px_12px]");
 
     fireEvent.click(screen.getByRole("button", { name: "수정" }));
     const drawer = screen.getByRole("dialog", { name: "초대 메일 수정" });
