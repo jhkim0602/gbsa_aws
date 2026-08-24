@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -280,5 +280,25 @@ describe("Lane D review journey", () => {
       .closest("section");
     expect(timelinePanel?.parentElement?.className).not.toContain("sticky");
     expect(humanReviewPanel?.parentElement?.className).toContain("sticky");
+
+    fireEvent.click(screen.getByRole("tab", { name: "면접 타임라인" }));
+    const expandedTimeline = screen.getByRole("tabpanel", {
+      name: "면접 타임라인",
+    });
+    expect(within(expandedTimeline).queryByRole("video")).toBeNull();
+    expect(
+      within(expandedTimeline).getByText(
+        "구간을 선택하면 왼쪽 면접 영상이 해당 시점으로 이동합니다.",
+      ),
+    ).toBeTruthy();
+    const expandedAnswer = within(expandedTimeline)
+      .getByText("캐시와 큐의 장단점을 비교했습니다.")
+      .closest("button");
+    expect(expandedAnswer).toBeTruthy();
+    fireEvent.click(expandedAnswer!);
+    expect(video?.currentTime).toBe(62);
+    expect(
+      within(expandedTimeline).getByPlaceholderText("자막 내용 검색"),
+    ).toBeTruthy();
   });
 });

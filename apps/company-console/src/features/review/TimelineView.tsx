@@ -66,6 +66,8 @@ const TIMELINE_LIST =
   "grid max-h-[calc(100vh-390px)] overflow-auto px-2.5 pb-2.5" +
   " mw-820:max-h-[360px]";
 
+const TIMELINE_LIST_EXPANDED = "grid px-3 pb-3";
+
 const ENTRY_SEEK =
   "grid w-full grid-cols-[26px_minmax(0,1fr)] items-start gap-2 rounded-sm px-1" +
   " py-2.5 text-left hover:bg-surface-muted";
@@ -105,6 +107,9 @@ export function TimelineView({
   selectedStartMs,
   onSeek,
   showTimeline = true,
+  showMedia = true,
+  expanded = false,
+  idPrefix = "timeline",
 }: {
   entries: ReviewTimelineEntry[];
   playbackStatus: "ready" | "partial" | "processing" | "unavailable";
@@ -112,6 +117,9 @@ export function TimelineView({
   selectedStartMs?: number | null;
   onSeek(startMs: number): void;
   showTimeline?: boolean;
+  showMedia?: boolean;
+  expanded?: boolean;
+  idPrefix?: string;
 }) {
   const [query, setQuery] = useState("");
   const mediaRef = useRef<HTMLVideoElement>(null);
@@ -152,8 +160,10 @@ export function TimelineView({
     }
   }
 
+  const titleId = `${idPrefix}-title`;
+
   return (
-    <section className={PANEL} aria-labelledby="timeline-title">
+    <section className={PANEL} aria-labelledby={titleId}>
       <header className={PANEL_HEADER}>
         <div className="flex min-w-0 items-center gap-[9px]">
           <span className={PANEL_ICON} aria-hidden="true">
@@ -163,7 +173,7 @@ export function TimelineView({
             <p className="font-mono text-[8px] font-semibold uppercase text-muted">
               영상 · 자막
             </p>
-            <h2 id="timeline-title" className="text-[12px] font-[650]">
+            <h2 id={titleId} className="text-[12px] font-[650]">
               {showTimeline ? "면접 타임라인" : "면접 영상"}
             </h2>
           </span>
@@ -177,43 +187,51 @@ export function TimelineView({
         </span>
       </header>
 
-      <div className="border-b border-border-muted p-2.5">
-        {playbackUrl ? (
-          <video
-            className="aspect-video w-full rounded-sm bg-[#111318]"
-            ref={mediaRef}
-            controls
-            preload="metadata"
-            src={playbackUrl}
-          >
-            {captionUrl ? (
-              <track
-                kind="captions"
-                label="한국어 자막"
-                srcLang="ko"
-                src={captionUrl}
-                default
-              />
-            ) : null}
-          </video>
-        ) : (
-          <div className="flex min-h-[162px] items-center justify-center gap-2.5 rounded-sm bg-surface-strong text-muted">
-            <Video size={28} aria-hidden="true" />
-            <span className="grid gap-0.5">
-              <strong className="text-[10px]">
-                {playbackLabel(playbackStatus)}
-              </strong>
-              <small className="max-w-[190px] text-[8px] leading-[1.45]">
-                영상이 준비되면 Evidence 구간을 바로 재생합니다.
-              </small>
-            </span>
-          </div>
-        )}
-      </div>
+      {showMedia ? (
+        <div className="border-b border-border-muted p-2.5">
+          {playbackUrl ? (
+            <video
+              className="aspect-video w-full rounded-sm bg-[#111318]"
+              ref={mediaRef}
+              controls
+              preload="metadata"
+              src={playbackUrl}
+            >
+              {captionUrl ? (
+                <track
+                  kind="captions"
+                  label="한국어 자막"
+                  srcLang="ko"
+                  src={captionUrl}
+                  default
+                />
+              ) : null}
+            </video>
+          ) : (
+            <div className="flex min-h-[162px] items-center justify-center gap-2.5 rounded-sm bg-surface-strong text-muted">
+              <Video size={28} aria-hidden="true" />
+              <span className="grid gap-0.5">
+                <strong className="text-[10px]">
+                  {playbackLabel(playbackStatus)}
+                </strong>
+                <small className="max-w-[190px] text-[8px] leading-[1.45]">
+                  영상이 준비되면 Evidence 구간을 바로 재생합니다.
+                </small>
+              </span>
+            </div>
+          )}
+        </div>
+      ) : (
+        <p className="border-b border-border-muted bg-brand-soft px-3 py-2 text-[9px] text-ink-secondary">
+          구간을 선택하면 왼쪽 면접 영상이 해당 시점으로 이동합니다.
+        </p>
+      )}
 
       {showTimeline ? (
         <>
-          <label className="relative m-2.5 flex items-center">
+          <label
+            className={`relative flex items-center ${expanded ? "m-3" : "m-2.5"}`}
+          >
             <span className="sr-only">자막 검색</span>
             <Search
               className="absolute left-[9px] text-subtle"
@@ -221,7 +239,7 @@ export function TimelineView({
               aria-hidden="true"
             />
             <input
-              className={SEARCH_INPUT}
+              className={`${SEARCH_INPUT} ${expanded ? "h-9 text-[10px]" : ""}`}
               value={query}
               placeholder="자막 내용 검색"
               onChange={(event) => setQuery(event.target.value)}
@@ -231,7 +249,7 @@ export function TimelineView({
             </small>
           </label>
 
-          <ol className={TIMELINE_LIST}>
+          <ol className={expanded ? TIMELINE_LIST_EXPANDED : TIMELINE_LIST}>
             {visible.map((entry) => {
               const Icon = typeIcons[entry.type];
               return (
@@ -240,19 +258,27 @@ export function TimelineView({
                   className="not-first:border-t not-first:border-border-muted"
                 >
                   <button
-                    className={ENTRY_SEEK}
+                    className={`${ENTRY_SEEK} ${
+                      expanded
+                        ? "grid-cols-[32px_minmax(0,1fr)] gap-3 px-2 py-3"
+                        : ""
+                    }`}
                     type="button"
                     onClick={() => selectTime(entry.startMs)}
                   >
                     <span
-                      className={`${ENTRY_ICON} ${ENTRY_ICON_TONE[entry.type]}`}
+                      className={`${ENTRY_ICON} ${ENTRY_ICON_TONE[entry.type]} ${
+                        expanded ? "size-8" : ""
+                      }`}
                     >
-                      <Icon size={15} aria-hidden="true" />
+                      <Icon size={expanded ? 17 : 15} aria-hidden="true" />
                     </span>
                     <span className="grid gap-1">
                       <span className="flex items-center justify-between">
                         <span className="flex items-center gap-1.5">
-                          <strong className="text-[9px]">
+                          <strong
+                            className={expanded ? "text-[11px]" : "text-[9px]"}
+                          >
                             {typeLabels[entry.type]}
                           </strong>
                           {entry.questionRationale?.interviewStage ? (
@@ -263,17 +289,29 @@ export function TimelineView({
                             </small>
                           ) : null}
                         </span>
-                        <time className="font-mono text-[8px] text-subtle">
+                        <time
+                          className={`font-mono text-subtle ${
+                            expanded ? "text-[10px]" : "text-[8px]"
+                          }`}
+                        >
                           {formatTime(entry.startMs)}
                         </time>
                       </span>
-                      <small className="text-[9px] leading-[1.5] text-muted">
+                      <small
+                        className={`leading-[1.6] text-muted ${
+                          expanded ? "text-[11px]" : "text-[9px]"
+                        }`}
+                      >
                         {entry.text ?? "기술 이벤트"}
                       </small>
                     </span>
                   </button>
                   {entry.questionRationale ? (
-                    <details className="mr-1 mb-2.5 ml-[38px] rounded-[5px] border border-border-muted bg-surface-muted">
+                    <details
+                      className={`mr-1 mb-2.5 rounded-[5px] border border-border-muted bg-surface-muted ${
+                        expanded ? "ml-[52px]" : "ml-[38px]"
+                      }`}
+                    >
                       <summary className={RATIONALE_SUMMARY}>
                         <FileSearch size={14} aria-hidden="true" />
                         질문 근거

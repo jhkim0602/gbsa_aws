@@ -130,6 +130,8 @@ export function ReviewWorkspace({
         <div className="min-w-0 [grid-area:report]">
           <ReportView
             report={report}
+            timeline={timeline}
+            selectedStartMs={selectedStartMs}
             stageSummary={stageSummary}
             evidenceContext={evidenceContext}
             onOverride={overrideAssessment}

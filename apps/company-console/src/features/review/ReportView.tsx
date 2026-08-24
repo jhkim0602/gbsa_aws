@@ -4,6 +4,7 @@ import { type KeyboardEvent, useState } from "react";
 import { BUTTON_SECONDARY } from "../../app/styles/primitives";
 import { formatLocator, sourceTypeLabel } from "./questionSources";
 import { reviewErrorMessage } from "./reviewErrors";
+import { TimelineView } from "./TimelineView";
 import type {
   AssessmentState,
   AxisAssessment,
@@ -15,6 +16,7 @@ import type {
   ReviewQuestionSource,
   ReviewReport,
   ReviewReportItem,
+  ReviewTimeline,
   ScoreBreakdown,
 } from "./types";
 
@@ -119,6 +121,7 @@ const reportTabs = [
   { id: "overview", label: "종합평가" },
   { id: "criteria", label: "기준별 평가" },
   { id: "followups", label: "추가 확인" },
+  { id: "timeline", label: "면접 타임라인" },
 ] as const;
 
 type ReportTab = (typeof reportTabs)[number]["id"];
@@ -152,6 +155,8 @@ export function ReportView({
   report,
   evidenceContext = EMPTY_CONTEXT,
   stageSummary = [],
+  timeline,
+  selectedStartMs,
   onSelectEvidence,
   onOverride,
 }: {
@@ -159,6 +164,8 @@ export function ReportView({
   /** Resolves a citation to the answer it quoted. Absent leaves the spans unresolved. */
   evidenceContext?: ReviewEvidenceContext;
   stageSummary?: InterviewStageSummary[];
+  timeline?: ReviewTimeline;
+  selectedStartMs?: number | null;
   onSelectEvidence(startMs: number): void;
   onOverride?(
     reportItemId: string,
@@ -167,10 +174,14 @@ export function ReportView({
   ): Promise<void>;
 }) {
   const [activeTab, setActiveTab] = useState<ReportTab>("overview");
-  const activeIndex = reportTabs.findIndex((tab) => tab.id === activeTab);
+  const availableTabs = timeline
+    ? reportTabs
+    : reportTabs.filter((tab) => tab.id !== "timeline");
+  const activeIndex = availableTabs.findIndex((tab) => tab.id === activeTab);
 
   function selectTab(index: number) {
-    const tab = reportTabs[(index + reportTabs.length) % reportTabs.length];
+    const tab =
+      availableTabs[(index + availableTabs.length) % availableTabs.length];
     if (!tab) return;
     setActiveTab(tab.id);
     window.requestAnimationFrame(() => {
@@ -190,7 +201,7 @@ export function ReportView({
       selectTab(0);
     } else if (event.key === "End") {
       event.preventDefault();
-      selectTab(reportTabs.length - 1);
+      selectTab(availableTabs.length - 1);
     }
   }
 
@@ -230,7 +241,7 @@ export function ReportView({
         role="tablist"
         aria-label="리포트 항목"
       >
-        {reportTabs.map((tab) => (
+        {availableTabs.map((tab) => (
           <button
             key={tab.id}
             id={`report-tab-${tab.id}`}
@@ -248,64 +259,87 @@ export function ReportView({
         ))}
       </div>
 
-      {/* The canvas the sheet sits on, so the page reads as paper rather than as a panel.
+      {activeTab === "timeline" && timeline ? (
+        <div
+          id="report-panel-timeline"
+          className="bg-surface p-[14px] outline-none mw-680:p-3 print:hidden"
+          role="tabpanel"
+          aria-labelledby="report-tab-timeline"
+          tabIndex={0}
+        >
+          <TimelineView
+            entries={timeline.entries}
+            playbackStatus={timeline.playback.status}
+            playbackUrl={timeline.playback.url}
+            selectedStartMs={selectedStartMs}
+            onSeek={onSelectEvidence}
+            showMedia={false}
+            expanded
+            idPrefix="report-timeline"
+          />
+        </div>
+      ) : (
+        <>
+          {/* The canvas the sheet sits on, so the page reads as paper rather than as a panel.
           The column is sized explicitly: `justify-content: center` makes a grid column hug
           its content, so the sheet's `width: 100%` would otherwise resolve against whatever
           that tab happens to contain and every tab would be a different width. */}
-      <div className="grid grid-cols-[minmax(0,210mm)] justify-center bg-surface-strong p-[14px] mw-1180:bg-surface mw-1180:p-0 print:block print:bg-transparent print:p-0">
-        <article
-          id={`report-panel-${activeTab}`}
-          className={REPORT_PAGE}
-          role="tabpanel"
-          aria-labelledby={`report-tab-${activeTab}`}
-          tabIndex={0}
-        >
-          <header className="flex items-start justify-between gap-3 border-b border-ink px-[18mm] pt-[20mm] pb-[8mm] mw-1180:px-4 mw-1180:pt-4 mw-1180:pb-3">
-            <span>
-              <p className="font-mono text-[9px] font-semibold tracking-[0.06em] uppercase text-muted">
-                AI 면접 분석 리포트
-              </p>
-              <h3 className="mt-1 text-[20px] font-bold">
-                {reportTabs[activeIndex]?.label}
-              </h3>
-            </span>
-            {/* `.report-status--${status}` matched no rule in any stylesheet, so the badge
-                has always rendered in the base success tone. */}
-            <span
-              className={`${BADGE_BASE} bg-success-soft text-success`}
-              role="status"
+          <div className="grid grid-cols-[minmax(0,210mm)] justify-center bg-surface-strong p-[14px] mw-1180:bg-surface mw-1180:p-0 print:block print:bg-transparent print:p-0">
+            <article
+              id={`report-panel-${activeTab}`}
+              className={REPORT_PAGE}
+              role="tabpanel"
+              aria-labelledby={`report-tab-${activeTab}`}
+              tabIndex={0}
             >
-              {report.status === "ready" ? "분석 완료" : report.status}
-            </span>
-          </header>
+              <header className="flex items-start justify-between gap-3 border-b border-ink px-[18mm] pt-[20mm] pb-[8mm] mw-1180:px-4 mw-1180:pt-4 mw-1180:pb-3">
+                <span>
+                  <p className="font-mono text-[9px] font-semibold tracking-[0.06em] uppercase text-muted">
+                    AI 면접 분석 리포트
+                  </p>
+                  <h3 className="mt-1 text-[20px] font-bold">
+                    {availableTabs[activeIndex]?.label}
+                  </h3>
+                </span>
+                {/* `.report-status--${status}` matched no rule in any stylesheet, so the badge
+                has always rendered in the base success tone. */}
+                <span
+                  className={`${BADGE_BASE} bg-success-soft text-success`}
+                  role="status"
+                >
+                  {report.status === "ready" ? "분석 완료" : report.status}
+                </span>
+              </header>
 
-          <div className="grid content-start gap-4 px-[18mm] py-[10mm] mw-1180:px-4 mw-1180:py-3.5">
-            {activeTab === "overview" ? (
-              <OverviewPage report={report} stageSummary={stageSummary} />
-            ) : null}
-            {activeTab === "criteria" ? (
-              <CriteriaPage
-                report={report}
-                evidenceContext={evidenceContext}
-                onSelectEvidence={onSelectEvidence}
-                onOverride={onOverride}
-              />
-            ) : null}
-            {activeTab === "followups" ? (
-              <FollowUpPage report={report} />
-            ) : null}
-          </div>
+              <div className="grid content-start gap-4 px-[18mm] py-[10mm] mw-1180:px-4 mw-1180:py-3.5">
+                {activeTab === "overview" ? (
+                  <OverviewPage report={report} stageSummary={stageSummary} />
+                ) : null}
+                {activeTab === "criteria" ? (
+                  <CriteriaPage
+                    report={report}
+                    evidenceContext={evidenceContext}
+                    onSelectEvidence={onSelectEvidence}
+                    onOverride={onOverride}
+                  />
+                ) : null}
+                {activeTab === "followups" ? (
+                  <FollowUpPage report={report} />
+                ) : null}
+              </div>
 
-          <footer className="flex items-center justify-between gap-2.5 border-t border-border-muted px-[18mm] pt-[8mm] pb-[14mm] font-mono text-[8px] text-subtle mw-1180:px-4 mw-1180:py-3">
-            <span>AI 원본 · 최종 결정은 담당자가 기록합니다</span>
-            {/* Labelled as a section, not "2 / 3": a section can run past one sheet, and a
+              <footer className="flex items-center justify-between gap-2.5 border-t border-border-muted px-[18mm] pt-[8mm] pb-[14mm] font-mono text-[8px] text-subtle mw-1180:px-4 mw-1180:py-3">
+                <span>AI 원본 · 최종 결정은 담당자가 기록합니다</span>
+                {/* Labelled as a section, not "2 / 3": a section can run past one sheet, and a
                 bare fraction in a document footer reads as a page number that is wrong. */}
-            <span>
-              섹션 {activeIndex + 1} / {reportTabs.length}
-            </span>
-          </footer>
-        </article>
-      </div>
+                <span>
+                  섹션 {activeIndex + 1} / {availableTabs.length}
+                </span>
+              </footer>
+            </article>
+          </div>
+        </>
+      )}
     </section>
   );
 }
