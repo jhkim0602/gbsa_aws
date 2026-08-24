@@ -260,6 +260,30 @@
               $ref: ../../root.yaml#/components/schemas/InvitationBatchResult
       default:
         $ref: ../../root.yaml#/components/responses/Error
+/invitations/{invitation_id}/recruiting-state:
+  get:
+    operationId: getApplicantRecruitingState
+    x-owner-lane: A
+    tags:
+    - Hiring
+    security:
+    - CompanyBearer: []
+    parameters:
+    - name: invitation_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: Live applicant recruiting stage and the position's configurable stages
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/ApplicantRecruitingState
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
 /recruiting-stages:
   get:
     operationId: listRecruitingStages

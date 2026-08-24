@@ -37,6 +37,8 @@ paths:
     $ref: ./paths/company/paths.yaml#/~1competency-model-versions~1{version_id}~1publish
   /positions/{position_id}/invitations:
     $ref: ./paths/company/paths.yaml#/~1positions~1{position_id}~1invitations
+  /invitations/{invitation_id}/recruiting-state:
+    $ref: ./paths/company/paths.yaml#/~1invitations~1{invitation_id}~1recruiting-state
   /recruiting-stages:
     $ref: ./paths/company/paths.yaml#/~1recruiting-stages
   /positions/{position_id}/recruiting-stages:
@@ -1134,6 +1136,32 @@ components:
       - items
       properties:
         items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecruitingStage'
+    ApplicantRecruitingState:
+      type: object
+      additionalProperties: false
+      required:
+      - invitation_id
+      - position_id
+      - recruiting_stage_id
+      - pipeline_row_version
+      - stages
+      properties:
+        invitation_id:
+          type: string
+          format: uuid
+        position_id:
+          type: string
+          format: uuid
+        recruiting_stage_id:
+          type: string
+          format: uuid
+        pipeline_row_version:
+          type: integer
+          minimum: 1
+        stages:
           type: array
           items:
             $ref: '#/components/schemas/RecruitingStage'
@@ -2495,7 +2523,6 @@ components:
           type: string
           enum:
           - note
-          - bookmark
         target_id:
           type: string
           format: uuid
@@ -2507,20 +2534,45 @@ components:
       type: object
       additionalProperties: false
       required:
-      - decision
-      - reason
+      - recruiting_stage_id
+      - expected_pipeline_version
       properties:
-        decision:
+        recruiting_stage_id:
           type: string
-          enum:
-          - advance
-          - reject
-          - hold
-          - withdrawn
-        reason:
+          format: uuid
+        expected_pipeline_version:
+          type: integer
+          minimum: 1
+    FinalDecisionView:
+      type: object
+      additionalProperties: false
+      required:
+      - human_review
+      - invitation_id
+      - position_id
+      - recruiting_stage_id
+      - recruiting_stage_name
+      - pipeline_row_version
+      - invitation_state
+      properties:
+        human_review:
+          $ref: '#/components/schemas/HumanReviewView'
+        invitation_id:
           type: string
-          minLength: 1
-          maxLength: 5000
+          format: uuid
+        position_id:
+          type: string
+          format: uuid
+        recruiting_stage_id:
+          type: string
+          format: uuid
+        recruiting_stage_name:
+          type: string
+        pipeline_row_version:
+          type: integer
+          minimum: 1
+        invitation_state:
+          type: string
     HumanReviewView:
       type: object
       additionalProperties: false
@@ -2550,17 +2602,15 @@ components:
           type: object
           additionalProperties: true
           description: >-
-            What was recorded: the decision for a final_decision, the note text for a bookmark,
-            the new assessment state for an override. Without it the review history can say a
-            decision was made and not which one.
+            What was recorded: recruiting stage id and name for a final decision, note text for
+            a note, or the new assessment state for an override.
         reason:
           type: string
           nullable: true
           maxLength: 4000
           description: >-
-            The reviewer's own justification, required when overruling the AI or recording a
-            final decision. Stored since those endpoints existed but not previously returned,
-            so the console had no way to show it back.
+            The reviewer's own justification when overruling an AI assessment. Dynamic
+            recruiting-stage decisions do not require a separate reason.
     DeletionRequestCreate:
       type: object
       additionalProperties: false

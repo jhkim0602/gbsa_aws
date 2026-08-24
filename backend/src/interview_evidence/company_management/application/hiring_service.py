@@ -39,6 +39,14 @@ class ApplicantPipelineMove:
     expected_version: int
 
 
+@dataclass(frozen=True, slots=True)
+class ApplicantRecruitingState:
+    """The single live hiring-stage projection shared by every company view."""
+
+    invitation: Invitation
+    stages: tuple[RecruitingStage, ...]
+
+
 class HiringService:
     def __init__(
         self,
@@ -146,6 +154,25 @@ class HiringService:
         for position in self._repository.list_positions(context):
             self.ensure_default_stages(context, position.position_id)
         return self._repository.list_recruiting_stages(context)
+
+    def get_applicant_recruiting_state(
+        self,
+        context: TenantContext,
+        invitation_id: UUID,
+    ) -> ApplicantRecruitingState:
+        """Return the invitation's current pipeline assignment and its position stages.
+
+        The assignment on ``Invitation`` is authoritative. Reports and kanban views must read
+        this projection instead of persisting their own copy of a stage name or decision.
+        ``ensure_default_stages`` also backfills legacy invitations that predate the configurable
+        pipeline, so the returned assignment is always usable by the company console.
+        """
+        invitation = self._repository.get_invitation(context, invitation_id)
+        stages = self.ensure_default_stages(context, invitation.position_id)
+        invitation = self._repository.get_invitation(context, invitation_id)
+        if invitation.recruiting_stage_id is None:
+            raise RuntimeError("applicant recruiting stage was not initialized")
+        return ApplicantRecruitingState(invitation=invitation, stages=stages)
 
     def create_recruiting_stage(
         self,

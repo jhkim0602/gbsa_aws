@@ -138,6 +138,14 @@ export type CompanyRecruitingStage = Readonly<{
   rowVersion: number;
 }>;
 
+export type CompanyApplicantRecruitingState = Readonly<{
+  invitationId: string;
+  positionId: string;
+  recruitingStageId: string;
+  pipelineRowVersion: number;
+  stages: readonly CompanyRecruitingStage[];
+}>;
+
 export type CompanyApplicantPipelineMove = Readonly<{
   invitationId: string;
   expectedVersion: number;
@@ -163,6 +171,9 @@ export type CompanyOperationsApi = CompanyWorkspaceApi &
     listRecruitingStages?(
       positionId?: string,
     ): Promise<readonly CompanyRecruitingStage[]>;
+    getApplicantRecruitingState?(
+      invitationId: string,
+    ): Promise<CompanyApplicantRecruitingState>;
     createRecruitingStage?(
       positionId: string,
       name: string,

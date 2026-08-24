@@ -847,7 +847,6 @@ class HumanAssessmentReviewCreate(BaseModel):
 
 class ReviewType(StrEnum):
     note = "note"
-    bookmark = "bookmark"
 
 
 class ReviewArtifactCreate(BaseModel):
@@ -859,19 +858,12 @@ class ReviewArtifactCreate(BaseModel):
     value: constr(min_length=1, max_length=10000)
 
 
-class Decision(StrEnum):
-    advance = "advance"
-    reject = "reject"
-    hold = "hold"
-    withdrawn = "withdrawn"
-
-
 class FinalDecisionCreate(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    decision: Decision
-    reason: constr(min_length=1, max_length=5000)
+    recruiting_stage_id: UUID
+    expected_pipeline_version: int = Field(ge=1)
 
 
 class ReviewType1(StrEnum):
@@ -892,20 +884,31 @@ class HumanReviewView(BaseModel):
     value: dict[str, Any] | None = Field(
         None,
         description=(
-            "What was recorded: the decision for a final_decision, the note text for a bookmark,"
-            " the new assessment state for an override. Without it the review history can say a"
-            " decision was made and not which one."
+            "What was recorded: recruiting stage id and name for a final decision, note text for"
+            " a note, or the new assessment state for an override."
         ),
     )
     reason: str | None = Field(
         None,
         description=(
-            "The reviewer's own justification, required when overruling the AI or recording a"
-            " final decision. Stored since those endpoints existed but not previously returned,"
-            " so the console had no way to show it back."
+            "The reviewer's own justification when overruling an AI assessment. Dynamic"
+            " recruiting-stage decisions do not require a separate reason."
         ),
         max_length=4000,
     )
+
+
+class FinalDecisionView(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    human_review: HumanReviewView
+    invitation_id: UUID
+    position_id: UUID
+    recruiting_stage_id: UUID
+    recruiting_stage_name: str
+    pipeline_row_version: int = Field(ge=1)
+    invitation_state: str
 
 
 class ScopeType(StrEnum):

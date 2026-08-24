@@ -184,21 +184,16 @@ export type ReviewTimeline = {
   };
 };
 
-export type ReviewDeletion = {
-  status: string;
-  verifiedTargets: number;
-  expectedTargets: number;
-};
-
-export type ReviewHistoryEntry = {
-  id: string;
-  type: string;
-  createdBy: string;
-  createdAt: string;
-  /** What was recorded — the decision taken, or the note that was written. */
-  detail?: string;
-  /** The reviewer's own justification, present on overrides and final decisions. */
-  reason?: string;
+export type ReviewRecruitingState = {
+  invitationId: string;
+  positionId: string;
+  recruitingStageId: string;
+  pipelineRowVersion: number;
+  stages: ReadonlyArray<{
+    recruitingStageId: string;
+    name: string;
+    sortOrder: number;
+  }>;
 };
 
 export type ReviewApi = {
@@ -207,11 +202,7 @@ export type ReviewApi = {
     assessmentState: string,
     reason: string,
   ): Promise<void>;
-  addBookmark(targetId: string, value: string): Promise<void>;
-  recordFinalDecision(
-    invitationId: string,
-    decision: "advance" | "reject" | "hold" | "withdrawn",
-    reason: string,
-  ): Promise<void>;
-  requestDeletion(scopeId: string, reason: string): Promise<void>;
+  addNote(targetId: string, value: string): Promise<void>;
+  /** Phase 4 supplies the transactional pipeline move behind this UI boundary. */
+  saveFinalDecisionStage?(stageId: string): Promise<void>;
 };

@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
+from interview_evidence.reporting.api.company_routes import ReviewArtifactCreate
 from interview_evidence.reporting.domain.report import Report, ReportKind, ReportStatus
 from interview_evidence.reporting.domain.review import (
     Decision,
@@ -9,6 +10,7 @@ from interview_evidence.reporting.domain.review import (
     ReviewType,
 )
 from interview_evidence.shared.tenant import ActorType
+from pydantic import ValidationError
 
 NOW = datetime(2026, 8, 15, 9, 0, tzinfo=UTC)
 COMPANY_ID = UUID("00000000-0000-7000-8000-000000000001")
@@ -58,4 +60,20 @@ def test_only_company_user_can_author_final_decision() -> None:
             decision=Decision.ADVANCE,
             reason="AI가 추천했다.",
             created_at=NOW,
+        )
+
+
+def test_new_review_artifacts_only_accept_notes() -> None:
+    note = ReviewArtifactCreate(
+        review_type="note",
+        target_id=UUID("00000000-0000-7000-8000-000000000004"),
+        value="채용팀과 공유할 메모",
+    )
+    assert note.review_type == "note"
+
+    with pytest.raises(ValidationError):
+        ReviewArtifactCreate(
+            review_type="bookmark",  # type: ignore[arg-type]
+            target_id=UUID("00000000-0000-7000-8000-000000000004"),
+            value="더 이상 생성할 수 없음",
         )

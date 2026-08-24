@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Navigate,
   useNavigate,
@@ -23,6 +23,7 @@ import {
   CompanyOverview,
   CompanyPositions,
   PositionOperations,
+  type CompanyApplicantRecruitingState,
   type CompanyApplicantInsight,
   type CompanyApplicantReport,
   type CompanyDeletionStatus,
@@ -44,7 +45,6 @@ import {
 import {
   ReviewWorkspace,
   type ReviewApi,
-  type ReviewHistoryEntry,
   type ReviewReport,
   type ReviewTimeline,
   type ScoreBreakdown,
@@ -345,6 +345,18 @@ const companyOperationsApi: CompanyOperationsApi = {
       components["schemas"]["RecruitingStagePage"]
     >(`/v1/recruiting-stages${query}`);
     return result.items.map(toCompanyRecruitingStage);
+  },
+  async getApplicantRecruitingState(invitationId) {
+    const result = await companyRequest<
+      components["schemas"]["ApplicantRecruitingState"]
+    >(`/v1/invitations/${invitationId}/recruiting-state`);
+    return {
+      invitationId: result.invitation_id,
+      positionId: result.position_id,
+      recruitingStageId: result.recruiting_stage_id,
+      pipelineRowVersion: result.pipeline_row_version,
+      stages: result.stages.map(toCompanyRecruitingStage),
+    };
   },
   async createRecruitingStage(positionId, name) {
     const result = await companyRequest<
@@ -764,84 +776,6 @@ function toScoreBreakdown(
   };
 }
 
-const reviewTypeLabels: Record<string, string> = {
-  final_decision: "최종 결정",
-  assessment_override: "평가 수정",
-  bookmark: "검토 메모",
-  note: "메모",
-};
-
-/**
- * The reviews already recorded against this report, for the 검토 이력 panel.
- *
- * `history` is an optional prop that nothing ever passed, so the panel read "아직 기록된 검토
- * 이력이 없습니다." however many decisions and notes had been saved — the writes worked and were
- * simply never read back. The report response has carried `human_reviews` all along.
- *
- */
-function toReviewHistory(report: ReportResponse): ReviewHistoryEntry[] {
-  return [...(report.human_reviews ?? [])]
-    .sort((left, right) => right.created_at.localeCompare(left.created_at))
-    .map((review) => {
-      const detail = reviewDetail(review.review_type, review.value);
-      return {
-        id: review.human_review_id,
-        type: reviewTypeLabels[review.review_type] ?? review.review_type,
-        // The endpoint identifies the author by id only; the full uuid crowds the line out.
-        createdBy: `검토자 ${review.created_by.slice(0, 8)}`,
-        createdAt: formatReviewTimestamp(review.created_at),
-        ...(detail ? { detail } : {}),
-        ...(review.reason?.trim() ? { reason: review.reason.trim() } : {}),
-      };
-    });
-}
-
-const decisionLabels: Record<string, string> = {
-  advance: "진행",
-  hold: "보류",
-  reject: "불합격",
-  withdrawn: "지원 철회",
-};
-
-/** The recorded content, read out of the shape each review type stores it in. */
-function reviewDetail(
-  reviewType: string,
-  value: Readonly<Record<string, unknown>> | undefined,
-): string | undefined {
-  if (!value) return undefined;
-  if (reviewType === "final_decision") {
-    const decision = value.decision;
-    return typeof decision === "string"
-      ? (decisionLabels[decision] ?? decision)
-      : undefined;
-  }
-  if (reviewType === "assessment_override") {
-    const state = value.assessment_state;
-    return typeof state === "string"
-      ? (assessmentStateLabels[state] ?? state)
-      : undefined;
-  }
-  const text = value.text;
-  return typeof text === "string" && text.trim() ? text.trim() : undefined;
-}
-
-const assessmentStateLabels: Record<string, string> = {
-  confirmed: "확인됨",
-  partially_confirmed: "부분 확인",
-  insufficient_evidence: "근거 부족",
-  needs_follow_up: "추가 확인 필요",
-};
-
-function formatReviewTimestamp(value: string): string {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime())
-    ? value
-    : parsed.toLocaleString("ko-KR", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      });
-}
-
 function toReviewReport(report: ReportResponse): ReviewReport {
   return {
     summary: report.summary,
@@ -974,6 +908,8 @@ type PendingReportResponse = Readonly<{
 
 type TimelineResponse = components["schemas"]["TimelineView"];
 
+type FinalDecisionResponse = components["schemas"]["FinalDecisionView"];
+
 export function CompanyHomeRoute() {
   if (AUTH_CONFIG && !getCompanyAccessToken(localStorage)) {
     return <Navigate replace to="/auth/login" />;
@@ -1072,10 +1008,19 @@ export function ReviewRoute() {
     AUTOMATED_INTERVIEW_ENABLED && search.get("auto") === "1";
   const [report, setReport] = useState<ReportResponse | null>(null);
   const [timeline, setTimeline] = useState<TimelineResponse | null>(null);
+  const [recruitingState, setRecruitingState] =
+    useState<CompanyApplicantRecruitingState | null>(null);
   const [reportPending, setReportPending] = useState(false);
   const [error, setError] = useState(false);
   const authenticated =
     !AUTH_CONFIG || Boolean(getCompanyAccessToken(localStorage));
+
+  const fetchRecruitingState = useCallback(async () => {
+    if (!authenticated || !invitationId) return null;
+    const getRecruitingState = companyOperationsApi.getApplicantRecruitingState;
+    if (!getRecruitingState) return null;
+    return getRecruitingState(invitationId);
+  }, [authenticated, invitationId]);
 
   useEffect(() => {
     if (!authenticated) return;
@@ -1121,6 +1066,32 @@ export function ReviewRoute() {
     };
   }, [authenticated, automatedReview, sessionId]);
 
+  useEffect(() => {
+    let active = true;
+
+    async function refresh() {
+      try {
+        const state = await fetchRecruitingState();
+        if (active && state) setRecruitingState(state);
+      } catch {
+        if (active) setRecruitingState(null);
+      }
+    }
+
+    function refreshWhenVisible() {
+      if (document.visibilityState === "visible") void refresh();
+    }
+
+    void refresh();
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [fetchRecruitingState]);
+
   if (!authenticated) {
     return <Navigate replace to="/auth/login" />;
   }
@@ -1140,40 +1111,57 @@ export function ReviewRoute() {
         },
       );
     },
-    async addBookmark(targetId, value) {
+    async addNote(targetId, value) {
       await companyRequest(
         `/v1/interview-sessions/${sessionId}/review-artifacts`,
         {
           method: "POST",
-          headers: { "Idempotency-Key": idempotencyKey("bookmark") },
+          headers: { "Idempotency-Key": idempotencyKey("note") },
           body: JSON.stringify({
-            review_type: "bookmark",
+            review_type: "note",
             target_id: targetId,
             value,
           }),
         },
       );
     },
-    async recordFinalDecision(targetInvitationId, decision, reason) {
-      await companyRequest(
-        `/v1/invitations/${targetInvitationId}/final-decisions`,
-        {
-          method: "POST",
-          headers: { "Idempotency-Key": idempotencyKey("decision") },
-          body: JSON.stringify({ decision, reason }),
-        },
+    async saveFinalDecisionStage(stageId) {
+      if (!invitationId || !recruitingState) {
+        throw new Error("recruiting state is not ready");
+      }
+      let result: FinalDecisionResponse;
+      try {
+        result = await companyRequest<FinalDecisionResponse>(
+          `/v1/invitations/${invitationId}/final-decisions`,
+          {
+            method: "POST",
+            headers: { "Idempotency-Key": idempotencyKey("final-decision") },
+            body: JSON.stringify({
+              recruiting_stage_id: stageId,
+              expected_pipeline_version: recruitingState.pipelineRowVersion,
+            }),
+          },
+        );
+      } catch (cause) {
+        if (cause instanceof CompanyRequestError && cause.status === 409) {
+          try {
+            const latest = await fetchRecruitingState();
+            if (latest) setRecruitingState(latest);
+          } catch {
+            // Preserve the actionable conflict from the write; a later focus retries the read.
+          }
+        }
+        throw cause;
+      }
+      setRecruitingState((current) =>
+        current
+          ? {
+              ...current,
+              recruitingStageId: result.recruiting_stage_id,
+              pipelineRowVersion: result.pipeline_row_version,
+            }
+          : current,
       );
-    },
-    async requestDeletion(scopeId, reason) {
-      await companyRequest("/v1/privacy/deletion-requests", {
-        method: "POST",
-        headers: { "Idempotency-Key": idempotencyKey("deletion") },
-        body: JSON.stringify({
-          scope_type: "invitation",
-          scope_id: scopeId,
-          reason,
-        }),
-      });
     },
   };
 
@@ -1208,12 +1196,7 @@ export function ReviewRoute() {
           api={reviewApi}
           report={toReviewReport(report)}
           timeline={toReviewTimeline(timeline)}
-          history={toReviewHistory(report)}
-          deletion={{
-            status: "not_requested",
-            verifiedTargets: 0,
-            expectedTargets: 0,
-          }}
+          recruitingState={recruitingState}
         />
       )}
     </>

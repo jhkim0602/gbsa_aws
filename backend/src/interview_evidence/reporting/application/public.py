@@ -76,7 +76,12 @@ class ReportingPublic:
             interview_session_id=report.interview_session_id,
             report_id=report.report_id,
             report_status=report.status.value,
-            human_decision_status=(decisions[-1].value.get("decision") if decisions else None),
+            human_decision_status=(
+                decisions[-1].value.get("recruiting_stage_name")
+                or decisions[-1].value.get("decision")
+                if decisions
+                else None
+            ),
             # Free: `get_report_for_invitation` above already loaded the whole report with its
             # items, so these are property reads rather than another query.
             overall_score=report.overall_score,

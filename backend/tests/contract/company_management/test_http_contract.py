@@ -37,6 +37,7 @@ EXPECTED_OPERATIONS = {
     "publishCompetencyModelVersion",
     "listInvitations",
     "createInvitations",
+    "getApplicantRecruitingState",
     "exchangeApplicantInvitationToken",
     "revokeApplicantSession",
     "verifyApplicantIdentity",
@@ -75,6 +76,15 @@ def test_lane_a_exposes_the_frozen_http_operations() -> None:
     assert "patch" in app.openapi()["paths"]["/v1/positions/{position_id}"]
     assert "get" in app.openapi()["paths"]["/v1/positions/{position_id}/competency-model-versions"]
     assert "/v1/positions/{position_id}/invitations" in app.openapi()["paths"]
+    assert "/v1/invitations/{invitation_id}/recruiting-state" in app.openapi()["paths"]
+    recruiting_state_schema = app.openapi()["components"]["schemas"]["ApplicantRecruitingStateView"]
+    assert set(recruiting_state_schema["required"]) == {
+        "invitation_id",
+        "position_id",
+        "recruiting_stage_id",
+        "pipeline_row_version",
+        "stages",
+    }
     invitation_schema = app.openapi()["components"]["schemas"]["InvitationView"]
     assert invitation_schema["properties"]["interview_session_id"] == {
         "anyOf": [

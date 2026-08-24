@@ -3,7 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
+from interview_evidence.company_management.application.company_service import (
+    CompanyManagementPublic,
+    InvitationAuthorization,
+    InvitationStateSnapshot,
+)
+from interview_evidence.company_management.application.hiring_service import (
+    ApplicantPipelineMove,
+    HiringService,
+)
 from interview_evidence.reporting.application.public import ReportingPublic
+from interview_evidence.shared.ids import CommandMeta
 from interview_evidence.shared.tenant import TenantContext
 
 
@@ -30,6 +40,90 @@ class CompanyDeletionProjection:
     status: str
     expected_targets: int
     verified_targets: int
+
+
+@dataclass(frozen=True, slots=True)
+class RecruitingStageDecisionProjection:
+    invitation_id: UUID
+    position_id: UUID
+    recruiting_stage_id: UUID
+    recruiting_stage_name: str
+    pipeline_row_version: int
+
+
+class ReportingHiringBoundary:
+    """Adapt hiring writes needed by reporting without importing Lane A into Lane D."""
+
+    def __init__(
+        self,
+        company: CompanyManagementPublic,
+        hiring: HiringService,
+    ) -> None:
+        self._company = company
+        self._hiring = hiring
+
+    def authorize_invitation(
+        self,
+        context: TenantContext,
+        invitation_id: UUID,
+        *,
+        required_state: str | frozenset[str],
+    ) -> InvitationAuthorization:
+        return self._company.authorize_invitation(
+            context,
+            invitation_id,
+            required_state=required_state,
+        )
+
+    def advance_invitation_state(
+        self,
+        context: TenantContext,
+        invitation_id: UUID,
+        *,
+        from_state: str,
+        to_state: str,
+        meta: CommandMeta,
+    ) -> InvitationStateSnapshot:
+        return self._company.advance_invitation_state(
+            context,
+            invitation_id,
+            from_state=from_state,
+            to_state=to_state,
+            meta=meta,
+        )
+
+    def move_to_recruiting_stage(
+        self,
+        context: TenantContext,
+        invitation_id: UUID,
+        *,
+        recruiting_stage_id: UUID,
+        expected_pipeline_version: int,
+    ) -> RecruitingStageDecisionProjection:
+        current = self._hiring.get_applicant_recruiting_state(context, invitation_id)
+        moved = self._hiring.move_applicants(
+            context,
+            position_id=current.invitation.position_id,
+            target_stage_id=recruiting_stage_id,
+            moves=(
+                ApplicantPipelineMove(
+                    invitation_id=invitation_id,
+                    expected_version=expected_pipeline_version,
+                ),
+            ),
+        )[0]
+        stage = next(
+            candidate
+            for candidate in current.stages
+            if candidate.recruiting_stage_id == recruiting_stage_id
+        )
+        return RecruitingStageDecisionProjection(
+            invitation_id=moved.invitation_id,
+            position_id=moved.position_id,
+            recruiting_stage_id=recruiting_stage_id,
+            recruiting_stage_name=stage.name,
+            pipeline_row_version=moved.pipeline_row_version,
+        )
 
 
 class ReportingCompanyBoundary:

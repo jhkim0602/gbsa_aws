@@ -12,9 +12,19 @@ import {
 
 const api: ReviewApi = {
   overrideAssessment: vi.fn().mockResolvedValue(undefined),
-  addBookmark: vi.fn().mockResolvedValue(undefined),
-  recordFinalDecision: vi.fn().mockResolvedValue(undefined),
-  requestDeletion: vi.fn().mockResolvedValue(undefined),
+  addNote: vi.fn().mockResolvedValue(undefined),
+  saveFinalDecisionStage: vi.fn().mockResolvedValue(undefined),
+};
+
+const recruitingState = {
+  invitationId: "invitation-1",
+  positionId: "position-1",
+  recruitingStageId: "stage-review",
+  pipelineRowVersion: 2,
+  stages: [
+    { recruitingStageId: "stage-review", name: "검토", sortOrder: 0 },
+    { recruitingStageId: "stage-pass", name: "1차 합격", sortOrder: 1 },
+  ],
 };
 
 describe("Lane D review journey", () => {
@@ -171,26 +181,26 @@ describe("Lane D review journey", () => {
     ]);
   });
 
-  it("records a human decision and exposes deletion residue", async () => {
+  it("keeps only note and configurable final-decision controls", async () => {
     render(
       <HumanReview
         api={api}
         invitationId="invitation-1"
-        deletion={{
-          status: "retrying",
-          verifiedTargets: 3,
-          expectedTargets: 4,
-        }}
+        recruitingState={recruitingState}
       />,
     );
-    fireEvent.change(screen.getByLabelText("최종 결정 사유"), {
-      target: { value: "사람 검토 결과 다음 단계 진행" },
+    fireEvent.change(screen.getByLabelText("검토 메모"), {
+      target: { value: "팀과 공유할 메모" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "진행 결정" }));
-    expect(await screen.findByText("사람 결정이 기록되었습니다.")).toBeTruthy();
-    expect(api.recordFinalDecision).toHaveBeenCalled();
-    expect(screen.getByText("삭제 확인 3/4")).toBeTruthy();
-    expect(screen.getByRole("progressbar")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "메모 저장" }));
+    expect(await screen.findByText("메모를 저장했습니다.")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("최종 결정 채용 단계"), {
+      target: { value: "stage-pass" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "최종 결정 저장" }));
+    expect(api.saveFinalDecisionStage).toHaveBeenCalledWith("stage-pass");
+    expect(screen.queryByText("검토 이력")).toBeNull();
+    expect(screen.queryByText("북마크 저장")).toBeNull();
   });
 
   it("keeps Evidence selection synchronized with the media timeline", () => {
@@ -256,11 +266,7 @@ describe("Lane D review journey", () => {
             url: "https://media.example.test/interview.m3u8",
           },
         }}
-        deletion={{
-          status: "not_requested",
-          verifiedTargets: 0,
-          expectedTargets: 0,
-        }}
+        recruitingState={recruitingState}
       />,
     );
 

@@ -9,8 +9,7 @@ import type {
   AssessmentState,
   InterviewStageSummary,
   ReviewApi,
-  ReviewDeletion,
-  ReviewHistoryEntry,
+  ReviewRecruitingState,
   ReviewReport,
   ReviewTimeline,
 } from "./types";
@@ -52,16 +51,14 @@ export function ReviewWorkspace({
   report,
   timeline,
   api,
-  deletion,
-  history = [],
+  recruitingState,
 }: {
   sessionId: string;
   invitationId: string;
   report: ReviewReport;
   timeline: ReviewTimeline;
   api: ReviewApi;
-  deletion: ReviewDeletion;
-  history?: ReviewHistoryEntry[];
+  recruitingState: ReviewRecruitingState | null;
 }) {
   const [selectedStartMs, setSelectedStartMs] = useState<number | null>(null);
   const evidenceContext = useMemo(
@@ -142,8 +139,7 @@ export function ReviewWorkspace({
           <HumanReview
             api={api}
             invitationId={invitationId}
-            deletion={deletion}
-            history={history}
+            recruitingState={recruitingState}
           />
         </div>
       </div>

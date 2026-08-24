@@ -88,7 +88,7 @@
             $ref: ../../root.yaml#/components/schemas/ReviewArtifactCreate
     responses:
       '201':
-        description: Note or bookmark created
+        description: Reviewer note created
         content:
           application/json:
             schema:
@@ -114,11 +114,11 @@
             $ref: ../../root.yaml#/components/schemas/FinalDecisionCreate
     responses:
       '201':
-        description: Human-authored final decision record
+        description: Recruiting stage updated with its human decision audit record
         content:
           application/json:
             schema:
-              $ref: ../../root.yaml#/components/schemas/HumanReviewView
+              $ref: ../../root.yaml#/components/schemas/FinalDecisionView
       default:
         $ref: ../../root.yaml#/components/responses/Error
 /privacy/deletion-requests:

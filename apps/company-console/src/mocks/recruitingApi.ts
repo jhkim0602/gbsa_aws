@@ -162,6 +162,26 @@ export const mockCompanyOperationsApi: CompanyOperationsApi = {
       : (await loadFixture()).positions.map((position) => position.positionId);
     return positions.flatMap(mockStages);
   },
+  async getApplicantRecruitingState(invitationId) {
+    const fixture = await loadFixture();
+    const invitation = fixture.invitations.find(
+      (candidate) => candidate.invitationId === invitationId,
+    );
+    if (!invitation) throw new Error("mock invitation not found");
+    const stages = mockStages(invitation.positionId);
+    const recruitingStageId =
+      invitation.recruitingStageId ??
+      stages.find((stage) => stage.name === mockDefaultStage(invitation.status))
+        ?.recruitingStageId;
+    if (!recruitingStageId) throw new Error("mock recruiting stage not found");
+    return {
+      invitationId,
+      positionId: invitation.positionId,
+      recruitingStageId,
+      pipelineRowVersion: invitation.pipelineRowVersion ?? 1,
+      stages: [...stages],
+    };
+  },
   async createRecruitingStage(positionId, name) {
     const stages = mockStages(positionId);
     const stage: CompanyRecruitingStage = {
