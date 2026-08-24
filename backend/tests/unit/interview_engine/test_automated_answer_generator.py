@@ -4,6 +4,7 @@ from unittest.mock import Mock
 from uuid import UUID
 
 from interview_evidence.interview_engine.application.automated_answer_generator import (
+    ANTHROPIC_BEDROCK_VERSION,
     AutomatedAnswerGenerator,
 )
 from interview_evidence.interview_engine.application.interview_plan import InterviewStage
@@ -118,6 +119,7 @@ def test_generated_answer_uses_the_current_questions_source_excerpts() -> None:
     assert "Google Cloud STT" in generated.text
     retrieval.retrieve.assert_not_called()
     prompt = model.calls[0][1]
+    assert prompt["anthropic_version"] == ANTHROPIC_BEDROCK_VERSION
     payload = json.loads(prompt["messages"][0]["content"][0]["text"])
     assert payload["question"] == question.text
     assert payload["provided_sources"][0]["excerpt"] == source.excerpt

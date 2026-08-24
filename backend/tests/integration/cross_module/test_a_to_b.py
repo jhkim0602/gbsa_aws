@@ -145,7 +145,6 @@ def build_consented_invitation() -> tuple[
         applicant_context,
         applicant_principal,
         display_name="Applicant",
-        verification_value="verified",
     )
     access_service.record_consent(
         applicant_context,

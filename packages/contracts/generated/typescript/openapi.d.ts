@@ -717,7 +717,6 @@ export interface components {
         };
         readonly ApplicantIdentityVerification: {
             readonly display_name: string;
-            readonly verification_value: string;
         };
         readonly ApplicantTokenExchange: {
             readonly invitation_token: string;

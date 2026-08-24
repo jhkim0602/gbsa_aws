@@ -1382,16 +1382,11 @@ components:
       additionalProperties: false
       required:
       - display_name
-      - verification_value
       properties:
         display_name:
           type: string
           minLength: 1
           maxLength: 200
-        verification_value:
-          type: string
-          minLength: 1
-          maxLength: 500
     ApplicantAccessState:
       type: object
       additionalProperties: false

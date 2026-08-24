@@ -39,9 +39,6 @@ describe("ApplicantAccess", () => {
     fireEvent.change(screen.getByLabelText("이름"), {
       target: { value: "홍길동" },
     });
-    fireEvent.change(screen.getByLabelText("확인 값"), {
-      target: { value: "1234" },
-    });
     fireEvent.click(screen.getByRole("button", { name: "본인 확인 완료" }));
 
     expect(await screen.findByText("개인정보 및 면접 처리 동의")).toBeTruthy();
@@ -61,7 +58,7 @@ describe("ApplicantAccess", () => {
     fireEvent.click(screen.getByRole("button", { name: "자료 제출로 이동" }));
     expect(onContinue).toHaveBeenCalledOnce();
     expect(api.exchangeToken).toHaveBeenCalledWith("t".repeat(48));
-    expect(api.verifyIdentity).toHaveBeenCalledWith("홍길동", "1234");
+    expect(api.verifyIdentity).toHaveBeenCalledWith("홍길동");
     expect(api.recordConsent).toHaveBeenCalledWith(consentPolicy, [
       "document_analysis",
       "recording",
@@ -84,9 +81,6 @@ describe("ApplicantAccess", () => {
     );
     fireEvent.change(await screen.findByLabelText("이름"), {
       target: { value: "홍길동" },
-    });
-    fireEvent.change(screen.getByLabelText("확인 값"), {
-      target: { value: "1234" },
     });
     fireEvent.click(screen.getByRole("button", { name: "본인 확인 완료" }));
     fireEvent.click(await screen.findByLabelText("문서 분석"));

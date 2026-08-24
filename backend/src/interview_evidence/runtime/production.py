@@ -485,6 +485,7 @@ def create_production_runtime(
                 audit=audit,
                 clock=clock,
                 deletion_service=lane_d.deletion_service,
+                invitations=company_public,
                 # The presigner comes from the media bucket's own storage adapter, so the
                 # URL the console puts in `<video src>` is a signed read of the assembled
                 # recording rather than a placeholder host that resolves nowhere.

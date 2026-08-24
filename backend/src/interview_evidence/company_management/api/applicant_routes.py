@@ -48,7 +48,6 @@ class ApplicantIdentityVerification(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     display_name: str = Field(min_length=1, max_length=200)
-    verification_value: str = Field(min_length=1, max_length=500)
 
 
 class ApplicantAccessState(BaseModel):
@@ -261,7 +260,6 @@ def create_applicant_router(
                 context,
                 principal,
                 display_name=body.display_name,
-                verification_value=body.verification_value,
             )
         except PermissionError as error:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN) from error

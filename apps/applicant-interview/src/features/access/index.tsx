@@ -29,7 +29,7 @@ export type ConsentPolicy = Readonly<{
 export type ApplicantAccessApi = {
   getInvitationPreview(token: string): Promise<ApplicantInvitationPreview>;
   exchangeToken(token: string): Promise<void>;
-  verifyIdentity(displayName: string, verificationValue: string): Promise<void>;
+  verifyIdentity(displayName: string): Promise<void>;
   getConsentPolicy(): Promise<ConsentPolicy>;
   recordConsent(
     policy: ConsentPolicy,
@@ -214,7 +214,6 @@ export function ApplicantAccess({
 }) {
   const [step, setStep] = useState<Step>("exchange");
   const [displayName, setDisplayName] = useState("");
-  const [verificationValue, setVerificationValue] = useState("");
   const [accepted, setAccepted] = useState<ConsentPurpose[]>([]);
   const [policy, setPolicy] = useState<ConsentPolicy | null>(null);
   const [preview, setPreview] = useState<ApplicantInvitationPreview | null>(
@@ -273,7 +272,7 @@ export function ApplicantAccess({
   async function verify(event: FormEvent) {
     event.preventDefault();
     await run(async () => {
-      await api.verifyIdentity(displayName, verificationValue);
+      await api.verifyIdentity(displayName);
       setPolicy(await api.getConsentPolicy());
       setStep("consent");
     });
@@ -335,7 +334,7 @@ export function ApplicantAccess({
                 <h2 className="text-[16px] tracking-normal">본인 확인</h2>
               </div>
               <p className={`mt-2.5 mb-6 ${BODY_COPY}`}>
-                초대받은 이름과 기업이 안내한 확인 값을 입력해 주세요.
+                초대받은 지원자 이름을 입력해 주세요.
               </p>
               <form className="grid gap-4" onSubmit={verify}>
                 <label className="grid gap-[7px] text-[13px] font-semibold">
@@ -348,24 +347,10 @@ export function ApplicantAccess({
                     onChange={(event) => setDisplayName(event.target.value)}
                   />
                 </label>
-                <label className="grid gap-[7px] text-[13px] font-semibold">
-                  <span>확인 값</span>
-                  <input
-                    className={FORM_INPUT}
-                    required
-                    autoComplete="one-time-code"
-                    value={verificationValue}
-                    onChange={(event) =>
-                      setVerificationValue(event.target.value)
-                    }
-                  />
-                </label>
                 <button
                   className={PRIMARY_ACTION}
                   type="submit"
-                  disabled={
-                    pending || !displayName.trim() || !verificationValue
-                  }
+                  disabled={pending || !displayName.trim()}
                 >
                   {pending ? "확인 중" : "본인 확인 완료"}
                 </button>

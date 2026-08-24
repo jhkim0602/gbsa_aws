@@ -89,14 +89,11 @@ class ApplicantAccessService:
         principal: ApplicantPrincipal,
         *,
         display_name: str,
-        verification_value: str,
     ) -> tuple[ApplicantProfile, Invitation]:
         context.assert_company(principal.company_id)
         invitation = self._repository.get_invitation(context, principal.invitation_id)
         if invitation.applicant_id != principal.applicant_id:
             raise PermissionError("applicant session is outside the invitation scope")
-        if not verification_value.strip():
-            raise PermissionError("identity verification failed")
         if display_name.strip().casefold() != invitation.applicant_display_name.casefold():
             raise PermissionError("identity verification failed")
         profile = ApplicantProfile(

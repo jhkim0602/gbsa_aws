@@ -407,7 +407,6 @@ class ApplicantIdentityVerification(BaseModel):
         extra="forbid",
     )
     display_name: constr(min_length=1, max_length=200)
-    verification_value: constr(min_length=1, max_length=500)
 
 
 class ApplicantAccessState(BaseModel):
