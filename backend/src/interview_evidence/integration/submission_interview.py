@@ -17,6 +17,9 @@ from interview_evidence.interview_engine.application.interview_plan import (
     InterviewPlan,
     VerificationTargetPlan,
 )
+from interview_evidence.interview_engine.application.question_policy import (
+    naturalize_polite_request,
+)
 from interview_evidence.shared.security.principals import ApplicantPrincipal
 from interview_evidence.shared.tenant import TenantContext
 from interview_evidence.submission_analysis.application.public import SubmissionAnalysisPublic
@@ -231,7 +234,10 @@ class SubmissionInterviewBoundary:
 
 
 def _as_question(value: str) -> str:
-    text = value.strip().rstrip(".!？? ")
+    naturalized = naturalize_polite_request(value)
+    if naturalized.endswith("?"):
+        return naturalized
+    text = naturalized.strip().rstrip(".!？? ")
     return f"{text}?"
 
 

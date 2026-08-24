@@ -159,3 +159,17 @@ def test_policy_keeps_the_first_submission_source_opening() -> None:
 
     assert result.accepted is True
     assert result.question.text == question
+
+
+def test_policy_naturalizes_a_polite_request_before_validation() -> None:
+    result = QuestionPolicy().evaluate(
+        draft("운영 문제를 해결하며 맡았던 역할을 설명해 주세요."),
+        allowed_criterion_ids=frozenset({CRITERION_A}),
+        prohibited_topics=(),
+        previous_questions=(),
+        fallback_question="문제를 해결한 과정을 설명해 주세요?",
+        fallback_criterion_id=CRITERION_A,
+    )
+
+    assert result.accepted is True
+    assert result.question.text == "운영 문제를 해결하며 맡았던 역할을 설명해 주시겠어요?"

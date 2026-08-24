@@ -37,7 +37,7 @@ FIXED_INTERVIEW_DURATION_SECONDS = 30 * 60
 EXPECTED_QUESTION_SECONDS = 90
 DEFAULT_OPENING_MESSAGE = "안녕하세요. 오늘은 기술, 프로젝트, 협업 경험을 중심으로 진행하겠습니다."
 DEFAULT_WARM_UP_QUESTION = (
-    "먼저 간단한 자기소개와 지원 직무와 관련해 가장 자신 있는 경험을 말씀해 주세요?"
+    "먼저 간단한 자기소개와 지원 직무와 관련해 가장 자신 있는 경험을 말씀해 주시겠어요?"
 )
 
 

@@ -35,6 +35,17 @@ _SOURCE_OPENING_PATTERN = re.compile(
 )
 
 
+def naturalize_polite_request(text: str) -> str:
+    stripped = text.strip()
+    if "?" in stripped:
+        return stripped
+    body = stripped.rstrip(".!！。 ")
+    if not body.endswith("주세요"):
+        return stripped
+    stem = body[: -len("주세요")].rstrip()
+    return f"{stem} 주시겠어요?" if stem else stripped
+
+
 def _soften_repeated_source_opening(
     candidate: str,
     previous_questions: tuple[str, ...],
@@ -109,7 +120,7 @@ class QuestionPolicy:
         candidate = candidate.model_copy(
             update={
                 "text": _soften_repeated_source_opening(
-                    candidate.text,
+                    naturalize_polite_request(candidate.text),
                     previous_questions,
                 )
             }

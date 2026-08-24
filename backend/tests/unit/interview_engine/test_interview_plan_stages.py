@@ -37,6 +37,7 @@ def test_plan_has_fixed_stages_and_a_separate_warm_up() -> None:
         InterviewStage.BEHAVIORAL,
     )
     assert plan.opening_prompt.startswith("안녕하세요.")
+    assert plan.opening_prompt.endswith("말씀해 주시겠어요?")
     assert plan.is_warm_up_question(plan.opening_prompt)
     assert not plan.is_warm_up_question(plan.initial_question)
 
