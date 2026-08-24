@@ -103,7 +103,10 @@ class SubmissionService:
     ) -> Submission:
         existing = self._idempotency.get(
             context,
-            operation="submission.register_file",
+            operation=_idempotency_operation(
+                source_type=source_type,
+                invitation_id=principal.invitation_id,
+            ),
             idempotency_key=idempotency_key,
         )
         if existing is not None:
@@ -150,7 +153,10 @@ class SubmissionService:
     ) -> Submission:
         existing = self._idempotency.get(
             context,
-            operation="submission.register_public",
+            operation=_idempotency_operation(
+                source_type=source_type,
+                invitation_id=principal.invitation_id,
+            ),
             idempotency_key=idempotency_key,
         )
         if existing is not None:
@@ -274,10 +280,9 @@ class SubmissionService:
         idempotency_key: str,
     ) -> Submission:
         self._repository.save_submission(context, submission)
-        operation = (
-            "submission.register_public"
-            if submission.source_type is SourceType.PUBLIC_GIT
-            else "submission.register_file"
+        operation = _idempotency_operation(
+            source_type=submission.source_type,
+            invitation_id=submission.invitation_id,
         )
         self._idempotency.put(
             context,
@@ -355,6 +360,11 @@ class SubmissionService:
                 occurred_at=self._clock.now(),
             )
         )
+
+
+def _idempotency_operation(*, source_type: SourceType, invitation_id: UUID) -> str:
+    registration_type = "public" if source_type is SourceType.PUBLIC_GIT else "file"
+    return f"submission.register_{registration_type}:{invitation_id}"
 
 
 def _normalize_candidate_identity_inputs(
