@@ -208,6 +208,10 @@ describe("SubmissionWorkspace", () => {
         screen.getByRole("button", { name: "대표 프로젝트 선택" }),
       ).getByText("분석 중"),
     ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "환경 점검으로 이동" }),
+    ).toBeNull();
+    expect(screen.getByText("자료 분석 중")).toBeTruthy();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(READINESS_POLL_INTERVAL_MS_FOR_TEST);
@@ -218,6 +222,9 @@ describe("SubmissionWorkspace", () => {
       within(
         screen.getByRole("button", { name: "대표 프로젝트 선택" }),
       ).getByText("분석 보류"),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "환경 점검으로 이동" }),
     ).toBeTruthy();
   });
 

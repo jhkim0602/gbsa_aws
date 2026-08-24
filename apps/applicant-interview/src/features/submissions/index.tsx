@@ -969,6 +969,7 @@ export function SubmissionWorkspace({
   );
   const canContinue =
     remainingRequiredCount === 0 &&
+    !materialAnalysisPending &&
     readiness?.interviewReady === true &&
     Boolean(readiness.strategyId);
 
