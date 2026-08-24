@@ -269,13 +269,26 @@ describe("AI recruiting assistant", () => {
       within(dialog).getByRole("heading", { name: "지원자 평가 요약서" }),
     ).toBeTruthy();
     expect(
-      within(dialog).getByRole("heading", {
-        name: "2 AI 종합 평가 의견",
-      }),
+      within(dialog).getByRole("heading", { name: "한눈에 보기" }),
+    ).toBeTruthy();
+    expect(within(dialog).getByText("1 / 6")).toBeTruthy();
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "2 기준별 평가" }),
+    );
+    expect(
+      within(dialog).getByRole("heading", { name: "기준별 평가" }),
     ).toBeTruthy();
     expect(within(dialog).getByText("시스템 설계")).toBeTruthy();
+    expect(within(dialog).getByText("근거 충분 · 근거 2건")).toBeTruthy();
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "6 최종 검토" }),
+    );
     expect(
-      within(dialog).getByRole("columnheader", { name: "근거 수" }),
+      within(dialog).getByText(
+        "현재 화면은 조회 전용입니다. 채용 단계 변경은 지원자 관리의 칸반보드에서 할 수 있습니다.",
+      ),
     ).toBeTruthy();
     expect(within(dialog).queryByText(/문서 구분:/)).toBeNull();
     expect(within(dialog).queryByText(/보안 등급:/)).toBeNull();

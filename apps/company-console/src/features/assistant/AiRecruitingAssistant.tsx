@@ -398,6 +398,7 @@ export function AiRecruitingAssistant({
       <ApplicantReportModal
         preview={selectedReport}
         open={Boolean(selectedReport)}
+        api={api}
         onOpenChange={(open) => {
           if (!open) setSelectedReportInvitationId(null);
         }}

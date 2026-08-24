@@ -58,6 +58,7 @@ from interview_evidence.company_management.domain.hiring import (
     Invitation,
     InvitationStateChange,
     InvitationStatus,
+    RecruitingStage,
 )
 from interview_evidence.shared.email_templates import InvitationEmailTemplate
 from interview_evidence.shared.interview_level import InterviewLevel
@@ -154,6 +155,7 @@ class PositionRow(Base):
     description: Mapped[str] = mapped_column(String(20_000))
     role_type: Mapped[str | None] = mapped_column(String(100))
     headcount: Mapped[int | None] = mapped_column(Integer)
+    applicant_capacity: Mapped[int | None] = mapped_column(Integer)
     interview_capacity: Mapped[int | None] = mapped_column(Integer)
     interview_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     recruitment_start_at: Mapped[date | None] = mapped_column(Date)
@@ -279,6 +281,31 @@ class JobRequirementRow(Base):
     criterion_code: Mapped[str] = mapped_column(String(40))
 
 
+class RecruitingStageRow(Base):
+    __tablename__ = "recruiting_stages"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["company_id", "position_id"],
+            ["positions.company_id", "positions.position_id"],
+            name="fk_recruiting_stages_position",
+        ),
+        UniqueConstraint(
+            "company_id",
+            "position_id",
+            "name",
+            name="uq_recruiting_stages_position_name",
+        ),
+        Index("ix_recruiting_stages_position", "company_id", "position_id"),
+    )
+
+    company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    recruiting_stage_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    position_id: Mapped[UUID] = mapped_column(Uuid)
+    name: Mapped[str] = mapped_column(String(40))
+    sort_order: Mapped[int] = mapped_column(Integer)
+    row_version: Mapped[int] = mapped_column(Integer)
+
+
 class InvitationRow(Base):
     __tablename__ = "invitations"
     __table_args__ = (
@@ -295,10 +322,16 @@ class InvitationRow(Base):
             ],
             name="fk_invitations_criterion_version",
         ),
+        ForeignKeyConstraint(
+            ["company_id", "recruiting_stage_id"],
+            ["recruiting_stages.company_id", "recruiting_stages.recruiting_stage_id"],
+            name="fk_invitations_recruiting_stage",
+        ),
         UniqueConstraint("company_id", "applicant_id", name="uq_invitations_company_applicant"),
         UniqueConstraint("company_id", "token_hash", name="uq_invitations_company_token_hash"),
         Index("ix_invitations_position", "company_id", "position_id"),
         Index("ix_invitations_criterion_version", "company_id", "competency_model_version_id"),
+        Index("ix_invitations_recruiting_stage", "company_id", "recruiting_stage_id"),
     )
 
     company_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
@@ -315,6 +348,8 @@ class InvitationRow(Base):
     identity_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_state_actor_type: Mapped[str] = mapped_column(String(30))
     row_version: Mapped[int] = mapped_column(Integer)
+    recruiting_stage_id: Mapped[UUID | None] = mapped_column(Uuid)
+    pipeline_row_version: Mapped[int] = mapped_column(Integer, default=1)
 
 
 class InvitationStateHistoryRow(Base):
@@ -416,6 +451,14 @@ class CompanyRepository(Protocol):
     def save_position(self, context: TenantContext, position: Position) -> Position: ...
     def get_position(self, context: TenantContext, position_id: UUID) -> Position: ...
     def list_positions(self, context: TenantContext) -> tuple[Position, ...]: ...
+    def save_recruiting_stage(
+        self, context: TenantContext, stage: RecruitingStage
+    ) -> RecruitingStage: ...
+    def get_recruiting_stage(self, context: TenantContext, stage_id: UUID) -> RecruitingStage: ...
+    def list_recruiting_stages(
+        self, context: TenantContext, position_id: UUID | None = None
+    ) -> tuple[RecruitingStage, ...]: ...
+    def delete_recruiting_stage(self, context: TenantContext, stage_id: UUID) -> None: ...
     def save_interviewer_profile(
         self, context: TenantContext, profile: InterviewerProfile
     ) -> InterviewerProfile: ...
@@ -610,6 +653,7 @@ class SqlAlchemyCompanyRepository:
                 description=position.description,
                 role_type=position.role_type,
                 headcount=position.headcount,
+                applicant_capacity=position.applicant_capacity,
                 interview_capacity=position.interview_capacity,
                 interview_at=position.interview_at,
                 recruitment_start_at=position.recruitment_start_at,
@@ -645,6 +689,79 @@ class SqlAlchemyCompanyRepository:
             select(PositionRow).where(PositionRow.company_id == tenant.company_id)
         ).all()
         return tuple(self._position_from_row(row) for row in rows)
+
+    def save_recruiting_stage(
+        self,
+        context: TenantContext,
+        stage: RecruitingStage,
+    ) -> RecruitingStage:
+        self._tenant(context).assert_company(stage.company_id)
+        self._session.merge(
+            RecruitingStageRow(
+                company_id=stage.company_id,
+                recruiting_stage_id=stage.recruiting_stage_id,
+                position_id=stage.position_id,
+                name=stage.name,
+                sort_order=stage.sort_order,
+                row_version=stage.row_version,
+            )
+        )
+        self._session.flush()
+        return stage
+
+    def get_recruiting_stage(
+        self,
+        context: TenantContext,
+        stage_id: UUID,
+    ) -> RecruitingStage:
+        tenant = self._tenant(context)
+        row = self._session.scalar(
+            select(RecruitingStageRow).where(
+                RecruitingStageRow.company_id == tenant.company_id,
+                RecruitingStageRow.recruiting_stage_id == stage_id,
+            )
+        )
+        if row is None:
+            raise TenantScopedResourceNotFound("tenant-scoped resource not found")
+        return self._recruiting_stage_from_row(row)
+
+    def list_recruiting_stages(
+        self,
+        context: TenantContext,
+        position_id: UUID | None = None,
+    ) -> tuple[RecruitingStage, ...]:
+        tenant = self._tenant(context)
+        statement = select(RecruitingStageRow).where(
+            RecruitingStageRow.company_id == tenant.company_id
+        )
+        if position_id is not None:
+            statement = statement.where(RecruitingStageRow.position_id == position_id)
+        rows = self._session.scalars(
+            statement.order_by(
+                RecruitingStageRow.position_id,
+                RecruitingStageRow.sort_order,
+            )
+        ).all()
+        return tuple(self._recruiting_stage_from_row(row) for row in rows)
+
+    def delete_recruiting_stage(
+        self,
+        context: TenantContext,
+        stage_id: UUID,
+    ) -> None:
+        tenant = self._tenant(context)
+        predicate = (
+            RecruitingStageRow.company_id == tenant.company_id,
+            RecruitingStageRow.recruiting_stage_id == stage_id,
+        )
+        if self._session.scalar(select(RecruitingStageRow).where(*predicate)) is None:
+            raise TenantScopedResourceNotFound("tenant-scoped resource not found")
+        self._session.execute(
+            delete(RecruitingStageRow).where(
+                *predicate,
+            )
+        )
+        self._session.flush()
 
     def save_interviewer_profile(
         self, context: TenantContext, profile: InterviewerProfile
@@ -874,6 +991,8 @@ class SqlAlchemyCompanyRepository:
                 identity_verified_at=invitation.identity_verified_at,
                 last_state_actor_type=invitation.last_state_actor_type,
                 row_version=invitation.row_version,
+                recruiting_stage_id=invitation.recruiting_stage_id,
+                pipeline_row_version=invitation.pipeline_row_version,
             )
         )
         self._session.flush()
@@ -1053,6 +1172,7 @@ class SqlAlchemyCompanyRepository:
             description=row.description,
             role_type=row.role_type,
             headcount=row.headcount,
+            applicant_capacity=row.applicant_capacity,
             interview_capacity=row.interview_capacity,
             interview_at=_aware(row.interview_at) if row.interview_at is not None else None,
             recruitment_start_at=row.recruitment_start_at,
@@ -1093,5 +1213,18 @@ class SqlAlchemyCompanyRepository:
             status=InvitationStatus(row.status),
             identity_verified_at=row.identity_verified_at,
             last_state_actor_type=row.last_state_actor_type,
+            row_version=row.row_version,
+            recruiting_stage_id=row.recruiting_stage_id,
+            pipeline_row_version=row.pipeline_row_version,
+        )
+
+    @staticmethod
+    def _recruiting_stage_from_row(row: RecruitingStageRow) -> RecruitingStage:
+        return RecruitingStage(
+            recruiting_stage_id=row.recruiting_stage_id,
+            company_id=row.company_id,
+            position_id=row.position_id,
+            name=row.name,
+            sort_order=row.sort_order,
             row_version=row.row_version,
         )

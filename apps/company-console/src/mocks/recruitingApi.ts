@@ -4,6 +4,7 @@ import type {
   CompanyInvitation,
   CompanyOperationsApi,
   CompanyPosition,
+  CompanyRecruitingStage,
   CompanySubmission,
   CompanyUser,
 } from "../features/company";
@@ -36,6 +37,8 @@ type RecruitingFixture = {
 };
 
 let fixturePromise: Promise<RecruitingFixture> | null = null;
+const mockStagesByPosition = new Map<string, CompanyRecruitingStage[]>();
+const DEFAULT_STAGE_NAMES = ["보류", "검토", "1차 합격", "최종합격", "불합격"];
 
 const mockAssistantAnswer: AssistantAnswerResponse = {
   scope: "company",
@@ -132,9 +135,111 @@ export const mockCompanyOperationsApi: CompanyOperationsApi = {
     return position;
   },
   async listInvitations(positionId) {
-    return (await loadFixture()).invitations.filter(
-      (invitation) => invitation.positionId === positionId,
+    const fixture = await loadFixture();
+    const stages = mockStages(positionId);
+    return fixture.invitations
+      .filter((invitation) => invitation.positionId === positionId)
+      .map((invitation) => {
+        if (invitation.recruitingStageId) return invitation;
+        const stage = stages.find(
+          (candidate) => candidate.name === mockDefaultStage(invitation.status),
+        );
+        const updated = {
+          ...invitation,
+          recruitingStageId: stage?.recruitingStageId ?? null,
+          pipelineRowVersion: invitation.pipelineRowVersion ?? 1,
+        };
+        const index = fixture.invitations.findIndex(
+          (candidate) => candidate.invitationId === invitation.invitationId,
+        );
+        if (index >= 0) fixture.invitations[index] = updated;
+        return updated;
+      });
+  },
+  async listRecruitingStages(positionId) {
+    const positions = positionId
+      ? [positionId]
+      : (await loadFixture()).positions.map((position) => position.positionId);
+    return positions.flatMap(mockStages);
+  },
+  async createRecruitingStage(positionId, name) {
+    const stages = mockStages(positionId);
+    const stage: CompanyRecruitingStage = {
+      recruitingStageId: `mock-stage-${positionId}-${Date.now()}`,
+      positionId,
+      name: name.trim(),
+      sortOrder: stages.length,
+      rowVersion: 1,
+    };
+    stages.push(stage);
+    return stage;
+  },
+  async updateRecruitingStage(positionId, stageId, name, rowVersion) {
+    const stages = mockStages(positionId);
+    const index = stages.findIndex(
+      (stage) => stage.recruitingStageId === stageId,
     );
+    if (index < 0) throw new Error("mock stage not found");
+    const updated = {
+      ...stages[index],
+      name: name.trim(),
+      rowVersion: rowVersion + 1,
+    };
+    stages[index] = updated;
+    return updated;
+  },
+  async reorderRecruitingStages(positionId, orderedStageIds) {
+    const byId = new Map(
+      mockStages(positionId).map((stage) => [stage.recruitingStageId, stage]),
+    );
+    const reordered = orderedStageIds.map((stageId, sortOrder) => ({
+      ...byId.get(stageId)!,
+      sortOrder,
+      rowVersion: (byId.get(stageId)?.rowVersion ?? 0) + 1,
+    }));
+    mockStagesByPosition.set(positionId, reordered);
+    return reordered;
+  },
+  async deleteRecruitingStage(positionId, stageId, replacementStageId) {
+    const fixture = await loadFixture();
+    fixture.invitations = fixture.invitations.map((invitation) =>
+      invitation.positionId === positionId &&
+      invitation.recruitingStageId === stageId
+        ? {
+            ...invitation,
+            recruitingStageId: replacementStageId,
+            pipelineRowVersion: (invitation.pipelineRowVersion ?? 1) + 1,
+          }
+        : invitation,
+    );
+    const remaining = mockStages(positionId)
+      .filter((stage) => stage.recruitingStageId !== stageId)
+      .map((stage, sortOrder) => ({ ...stage, sortOrder }));
+    mockStagesByPosition.set(positionId, remaining);
+    return remaining;
+  },
+  async moveApplicantsToRecruitingStage(positionId, targetStageId, applicants) {
+    const fixture = await loadFixture();
+    const assignments = applicants.map((move) => {
+      const index = fixture.invitations.findIndex(
+        (invitation) =>
+          invitation.positionId === positionId &&
+          invitation.invitationId === move.invitationId,
+      );
+      if (index < 0) throw new Error("mock invitation not found");
+      const pipelineRowVersion = move.expectedVersion + 1;
+      fixture.invitations[index] = {
+        ...fixture.invitations[index],
+        recruitingStageId: targetStageId,
+        pipelineRowVersion,
+      };
+      return {
+        invitationId: move.invitationId,
+        recruitingStageId: targetStageId,
+        pipelineRowVersion,
+      };
+    });
+    return assignments;
   },
   async requestApplicantDeletion(invitationId) {
     const fixture = await loadFixture();
@@ -244,17 +349,36 @@ export const mockCompanyOperationsApi: CompanyOperationsApi = {
   },
 };
 
+function mockStages(positionId: string) {
+  const existing = mockStagesByPosition.get(positionId);
+  if (existing) return existing;
+  const created = DEFAULT_STAGE_NAMES.map((name, sortOrder) => ({
+    recruitingStageId: `mock-stage-${positionId}-${sortOrder}`,
+    positionId,
+    name,
+    sortOrder,
+    rowVersion: 1,
+  }));
+  mockStagesByPosition.set(positionId, created);
+  return created;
+}
+
+function mockDefaultStage(status: CompanyInvitation["status"]) {
+  if (["interrupted", "expired", "revoked"].includes(status)) return "보류";
+  if (status === "completed") return "1차 합격";
+  if (status === "reviewed" || status === "deleted") return "최종합격";
+  return "검토";
+}
+
 export const mockRecruitingAssistantApi: RecruitingAssistantApi = {
   async answerQuestion(request) {
-    return answerForScope(request.positionId);
+    return answerForScope(request.query, request.positionId);
   },
   async streamAnswer(request, handlers) {
-    const response = answerForScope(request.positionId);
+    const response = await answerForScope(request.query, request.positionId);
     handlers.onStart?.({ archivedScope: false });
-    const sentences = [
-      "김민준 지원자는 백엔드 플랫폼 엔지니어 포지션에서 시스템 설계와 장애 대응 근거가 가장 구체적으로 확인됩니다. ",
-      "트래픽 급증 상황에서 병목 지표를 좁히고 ECS 오토 스케일링 정책을 조정한 판단 과정이 답변과 리포트에 함께 남아 있습니다. ",
-      "최종 판단 전 연결된 원문 근거를 검토해 주세요.",
+    const sentences = response.answer.match(/[^\n]+(?:\n|$)/g) ?? [
+      response.answer,
     ];
     let accumulated = "";
     for (const sentence of sentences) {
@@ -266,12 +390,101 @@ export const mockRecruitingAssistantApi: RecruitingAssistantApi = {
   },
 };
 
-function answerForScope(positionId?: string): AssistantAnswerResponse {
+async function answerForScope(
+  query: string,
+  positionId?: string,
+): Promise<AssistantAnswerResponse> {
+  const pipelineAnswer = await answerPipelineQuestion(query, positionId);
   return {
     ...mockAssistantAnswer,
     scope: positionId ? "position" : "company",
     positionId: positionId ?? null,
+    ...(pipelineAnswer
+      ? { answer: pipelineAnswer, sources: [], degradedMode: null }
+      : {}),
   };
+}
+
+async function answerPipelineQuestion(query: string, positionId?: string) {
+  const normalized = query.toLocaleLowerCase().replace(/\s+/g, " ").trim();
+  const fixture = await loadFixture();
+  const positions = fixture.positions.filter(
+    (position) => !positionId || position.positionId === positionId,
+  );
+  const stagesByPosition = new Map(
+    positions.map((position) => [
+      position.positionId,
+      mockStages(position.positionId),
+    ]),
+  );
+  const stageTerms = [...stagesByPosition.values()]
+    .flat()
+    .map((stage) => stage.name.toLocaleLowerCase());
+  const pipelineTerms = [
+    "채용 단계",
+    "현재 단계",
+    "단계별",
+    "칸반",
+    "현재 상태",
+  ];
+  const countTerms = ["몇 명", "몇명", "인원", "명인가", "카운트", "분포"];
+  if (
+    ![...pipelineTerms, ...countTerms, ...stageTerms].some((term) =>
+      normalized.includes(term),
+    )
+  ) {
+    return null;
+  }
+
+  const invitations = (
+    await Promise.all(
+      positions.map((position) =>
+        mockCompanyOperationsApi.listInvitations(position.positionId),
+      ),
+    )
+  ).flat();
+  const matched = invitations.filter((invitation) => {
+    const emailId = invitation.applicantEmail.split("@", 1)[0];
+    return [invitation.applicantDisplayName, invitation.applicantEmail, emailId]
+      .filter(Boolean)
+      .some((value) => normalized.includes(String(value).toLocaleLowerCase()));
+  });
+  if (matched.length > 0) {
+    return matched
+      .map((invitation) => {
+        const position = positions.find(
+          (candidate) => candidate.positionId === invitation.positionId,
+        );
+        const stage = stagesByPosition
+          .get(invitation.positionId)
+          ?.find(
+            (candidate) =>
+              candidate.recruitingStageId === invitation.recruitingStageId,
+          );
+        return `${invitation.applicantDisplayName ?? invitation.applicantEmail} 지원자는 ${position?.title ?? "해당"} 포지션의 현재 채용 단계가 ${stage?.name ?? "미지정"}입니다.`;
+      })
+      .join("\n");
+  }
+
+  if (
+    countTerms.some((term) => normalized.includes(term)) ||
+    normalized.includes("단계")
+  ) {
+    const blocks = positions.map((position) => {
+      const stages = stagesByPosition.get(position.positionId) ?? [];
+      const positionInvitations = invitations.filter(
+        (invitation) => invitation.positionId === position.positionId,
+      );
+      return `${position.title}: ${stages
+        .map(
+          (stage) =>
+            `${stage.name} ${positionInvitations.filter((invitation) => invitation.recruitingStageId === stage.recruitingStageId).length}명`,
+        )
+        .join(", ")}`;
+    });
+    return `현재 채용 단계별 인원은 다음과 같습니다.\n${blocks.join("\n")}`;
+  }
+  return null;
 }
 
 export const mockPositionInvitationApi: PositionInvitationApi = {

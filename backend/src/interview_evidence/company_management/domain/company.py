@@ -123,6 +123,7 @@ class Position(BaseModel):
     description: str = Field(min_length=1, max_length=20_000)
     role_type: str | None = Field(default=None, max_length=100)
     headcount: int | None = Field(default=None, ge=1, le=10_000)
+    applicant_capacity: int | None = Field(default=None, ge=1, le=100_000)
     interview_capacity: int | None = Field(default=None, ge=1, le=10_000)
     interview_at: datetime | None = None
     recruitment_start_at: date | None = None
@@ -171,8 +172,7 @@ class Position(BaseModel):
 
     def is_archived_on(self, current_date: date) -> bool:
         return self.status is PositionStatus.CLOSED or (
-            self.recruitment_end_at is not None
-            and current_date > self.recruitment_end_at
+            self.recruitment_end_at is not None and current_date > self.recruitment_end_at
         )
 
     def revise(
@@ -183,6 +183,7 @@ class Position(BaseModel):
         description: str,
         role_type: str | None,
         headcount: int | None,
+        applicant_capacity: int | None,
         interview_capacity: int | None,
         interview_at: datetime | None,
         recruitment_start_at: date | None,
@@ -208,6 +209,7 @@ class Position(BaseModel):
                     "description",
                     "role_type",
                     "headcount",
+                    "applicant_capacity",
                     "interview_capacity",
                     "interview_at",
                     "recruitment_start_at",
@@ -221,6 +223,7 @@ class Position(BaseModel):
             description=description,
             role_type=role_type,
             headcount=headcount,
+            applicant_capacity=applicant_capacity,
             interview_capacity=interview_capacity,
             interview_at=interview_at,
             recruitment_start_at=recruitment_start_at,

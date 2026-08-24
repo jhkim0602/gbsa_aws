@@ -110,6 +110,7 @@ function toCompanyPosition(position: PositionResponse) {
     description: position.description,
     roleType: position.role_type,
     headcount: position.headcount,
+    applicantCapacity: position.applicant_capacity,
     interviewCapacity: position.interview_capacity,
     interviewAt: position.interview_at,
     recruitmentStartAt: position.recruitment_start_at,

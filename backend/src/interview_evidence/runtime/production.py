@@ -501,6 +501,7 @@ def create_production_runtime(
                 answer_service=assistant_answers,
                 audit=audit,
                 clock=clock,
+                pipeline_reader=lane_a.hiring_service,
             ),
         ],
         readiness=readiness,

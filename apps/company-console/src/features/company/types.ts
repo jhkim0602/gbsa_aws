@@ -22,6 +22,7 @@ export type CompanyPosition = Readonly<{
   description: string;
   roleType?: string | null;
   headcount?: number | null;
+  applicantCapacity?: number | null;
   interviewCapacity?: number | null;
   interviewAt?: string | null;
   recruitmentStartAt?: string | null;
@@ -38,6 +39,7 @@ export type CompanyPositionUpdate = Readonly<{
   description: string;
   roleType?: string | null;
   headcount?: number | null;
+  applicantCapacity?: number | null;
   interviewCapacity?: number | null;
   interviewAt?: string | null;
   recruitmentStartAt?: string | null;
@@ -117,10 +119,28 @@ export type CompanyInvitation = Readonly<{
   status: CompanyInvitationStatus;
   expiresAt: string;
   rowVersion: number;
+  recruitingStageId?: string | null;
+  pipelineRowVersion?: number;
   analysisStatus?: string | null;
   interviewStatus?: string | null;
   reportStatus?: string | null;
   interviewSessionId?: string | null;
+  overallScore?: number | null;
+  scoredCriteriaCount?: number | null;
+  totalCriteriaCount?: number | null;
+}>;
+
+export type CompanyRecruitingStage = Readonly<{
+  recruitingStageId: string;
+  positionId: string;
+  name: string;
+  sortOrder: number;
+  rowVersion: number;
+}>;
+
+export type CompanyApplicantPipelineMove = Readonly<{
+  invitationId: string;
+  expectedVersion: number;
 }>;
 
 export type CompanyDeletionStatus = Readonly<{
@@ -140,6 +160,39 @@ export type CompanyDeletionStatus = Readonly<{
 export type CompanyOperationsApi = CompanyWorkspaceApi &
   Readonly<{
     listInvitations(positionId: string): Promise<readonly CompanyInvitation[]>;
+    listRecruitingStages?(
+      positionId?: string,
+    ): Promise<readonly CompanyRecruitingStage[]>;
+    createRecruitingStage?(
+      positionId: string,
+      name: string,
+    ): Promise<CompanyRecruitingStage>;
+    updateRecruitingStage?(
+      positionId: string,
+      stageId: string,
+      name: string,
+      rowVersion: number,
+    ): Promise<CompanyRecruitingStage>;
+    reorderRecruitingStages?(
+      positionId: string,
+      orderedStageIds: readonly string[],
+    ): Promise<readonly CompanyRecruitingStage[]>;
+    deleteRecruitingStage?(
+      positionId: string,
+      stageId: string,
+      replacementStageId: string,
+    ): Promise<readonly CompanyRecruitingStage[]>;
+    moveApplicantsToRecruitingStage?(
+      positionId: string,
+      targetStageId: string,
+      applicants: readonly CompanyApplicantPipelineMove[],
+    ): Promise<
+      ReadonlyArray<{
+        invitationId: string;
+        recruitingStageId: string;
+        pipelineRowVersion: number;
+      }>
+    >;
     updatePosition(input: CompanyPositionUpdate): Promise<CompanyPosition>;
     listCriterionVersions(
       positionId: string,

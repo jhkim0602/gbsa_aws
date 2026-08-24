@@ -12,6 +12,15 @@ from interview_evidence.shared.submission_materials import (
     normalize_submission_requirements,
 )
 
+DEFAULT_RECRUITING_STAGE_NAMES = (
+    "보류",
+    "검토",
+    "1차 합격",
+    "최종합격",
+    "불합격",
+)
+MAX_RECRUITING_STAGES = 20
+
 
 class InvitationStateError(ValueError):
     """Raised for invalid or stale invitation state transitions."""
@@ -31,6 +40,43 @@ class InvitationStatus(StrEnum):
     EXPIRED = "expired"
     REVOKED = "revoked"
     DELETED = "deleted"
+
+
+class RecruitingStage(BaseModel):
+    """A company-editable hiring stage, separate from applicant journey state."""
+
+    model_config = ConfigDict(frozen=True)
+
+    recruiting_stage_id: UUID
+    company_id: UUID
+    position_id: UUID
+    name: str = Field(min_length=1, max_length=40)
+    sort_order: int = Field(ge=0, lt=MAX_RECRUITING_STAGES)
+    row_version: int = Field(default=1, ge=1)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("recruiting stage name is required")
+        return normalized
+
+    def rename(self, name: str, *, expected_version: int) -> RecruitingStage:
+        if expected_version != self.row_version:
+            raise InvitationStateError("stale recruiting stage version")
+        return RecruitingStage(
+            **self.model_dump(exclude={"name", "row_version"}),
+            name=name,
+            row_version=self.row_version + 1,
+        )
+
+    def reorder(self, sort_order: int) -> RecruitingStage:
+        if sort_order == self.sort_order:
+            return self
+        return self.model_copy(
+            update={"sort_order": sort_order, "row_version": self.row_version + 1}
+        )
 
 
 TERMINAL_INVITATION_STATES = {
@@ -109,6 +155,8 @@ class Invitation(BaseModel):
     identity_verified_at: datetime | None = None
     last_state_actor_type: str = "company_user"
     row_version: int = Field(default=1, ge=1)
+    recruiting_stage_id: UUID | None = None
+    pipeline_row_version: int = Field(default=1, ge=1)
 
     @field_validator("applicant_email_normalized")
     @classmethod
@@ -141,6 +189,7 @@ class Invitation(BaseModel):
         submission_requirements: tuple[SubmissionRequirement, ...],
         token_hash: str,
         expires_at: datetime,
+        recruiting_stage_id: UUID | None = None,
     ) -> Invitation:
         return cls(
             invitation_id=invitation_id,
@@ -153,6 +202,24 @@ class Invitation(BaseModel):
             submission_requirements=submission_requirements,
             token_hash=token_hash,
             expires_at=expires_at,
+            recruiting_stage_id=recruiting_stage_id,
+        )
+
+    def move_to_recruiting_stage(
+        self,
+        stage_id: UUID,
+        *,
+        expected_version: int,
+    ) -> Invitation:
+        if expected_version != self.pipeline_row_version:
+            raise InvitationStateError("stale applicant pipeline version")
+        if self.recruiting_stage_id == stage_id:
+            return self
+        return self.model_copy(
+            update={
+                "recruiting_stage_id": stage_id,
+                "pipeline_row_version": self.pipeline_row_version + 1,
+            }
         )
 
     def transition(

@@ -63,8 +63,9 @@ export type ChatConversation = Readonly<{
 
 export type ApplicantReportPreview = Readonly<{
   invitation: CompanyInvitation;
-  insight: CompanyApplicantInsight;
+  insight?: CompanyApplicantInsight;
   positionTitle: string;
+  recruitingStageName?: string;
 }>;
 
 export const INITIAL_CONVERSATION: ChatConversation = {

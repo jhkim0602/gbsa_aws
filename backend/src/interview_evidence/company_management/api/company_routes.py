@@ -17,6 +17,7 @@ from interview_evidence.company_management.application.company_service import Co
 from interview_evidence.company_management.application.criteria_service import CriteriaService
 from interview_evidence.company_management.application.hiring_service import (
     ApplicantInvitationInput,
+    ApplicantPipelineMove,
     HiringService,
 )
 from interview_evidence.company_management.application.interviewer_service import (
@@ -39,7 +40,11 @@ from interview_evidence.company_management.domain.criteria import (
     PublishedVersionImmutableError,
     StaleCriterionVersionError,
 )
-from interview_evidence.company_management.domain.hiring import Invitation
+from interview_evidence.company_management.domain.hiring import (
+    Invitation,
+    InvitationStateError,
+    RecruitingStage,
+)
 from interview_evidence.company_management.repositories.postgres import (
     TenantScopedResourceNotFound,
 )
@@ -84,6 +89,7 @@ class PositionCreate(BaseModel):
     description: str = Field(min_length=1, max_length=20_000)
     role_type: str | None = Field(default=None, max_length=100)
     headcount: int | None = Field(default=None, ge=1, le=10_000)
+    applicant_capacity: int | None = Field(default=None, ge=1, le=100_000)
     interview_capacity: int | None = Field(default=None, ge=1, le=400)
     interview_at: datetime | None = None
     recruitment_start_at: date | None = None
@@ -282,6 +288,77 @@ class InvitationView(BaseModel):
     #: and a ranked column has to be able to say so.
     scored_criteria_count: int | None = None
     total_criteria_count: int | None = None
+    recruiting_stage_id: UUID | None = None
+    pipeline_row_version: int = 1
+
+
+class RecruitingStageView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    recruiting_stage_id: UUID
+    position_id: UUID
+    name: str
+    sort_order: int
+    row_version: int
+
+
+class RecruitingStagePage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[RecruitingStageView]
+
+
+class RecruitingStageCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=40)
+
+
+class RecruitingStageUpdate(RecruitingStageCreate):
+    pass
+
+
+class RecruitingStageReorder(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ordered_stage_ids: tuple[UUID, ...] = Field(min_length=1, max_length=20)
+
+
+class RecruitingStageDelete(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    replacement_stage_id: UUID
+
+
+class ApplicantPipelineMoveInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    invitation_id: UUID
+    expected_version: int = Field(ge=1)
+
+
+class ApplicantPipelineMoveBatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target_stage_id: UUID
+    applicants: tuple[ApplicantPipelineMoveInput, ...] = Field(
+        min_length=1,
+        max_length=1000,
+    )
+
+
+class ApplicantPipelineAssignmentView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    invitation_id: UUID
+    recruiting_stage_id: UUID
+    pipeline_row_version: int
+
+
+class ApplicantPipelineAssignmentPage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ApplicantPipelineAssignmentView]
 
 
 class InvitationSessionSnapshot(Protocol):
@@ -473,6 +550,7 @@ def create_company_router(
             description=body.description,
             role_type=body.role_type,
             headcount=body.headcount,
+            applicant_capacity=body.applicant_capacity,
             interview_capacity=body.interview_capacity,
             interview_at=body.interview_at,
             recruitment_start_at=body.recruitment_start_at,
@@ -522,6 +600,7 @@ def create_company_router(
                 description=body.description,
                 role_type=body.role_type,
                 headcount=body.headcount,
+                applicant_capacity=body.applicant_capacity,
                 interview_capacity=body.interview_capacity,
                 interview_at=body.interview_at,
                 recruitment_start_at=body.recruitment_start_at,
@@ -691,6 +770,219 @@ def create_company_router(
         return _criterion_view(version)
 
     @router.get(
+        "/recruiting-stages",
+        response_model=RecruitingStagePage,
+        operation_id="listRecruitingStages",
+    )
+    def list_recruiting_stages(
+        scope: Scope,
+        position_id: Annotated[UUID | None, Query()] = None,
+    ) -> RecruitingStagePage:
+        try:
+            stages = hiring_service.list_recruiting_stages(
+                scope.context,
+                position_id,
+            )
+        except TenantScopedResourceNotFound as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        return RecruitingStagePage(items=[_recruiting_stage_view(stage) for stage in stages])
+
+    @router.post(
+        "/positions/{position_id}/recruiting-stages",
+        response_model=RecruitingStageView,
+        status_code=status.HTTP_201_CREATED,
+        operation_id="createRecruitingStage",
+    )
+    def create_recruiting_stage(
+        position_id: UUID,
+        body: RecruitingStageCreate,
+        scope: Scope,
+    ) -> RecruitingStageView:
+        try:
+            stage = hiring_service.create_recruiting_stage(
+                scope.context,
+                position_id=position_id,
+                name=body.name,
+            )
+        except TenantScopedResourceNotFound as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(error),
+            ) from error
+        audit.append(
+            scope.context,
+            action="recruiting_stage.created",
+            resource_type="recruiting_stage",
+            resource_id=stage.recruiting_stage_id,
+            result="success",
+            metadata={"position_id": str(position_id)},
+        )
+        return _recruiting_stage_view(stage)
+
+    @router.patch(
+        "/positions/{position_id}/recruiting-stages/{stage_id}",
+        response_model=RecruitingStageView,
+        operation_id="updateRecruitingStage",
+    )
+    def update_recruiting_stage(
+        position_id: UUID,
+        stage_id: UUID,
+        body: RecruitingStageUpdate,
+        scope: Scope,
+        if_match_version: IfMatchVersion,
+    ) -> RecruitingStageView:
+        try:
+            stage = hiring_service.rename_recruiting_stage(
+                scope.context,
+                position_id=position_id,
+                stage_id=stage_id,
+                name=body.name,
+                expected_version=if_match_version,
+            )
+        except TenantScopedResourceNotFound as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        except InvitationStateError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(error),
+            ) from error
+        audit.append(
+            scope.context,
+            action="recruiting_stage.updated",
+            resource_type="recruiting_stage",
+            resource_id=stage_id,
+            result="success",
+            metadata={"position_id": str(position_id), "row_version": stage.row_version},
+        )
+        return _recruiting_stage_view(stage)
+
+    @router.post(
+        "/positions/{position_id}/recruiting-stages/reorder",
+        response_model=RecruitingStagePage,
+        operation_id="reorderRecruitingStages",
+    )
+    def reorder_recruiting_stages(
+        position_id: UUID,
+        body: RecruitingStageReorder,
+        scope: Scope,
+    ) -> RecruitingStagePage:
+        try:
+            stages = hiring_service.reorder_recruiting_stages(
+                scope.context,
+                position_id=position_id,
+                ordered_stage_ids=body.ordered_stage_ids,
+            )
+        except TenantScopedResourceNotFound as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(error),
+            ) from error
+        audit.append(
+            scope.context,
+            action="recruiting_stage.reordered",
+            resource_type="position",
+            resource_id=position_id,
+            result="success",
+            metadata={"stage_count": len(stages)},
+        )
+        return RecruitingStagePage(items=[_recruiting_stage_view(stage) for stage in stages])
+
+    @router.post(
+        "/positions/{position_id}/recruiting-stages/{stage_id}/delete",
+        response_model=RecruitingStagePage,
+        operation_id="deleteRecruitingStage",
+    )
+    def delete_recruiting_stage(
+        position_id: UUID,
+        stage_id: UUID,
+        body: RecruitingStageDelete,
+        scope: Scope,
+    ) -> RecruitingStagePage:
+        try:
+            stages = hiring_service.delete_recruiting_stage(
+                scope.context,
+                position_id=position_id,
+                stage_id=stage_id,
+                replacement_stage_id=body.replacement_stage_id,
+            )
+        except TenantScopedResourceNotFound as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(error),
+            ) from error
+        audit.append(
+            scope.context,
+            action="recruiting_stage.deleted",
+            resource_type="recruiting_stage",
+            resource_id=stage_id,
+            result="success",
+            metadata={"position_id": str(position_id)},
+        )
+        return RecruitingStagePage(items=[_recruiting_stage_view(stage) for stage in stages])
+
+    @router.patch(
+        "/positions/{position_id}/invitations/recruiting-stage",
+        response_model=ApplicantPipelineAssignmentPage,
+        operation_id="moveApplicantsToRecruitingStage",
+    )
+    def move_applicants_to_recruiting_stage(
+        position_id: UUID,
+        body: ApplicantPipelineMoveBatch,
+        scope: Scope,
+    ) -> ApplicantPipelineAssignmentPage:
+        try:
+            invitations = hiring_service.move_applicants(
+                scope.context,
+                position_id=position_id,
+                target_stage_id=body.target_stage_id,
+                moves=tuple(
+                    ApplicantPipelineMove(
+                        invitation_id=item.invitation_id,
+                        expected_version=item.expected_version,
+                    )
+                    for item in body.applicants
+                ),
+            )
+        except TenantScopedResourceNotFound as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        except InvitationStateError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(error),
+            ) from error
+        audit.append(
+            scope.context,
+            action="applicant_pipeline.moved",
+            resource_type="position",
+            resource_id=position_id,
+            result="success",
+            metadata={
+                "target_stage_id": str(body.target_stage_id),
+                "applicant_count": len(invitations),
+            },
+        )
+        return ApplicantPipelineAssignmentPage(
+            items=[
+                ApplicantPipelineAssignmentView(
+                    invitation_id=invitation.invitation_id,
+                    recruiting_stage_id=body.target_stage_id,
+                    pipeline_row_version=invitation.pipeline_row_version,
+                )
+                for invitation in invitations
+            ]
+        )
+
+    @router.get(
         "/positions/{position_id}/invitations",
         response_model=InvitationPage,
         operation_id="listInvitations",
@@ -699,13 +991,23 @@ def create_company_router(
         position_id: UUID,
         scope: Scope,
         cursor: Annotated[str | None, Query(max_length=512)] = None,
-        limit: Annotated[int, Query(ge=1, le=100)] = 50,
+        limit: Annotated[int, Query(ge=1, le=500)] = 100,
     ) -> InvitationPage:
-        del cursor
         try:
-            invitations = hiring_service.list_invitations(scope.context, position_id)[:limit]
+            offset = int(cursor or "0")
+            if offset < 0:
+                raise ValueError
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="invalid invitation cursor",
+            ) from error
+        try:
+            invitations = hiring_service.list_invitations(scope.context, position_id)
         except TenantScopedResourceNotFound as error:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        page = invitations[offset : offset + limit]
+        next_offset = offset + len(page)
         return InvitationPage(
             items=[
                 _invitation_view(
@@ -714,8 +1016,9 @@ def create_company_router(
                     invitation_reviews=invitation_reviews,
                     context=scope.context,
                 )
-                for invitation in invitations
-            ]
+                for invitation in page
+            ],
+            next_cursor=str(next_offset) if next_offset < len(invitations) else None,
         )
 
     @router.post(
@@ -1099,6 +1402,7 @@ def _position_view(position: Position) -> PositionView:
         description=position.description,
         role_type=position.role_type,
         headcount=position.headcount,
+        applicant_capacity=position.applicant_capacity,
         interview_capacity=position.interview_capacity,
         interview_at=position.interview_at,
         recruitment_start_at=position.recruitment_start_at,
@@ -1122,6 +1426,16 @@ def _interviewer_profile_view(profile: InterviewerProfile) -> InterviewerProfile
         voice_id=profile.voice_id,
         row_version=profile.row_version,
         created_at=profile.created_at,
+    )
+
+
+def _recruiting_stage_view(stage: RecruitingStage) -> RecruitingStageView:
+    return RecruitingStageView(
+        recruiting_stage_id=stage.recruiting_stage_id,
+        position_id=stage.position_id,
+        name=stage.name,
+        sort_order=stage.sort_order,
+        row_version=stage.row_version,
     )
 
 
@@ -1242,4 +1556,6 @@ def _invitation_view(
         # for an interview that has not happened.
         scored_criteria_count=(review.scored_criteria_count if review is not None else None),
         total_criteria_count=(review.total_criteria_count if review is not None else None),
+        recruiting_stage_id=invitation.recruiting_stage_id,
+        pipeline_row_version=invitation.pipeline_row_version,
     )

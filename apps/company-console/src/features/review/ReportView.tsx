@@ -1128,6 +1128,14 @@ const RADAR_CENTER_X = RADAR_WIDTH / 2;
 const RADAR_CENTER_Y = 118;
 const RADAR_RADIUS = 78;
 
+export function InterviewAxisRadarProfile({
+  items,
+}: {
+  items: ReviewReportItem[];
+}) {
+  return <AxisRadarProfile axes={summarizeAxes(items)} />;
+}
+
 /**
  * The report profile uses the same five named dimensions as the hiring configuration, but it
  * plots observed interview scores rather than recruiter preferences. Communication stays in the

@@ -16,7 +16,7 @@ import {
   UserRound,
   Video,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, Navigate } from "react-router-dom";
 
 import { applicantWorkspacePath } from "../../app/applicantWorkspacePath";
@@ -27,11 +27,8 @@ import {
   invitationTone,
 } from "../../app/styles/primitives";
 import { invitationStatusMeta } from "../hiring/PositionInvitations";
-import { TimelineView } from "../review";
-import {
-  ApplicantCapabilityBars,
-  applyConfiguredWeights,
-} from "./CompetencyInsights";
+import { InterviewAxisRadarProfile, TimelineView } from "../review";
+import { ApplicantCapabilityBars } from "./CompetencyInsights";
 import type {
   CompanyApplicantReport,
   CompanyInvitation,
@@ -39,6 +36,7 @@ import type {
   CompanySubmission,
 } from "./types";
 import { useRecruitingOperations } from "./useRecruitingOperations";
+import { useApplicantReviewDossier } from "./useApplicantReviewDossier";
 
 type PositionedInvitation = CompanyInvitation & { positionTitle: string };
 type ApplicantReportTab = "analysis" | "interview" | "materials" | "profile";
@@ -103,58 +101,20 @@ export function ApplicantDetail({
   );
   const [selectedTab, setSelectedTab] =
     useState<ApplicantReportTab>("analysis");
-  const [submissions, setSubmissions] = useState<readonly CompanySubmission[]>(
-    [],
-  );
-  const [report, setReport] = useState<CompanyApplicantReport | null>(null);
-  const [detailLoading, setDetailLoading] = useState(true);
   const [selectedStartMs, setSelectedStartMs] = useState<number | null>(null);
   const reviewPath = invitation ? applicantWorkspacePath(invitation) : null;
   const redirectToReview = reviewPath?.startsWith("/review/")
     ? reviewPath
     : null;
-
-  useEffect(() => {
-    if (!invitation || redirectToReview) return;
-    let active = true;
-    setDetailLoading(true);
-    const reportRequest =
-      invitation.interviewSessionId && api.getApplicantReport
-        ? api.getApplicantReport(
-            invitation.interviewSessionId,
-            invitationId,
-            invitation.competencyModelVersionId,
-          )
-        : Promise.resolve(null);
-    Promise.allSettled([
-      api.listSubmissions(invitationId),
-      reportRequest,
-      api.listCriterionVersions(positionId),
-    ]).then(([submissionResult, reportResult, criteriaResult]) => {
-      if (!active) return;
-      setSubmissions(
-        submissionResult.status === "fulfilled" ? submissionResult.value : [],
-      );
-      const loadedReport =
-        reportResult.status === "fulfilled" ? reportResult.value : null;
-      const versions =
-        criteriaResult.status === "fulfilled" ? criteriaResult.value : [];
-      setReport(
-        loadedReport
-          ? {
-              ...loadedReport,
-              insight:
-                applyConfiguredWeights([loadedReport.insight], versions)[0] ??
-                loadedReport.insight,
-            }
-          : null,
-      );
-      setDetailLoading(false);
-    });
-    return () => {
-      active = false;
-    };
-  }, [api, invitation, invitationId, positionId, redirectToReview]);
+  const {
+    submissions,
+    report,
+    loading: detailLoading,
+  } = useApplicantReviewDossier({
+    api,
+    invitation,
+    enabled: Boolean(invitation && !redirectToReview),
+  });
 
   if (loading) {
     return (
@@ -374,6 +334,23 @@ function AnalysisPanel({
           </div>
         </section>
       </div>
+
+      <section className={CARD}>
+        <header className={CARD_HEADER}>
+          <div>
+            <p className="text-[9px] font-bold text-brand uppercase">
+              INTERVIEW PROFILE
+            </p>
+            <h2 className="mt-1 text-[14px] text-ink">5축 역량 레이더</h2>
+            <p className="mt-1 text-[10px] text-muted">
+              정확성·깊이·CS 기본기·본인 기여·설명력을 답변 근거로 비교합니다.
+            </p>
+          </div>
+        </header>
+        <div className="p-5 mw-720:p-3">
+          <InterviewAxisRadarProfile items={report.report.items} />
+        </div>
+      </section>
 
       <section className={CARD}>
         <header className={CARD_HEADER}>
