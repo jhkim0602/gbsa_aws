@@ -5,8 +5,10 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 from google.api_core.client_options import ClientOptions
+from google.auth.credentials import Credentials
 from google.cloud import speech_v1, texttospeech_v1
 
+from interview_evidence.runtime.gcp_credentials import resolve_gcp_credentials
 from interview_evidence.shared.gcp_clients.speech import (
     GcpStreamingSpeechToText,
     GcpStreamingTextToSpeech,
@@ -48,17 +50,28 @@ def create_speech_runtime_dependencies(
 
     streaming_stt: StreamingSpeechToText | None = None
     streaming_tts: StreamingTextToSpeech | None = None
+    credentials = (
+        resolve_gcp_credentials(environment)
+        if "gcp" in {stt_provider.split("_", 1)[0], tts_provider.split("_", 1)[0]}
+        else None
+    )
     if stt_provider == "gcp_streaming":
-        create_speech_client = speech_client_factory or _create_speech_client
         streaming_stt = GcpStreamingSpeechToText(
-            create_speech_client(_client_options(environment, "GCP_STT_API_ENDPOINT"))
+            speech_client_factory(_client_options(environment, "GCP_STT_API_ENDPOINT"))
+            if speech_client_factory is not None
+            else _create_speech_client(
+                _client_options(environment, "GCP_STT_API_ENDPOINT"),
+                credentials=credentials,
+            )
         )
     if tts_provider in {"gcp_streaming", "gcp_unary"}:
-        create_text_to_speech_client = (
-            text_to_speech_client_factory or _create_text_to_speech_client
-        )
         streaming_tts = GcpStreamingTextToSpeech(
-            create_text_to_speech_client(_client_options(environment, "GCP_TTS_API_ENDPOINT")),
+            text_to_speech_client_factory(_client_options(environment, "GCP_TTS_API_ENDPOINT"))
+            if text_to_speech_client_factory is not None
+            else _create_text_to_speech_client(
+                _client_options(environment, "GCP_TTS_API_ENDPOINT"),
+                credentials=credentials,
+            ),
             language_code=environment.get(
                 "GCP_TTS_LANGUAGE_CODE",
                 environment.get("GCP_SPEECH_LANGUAGE_CODE", "ko-KR"),
@@ -85,14 +98,23 @@ def _client_options(environment: Mapping[str, str], name: str) -> ClientOptions:
     return ClientOptions(api_endpoint=endpoint) if endpoint else ClientOptions()
 
 
-def _create_speech_client(options: ClientOptions) -> speech_v1.SpeechAsyncClient:
-    return speech_v1.SpeechAsyncClient(client_options=options)
+def _create_speech_client(
+    options: ClientOptions,
+    *,
+    credentials: Credentials | None = None,
+) -> speech_v1.SpeechAsyncClient:
+    return speech_v1.SpeechAsyncClient(credentials=credentials, client_options=options)
 
 
 def _create_text_to_speech_client(
     options: ClientOptions,
+    *,
+    credentials: Credentials | None = None,
 ) -> texttospeech_v1.TextToSpeechAsyncClient:
-    return texttospeech_v1.TextToSpeechAsyncClient(client_options=options)
+    return texttospeech_v1.TextToSpeechAsyncClient(
+        credentials=credentials,
+        client_options=options,
+    )
 
 
 def _voice_aliases(environment: Mapping[str, str]) -> Mapping[str, str]:

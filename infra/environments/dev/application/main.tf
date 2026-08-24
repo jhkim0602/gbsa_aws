@@ -202,21 +202,40 @@ module "compute" {
     # a CloudFront hostname this root cannot predict, and the invitation email carries this
     # value verbatim. A wrong base URL produces mail whose link 404s, with nothing in the
     # API to notice it.
-    APPLICANT_ACCESS_BASE_URL  = "${module.edge.site_urls["applicant"]}/access"
-    APP_ENVIRONMENT            = "dev"
-    AWS_REGION                 = var.aws_region
-    AURORA_DATABASE            = local.data.aurora_database_name
-    AURORA_ENDPOINT            = local.data.aurora_endpoint
-    AURORA_MASTER_SECRET_ARN   = local.data.aurora_master_secret_arn
-    BEDROCK_EMBEDDING_MODEL_ID = "amazon.titan-embed-text-v2:0"
-    BEDROCK_GUARDRAIL_ID       = local.ai_search.guardrail_id
-    BEDROCK_MODEL_ID           = var.interview_model_id
-    COGNITO_USER_POOL_ID       = local.identity.user_pool_id
-    DYNAMODB_TABLE_NAME        = local.data.dynamodb_table_name
-    EVENT_BUS_ARN              = local.workflow.event_bus_arn
-    KMS_KEY_ARN                = local.data.kms_key_arn
-    MEDIA_BUCKET               = local.data.bucket_ids["media"]
-    RETRIEVAL_BACKEND          = "aurora"
+    APPLICANT_ACCESS_BASE_URL       = "${module.edge.site_urls["applicant"]}/access"
+    APP_ENVIRONMENT                 = "dev"
+    AUTOMATED_INTERVIEW_ENABLED     = "true"
+    AI_PROVIDER                     = "gcp"
+    EMBEDDING_PROVIDER              = "aws"
+    AWS_REGION                      = var.aws_region
+    AURORA_DATABASE                 = local.data.aurora_database_name
+    AURORA_ENDPOINT                 = local.data.aurora_endpoint
+    AURORA_MASTER_SECRET_ARN        = local.data.aurora_master_secret_arn
+    BEDROCK_EMBEDDING_MODEL_ID      = "amazon.titan-embed-text-v2:0"
+    BEDROCK_GUARDRAIL_ID            = local.ai_search.guardrail_id
+    BEDROCK_MODEL_ID                = var.interview_model_id
+    COGNITO_USER_POOL_ID            = local.identity.user_pool_id
+    DOCUMENT_OCR_PROVIDER           = "gcp_document_ai"
+    DYNAMODB_TABLE_NAME             = local.data.dynamodb_table_name
+    EVENT_BUS_ARN                   = local.workflow.event_bus_arn
+    KMS_KEY_ARN                     = local.data.kms_key_arn
+    MEDIA_BUCKET                    = local.data.bucket_ids["media"]
+    RETRIEVAL_BACKEND               = "aurora"
+    GCP_DOCUMENT_AI_LOCATION        = "us"
+    GCP_DOCUMENT_AI_TIMEOUT_SECONDS = "120"
+    GCP_STT_FINAL_TIMEOUT_SECONDS   = "8"
+    GCP_STT_LANGUAGE_CODE           = "ko-KR"
+    GCP_STT_MODEL                   = "latest_long"
+    GCP_TTS_LANGUAGE_CODE           = "ko-KR"
+    GCP_TTS_SAMPLE_RATE_HZ          = "24000"
+    GCP_TTS_VOICE_NAME              = "ko-KR-Chirp3-HD-Achird"
+    GCP_VERTEX_AI_LOCATION          = "global"
+    GCP_VERTEX_AI_MAX_ATTEMPTS      = "2"
+    GCP_VERTEX_AI_MODEL_ID          = "gemini-2.5-flash"
+    GCP_VERTEX_AI_THINKING_BUDGET   = "0"
+    GCP_VERTEX_AI_TIMEOUT_SECONDS   = "30"
+    STT_PROVIDER                    = "gcp_streaming"
+    TTS_PROVIDER                    = "gcp_streaming"
     # The address the foundation root verified and granted, rather than a second copy of the
     # rule that builds it. The IAM policy conditions on `ses:FromAddress`, so a value that
     # disagrees is an AccessDenied at the first invitation.
@@ -235,7 +254,10 @@ module "compute" {
   # needs it to read a candidate's public repository above the 60-request anonymous
   # hourly limit. The JSON key is written into the secret outside Terraform.
   task_secrets = {
-    GITHUB_TOKEN = "${local.data.application_secret_arn}:github_token::"
+    GITHUB_TOKEN                 = "${local.data.application_secret_arn}:github_token::"
+    GCP_DOCUMENT_AI_PROCESSOR_ID = "${local.data.application_secret_arn}:gcp_document_ai_processor_id::"
+    GCP_DOCUMENT_AI_PROJECT_ID   = "${local.data.application_secret_arn}:gcp_project_id::"
+    GCP_SERVICE_ACCOUNT_JSON     = "${local.data.application_secret_arn}:gcp_service_account_json::"
   }
   tags = local.tags
 }

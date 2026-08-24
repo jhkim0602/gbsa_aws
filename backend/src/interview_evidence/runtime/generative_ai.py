@@ -5,8 +5,10 @@ from dataclasses import dataclass
 from typing import cast
 
 from google import genai
+from google.auth.credentials import Credentials
 from google.genai import types
 
+from interview_evidence.runtime.gcp_credentials import resolve_gcp_credentials
 from interview_evidence.shared.aws_clients.ports import AIModel, TextEmbedder
 from interview_evidence.shared.aws_clients.production import (
     AwsBedrockModel,
@@ -41,8 +43,15 @@ def create_generative_ai_dependencies(
     if "gcp" in {model_provider, embedding_provider}:
         project_id = _vertex_project_id(environment)
         location = environment.get("GCP_VERTEX_AI_LOCATION", "global").strip() or "global"
-        client_factory = vertex_client_factory or _create_vertex_client
-        vertex_client = client_factory(project_id, location)
+        vertex_client = (
+            vertex_client_factory(project_id, location)
+            if vertex_client_factory is not None
+            else _create_vertex_client(
+                project_id,
+                location,
+                credentials=resolve_gcp_credentials(environment),
+            )
+        )
 
     if model_provider == "gcp":
         if vertex_client is None:
@@ -102,13 +111,19 @@ def _vertex_project_id(environment: Mapping[str, str]) -> str:
     raise RuntimeError("GCP_VERTEX_AI_PROJECT_ID is required for the GCP AI provider")
 
 
-def _create_vertex_client(project_id: str, location: str) -> VertexClient:
+def _create_vertex_client(
+    project_id: str,
+    location: str,
+    *,
+    credentials: Credentials | None = None,
+) -> VertexClient:
     return cast(
         VertexClient,
         genai.Client(
             vertexai=True,
             project=project_id,
             location=location,
+            credentials=credentials,
             http_options=types.HttpOptions(api_version="v1"),
         ),
     )

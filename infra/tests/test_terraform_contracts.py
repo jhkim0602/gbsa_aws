@@ -278,6 +278,14 @@ def test_application_roots_pass_complete_production_adapter_configuration() -> N
         "BEDROCK_EMBEDDING_MODEL_ID",
         "BEDROCK_MODEL_ID",
         "BEDROCK_GUARDRAIL_ID",
+        "AI_PROVIDER",
+        "EMBEDDING_PROVIDER",
+        "DOCUMENT_OCR_PROVIDER",
+        "GCP_DOCUMENT_AI_LOCATION",
+        "GCP_TTS_VOICE_NAME",
+        "GCP_VERTEX_AI_MODEL_ID",
+        "STT_PROVIDER",
+        "TTS_PROVIDER",
         "SES_FROM_ADDRESS",
         "SQS_ANALYSIS_QUEUE_URL",
         "SQS_MEDIA_QUEUE_URL",
@@ -349,6 +357,23 @@ def test_application_roots_deliver_the_github_credential_by_reference_only() -> 
     # The execution role, not the task role, resolves `secrets`, and the application
     # secret is encrypted with the customer key -- so it needs its own decrypt grant.
     assert 'Action   = ["kms:Decrypt"]' in compute
+
+
+def test_application_roots_deliver_gcp_credentials_by_reference_only() -> None:
+    secret_names = {
+        "GCP_DOCUMENT_AI_PROCESSOR_ID",
+        "GCP_DOCUMENT_AI_PROJECT_ID",
+        "GCP_SERVICE_ACCOUNT_JSON",
+    }
+    for root in APPLICATION_ROOTS:
+        source = read(root)
+        environment = assignment_body(source, "task_environment")
+        secrets = assignment_body(source, "task_secrets")
+        for name in secret_names:
+            assert name not in environment, f"{root.parent.name} exposes {name}"
+            assert name in secrets, f"{root.parent.name} never delivers {name}"
+        assert re.search(r'AI_PROVIDER\s*=\s*"gcp"', environment)
+        assert re.search(r'EMBEDDING_PROVIDER\s*=\s*"aws"', environment)
 
 
 def test_async_ai_identity_and_audit_resources_enforce_safety_controls() -> None:

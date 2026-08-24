@@ -73,6 +73,9 @@ import {
 } from "./styles/primitives";
 
 const DEMO_COMPANY_EMAIL = import.meta.env.VITE_DEMO_COMPANY_EMAIL?.trim();
+const AUTOMATED_INTERVIEW_ENABLED =
+  import.meta.env.DEV ||
+  import.meta.env.VITE_AUTOMATED_INTERVIEW_ENABLED === "true";
 
 const hiringApi: HiringWorkspaceApi = {
   async createPosition(input) {
@@ -1065,7 +1068,8 @@ export function ReviewRoute() {
   const { sessionId = "" } = useParams();
   const [search] = useSearchParams();
   const invitationId = search.get("invitationId") ?? "";
-  const automatedReview = import.meta.env.DEV && search.get("auto") === "1";
+  const automatedReview =
+    AUTOMATED_INTERVIEW_ENABLED && search.get("auto") === "1";
   const [report, setReport] = useState<ReportResponse | null>(null);
   const [timeline, setTimeline] = useState<TimelineResponse | null>(null);
   const [reportPending, setReportPending] = useState(false);

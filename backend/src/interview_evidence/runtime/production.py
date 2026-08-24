@@ -329,9 +329,7 @@ def create_production_runtime(
                 environment.get("GCP_STT_FINAL_TIMEOUT_SECONDS", "8")
             ),
         ),
-        allow_automated_answers=(
-            environment.get("APP_ENVIRONMENT", "").strip().casefold() == "local"
-        ),
+        allow_automated_answers=_automated_interviews_enabled(environment),
     )
     interview_public = InterviewEnginePublic(
         repository=lane_c.repository,
@@ -581,3 +579,10 @@ def _logo_base_url(environment: Mapping[str, str], applicant_access_base_url: st
         return value.rstrip("/")
     parsed = urlsplit(applicant_access_base_url)
     return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def _automated_interviews_enabled(environment: Mapping[str, str]) -> bool:
+    return environment.get("APP_ENVIRONMENT", "").strip().casefold() == "local" or (
+        environment.get("AUTOMATED_INTERVIEW_ENABLED", "").strip().casefold()
+        in {"1", "true", "yes", "on"}
+    )

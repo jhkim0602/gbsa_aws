@@ -46,15 +46,29 @@ first apply of the application root**. A `secrets` entry pointing at a key that 
 the task fail to start with a `ResourceNotFoundException`, before any application log line exists to
 explain it.
 
-| Key            | Consumer                                 | Consequence if absent                                                                                                                                                                                 |
-| -------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `github_token` | analysis worker, public repository fetch | The task will not start. Were the reference removed instead, analysis would fall back to anonymous GitHub — 60 requests an hour, which a single repository analysis can exhaust — and stop mid-fetch. |
+| Key                            | Consumer                                 | Consequence if absent                                                                                                                                                                                 |
+| ------------------------------ | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `github_token`                 | analysis worker, public repository fetch | The task will not start. Were the reference removed instead, analysis would fall back to anonymous GitHub — 60 requests an hour, which a single repository analysis can exhaust — and stop mid-fetch. |
+| `gcp_project_id`               | Vertex AI and Document AI                | API and worker cannot construct their GCP clients.                                                                                                                                                    |
+| `gcp_document_ai_processor_id` | scanned or image-heavy PDF OCR           | The worker cannot construct the hybrid document extractor.                                                                                                                                            |
+| `gcp_service_account_json`     | Vertex AI, Speech and Document AI        | GCP clients have no deployed Application Default Credentials and task startup fails.                                                                                                                  |
 
 ```sh
+SECRET_JSON="$(jq -n \
+  --arg github_token "$GITHUB_TOKEN" \
+  --arg gcp_project_id "$GCP_PROJECT_ID" \
+  --arg gcp_document_ai_processor_id "$GCP_DOCUMENT_AI_PROCESSOR_ID" \
+  --arg gcp_service_account_json "$(cat "$GCP_SERVICE_ACCOUNT_FILE")" \
+  '$ARGS.named')"
 aws secretsmanager put-secret-value \
   --secret-id "$NAME/application/config" \
-  --secret-string '{"github_token":"<read-only token, no scopes needed for public repos>"}'
+  --secret-string "$SECRET_JSON"
 ```
+
+The runtime uses GCP for Gemini generation, streaming speech and Document AI, while embeddings
+remain on Amazon Titan. The service-account JSON is injected only into the container process and is
+never written to the image or Terraform state. The deployed dev applicant bundle exposes automated
+interview verification; the production bundle and API keep it disabled.
 
 The Aurora master secret is the one secret the application reads through the SDK
 (`AURORA_MASTER_SECRET_ARN`); it is written by RDS, not by hand.

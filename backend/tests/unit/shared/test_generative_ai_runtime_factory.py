@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 from interview_evidence.runtime.generative_ai import create_generative_ai_dependencies
+from interview_evidence.shared.aws_clients.production import AwsTitanTextEmbedder
 from interview_evidence.shared.gcp_clients.generative import (
     GcpVertexModel,
     GcpVertexTextEmbedder,
@@ -45,3 +46,23 @@ def test_unknown_provider_fails_closed() -> None:
             {"AI_PROVIDER": "other"},
             aws_client_factory=lambda _service: object(),
         )
+
+
+def test_gcp_generation_can_share_an_aws_titan_embedding_space() -> None:
+    aws_calls: list[str] = []
+    client = FakeVertexClient()
+
+    dependencies = create_generative_ai_dependencies(
+        {
+            "AI_PROVIDER": "gcp",
+            "EMBEDDING_PROVIDER": "aws",
+            "GCP_DOCUMENT_AI_PROJECT_ID": "project-id",
+            "BEDROCK_EMBEDDING_MODEL_ID": "amazon.titan-embed-text-v2:0",
+        },
+        aws_client_factory=lambda service: aws_calls.append(service) or object(),
+        vertex_client_factory=lambda _project, _location: client,
+    )
+
+    assert isinstance(dependencies.model, GcpVertexModel)
+    assert isinstance(dependencies.embedder, AwsTitanTextEmbedder)
+    assert aws_calls == ["bedrock-runtime"]

@@ -446,6 +446,9 @@ jobs:
           VITE_COGNITO_DOMAIN: ${{ steps.targets.outputs.cognito_domain }}
           VITE_COGNITO_CLIENT_ID: ${{ steps.targets.outputs.cognito_client_id }}
           VITE_COGNITO_REDIRECT_URI: ${{ steps.targets.outputs.cognito_redirect_uri }}
+          # Automated interviews are an internal verification tool. They are available in the
+          # deployed dev environment and remain absent from the production applicant bundle.
+          VITE_AUTOMATED_INTERVIEW_ENABLED: ${{ needs.settings.outputs.environment == 'dev' && 'true' || 'false' }}
           # Optional public username hint for the pre-created judge account. Its password must
           # remain outside the browser build and be shared with judges through a secure channel.
           VITE_DEMO_COMPANY_EMAIL: ${{ vars.DEMO_COMPANY_EMAIL }}

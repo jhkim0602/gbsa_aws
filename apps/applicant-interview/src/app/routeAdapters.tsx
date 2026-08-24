@@ -37,6 +37,9 @@ import {
 } from "../features/submissions";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "";
+const AUTOMATED_INTERVIEW_ENABLED =
+  import.meta.env.DEV ||
+  import.meta.env.VITE_AUTOMATED_INTERVIEW_ENABLED === "true";
 
 const AUTOMATED_EQUIPMENT_RESULT: EquipmentCheckResult = {
   camera: { status: "ready" },
@@ -479,7 +482,7 @@ export function InterviewRoute() {
   const sessionIdFromSearch = search.get("sessionId") ?? "";
   const interviewerLevel = parseInterviewerLevel(search.get("level"));
   const roomPreview = import.meta.env.DEV && search.get("preview") === "room";
-  const automationMode = import.meta.env.DEV
+  const automationMode = AUTOMATED_INTERVIEW_ENABLED
     ? parseAutomationMode(search.get("auto"))
     : undefined;
   const [resolvedStrategyId, setResolvedStrategyId] =
@@ -677,9 +680,9 @@ export function InterviewRoute() {
   if (!session) {
     return (
       <>
-        {import.meta.env.DEV ? (
+        {AUTOMATED_INTERVIEW_ENABLED ? (
           <section className="mx-auto mt-8 w-[min(calc(100%-48px),920px)] rounded-panel border border-[#cfe0bd] bg-[#f4faee] p-4 text-ink mw-680:w-[min(calc(100%-32px),920px)]">
-            <p className="text-[13px] font-semibold">로컬 자동 면접</p>
+            <p className="text-[13px] font-semibold">자동 면접 테스트</p>
             <p className="mt-1 text-[12px] leading-[1.6] text-muted">
               환경 점검부터 답변, 결과 화면 이동까지 자동으로 진행합니다.
             </p>

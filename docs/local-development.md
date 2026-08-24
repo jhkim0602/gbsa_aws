@@ -73,8 +73,9 @@ both and goes to the account your credentials name:
 
 | Service | Locally | Consequence |
 |---|---|---|
-| **Vertex AI Gemini** | real GCP by default | Question generation, criterion assessment, and 1024-dimensional embeddings are billed per call. |
-| **Bedrock** | optional real AWS fallback | Set `AI_PROVIDER=aws` and `EMBEDDING_PROVIDER=aws` to restore Claude and Titan. `BEDROCK_MODEL_ID` must be enabled in `AWS_REGION`. |
+| **Vertex AI Gemini** | real GCP by default | Question generation and criterion assessment are billed per call. |
+| **Titan Embeddings** | real AWS by default | Embedding and RAG indexing use the AWS account configured on the workstation and are billed per call. |
+| **Bedrock generation** | optional real AWS fallback | Set `AI_PROVIDER=aws` to restore Claude. `BEDROCK_MODEL_ID` must be enabled in `AWS_REGION`. |
 | **Cognito** | real AWS | Production uses it; local company-console auth uses the fixed local identity below. |
 | Speech-to-Text / Text-to-Speech | real GCP | Billed. One streaming STT connection is opened per answer; question PCM is streamed back over the interview WebSocket. |
 | Document AI | real GCP fallback | Native text PDFs stay local; scanned or image-heavy PDFs use billed Document AI OCR. |
@@ -121,15 +122,15 @@ provider authenticates the request but does not seed application data.
 
 Enable Vertex AI, Speech-to-Text, Text-to-Speech, and Document AI in the personal GCP project.
 Grant the service account Vertex AI User access, store its JSON outside the repository, create a
-Document OCR processor, and point the ignored root `.env` at that file and processor:
+Document OCR processor, and point the ignored root `.env` at that file and processor. Embeddings
+remain on AWS Titan so the local and deployed retrieval indexes share one vector space:
 
 ```bash
 GOOGLE_APPLICATION_CREDENTIALS=$HOME/.config/whyyou/gcp-service-account.json
 AI_PROVIDER=gcp
-EMBEDDING_PROVIDER=gcp
+EMBEDDING_PROVIDER=aws
 GCP_VERTEX_AI_LOCATION=global
 GCP_VERTEX_AI_MODEL_ID=gemini-2.5-flash
-GCP_VERTEX_AI_EMBEDDING_MODEL_ID=gemini-embedding-001
 STT_PROVIDER=gcp_streaming
 TTS_PROVIDER=gcp_streaming
 DOCUMENT_OCR_PROVIDER=gcp_document_ai
@@ -140,9 +141,8 @@ GCP_TTS_VOICE_NAME=ko-KR-Chirp3-HD-Achernar
 ```
 
 Vertex AI defaults to `GCP_DOCUMENT_AI_PROJECT_ID`; set `GCP_VERTEX_AI_PROJECT_ID` only when the
-generation project differs. Switching embedding providers requires existing materials to be
-analyzed again. Retrieval filters by embedding model and version so GCP and Titan vectors are
-never compared with each other.
+generation project differs. Materials indexed before the Titan switch must be analyzed again.
+Retrieval filters by embedding model and version so GCP and Titan vectors are never compared.
 
 The browser sends 16 kHz mono PCM in roughly 40 ms packets. The API keeps one GCP recognition
 stream open until `answer.complete`, persists the combined final transcript once, and sends GCP
@@ -179,8 +179,8 @@ the browser equipment permission prompt, completes each question, then opens
 `http://127.0.0.1:5173/review/{session_id}?auto=1`. That page polls until the worker has created the
 report and timeline. `VITE_COMPANY_CONSOLE_URL` can override the console origin when needed.
 
-Both entry points are local-only: Vite only renders them in development, and the API accepts the
-`answer.automated` WebSocket message only when `APP_ENVIRONMENT=local`.
+Both entry points are enabled locally and in the deployed dev environment. Production keeps the
+button out of the browser bundle and refuses the `answer.automated` WebSocket message.
 
 The analysis worker reads the uploaded PDF from local S3-compatible storage and first attempts
 native PDF text extraction inside the worker. Text PDFs continue directly into the existing

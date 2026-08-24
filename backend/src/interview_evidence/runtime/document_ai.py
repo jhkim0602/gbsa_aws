@@ -3,8 +3,10 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 
 from google.api_core.client_options import ClientOptions
+from google.auth.credentials import Credentials
 from google.cloud import documentai_v1 as documentai
 
+from interview_evidence.runtime.gcp_credentials import resolve_gcp_credentials
 from interview_evidence.shared.aws_clients.ports import ObjectStorage
 from interview_evidence.shared.gcp_clients.document_ai import GcpDocumentAiExtractor
 from interview_evidence.shared.pdf_document_extraction import (
@@ -37,8 +39,14 @@ def create_document_extractor(
         "GCP_DOCUMENT_AI_API_ENDPOINT",
         f"{location}-documentai.googleapis.com",
     ).strip()
-    create_client = client_factory or _create_client
-    client = create_client(ClientOptions(api_endpoint=endpoint))
+    client = (
+        client_factory(ClientOptions(api_endpoint=endpoint))
+        if client_factory is not None
+        else _create_client(
+            ClientOptions(api_endpoint=endpoint),
+            credentials=resolve_gcp_credentials(environment),
+        )
+    )
     processor_name = (
         client.processor_version_path(
             project_id,
@@ -71,8 +79,13 @@ def create_document_extractor(
 
 def _create_client(
     options: ClientOptions,
+    *,
+    credentials: Credentials | None = None,
 ) -> documentai.DocumentProcessorServiceClient:
-    return documentai.DocumentProcessorServiceClient(client_options=options)
+    return documentai.DocumentProcessorServiceClient(
+        credentials=credentials,
+        client_options=options,
+    )
 
 
 def _required(environment: Mapping[str, str], name: str) -> str:
