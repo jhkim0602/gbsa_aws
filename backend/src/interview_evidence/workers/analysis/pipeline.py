@@ -83,6 +83,9 @@ from interview_evidence.workers.analysis.handlers import (
 )
 
 MAX_EMBEDDING_INPUT_CHARACTERS = 7_000
+MAX_GIT_CODE_UNITS = 60
+MAX_GIT_CODE_UNITS_PER_COMMIT = 12
+MAX_GIT_EMBEDDING_CHARACTERS = 54_000
 
 RETRYABLE_SOURCE_CODES = frozenset(
     {
@@ -418,6 +421,15 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
         if not snapshot.commits:
             return self._record_partial_git(context, analyzing, job)
         occurred_at = self._clock.now()
+        for previous in self._repository.list_git_repository_analyses(
+            context,
+            frozenset({submission.submission_id}),
+        ):
+            if previous.status is GitAnalysisStatus.RUNNING:
+                self._repository.save_git_repository_analysis(
+                    context,
+                    previous.model_copy(update={"status": GitAnalysisStatus.FAILED}),
+                )
         repository_analysis = self._repository.save_git_repository_analysis(
             context,
             GitRepositoryAnalysis(
@@ -437,6 +449,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     # What was actually deep-fetched, which is what the evidence rests
                     # on when the listing was larger than the analysis budget.
                     "analyzed_commits": len(snapshot.commits),
+                    "max_code_units": MAX_GIT_CODE_UNITS,
                 },
                 status=GitAnalysisStatus.RUNNING,
             ),
@@ -577,10 +590,21 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     )
         if not code_units:
             return self._record_partial_git(context, analyzing, job)
-        vectors = self.embed_many(
-            context,
-            tuple(document.text for document in pending_code_documents),
-        )
+        selected_indices = self._selected_code_document_indices(tuple(pending_code_documents))
+        code_units = [code_units[index] for index in selected_indices]
+        pending_code_documents = [pending_code_documents[index] for index in selected_indices]
+        candidates = [candidates[index] for index in selected_indices]
+        try:
+            vectors = self.embed_many(
+                context,
+                tuple(document.text for document in pending_code_documents),
+            )
+        except EmbeddingProviderError:
+            self._repository.save_git_repository_analysis(
+                context,
+                repository_analysis.model_copy(update={"status": GitAnalysisStatus.FAILED}),
+            )
+            raise
         for document, vector in zip(pending_code_documents, vectors, strict=True):
             self._search_index.add(
                 SearchDocument(
@@ -644,6 +668,32 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
             analyzing.transition(SubmissionStatus.READY),
         )
         return AnalysisResult(status=JobStatus.READY, analysis_id=analysis.analysis_id)
+
+    @staticmethod
+    def _selected_code_document_indices(
+        documents: tuple[_PendingCodeDocument, ...],
+    ) -> tuple[int, ...]:
+        indices_by_commit: dict[str, list[int]] = {}
+        for index, document in enumerate(documents):
+            indices_by_commit.setdefault(document.commit_sha, []).append(index)
+        selected: list[int] = []
+        selected_characters = 0
+        for position in range(MAX_GIT_CODE_UNITS_PER_COMMIT):
+            for indices in indices_by_commit.values():
+                if len(selected) >= MAX_GIT_CODE_UNITS:
+                    return tuple(selected)
+                if position >= len(indices):
+                    continue
+                index = indices[position]
+                characters = min(
+                    len(documents[index].text),
+                    MAX_EMBEDDING_INPUT_CHARACTERS,
+                )
+                if selected_characters + characters > MAX_GIT_EMBEDDING_CHARACTERS:
+                    continue
+                selected.append(index)
+                selected_characters += characters
+        return tuple(selected)
 
     @staticmethod
     def _python_code_units(

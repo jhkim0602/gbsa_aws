@@ -371,6 +371,169 @@ def test_public_git_event_persists_code_units_and_exact_symbol_index() -> None:
     assert matches[0].document.ownership_confidence < 0.5
 
 
+def test_public_git_limits_code_units_before_embedding() -> None:
+    repository = InMemorySubmissionRepository()
+    repository.save_submission(
+        _context(),
+        Submission(
+            submission_id=SUBMISSION_ID,
+            company_id=COMPANY_ID,
+            invitation_id=INVITATION_ID,
+            applicant_id=APPLICANT_ID,
+            source_type=SourceType.PUBLIC_GIT,
+            source_uri="https://github.com/example/large-candidate-project",
+            candidate_identity_inputs={"claimed_names": ("홍길동",)},
+            created_at=NOW,
+        ),
+    )
+    source = "\n\n".join(
+        f"def candidate_function_{index}():\n    return {index}" for index in range(20)
+    )
+    embedder = BatchRecordingEmbedder(tuple(1.0 if index == 0 else 0.0 for index in range(1024)))
+    pipeline = SubmissionAnalysisPipeline(
+        repository=repository,
+        extractor=DocumentExtractionAdapter(
+            DeterministicTextract(()),
+            extractor_version="textract-v1",
+        ),
+        search_index=InMemorySearchIndex(),
+        text_embedder=embedder,
+        strategy_model=SourceAwareModel(),
+        axis_provider=StaticAxisProvider(),
+        outbox=InMemoryOutbox(),
+        clock=FrozenClock(NOW),
+        git_fetcher=BoundedGitFetcher(
+            StaticGitTransport(
+                RepositorySnapshot(
+                    repository_url="https://github.com/example/large-candidate-project",
+                    default_branch="main",
+                    pinned_head_sha="b" * 40,
+                    files=(
+                        RepositoryFile(
+                            path="src/candidate.py",
+                            content=source.encode(),
+                        ),
+                    ),
+                    commit_count=1,
+                    commits=(
+                        RepositoryCommit(
+                            parent_sha="a" * 40,
+                            commit_sha="b" * 40,
+                            author_name="홍길동",
+                            author_email="applicant@example.com",
+                            changed_line_ranges={
+                                "src/candidate.py": ((1, source.count("\n") + 1),)
+                            },
+                        ),
+                    ),
+                )
+            ),
+            GitFetchLimits(),
+        ),
+    )
+
+    result = pipeline.process(
+        _context(),
+        AnalysisJob(
+            submission_id=SUBMISSION_ID,
+            invitation_id=INVITATION_ID,
+            applicant_id=APPLICANT_ID,
+            analysis_version=1,
+            source_type=SourceType.PUBLIC_GIT,
+            source_object_id=SUBMISSION_ID,
+            idempotency_key="analysis-git-limit-0001",
+        ),
+    )
+
+    assert result.status is JobStatus.READY
+    repository_analysis = repository.list_git_repository_analyses(
+        _context(), frozenset({SUBMISSION_ID})
+    )[0]
+    commits = repository.list_git_commit_analyses(
+        _context(), frozenset({repository_analysis.repository_analysis_id})
+    )
+    units = repository.list_code_units(_context(), frozenset({commits[0].git_commit_analysis_id}))
+    assert len(units) == 12
+    assert len(embedder.batch_calls) == 1
+    assert len(embedder.batch_calls[0]) == 12
+    assert repository_analysis.limits_applied["max_code_units"] == 60
+
+
+def test_public_git_embedding_failure_marks_repository_attempt_failed() -> None:
+    repository = InMemorySubmissionRepository()
+    repository.save_submission(
+        _context(),
+        Submission(
+            submission_id=SUBMISSION_ID,
+            company_id=COMPANY_ID,
+            invitation_id=INVITATION_ID,
+            applicant_id=APPLICANT_ID,
+            source_type=SourceType.PUBLIC_GIT,
+            source_uri="https://github.com/example/candidate-project",
+            candidate_identity_inputs={"claimed_names": ("홍길동",)},
+            created_at=NOW,
+        ),
+    )
+    pipeline = SubmissionAnalysisPipeline(
+        repository=repository,
+        extractor=DocumentExtractionAdapter(
+            DeterministicTextract(()),
+            extractor_version="textract-v1",
+        ),
+        search_index=InMemorySearchIndex(),
+        text_embedder=UnavailableEmbedder(),
+        strategy_model=SourceAwareModel(),
+        axis_provider=StaticAxisProvider(),
+        outbox=InMemoryOutbox(),
+        clock=FrozenClock(NOW),
+        git_fetcher=BoundedGitFetcher(
+            StaticGitTransport(
+                RepositorySnapshot(
+                    repository_url="https://github.com/example/candidate-project",
+                    default_branch="main",
+                    pinned_head_sha="b" * 40,
+                    files=(
+                        RepositoryFile(
+                            path="src/payment.py",
+                            content=b"def retry_payment():\n    return True\n",
+                        ),
+                    ),
+                    commit_count=1,
+                    commits=(
+                        RepositoryCommit(
+                            parent_sha="a" * 40,
+                            commit_sha="b" * 40,
+                            author_name="홍길동",
+                            author_email="applicant@example.com",
+                            changed_line_ranges={"src/payment.py": ((1, 2),)},
+                        ),
+                    ),
+                )
+            ),
+            GitFetchLimits(),
+        ),
+    )
+
+    with pytest.raises(RetryableAnalysisError, match="embedding_provider_unavailable"):
+        pipeline.process(
+            _context(),
+            AnalysisJob(
+                submission_id=SUBMISSION_ID,
+                invitation_id=INVITATION_ID,
+                applicant_id=APPLICANT_ID,
+                analysis_version=1,
+                source_type=SourceType.PUBLIC_GIT,
+                source_object_id=SUBMISSION_ID,
+                idempotency_key="analysis-git-embedding-failure-0001",
+            ),
+        )
+
+    repository_analysis = repository.list_git_repository_analyses(
+        _context(), frozenset({SUBMISSION_ID})
+    )[0]
+    assert repository_analysis.status.value == "failed"
+
+
 def test_code_unit_embedding_excerpt_excludes_unrelated_file_content() -> None:
     source = "\n".join(
         (
