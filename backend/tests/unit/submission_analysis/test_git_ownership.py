@@ -63,7 +63,8 @@ def test_exact_github_login_is_strong_ownership_evidence() -> None:
     )
 
     assert result.ownership_class is OwnershipClass.PRIMARY_OWNED
-    assert result.confidence >= 0.7
+    assert result.confidence == 1.0
+    assert result.requires_verification is False
     assert "github_login_match" in result.explanation_codes
 
 

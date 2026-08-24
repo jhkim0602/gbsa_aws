@@ -18,6 +18,9 @@ from interview_evidence.submission_analysis.adapters.object_storage import (
     ScopedSubmissionStorage,
     ScopedUploadIntent,
 )
+from interview_evidence.submission_analysis.application.strategy_freshness import (
+    strategy_matches_latest_analyses,
+)
 from interview_evidence.submission_analysis.application.submission_validator import (
     SubmissionValidator,
 )
@@ -237,6 +240,12 @@ class SubmissionService:
     ) -> AnalysisReadiness:
         submissions = self.list_submissions(context, principal.applicant_id)
         strategy = self._repository.latest_strategy(context, principal.invitation_id)
+        strategy_current = strategy_matches_latest_analyses(
+            self._repository,
+            context,
+            submissions=submissions,
+            strategy=strategy,
+        )
         if not submissions:
             overall = "waiting"
         elif any(item.status is SubmissionStatus.ANALYZING for item in submissions):
@@ -265,11 +274,18 @@ class SubmissionService:
             submissions=submissions,
             interview_ready=(
                 required_materials.issubset(ready_materials)
+                and strategy_current
                 and strategy is not None
                 and strategy.status.value in {"ready", "partial"}
             ),
-            strategy_id=(strategy.interview_strategy_id if strategy is not None else None),
-            strategy_version=(strategy.strategy_version if strategy is not None else None),
+            strategy_id=(
+                strategy.interview_strategy_id
+                if strategy is not None and strategy_current
+                else None
+            ),
+            strategy_version=(
+                strategy.strategy_version if strategy is not None and strategy_current else None
+            ),
             impact_summary="; ".join(impacts) or None,
         )
 

@@ -71,6 +71,7 @@ class SubmissionRetrieval(Protocol):
         exact_symbol: str | None = None,
         embedding_model: str | None = None,
         embedding_version: str | None = None,
+        source_types: frozenset[str] | None = None,
     ) -> tuple[RetrievalRecord, ...]: ...
 
 
@@ -130,27 +131,72 @@ class RetrievalClient:
                     query,
                     dimensions=1024,
                 )
-            embedding_scope = (
-                {
-                    "embedding_model": self._embedder.model_id,
-                    "embedding_version": self._embedder.embedding_version,
-                }
-                if self._embedder is not None
-                else {}
-            )
-            results = self._provider.retrieve_context(
-                context,
-                applicant_id=applicant_id,
-                invitation_id=invitation_id,
-                competency_model_version_id=competency_model_version_id,
-                query=query,
-                query_vector=active_query_vector,
-                criterion_id=criterion_id,
-                config_version=config_version,
-                limit=self._limit * 3,
-                exact_symbol=exact_symbol,
-                **embedding_scope,
-            )
+            if self._embedder is None:
+                base_results = self._provider.retrieve_context(
+                    context,
+                    applicant_id=applicant_id,
+                    invitation_id=invitation_id,
+                    competency_model_version_id=competency_model_version_id,
+                    query=query,
+                    query_vector=active_query_vector,
+                    criterion_id=criterion_id,
+                    config_version=config_version,
+                    limit=self._limit * 3,
+                    exact_symbol=exact_symbol,
+                )
+            else:
+                base_results = self._provider.retrieve_context(
+                    context,
+                    applicant_id=applicant_id,
+                    invitation_id=invitation_id,
+                    competency_model_version_id=competency_model_version_id,
+                    query=query,
+                    query_vector=active_query_vector,
+                    criterion_id=criterion_id,
+                    config_version=config_version,
+                    limit=self._limit * 3,
+                    exact_symbol=exact_symbol,
+                    embedding_model=self._embedder.model_id,
+                    embedding_version=self._embedder.embedding_version,
+                )
+            results = list(base_results)
+            if interview_stage is InterviewStage.PROJECT_DEEP_DIVE and not any(
+                _record_source_type(result) == "candidate_code_unit" for result in results
+            ):
+                if self._embedder is None:
+                    git_results = self._provider.retrieve_context(
+                        context,
+                        applicant_id=applicant_id,
+                        invitation_id=invitation_id,
+                        competency_model_version_id=competency_model_version_id,
+                        query=query,
+                        query_vector=active_query_vector,
+                        criterion_id=criterion_id,
+                        config_version=config_version,
+                        limit=self._limit,
+                        exact_symbol=exact_symbol,
+                        source_types=frozenset({"candidate_code_unit"}),
+                    )
+                else:
+                    git_results = self._provider.retrieve_context(
+                        context,
+                        applicant_id=applicant_id,
+                        invitation_id=invitation_id,
+                        competency_model_version_id=competency_model_version_id,
+                        query=query,
+                        query_vector=active_query_vector,
+                        criterion_id=criterion_id,
+                        config_version=config_version,
+                        limit=self._limit,
+                        exact_symbol=exact_symbol,
+                        source_types=frozenset({"candidate_code_unit"}),
+                        embedding_model=self._embedder.model_id,
+                        embedding_version=self._embedder.embedding_version,
+                    )
+                known_source_ids = {result.source_id for result in results}
+                results.extend(
+                    result for result in git_results if result.source_id not in known_source_ids
+                )
         except Exception:
             return RetrievalOutcome(
                 hits=(),
@@ -159,14 +205,18 @@ class RetrievalClient:
             )
         if not results:
             return RetrievalOutcome(hits=(), degraded_mode="search_no_result")
-        ranked = sorted(
-            results,
-            key=lambda result: (
-                _stage_adjusted_score(result, interview_stage),
-                result.score,
+        ranked = _ensure_project_git(
+            sorted(
+                results,
+                key=lambda result: (
+                    _stage_adjusted_score(result, interview_stage),
+                    result.score,
+                ),
+                reverse=True,
             ),
-            reverse=True,
-        )[: self._limit]
+            stage=interview_stage,
+            limit=self._limit,
+        )
         return RetrievalOutcome(
             hits=tuple(
                 RetrievedContext(
@@ -175,17 +225,7 @@ class RetrievalClient:
                     locator=dict(result.locator),
                     ownership_confidence=result.ownership_confidence,
                     excerpt=str(getattr(result, "excerpt", "")),
-                    source_type=str(
-                        getattr(
-                            result,
-                            "source_type",
-                            (
-                                "candidate_code_unit"
-                                if "path" in result.locator
-                                else "submission_chunk"
-                            ),
-                        )
-                    ),
+                    source_type=_record_source_type(result),
                     material_type=_optional_string(getattr(result, "material_type", None)),
                 )
                 for result in ranked
@@ -194,7 +234,7 @@ class RetrievalClient:
 
 
 def _stage_adjusted_score(record: RetrievalRecord, stage: InterviewStage) -> float:
-    source_type = str(getattr(record, "source_type", "submission_chunk"))
+    source_type = _record_source_type(record)
     material_type = _optional_string(getattr(record, "material_type", None))
     source_boost = _STAGE_SOURCE_BOOSTS[stage].get(source_type, 0.0)
     if stage is InterviewStage.BEHAVIORAL and source_type == "candidate_code_unit":
@@ -209,6 +249,43 @@ def _stage_adjusted_score(record: RetrievalRecord, stage: InterviewStage) -> flo
             0.0,
         )
     )
+
+
+def _ensure_project_git(
+    ranked: list[RetrievalRecord],
+    *,
+    stage: InterviewStage,
+    limit: int,
+) -> tuple[RetrievalRecord, ...]:
+    selected = ranked[:limit]
+    if stage is not InterviewStage.PROJECT_DEEP_DIVE or any(
+        _record_source_type(result) == "candidate_code_unit" for result in selected
+    ):
+        return tuple(selected)
+    git_result = next(
+        (result for result in ranked if _record_source_type(result) == "candidate_code_unit"),
+        None,
+    )
+    if git_result is None:
+        return tuple(selected)
+    if selected:
+        selected[-1] = git_result
+    else:
+        selected.append(git_result)
+    return tuple(
+        sorted(
+            selected,
+            key=lambda result: (_stage_adjusted_score(result, stage), result.score),
+            reverse=True,
+        )
+    )
+
+
+def _record_source_type(record: RetrievalRecord) -> str:
+    source_type = str(getattr(record, "source_type", ""))
+    if source_type == "candidate_code_unit" or "path" in record.locator:
+        return "candidate_code_unit"
+    return source_type or "submission_chunk"
 
 
 def _optional_string(value: object) -> str | None:

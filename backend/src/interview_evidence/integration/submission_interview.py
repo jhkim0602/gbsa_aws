@@ -64,6 +64,15 @@ class SubmissionInterviewBoundary:
         except (LookupError, PermissionError, ValueError) as error:
             raise InterviewAuthorizationDenied("interview strategy is unavailable") from error
 
+        analysis = self._submission.get_analysis_status(
+            context,
+            invitation_id=principal.invitation_id,
+        )
+        if analysis.submissions and (
+            not analysis.strategy_ready or analysis.strategy_id != strategy_id
+        ):
+            raise InterviewAuthorizationDenied("interview strategy is being refreshed")
+
         partial = strategy.status.value == "partial"
         if (
             strategy.company_id != principal.company_id
@@ -97,6 +106,7 @@ class SubmissionInterviewBoundary:
         exact_symbol: str | None = None,
         embedding_model: str | None = None,
         embedding_version: str | None = None,
+        source_types: frozenset[str] | None = None,
     ) -> tuple[RetrievalRecord, ...]:
         results = self._submission.retrieve_context(
             context,
@@ -111,6 +121,7 @@ class SubmissionInterviewBoundary:
             exact_symbol=exact_symbol,
             embedding_model=embedding_model,
             embedding_version=embedding_version,
+            source_types=source_types,
         )
         return tuple(
             BoundaryRetrievalRecord(

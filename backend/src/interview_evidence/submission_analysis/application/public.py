@@ -15,6 +15,9 @@ from interview_evidence.submission_analysis.application.retrieval import (
     HybridRetriever,
     RetrievalResult,
 )
+from interview_evidence.submission_analysis.application.strategy_freshness import (
+    strategy_matches_latest_analyses,
+)
 from interview_evidence.submission_analysis.domain.strategy import InterviewStrategy
 from interview_evidence.submission_analysis.repositories.postgres import (
     SubmissionRepository,
@@ -101,6 +104,12 @@ class SubmissionAnalysisPublic:
     ) -> AnalysisStatusSnapshot:
         submissions = self._repository.list_submissions_for_invitation(context, invitation_id)
         strategy = self._repository.latest_strategy(context, invitation_id)
+        strategy_current = strategy_matches_latest_analyses(
+            self._repository,
+            context,
+            submissions=submissions,
+            strategy=strategy,
+        )
         return AnalysisStatusSnapshot(
             company_id=context.company_id,
             invitation_id=invitation_id,
@@ -114,9 +123,19 @@ class SubmissionAnalysisPublic:
                 )
                 for submission in submissions
             ),
-            strategy_ready=(strategy is not None and strategy.status.value in {"ready", "partial"}),
-            strategy_id=(strategy.interview_strategy_id if strategy is not None else None),
-            strategy_version=(strategy.strategy_version if strategy is not None else None),
+            strategy_ready=(
+                strategy_current
+                and strategy is not None
+                and strategy.status.value in {"ready", "partial"}
+            ),
+            strategy_id=(
+                strategy.interview_strategy_id
+                if strategy is not None and strategy_current
+                else None
+            ),
+            strategy_version=(
+                strategy.strategy_version if strategy is not None and strategy_current else None
+            ),
         )
 
     def get_strategy_snapshot(
@@ -142,6 +161,7 @@ class SubmissionAnalysisPublic:
         exact_symbol: str | None = None,
         embedding_model: str | None = None,
         embedding_version: str | None = None,
+        source_types: frozenset[str] | None = None,
     ) -> tuple[RetrievalResult, ...]:
         if not config_version:
             raise ValueError("retrieval config version is required")
@@ -156,6 +176,7 @@ class SubmissionAnalysisPublic:
             exact_symbol=exact_symbol,
             embedding_model=embedding_model,
             embedding_version=embedding_version,
+            source_types=source_types,
             limit=limit,
         )
 

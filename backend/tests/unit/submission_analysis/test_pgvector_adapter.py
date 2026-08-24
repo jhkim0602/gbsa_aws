@@ -170,6 +170,46 @@ def test_embedding_filter_excludes_vectors_from_another_provider() -> None:
     assert tuple(candidate.document.source_id for candidate in candidates) == (gcp_id,)
 
 
+def test_source_type_filter_returns_only_github_code() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    document_id = UUID("00000000-0000-7000-8000-000000000025")
+    code_id = UUID("00000000-0000-7000-8000-000000000026")
+    with Session(engine) as session:
+        index = PostgresHybridSearchIndex(session)
+        for source_id, source_type, locator in (
+            (document_id, "submission_chunk", {"page_number": 1}),
+            (code_id, "candidate_code_unit", {"path": "src/service.py"}),
+        ):
+            index.add(
+                SearchDocument(
+                    document_id=str(source_id),
+                    company_id=COMPANY_ID,
+                    applicant_id=APPLICANT_ID,
+                    source_id=source_id,
+                    text="프로젝트 서비스 구현",
+                    vector=_vector(1.0, 0.0),
+                    symbols=(),
+                    locator=locator,
+                    ownership_confidence=1.0,
+                    invitation_id=INVITATION_ID,
+                    competency_model_version_id=VERSION_ID,
+                    source_type=source_type,
+                )
+            )
+
+        candidates = index.candidates(
+            _context(),
+            applicant_id=APPLICANT_ID,
+            query="프로젝트",
+            query_vector=_vector(1.0, 0.0),
+            exact_symbol=None,
+            source_types=frozenset({"candidate_code_unit"}),
+        )
+
+    assert tuple(candidate.document.source_id for candidate in candidates) == (code_id,)
+
+
 def test_debug_documents_return_extracted_text_for_the_current_invitation() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)

@@ -28,6 +28,7 @@ class StrategyGenerationError(ValueError):
 
 
 MAX_STRATEGY_PROMPT_SOURCES = 24
+MIN_GIT_STRATEGY_PROMPT_SOURCES = 4
 
 
 class StrategyService:
@@ -168,7 +169,10 @@ def _select_prompt_candidates(
             str(candidate.source_id),
         ),
     )
-    for candidate in ordered:
+    git_candidates = tuple(
+        candidate for candidate in ordered if candidate.source_type == "candidate_code_unit"
+    )[:MIN_GIT_STRATEGY_PROMPT_SOURCES]
+    for candidate in (*git_candidates, *ordered):
         if candidate.content_hash in seen_hashes:
             continue
         selected.append(candidate)

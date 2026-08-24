@@ -9,7 +9,10 @@ from interview_evidence.interview_engine.adapters.polly import (
     SpeechOutput,
     SpeechSynthesisAdapter,
 )
-from interview_evidence.interview_engine.adapters.retrieval_client import RetrievalClient
+from interview_evidence.interview_engine.adapters.retrieval_client import (
+    RetrievalClient,
+    RetrievedContext,
+)
 from interview_evidence.interview_engine.application.checkpoints import CheckpointService
 from interview_evidence.interview_engine.application.context_builder import (
     ContextBuilder,
@@ -242,6 +245,24 @@ class InterviewService:
             config_version=retrieval_config_version,
             interview_stage=interview_stage,
         )
+        project_reference_ids = {
+            reference_id
+            for rationale in self._repository.list_question_rationales(context, session_id)
+            if rationale.interview_stage == InterviewStage.PROJECT_DEEP_DIVE.value
+            for reference_id in rationale.source_reference_ids
+        }
+        requires_git_question = interview_stage is InterviewStage.PROJECT_DEEP_DIVE and not any(
+            reference.source_reference_id in project_reference_ids
+            and reference.source_type == "candidate_code_unit"
+            for reference in self._repository.list_session_source_references(
+                context,
+                session_id,
+            )
+        )
+        git_hit = next(
+            (hit for hit in retrieval.hits if hit.source_type == "candidate_code_unit"),
+            None,
+        )
         turns = self._repository.list_final_turns(context, session_id)
         built_context = self._context_builder.build(
             recent_turns=tuple(
@@ -311,6 +332,17 @@ class InterviewService:
                 )
             }
         )
+        if (
+            requires_git_question
+            and git_hit is not None
+            and git_hit.source_id not in draft.source_reference_ids
+        ):
+            draft = _git_project_question(
+                hit=git_hit,
+                target_criterion_id=target_criterion_id,
+                model_config_version=model_config_version,
+                retrieval_config_version=retrieval_config_version,
+            )
         policy_result = self._policy.evaluate(
             draft,
             allowed_criterion_ids=allowed_criterion_ids,
@@ -610,4 +642,25 @@ def _retrieval_query(
             answer_text,
         )
         if part.strip()
+    )
+
+
+def _git_project_question(
+    *,
+    hit: RetrievedContext,
+    target_criterion_id: UUID,
+    model_config_version: str,
+    retrieval_config_version: str,
+) -> QuestionDraft:
+    subject = str(hit.locator.get("symbol") or hit.locator.get("path") or "코드 구현")
+    subject = subject.rsplit("/", 1)[-1][:80]
+    return QuestionDraft(
+        text=(
+            f"GitHub 프로젝트의 {subject} 구현을 기준으로, 본인이 직접 맡은 부분과 "
+            "이 방식을 선택한 이유를 말씀해 주시겠습니까?"
+        ),
+        target_criterion_id=target_criterion_id,
+        source_reference_ids=(hit.source_id,),
+        model_config_version=model_config_version,
+        retrieval_config_version=retrieval_config_version,
     )

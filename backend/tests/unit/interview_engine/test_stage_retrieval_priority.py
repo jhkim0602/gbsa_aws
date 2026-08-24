@@ -1,14 +1,19 @@
 from dataclasses import dataclass, field
 from uuid import UUID
 
-from interview_evidence.interview_engine.adapters.retrieval_client import RetrievalClient
+from interview_evidence.interview_engine.adapters.retrieval_client import (
+    RetrievalClient,
+    RetrievedContext,
+)
 from interview_evidence.interview_engine.application.interview_plan import (
     InterviewStage,
     VerificationTargetPlan,
 )
 from interview_evidence.interview_engine.application.interview_service import (
+    _git_project_question,
     _retrieval_query,
 )
+from interview_evidence.interview_engine.application.question_policy import QuestionPolicy
 from interview_evidence.shared.tenant import ActorType, TenantContext
 
 COMPANY_ID = UUID("00000000-0000-7000-8000-000000000001")
@@ -33,11 +38,20 @@ class FixedRetrieval:
     def __init__(self, records: tuple[Record, ...]) -> None:
         self.records = records
         self.requested_limit = 0
+        self.requested_source_types: list[frozenset[str] | None] = []
 
     def retrieve_context(self, *args: object, **kwargs: object) -> tuple[Record, ...]:
         del args
         self.requested_limit = int(kwargs["limit"])
-        return self.records
+        source_types = kwargs.get("source_types")
+        assert source_types is None or isinstance(source_types, frozenset)
+        self.requested_source_types.append(source_types)
+        matching = (
+            self.records
+            if source_types is None
+            else tuple(record for record in self.records if record.source_type in source_types)
+        )
+        return matching[: self.requested_limit]
 
 
 def _context() -> TenantContext:
@@ -93,6 +107,47 @@ def test_project_stage_prioritizes_github_code() -> None:
     assert _retrieve(InterviewStage.PROJECT_DEEP_DIVE)[0] == "candidate_code_unit"
 
 
+def test_project_stage_fetches_github_when_general_shortlist_has_only_documents() -> None:
+    documents = tuple(
+        Record(
+            source_id=UUID(int=100 + index),
+            source_type="submission_chunk",
+            material_type="portfolio",
+            excerpt=f"프로젝트 설명 {index}",
+            score=0.9,
+        )
+        for index in range(12)
+    )
+    github = Record(
+        source_id=UUID("00000000-0000-7000-8000-000000000099"),
+        source_type="candidate_code_unit",
+        material_type=None,
+        excerpt="class PaymentService",
+        score=0.1,
+        locator={"path": "src/payment.py", "symbol": "PaymentService"},
+    )
+    provider = FixedRetrieval((*documents, github))
+
+    outcome = RetrievalClient(provider, limit=3).retrieve(
+        _context(),
+        applicant_id=APPLICANT_ID,
+        invitation_id=INVITATION_ID,
+        competency_model_version_id=MODEL_VERSION_ID,
+        session_id=UUID("00000000-0000-7000-8000-000000000020"),
+        query="결제 프로젝트",
+        query_vector=(1.0,),
+        criterion_id=CRITERION_ID,
+        config_version="stage-aware-v1",
+        interview_stage=InterviewStage.PROJECT_DEEP_DIVE,
+    )
+
+    assert any(hit.source_type == "candidate_code_unit" for hit in outcome.hits)
+    assert provider.requested_source_types == [
+        None,
+        frozenset({"candidate_code_unit"}),
+    ]
+
+
 def test_behavioral_stage_prioritizes_narrative_materials() -> None:
     ranked = _retrieve(InterviewStage.BEHAVIORAL)
 
@@ -129,3 +184,32 @@ def test_retrieval_query_combines_stage_target_and_latest_answer() -> None:
     assert target.objective in query
     assert "직접 구현 범위" in query
     assert query.endswith("결제 서비스를 개발했습니다.")
+
+
+def test_required_github_question_is_policy_safe_and_keeps_code_source() -> None:
+    draft = _git_project_question(
+        hit=RetrievedContext(
+            source_id=UUID("00000000-0000-7000-8000-000000000040"),
+            score=1.1,
+            locator={"path": "src/payment.py", "symbol": "PaymentService"},
+            ownership_confidence=1,
+            excerpt="class PaymentService",
+            source_type="candidate_code_unit",
+        ),
+        target_criterion_id=CRITERION_ID,
+        model_config_version="question-v1",
+        retrieval_config_version="stage-aware-v1",
+    )
+
+    result = QuestionPolicy().evaluate(
+        draft,
+        allowed_criterion_ids=frozenset({CRITERION_ID}),
+        prohibited_topics=(),
+        previous_questions=(),
+        fallback_question="프로젝트 경험을 설명해 주시겠습니까?",
+        fallback_criterion_id=CRITERION_ID,
+    )
+
+    assert result.accepted
+    assert result.question.source_reference_ids == draft.source_reference_ids
+    assert "PaymentService" in result.question.text

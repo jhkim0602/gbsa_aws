@@ -51,6 +51,7 @@ class HybridRetriever:
         criterion_id: UUID | None = None,
         embedding_model: str | None = None,
         embedding_version: str | None = None,
+        source_types: frozenset[str] | None = None,
     ) -> tuple[RetrievalResult, ...]:
         candidates = self._index.candidates(
             context,
@@ -63,6 +64,7 @@ class HybridRetriever:
             criterion_id=criterion_id,
             embedding_model=embedding_model,
             embedding_version=embedding_version,
+            source_types=source_types,
         )
         results = [
             RetrievalResult(

@@ -81,6 +81,7 @@ class AwsOpenSearchIndex:
                 "criterion_id": (
                     str(document.criterion_id) if document.criterion_id is not None else None
                 ),
+                "source_type": document.source_type,
                 "material_type": document.material_type,
                 "embedding_model": document.embedding_model,
                 "embedding_version": document.embedding_version,
@@ -152,6 +153,7 @@ class AwsOpenSearchIndex:
         criterion_id: UUID | None = None,
         embedding_model: str | None = None,
         embedding_version: str | None = None,
+        source_types: frozenset[str] | None = None,
     ) -> tuple[SearchCandidate, ...]:
         tenant = require_tenant_context(context)
         if tenant.actor_type.value == "applicant" and tenant.actor_id != applicant_id:
@@ -195,6 +197,20 @@ class AwsOpenSearchIndex:
             filters.append({"term": {"embedding_model.keyword": embedding_model}})
         if embedding_version is not None:
             filters.append({"term": {"embedding_version.keyword": embedding_version}})
+        if source_types is not None:
+            source_filters: list[dict[str, object]] = [
+                {"terms": {"source_type.keyword": sorted(source_types)}}
+            ]
+            if "candidate_code_unit" in source_types:
+                source_filters.append({"exists": {"field": "locator.path"}})
+            filters.append(
+                {
+                    "bool": {
+                        "should": source_filters,
+                        "minimum_should_match": 1,
+                    }
+                }
+            )
         response = self._request(
             "POST",
             f"/{self._index_name}/_search",
@@ -212,6 +228,7 @@ class AwsOpenSearchIndex:
                     "invitation_id",
                     "competency_model_version_id",
                     "criterion_id",
+                    "source_type",
                     "material_type",
                     "embedding_model",
                     "embedding_version",
@@ -304,6 +321,7 @@ def _candidate(
     if not isinstance(source, dict):
         return None
     try:
+        locator = cast(dict[str, object], source["locator"])
         document = SearchDocument(
             document_id=str(raw["_id"]),
             company_id=UUID(str(source["company_id"])),
@@ -312,7 +330,7 @@ def _candidate(
             text=str(source["text"]),
             vector=tuple(_as_float(value) for value in cast(list[object], source["vector"])),
             symbols=tuple(str(value) for value in cast(list[object], source["symbols"])),
-            locator=cast(dict[str, object], source["locator"]),
+            locator=locator,
             ownership_confidence=_as_float(source["ownership_confidence"]),
             invitation_id=(
                 UUID(str(source["invitation_id"])) if source.get("invitation_id") else None
@@ -324,6 +342,10 @@ def _candidate(
             ),
             criterion_id=(
                 UUID(str(source["criterion_id"])) if source.get("criterion_id") else None
+            ),
+            source_type=str(
+                source.get("source_type")
+                or ("candidate_code_unit" if "path" in locator else "submission_chunk")
             ),
             material_type=(str(source["material_type"]) if source.get("material_type") else None),
             embedding_model=str(source.get("embedding_model", "unknown")),

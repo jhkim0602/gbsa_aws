@@ -54,6 +54,7 @@ def test_opensearch_adapter_always_filters_company_and_applicant() -> None:
                                         "symbols": ["PaymentService"],
                                         "locator": {"path": "payment.py"},
                                         "ownership_confidence": 0.7,
+                                        "source_type": "candidate_code_unit",
                                     },
                                 }
                             ]
@@ -80,6 +81,7 @@ def test_opensearch_adapter_always_filters_company_and_applicant() -> None:
         symbols=("PaymentService",),
         locator={"path": "payment.py"},
         ownership_confidence=0.7,
+        source_type="candidate_code_unit",
     )
     index.add(document)
     candidates = index.candidates(
@@ -90,14 +92,27 @@ def test_opensearch_adapter_always_filters_company_and_applicant() -> None:
         exact_symbol="PaymentService",
         embedding_model="gemini-embedding-001",
         embedding_version="vertex-gemini-v1",
+        source_types=frozenset({"candidate_code_unit"}),
     )
     assert candidates[0].document.source_id == SOURCE_ID
+    assert candidates[0].document.source_type == "candidate_code_unit"
+    indexed_body = json.loads(requests[0][2] or b"{}")
+    assert indexed_body["source_type"] == "candidate_code_unit"
     search_body = json.loads(requests[1][2] or b"{}")
     filters = search_body["query"]["bool"]["filter"]
     assert {"term": {"company_id": str(COMPANY_ID)}} in filters
     assert {"term": {"applicant_id": str(APPLICANT_ID)}} in filters
     assert {"term": {"embedding_model.keyword": "gemini-embedding-001"}} in filters
     assert {"term": {"embedding_version.keyword": "vertex-gemini-v1"}} in filters
+    assert {
+        "bool": {
+            "should": [
+                {"terms": {"source_type.keyword": ["candidate_code_unit"]}},
+                {"exists": {"field": "locator.path"}},
+            ],
+            "minimum_should_match": 1,
+        }
+    } in filters
 
 
 def test_opensearch_deletion_requeries_the_same_tenant_before_verifying() -> None:

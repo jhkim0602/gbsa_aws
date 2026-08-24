@@ -80,6 +80,7 @@ class SearchIndex(Protocol):
         criterion_id: UUID | None = None,
         embedding_model: str | None = None,
         embedding_version: str | None = None,
+        source_types: frozenset[str] | None = None,
     ) -> tuple[SearchCandidate, ...]: ...
 
 
@@ -148,6 +149,7 @@ class InMemorySearchIndex:
         criterion_id: UUID | None = None,
         embedding_model: str | None = None,
         embedding_version: str | None = None,
+        source_types: frozenset[str] | None = None,
     ) -> tuple[SearchCandidate, ...]:
         tenant = require_tenant_context(context)
         if applicant_id != tenant.actor_id and tenant.actor_type.value == "applicant":
@@ -171,26 +173,18 @@ class InMemorySearchIndex:
                 continue
             if embedding_model is not None and document.embedding_model != embedding_model:
                 continue
-            if (
-                embedding_version is not None
-                and document.embedding_version != embedding_version
-            ):
+            if embedding_version is not None and document.embedding_version != embedding_version:
+                continue
+            if source_types is not None and document.source_type not in source_types:
                 continue
             document_terms = {
-                term.casefold()
-                for term in document.text.replace("_", " ").split()
-                if term
+                term.casefold() for term in document.text.replace("_", " ").split() if term
             }
-            lexical = (
-                len(query_terms & document_terms) / len(query_terms)
-                if query_terms
-                else 0
-            )
+            lexical = len(query_terms & document_terms) / len(query_terms) if query_terms else 0
             exact = (
                 1.0
                 if exact_symbol is not None
-                and exact_symbol.casefold()
-                in {symbol.casefold() for symbol in document.symbols}
+                and exact_symbol.casefold() in {symbol.casefold() for symbol in document.symbols}
                 else 0.0
             )
             matches.append(

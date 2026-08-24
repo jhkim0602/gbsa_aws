@@ -65,12 +65,15 @@ def classify_commit_ownership(
     login_match = commit.author_login is not None and commit.author_login.casefold() in {
         handle.casefold() for handle in identity.claimed_handles
     }
-    score = min(
-        0.9,
-        (0.35 if name_match else 0)
-        + (0.45 if email_match else 0)
-        + (0.7 if login_match else 0)
-        + (0.2 if handle_match else 0),
+    score = (
+        1.0
+        if login_match
+        else min(
+            0.9,
+            (0.35 if name_match else 0)
+            + (0.45 if email_match else 0)
+            + (0.2 if handle_match else 0),
+        )
     )
     codes = tuple(
         code
@@ -95,7 +98,7 @@ def classify_commit_ownership(
         ownership_class=ownership_class,
         confidence=score,
         explanation_codes=codes,
-        requires_verification=True,
+        requires_verification=score < 1.0,
         verification_prompt="이 변경에서 본인이 작성한 범위와 협업 범위를 설명해 주세요.",
     )
 
