@@ -202,16 +202,20 @@ describe("applicant interview journey", () => {
       expect(baseLayer?.getAttribute("href")).toBe(
         "/interviewers/entry_eyes_open_mouth_closed.webp",
       );
-      expect(midMouthLayer?.getAttribute("opacity")).toBe("1");
+      expect(midMouthLayer?.getAttribute("opacity")).toBe("0.88");
       expect(openMouthLayer?.getAttribute("opacity")).toBe("0");
       expect(closedEyesLayer?.getAttribute("opacity")).toBe("0");
 
-      act(() => vi.advanceTimersByTime(140));
+      act(() => vi.advanceTimersByTime(180));
+      expect(avatar.getAttribute("data-mouth")).toBe("mid");
+
+      act(() => vi.advanceTimersByTime(720));
       expect(avatar.getAttribute("data-mouth")).toBe("open");
       expect(midMouthLayer?.getAttribute("opacity")).toBe("0");
-      expect(openMouthLayer?.getAttribute("opacity")).toBe("1");
+      expect(openMouthLayer?.getAttribute("opacity")).toBe("0.72");
+      expect(openMouthLayer?.getAttribute("style")).toContain("opacity 110ms");
 
-      act(() => vi.advanceTimersByTime(3060));
+      act(() => vi.advanceTimersByTime(2300));
       expect(avatar.getAttribute("data-eyes")).toBe("closed");
       expect(closedEyesLayer?.getAttribute("opacity")).toBe("1");
 

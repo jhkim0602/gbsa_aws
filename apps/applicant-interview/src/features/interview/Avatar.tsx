@@ -7,13 +7,18 @@ type MouthState = "closed" | "mid" | "open";
 
 const MOUTH_SEQUENCE: readonly MouthState[] = [
   "mid",
-  "open",
   "mid",
   "closed",
   "mid",
+  "mid",
   "open",
+  "mid",
+  "closed",
 ];
-const MOUTH_FRAME_DURATION_MS = 140;
+const MOUTH_FRAME_DURATION_MS = 180;
+const MOUTH_CROSSFADE_MS = 110;
+const MID_MOUTH_OPACITY = 0.88;
+const OPEN_MOUTH_OPACITY = 0.72;
 const BLINK_DURATION_MS = 140;
 const BLINK_DELAYS_MS = [3200, 4700, 3800] as const;
 const AVATAR_WIDTH = 1536;
@@ -43,8 +48,8 @@ const FACE_MASKS: Readonly<
       blur: 8,
     },
     mouth: {
-      areas: [{ centerX: 768, centerY: 464, radiusX: 92, radiusY: 44 }],
-      blur: 6,
+      areas: [{ centerX: 768, centerY: 462, radiusX: 82, radiusY: 34 }],
+      blur: 5,
     },
   },
   junior: {
@@ -56,8 +61,8 @@ const FACE_MASKS: Readonly<
       blur: 8,
     },
     mouth: {
-      areas: [{ centerX: 768, centerY: 466, radiusX: 96, radiusY: 46 }],
-      blur: 6,
+      areas: [{ centerX: 768, centerY: 468, radiusX: 86, radiusY: 35 }],
+      blur: 5,
     },
   },
   senior: {
@@ -69,8 +74,8 @@ const FACE_MASKS: Readonly<
       blur: 9,
     },
     mouth: {
-      areas: [{ centerX: 768, centerY: 486, radiusX: 92, radiusY: 46 }],
-      blur: 6,
+      areas: [{ centerX: 768, centerY: 490, radiusX: 84, radiusY: 35 }],
+      blur: 5,
     },
   },
 };
@@ -297,7 +302,8 @@ export function Avatar({
           width={AVATAR_WIDTH}
           height={AVATAR_HEIGHT}
           mask={`url(#${mouthMaskId})`}
-          opacity={mouth === "mid" ? 1 : 0}
+          opacity={mouth === "mid" ? MID_MOUTH_OPACITY : 0}
+          style={{ transition: `opacity ${MOUTH_CROSSFADE_MS}ms ease-out` }}
         />
         <image
           data-avatar-layer="mouth-open"
@@ -305,7 +311,8 @@ export function Avatar({
           width={AVATAR_WIDTH}
           height={AVATAR_HEIGHT}
           mask={`url(#${mouthMaskId})`}
-          opacity={mouth === "open" ? 1 : 0}
+          opacity={mouth === "open" ? OPEN_MOUTH_OPACITY : 0}
+          style={{ transition: `opacity ${MOUTH_CROSSFADE_MS}ms ease-out` }}
         />
       </svg>
       <figcaption className="sr-only">
