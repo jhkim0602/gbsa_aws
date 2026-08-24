@@ -56,10 +56,18 @@ class GcpVertexModel(AIModel):
         *,
         model_id: str,
         thinking_budget: int = 0,
+        timeout_seconds: float = 30.0,
+        max_attempts: int = 2,
     ) -> None:
+        if timeout_seconds <= 0:
+            raise ValueError("Vertex generation timeout must be positive")
+        if max_attempts <= 0:
+            raise ValueError("Vertex generation attempts must be positive")
         self._client = client
         self._model_id = model_id
         self._thinking_budget = thinking_budget
+        self._timeout_milliseconds = max(1, round(timeout_seconds * 1_000))
+        self._max_attempts = max_attempts
 
     def generate(
         self,
@@ -79,6 +87,12 @@ class GcpVertexModel(AIModel):
                     labels={"company_id": str(tenant.company_id)},
                     thinking_config=types.ThinkingConfig(
                         thinking_budget=self._thinking_budget,
+                    ),
+                    http_options=types.HttpOptions(
+                        timeout=self._timeout_milliseconds,
+                        retry_options=types.HttpRetryOptions(
+                            attempts=self._max_attempts,
+                        ),
                     ),
                 ),
             )

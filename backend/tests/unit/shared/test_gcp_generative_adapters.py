@@ -67,7 +67,12 @@ class FakeVertexClient:
 
 def test_vertex_model_translates_anthropic_prompt_and_returns_structured_fields() -> None:
     client = FakeVertexClient()
-    model = GcpVertexModel(client, model_id="gemini-test")
+    model = GcpVertexModel(
+        client,
+        model_id="gemini-test",
+        timeout_seconds=12.5,
+        max_attempts=2,
+    )
 
     response = model.generate(
         _context(),
@@ -98,6 +103,19 @@ def test_vertex_model_translates_anthropic_prompt_and_returns_structured_fields(
     assert config.labels == {"company_id": str(COMPANY_ID)}
     assert config.thinking_config is not None
     assert config.thinking_config.thinking_budget == 0
+    assert config.http_options is not None
+    assert config.http_options.timeout == 12_500
+    assert config.http_options.retry_options is not None
+    assert config.http_options.retry_options.attempts == 2
+
+
+def test_vertex_model_rejects_invalid_request_limits() -> None:
+    client = FakeVertexClient()
+
+    with pytest.raises(ValueError, match="timeout must be positive"):
+        GcpVertexModel(client, model_id="gemini-test", timeout_seconds=0)
+    with pytest.raises(ValueError, match="attempts must be positive"):
+        GcpVertexModel(client, model_id="gemini-test", max_attempts=0)
 
 
 def test_vertex_embedder_returns_normalized_requested_dimensions() -> None:

@@ -74,7 +74,7 @@ def test_strategy_keeps_fixed_criterion_axis_and_source_provenance() -> None:
     assert strategy.status == "ready"
 
 
-def test_strategy_rejects_unknown_criterion_or_source() -> None:
+def test_strategy_rejects_unknown_criterion() -> None:
     model = DeterministicAIModel(
         {
             "common_topics": [],
@@ -102,6 +102,37 @@ def test_strategy_rejects_unknown_criterion_or_source() -> None:
             source_candidates=(source_reference(),),
             strategy_version=1,
         )
+
+
+def test_strategy_repairs_unknown_source_references() -> None:
+    unknown_source_id = UUID("00000000-0000-7000-8000-000000000099")
+    model = DeterministicAIModel(
+        {
+            "common_topics": ["문제 해결"],
+            "verification_points": [
+                {
+                    "criterion_id": str(CRITERION_ID),
+                    "prompt": "문제 해결 과정에서 직접 수행한 내용을 확인한다.",
+                    "source_ids": [str(unknown_source_id)],
+                }
+            ],
+            "follow_up_directions": {},
+            "time_budget": {"total_seconds": 1800},
+            "required_evidence_plan": {str(CRITERION_ID): 1},
+        }
+    )
+
+    strategy = StrategyService(model, model_config_version="strategy-v1").generate(
+        context(),
+        invitation_id=INVITATION_ID,
+        applicant_id=APPLICANT_ID,
+        competency_model_version_id=CRITERION_VERSION_ID,
+        criterion_ids=(CRITERION_ID,),
+        source_candidates=(source_reference(),),
+        strategy_version=1,
+    )
+
+    assert strategy.verification_points[0].source_ids == (source_reference().source_id,)
 
 
 def test_strategy_limits_and_deduplicates_prompt_sources_but_keeps_full_provenance() -> None:

@@ -51,6 +51,8 @@ def create_generative_ai_dependencies(
             vertex_client,
             model_id=environment.get("GCP_VERTEX_AI_MODEL_ID", "gemini-2.5-flash").strip(),
             thinking_budget=int(environment.get("GCP_VERTEX_AI_THINKING_BUDGET", "0")),
+            timeout_seconds=float(environment.get("GCP_VERTEX_AI_TIMEOUT_SECONDS", "30")),
+            max_attempts=int(environment.get("GCP_VERTEX_AI_MAX_ATTEMPTS", "2")),
         )
     else:
         model = AwsBedrockModel(

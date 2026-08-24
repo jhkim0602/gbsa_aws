@@ -80,7 +80,7 @@ class StrategyService:
         allowed_criteria = set(criterion_ids)
         allowed_sources = {candidate.source_id for candidate in prompt_candidates}
         try:
-            verification_points = tuple(
+            parsed_verification_points = tuple(
                 VerificationPoint.model_validate(item) for item in result["verification_points"]
             )
             common_topics = tuple(str(item) for item in result["common_topics"])
@@ -89,11 +89,20 @@ class StrategyService:
             required_evidence_plan = dict(result["required_evidence_plan"])
         except (KeyError, TypeError, ValueError) as error:
             raise StrategyGenerationError("invalid structured strategy output") from error
-        for point in verification_points:
+        verification_points: list[VerificationPoint] = []
+        for point in parsed_verification_points:
             if point.criterion_id not in allowed_criteria:
                 raise StrategyGenerationError("strategy referenced an unknown criterion")
-            if not set(point.source_ids).issubset(allowed_sources):
-                raise StrategyGenerationError("strategy referenced an unknown source")
+            valid_source_ids = tuple(
+                dict.fromkeys(
+                    source_id for source_id in point.source_ids if source_id in allowed_sources
+                )
+            )
+            if not valid_source_ids:
+                if not prompt_candidates:
+                    raise StrategyGenerationError("strategy has no available source")
+                valid_source_ids = (prompt_candidates[0].source_id,)
+            verification_points.append(point.model_copy(update={"source_ids": valid_source_ids}))
         strategy = InterviewStrategy(
             interview_strategy_id=new_uuid7(),
             company_id=context.company_id,
@@ -102,7 +111,7 @@ class StrategyService:
             competency_model_version_id=competency_model_version_id,
             strategy_version=strategy_version,
             common_topics=common_topics,
-            verification_points=verification_points,
+            verification_points=tuple(verification_points),
             follow_up_directions={
                 str(key): [str(item) for item in value]
                 for key, value in follow_up_directions.items()
