@@ -274,7 +274,7 @@ resource "aws_iam_role" "deploy" {
  * Administrator, and the reason is worth stating rather than hiding.
  *
  * These roots create IAM roles, KMS keys, VPC endpoints, Cognito pools, Bedrock guardrails,
- * OpenSearch policies and CloudTrail — across eight modules. A least-privilege policy for
+ * Aurora resources and CloudTrail — across eight modules. A least-privilege policy for
  * that surface is a second, larger thing to maintain, and every gap in it appears as a
  * mid-apply failure with half the environment created. The trust policy above is where the
  * real restriction lives: this role is reachable only from one repository, one branch and

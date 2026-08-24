@@ -14,7 +14,7 @@ mock_provider "aws" {}
 # rather than a shape invented for the test.
 variables {
   environment_name      = "dev"
-  cognito_domain_prefix = "iep-dev-company-868216907365"
+  cognito_domain_prefix = "iep-dev-company-388094503330"
 }
 
 run "dev_plans_before_a_mailbox_has_been_chosen" {

@@ -1,6 +1,6 @@
 # Committed: none of these are secrets, and the deploy role's trust policy is only
 # reviewable if the repository and branch it trusts are in version control.
-state_bucket      = "iep-terraform-state-868216907365"
+state_bucket      = "iep-terraform-state-388094503330"
 github_repository = "jhkim0602/gbsa_aws"
 
 # The numeric form this account's OIDC tokens actually carry. Not a duplicate of the line
