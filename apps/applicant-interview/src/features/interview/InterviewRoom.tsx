@@ -56,10 +56,17 @@ const HEADER_PILL =
 const AVATAR_FRAME =
   "overflow-hidden rounded-lg border-2 border-brand/45 bg-brand-soft";
 
-const QUESTION_OVERLAY =
+const CAPTION_STAGE =
   "pointer-events-none absolute bottom-5 left-1/2 z-20" +
-  " w-[min(760px,calc(100%_-_40px))] -translate-x-1/2 rounded-lg border" +
-  " border-white/70 bg-white/90 px-5 py-4 shadow-xl backdrop-blur-md";
+  " flex w-[min(760px,calc(100%_-_40px))] -translate-x-1/2 flex-col gap-2";
+
+const INTERVIEWER_CAPTION =
+  "rounded-lg border border-brand/25 bg-brand-soft/95 shadow-xl" +
+  " backdrop-blur-md transition-all duration-200";
+
+const APPLICANT_CAPTION =
+  "rounded-lg border border-slate-200 bg-white/95 px-5 py-3.5 shadow-xl" +
+  " backdrop-blur-md";
 
 const NOTICE = "rounded-lg border px-4 py-3 text-sm";
 const NOTICE_AMBER = "border-amber-200 bg-amber-50 text-amber-900";
@@ -205,6 +212,8 @@ export function InterviewRoom({
   const [captionsVisible, setCaptionsVisible] = useState(true);
   const [elapsedSeconds, setElapsedSeconds] = useState(initialElapsedSeconds);
   const levelInfo = INTERVIEWER_LEVELS[interviewerLevel];
+  const applicantCaptionActive =
+    !questionInProgress && (recording || transcript.trim().length > 0);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -341,27 +350,53 @@ export function InterviewRoom({
             </section>
           ) : null}
 
-          <section
-            className={QUESTION_OVERLAY}
-            aria-labelledby="current-question"
-          >
-            <h1 id="current-question" className="text-sm leading-6">
-              <span className="mr-2 font-bold text-brand-strong">
-                {levelInfo.shortLabel}
-              </span>
-              <span className="font-semibold text-slate-900">{question}</span>
-            </h1>
-          </section>
-
-          {captionsVisible && transcript ? (
+          <div className={CAPTION_STAGE} aria-label="실시간 면접 자막">
             <section
-              className="pointer-events-none absolute bottom-28 left-1/2 z-20 w-[min(700px,calc(100%_-_48px))] -translate-x-1/2 rounded-lg bg-slate-950/80 px-5 py-3 text-center text-sm font-medium leading-6 text-white shadow-lg backdrop-blur"
-              aria-live="polite"
-              aria-label="실시간 답변 자막"
+              className={`${INTERVIEWER_CAPTION} ${
+                applicantCaptionActive ? "px-4 py-2.5" : "px-5 py-4"
+              }`}
+              aria-labelledby="current-question"
+              aria-label="면접관 질문"
+              data-caption-mode={
+                applicantCaptionActive ? "compact" : "prominent"
+              }
             >
-              {transcript}
+              <h1
+                id="current-question"
+                className={`flex min-w-0 items-start gap-2 text-sm ${
+                  applicantCaptionActive ? "leading-5" : "leading-6"
+                }`}
+              >
+                <span className="shrink-0 font-bold text-brand-strong">
+                  {levelInfo.shortLabel}
+                </span>
+                <span
+                  className={`min-w-0 font-semibold text-slate-900 ${
+                    applicantCaptionActive ? "truncate" : "line-clamp-3"
+                  }`}
+                >
+                  {question}
+                </span>
+              </h1>
             </section>
-          ) : null}
+
+            {captionsVisible && transcript && !questionInProgress ? (
+              <section
+                className={APPLICANT_CAPTION}
+                aria-live="polite"
+                aria-label="실시간 답변 자막"
+              >
+                <p className="mb-1.5 text-xs font-bold text-brand-strong">
+                  지원자 답변
+                </p>
+                <div className="relative h-[4.5rem] overflow-hidden">
+                  <p className="absolute inset-x-0 bottom-0 text-left text-sm font-medium leading-6 text-slate-800">
+                    {transcript}
+                  </p>
+                </div>
+              </section>
+            ) : null}
+          </div>
         </div>
 
         {state === "preparing_question" ? (

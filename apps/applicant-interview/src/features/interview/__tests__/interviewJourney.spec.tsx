@@ -117,6 +117,58 @@ describe("applicant interview journey", () => {
     expect(screen.queryByRole("button", { name: "답변 시작" })).toBeNull();
   });
 
+  it("keeps the active speaker caption readable without a dark scroll area", () => {
+    const longQuestion =
+      "제출한 프로젝트에서 가장 어려웠던 문제와 원인을 찾은 과정, 선택한 해결 방법을 설명해 주세요.";
+    const longTranscript =
+      "처음에는 사용자 요청 흐름을 재현했습니다. 이후 애플리케이션 로그와 데이터베이스 지표를 함께 비교했습니다. 마지막으로 영향이 적은 해결책부터 적용하고 결과를 확인했습니다.";
+    const { rerender } = render(
+      <InterviewRoom
+        question={longQuestion}
+        state="awaiting_answer"
+        connectionState="connected"
+        textOnly={false}
+        questionInProgress={false}
+        onStartAnswer={vi.fn()}
+        onCompleteAnswer={vi.fn()}
+        onReconnect={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByLabelText("면접관 질문").getAttribute("data-caption-mode"),
+    ).toBe("prominent");
+    fireEvent.click(screen.getByRole("button", { name: "답변 시작" }));
+
+    rerender(
+      <InterviewRoom
+        question={longQuestion}
+        transcript={longTranscript}
+        state="awaiting_answer"
+        connectionState="connected"
+        textOnly={false}
+        questionInProgress={false}
+        onStartAnswer={vi.fn()}
+        onCompleteAnswer={vi.fn()}
+        onReconnect={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByLabelText("면접관 질문").getAttribute("data-caption-mode"),
+    ).toBe("compact");
+    const applicantCaption = screen.getByLabelText("실시간 답변 자막");
+    expect(applicantCaption.className).toContain("bg-white/95");
+    expect(applicantCaption.className).not.toContain("bg-slate-950");
+    const captionViewport = applicantCaption.querySelector("div");
+    expect(captionViewport?.className).toContain("overflow-hidden");
+    expect(captionViewport?.className).not.toContain("overflow-auto");
+    expect(screen.getByText(longTranscript).className).toContain("bottom-0");
+
+    fireEvent.click(screen.getByRole("button", { name: "자막 보기" }));
+    expect(screen.queryByLabelText("실시간 답변 자막")).toBeNull();
+  });
+
   it("keeps avatar timing optional in text-only mode", () => {
     const { rerender } = render(
       <Avatar textOnly={false} speaking speechMarkIndex={2} />,

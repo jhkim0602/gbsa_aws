@@ -210,6 +210,7 @@ export function InterviewSession({
             automatedAnswerIndexRef.current += 1;
           }
           currentQuestionTurnIdRef.current = nextQuestion.questionTurnId;
+          setTranscript("");
           automationRetryCountRef.current = 0;
           if (automationRetryTimerRef.current !== null) {
             window.clearTimeout(automationRetryTimerRef.current);
