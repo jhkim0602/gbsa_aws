@@ -163,7 +163,12 @@ describe("applicant interview journey", () => {
     const captionViewport = applicantCaption.querySelector("div");
     expect(captionViewport?.className).toContain("overflow-hidden");
     expect(captionViewport?.className).not.toContain("overflow-auto");
-    expect(screen.getByText(longTranscript).className).toContain("bottom-0");
+    expect(screen.getByText(longTranscript).className).toContain(
+      "line-clamp-3",
+    );
+    expect(screen.getByText(longTranscript).className).not.toContain(
+      "bottom-0",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "자막 보기" }));
     expect(screen.queryByLabelText("실시간 답변 자막")).toBeNull();

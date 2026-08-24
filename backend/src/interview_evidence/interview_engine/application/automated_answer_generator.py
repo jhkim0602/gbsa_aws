@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -33,6 +34,11 @@ _SYSTEM_PROMPT = """\
 7. 자동 생성, AI, 제공 자료, 출처 ID를 답변에서 언급하지 않습니다.
 8. 설명이나 마크다운 없이 {"answer": "한국어 답변"} 형식의 JSON 객체 하나만 출력합니다.
 """
+
+_SOURCE_DISCLOSURE_PATTERN = re.compile(
+    r"^\s*(?:제출하신|제출한|제출)\s*(?:자료|내용)"
+    r"(?:에\s*따르면|를\s*보면|에서\s*확인되는\s*내용에\s*따르면)\s*[,，:]?\s*"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,7 +166,7 @@ class AutomatedAnswerGenerator:
                     ],
                 },
             )
-            answer = _answer_text(response)
+            answer = _naturalize_answer(_answer_text(response))
         except Exception as error:
             raise AutomatedAnswerGenerationUnavailable(
                 "automated answer generation is temporarily unavailable"
@@ -243,3 +249,8 @@ def _answer_text(response: Mapping[str, Any]) -> str:
     if not isinstance(answer, str) or not answer.strip():
         raise ValueError("automated answer response has no answer")
     return answer.strip()
+
+
+def _naturalize_answer(answer: str) -> str:
+    naturalized = _SOURCE_DISCLOSURE_PATTERN.sub("", answer, count=1).strip()
+    return naturalized or answer.strip()

@@ -127,3 +127,35 @@ def test_policy_rejects_a_near_verbatim_question_rewrite() -> None:
 
     assert result.accepted is False
     assert "duplicate_question" in result.reason_codes
+
+
+def test_policy_removes_a_repeated_submission_source_opening() -> None:
+    result = QuestionPolicy().evaluate(
+        draft(
+            "제출하신 자료에 따르면, 자동 VAD 종료 문제에서 어떤 책임을 분리했는지 설명해 주세요?"
+        ),
+        allowed_criterion_ids=frozenset({CRITERION_A}),
+        prohibited_topics=(),
+        previous_questions=("제출하신 자료에 따르면, 장애 원인을 좁힌 과정을 설명해 주세요?",),
+        fallback_question="문제를 해결한 과정을 설명해 주세요?",
+        fallback_criterion_id=CRITERION_A,
+    )
+
+    assert result.accepted is True
+    assert result.question.text == ("자동 VAD 종료 문제에서 어떤 책임을 분리했는지 설명해 주세요?")
+
+
+def test_policy_keeps_the_first_submission_source_opening() -> None:
+    question = "제출한 자료를 보면, 장애 원인을 좁힌 과정을 설명해 주세요?"
+
+    result = QuestionPolicy().evaluate(
+        draft(question),
+        allowed_criterion_ids=frozenset({CRITERION_A}),
+        prohibited_topics=(),
+        previous_questions=(),
+        fallback_question="문제를 해결한 과정을 설명해 주세요?",
+        fallback_criterion_id=CRITERION_A,
+    )
+
+    assert result.accepted is True
+    assert result.question.text == question

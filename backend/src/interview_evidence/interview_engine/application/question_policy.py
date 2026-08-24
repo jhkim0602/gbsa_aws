@@ -29,6 +29,24 @@ def _normalized(text: str) -> str:
     return re.sub(r"[\W_]+", "", text.casefold())
 
 
+_SOURCE_OPENING_PATTERN = re.compile(
+    r"^\s*(?:제출하신|제출한|제출)\s*(?:자료|내용)"
+    r"(?:에\s*따르면|를\s*보면|에서\s*확인되는\s*내용에\s*따르면)\s*[,，:]?\s*"
+)
+
+
+def _soften_repeated_source_opening(
+    candidate: str,
+    previous_questions: tuple[str, ...],
+) -> str:
+    if _SOURCE_OPENING_PATTERN.match(candidate) is None:
+        return candidate
+    if not any(_SOURCE_OPENING_PATTERN.match(question) for question in previous_questions):
+        return candidate
+    softened = _SOURCE_OPENING_PATTERN.sub("", candidate, count=1).strip()
+    return softened or candidate
+
+
 _FALLBACK_QUESTIONS = (
     "앞서 말씀하신 내용에서 본인이 직접 판단하고 수행한 부분을 구체적으로 설명해 주세요?",
     "그 과정에서 검토한 대안과 최종 선택의 기준을 설명해 주세요?",
@@ -88,6 +106,14 @@ class QuestionPolicy:
         fallback_criterion_id: UUID,
     ) -> QuestionPolicyResult:
         reasons: list[str] = []
+        candidate = candidate.model_copy(
+            update={
+                "text": _soften_repeated_source_opening(
+                    candidate.text,
+                    previous_questions,
+                )
+            }
+        )
         normalized = _normalized(candidate.text)
 
         if candidate.target_criterion_id not in allowed_criterion_ids:

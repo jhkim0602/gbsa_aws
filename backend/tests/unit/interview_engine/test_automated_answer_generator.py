@@ -122,3 +122,67 @@ def test_generated_answer_uses_the_current_questions_source_excerpts() -> None:
     assert payload["question"] == question.text
     assert payload["provided_sources"][0]["excerpt"] == source.excerpt
     assert payload["recent_answers_for_repetition_avoidance"] == [previous_answer.text]
+
+
+def test_generated_answer_removes_submission_source_disclosure() -> None:
+    session = InterviewSession(
+        interview_session_id=SESSION_ID,
+        company_id=COMPANY_ID,
+        invitation_id=UUID("00000000-0000-7000-8000-000000000008"),
+        applicant_id=UUID("00000000-0000-7000-8000-000000000006"),
+        interview_strategy_id=UUID("00000000-0000-7000-8000-000000000009"),
+        competency_model_version_id=UUID("00000000-0000-7000-8000-000000000010"),
+        created_at=NOW,
+    )
+    question = InterviewTurn(
+        turn_id=QUESTION_ID,
+        company_id=COMPANY_ID,
+        interview_session_id=SESSION_ID,
+        sequence=1,
+        speaker=TurnSpeaker.INTERVIEWER,
+        status=TurnStatus.FINAL,
+        text="장애 원인을 좁힌 과정을 설명해 주세요?",
+        target_criterion_id=CRITERION_ID,
+        idempotency_key="question-final-0002",
+        model_config_version="model-v1",
+        finalized_at=NOW,
+    )
+    source = QuestionSourceReference(
+        source_reference_id=UUID("00000000-0000-7000-8000-000000000012"),
+        company_id=COMPANY_ID,
+        interview_session_id=SESSION_ID,
+        question_turn_id=QUESTION_ID,
+        source_id=SOURCE_ID,
+        source_type="submission_chunk",
+        locator={"material_type": "portfolio", "paragraph": 4},
+        excerpt="로그와 사용자 흐름을 비교해 장애 원인을 좁혔다.",
+        relevance_score=0.92,
+        ownership_confidence=0.9,
+        retrieval_config_version="hybrid-v1",
+        model_config_version="model-v1",
+        created_at=NOW,
+    )
+    repository = Mock()
+    repository.get_session.return_value = session
+    repository.get_turn.return_value = question
+    repository.list_final_turns.return_value = (question,)
+    repository.get_question_rationale.side_effect = LookupError
+    repository.list_question_source_references.return_value = (source,)
+    model = DeterministicAIModel(
+        {"answer": "제출 자료에 따르면, 로그와 사용자 흐름을 비교했습니다."}
+    )
+    generator = AutomatedAnswerGenerator(
+        repository=repository,
+        retrieval=Mock(),
+        model=model,
+    )
+
+    generated = generator.generate(
+        context(),
+        session_id=SESSION_ID,
+        question_turn_id=QUESTION_ID,
+        retrieval_config_version="hybrid-v1",
+        fallback_stage=InterviewStage.TECHNICAL,
+    )
+
+    assert generated.text == "로그와 사용자 흐름을 비교했습니다."
