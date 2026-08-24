@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol
 from uuid import NAMESPACE_URL, UUID, uuid5
 
@@ -71,6 +71,10 @@ from interview_evidence.workers.analysis.document_extract import (
 from interview_evidence.workers.analysis.git_commits import (
     CommitDiff,
     analyze_candidate_commits,
+)
+from interview_evidence.workers.analysis.git_evidence_selector import (
+    GitEvidenceCandidate,
+    select_git_evidence,
 )
 from interview_evidence.workers.analysis.git_fetch import BoundedGitFetcher, GitFetchError
 from interview_evidence.workers.analysis.handlers import (
@@ -450,6 +454,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     # on when the listing was larger than the analysis budget.
                     "analyzed_commits": len(snapshot.commits),
                     "max_code_units": MAX_GIT_CODE_UNITS,
+                    "max_embedding_characters": MAX_GIT_EMBEDDING_CHARACTERS,
                 },
                 status=GitAnalysisStatus.RUNNING,
             ),
@@ -578,22 +583,55 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                             content_hash=content_hash,
                         )
                     )
-                    candidates.append(
-                        SourceReferenceCandidate(
-                            source_id=unit.code_unit_id,
-                            source_type="candidate_code_unit",
-                            locator=locator,
-                            content_hash=content_hash,
-                            relevance_score=1.0,
-                            ownership_confidence=commit_analysis.ownership_confidence,
-                        )
-                    )
         if not code_units:
             return self._record_partial_git(context, analyzing, job)
-        selected_indices = self._selected_code_document_indices(tuple(pending_code_documents))
-        code_units = [code_units[index] for index in selected_indices]
-        pending_code_documents = [pending_code_documents[index] for index in selected_indices]
-        candidates = [candidates[index] for index in selected_indices]
+        discovered_code_unit_count = len(code_units)
+        selection = select_git_evidence(
+            tuple(
+                GitEvidenceCandidate(
+                    original_index=index,
+                    commit_sha=document.commit_sha,
+                    path=document.unit.path,
+                    symbol=document.unit.symbol,
+                    text=document.text,
+                    content_hash=document.content_hash,
+                    ownership_confidence=document.ownership_confidence,
+                    line_range=document.unit.current_line_range,
+                    candidate_owned_regions=document.unit.candidate_owned_regions,
+                    related_test_paths=document.unit.related_test_ids,
+                )
+                for index, document in enumerate(pending_code_documents)
+            ),
+            max_units=MAX_GIT_CODE_UNITS,
+            max_units_per_commit=MAX_GIT_CODE_UNITS_PER_COMMIT,
+            max_characters=MAX_GIT_EMBEDDING_CHARACTERS,
+            max_characters_per_unit=MAX_EMBEDDING_INPUT_CHARACTERS,
+        )
+        selected_units: list[CandidateCodeUnit] = []
+        selected_documents: list[_PendingCodeDocument] = []
+        for selected in selection:
+            unit = code_units[selected.original_index]
+            document = pending_code_documents[selected.original_index]
+            locator = {
+                **document.locator,
+                "project_area": selected.project_area,
+                "selection_score": selected.score,
+                "selection_reasons": list(selected.selection_reasons),
+            }
+            selected_units.append(unit)
+            selected_documents.append(replace(document, locator=locator))
+            candidates.append(
+                SourceReferenceCandidate(
+                    source_id=unit.code_unit_id,
+                    source_type="candidate_code_unit",
+                    locator=locator,
+                    content_hash=document.content_hash,
+                    relevance_score=1.0,
+                    ownership_confidence=document.ownership_confidence,
+                )
+            )
+        code_units = selected_units
+        pending_code_documents = selected_documents
         try:
             vectors = self.embed_many(
                 context,
@@ -637,13 +675,20 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                 company_id=context.company_id,
                 submission_id=submission.submission_id,
                 analysis_version=job.analysis_version,
-                extractor_version="bounded-public-git-v1",
-                chunk_config_version="code-units-v1",
+                extractor_version="bounded-ranked-public-git-v2",
+                chunk_config_version="ranked-code-units-v2",
                 claims=(
                     {
                         "type": "public_git_snapshot",
                         "commit_count": len(commits),
                         "code_unit_count": len(code_units),
+                        "discovered_code_unit_count": discovered_code_unit_count,
+                        "project_area_count": len(
+                            {
+                                document.locator["project_area"]
+                                for document in pending_code_documents
+                            }
+                        ),
                     },
                     *(self._candidate_claim(candidate) for candidate in candidates),
                 ),
@@ -668,32 +713,6 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
             analyzing.transition(SubmissionStatus.READY),
         )
         return AnalysisResult(status=JobStatus.READY, analysis_id=analysis.analysis_id)
-
-    @staticmethod
-    def _selected_code_document_indices(
-        documents: tuple[_PendingCodeDocument, ...],
-    ) -> tuple[int, ...]:
-        indices_by_commit: dict[str, list[int]] = {}
-        for index, document in enumerate(documents):
-            indices_by_commit.setdefault(document.commit_sha, []).append(index)
-        selected: list[int] = []
-        selected_characters = 0
-        for position in range(MAX_GIT_CODE_UNITS_PER_COMMIT):
-            for indices in indices_by_commit.values():
-                if len(selected) >= MAX_GIT_CODE_UNITS:
-                    return tuple(selected)
-                if position >= len(indices):
-                    continue
-                index = indices[position]
-                characters = min(
-                    len(documents[index].text),
-                    MAX_EMBEDDING_INPUT_CHARACTERS,
-                )
-                if selected_characters + characters > MAX_GIT_EMBEDDING_CHARACTERS:
-                    continue
-                selected.append(index)
-                selected_characters += characters
-        return tuple(selected)
 
     @staticmethod
     def _python_code_units(

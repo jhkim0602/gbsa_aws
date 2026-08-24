@@ -369,6 +369,9 @@ def test_public_git_event_persists_code_units_and_exact_symbol_index() -> None:
     )
     assert matches[0].exact_symbol_score == 1.0
     assert matches[0].document.ownership_confidence < 0.5
+    assert matches[0].document.locator["project_area"] == "src"
+    assert matches[0].document.locator["selection_score"] > 0
+    assert "related_tests" in matches[0].document.locator["selection_reasons"]
 
 
 def test_public_git_limits_code_units_before_embedding() -> None:
@@ -457,6 +460,12 @@ def test_public_git_limits_code_units_before_embedding() -> None:
     assert len(embedder.batch_calls) == 1
     assert len(embedder.batch_calls[0]) == 12
     assert repository_analysis.limits_applied["max_code_units"] == 60
+    analysis = repository.list_analyses(_context(), frozenset({SUBMISSION_ID}))[0]
+    snapshot_claim = next(
+        claim for claim in analysis.claims if claim["type"] == "public_git_snapshot"
+    )
+    assert snapshot_claim["discovered_code_unit_count"] == 20
+    assert snapshot_claim["code_unit_count"] == 12
 
 
 def test_public_git_embedding_failure_marks_repository_attempt_failed() -> None:
