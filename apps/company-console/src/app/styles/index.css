@@ -1,6 +1,129 @@
 @import "tailwindcss";
 @import "@iep/design-system/theme.css";
 
+@keyframes landing-logo-dark {
+  0%,
+  4% {
+    opacity: 0;
+    clip-path: inset(0 100% 0 0);
+    transform: translateX(-18px);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+  16%,
+  100% {
+    opacity: 1;
+    clip-path: inset(0 54% 0 0);
+    transform: translateX(0);
+  }
+}
+
+@keyframes landing-logo-question {
+  0%,
+  7% {
+    opacity: 0;
+    filter: blur(5px);
+    transform: translateY(18px) scale(0.92);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+  22% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(-2px) scale(1.012);
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes landing-logo-dot {
+  0%,
+  18% {
+    opacity: 0;
+    transform: translateY(-24px) scale(0.72);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+  27% {
+    opacity: 1;
+    transform: translateY(2px) scale(1.025);
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes landing-logo-you {
+  0%,
+  14% {
+    opacity: 0;
+    transform: translateY(14px);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+  25%,
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes landing-wave {
+  0%,
+  100% {
+    transform: scaleY(0.28);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes landing-screen-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px) scale(0.992);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes landing-interviewer-slide {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes landing-flow-next {
+  from {
+    opacity: 0.68;
+    transform: translateX(12vw);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes landing-flow-previous {
+  from {
+    opacity: 0.68;
+    transform: translateX(-12vw);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 @keyframes why-you-bot-search {
   0%,
   100% {

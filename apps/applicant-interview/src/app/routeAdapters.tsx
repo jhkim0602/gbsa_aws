@@ -49,6 +49,22 @@ function idempotencyKey(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
+/**
+ * A key that identifies the work rather than the attempt.
+ *
+ * `idempotencyKey` mints a fresh uuid per call, so the server saw two clicks on the same submit
+ * button as two separate submissions and stored both: a portfolio arrived twice, one second
+ * apart, and the duplicate was invisible in the console because only the newest is listed. The
+ * header was present and did nothing. `createRecordingUploadApi` below already keys on the work
+ * (`recording-${sessionId}-${chunk.sequence}`); this is that idea for the rest of the calls.
+ *
+ * Retries of a genuinely identical submission collapse onto one row; a different file or url
+ * produces a different digest and is treated as new work, which is what re-submitting means.
+ */
+function submissionIdempotencyKey(prefix: string, ...parts: string[]) {
+  return [prefix, ...parts].join("-").slice(0, 200);
+}
+
 async function applicantRequest<T>(
   path: string,
   init: RequestInit = {},
@@ -230,7 +246,13 @@ const submissionApi: SubmissionWorkspaceApi = {
       components["schemas"]["UploadIntent"]
     >("/v1/applicant/submissions/upload-intents", {
       method: "POST",
-      headers: { "Idempotency-Key": idempotencyKey("upload-intent") },
+      headers: {
+        "Idempotency-Key": submissionIdempotencyKey(
+          "upload-intent",
+          materialId,
+          digest,
+        ),
+      },
       body: JSON.stringify({
         source_type: documentSourceType(materialId),
         filename: file.name,
@@ -246,7 +268,13 @@ const submissionApi: SubmissionWorkspaceApi = {
     });
     await applicantRequest("/v1/applicant/submissions", {
       method: "POST",
-      headers: { "Idempotency-Key": idempotencyKey("submission") },
+      headers: {
+        "Idempotency-Key": submissionIdempotencyKey(
+          "submission",
+          materialId,
+          digest,
+        ),
+      },
       body: JSON.stringify({
         material_type: toApiMaterialType(materialId),
         source_type: documentSourceType(materialId),
@@ -257,7 +285,13 @@ const submissionApi: SubmissionWorkspaceApi = {
   async registerRepository(url, materialId, githubUsername) {
     await applicantRequest("/v1/applicant/submissions", {
       method: "POST",
-      headers: { "Idempotency-Key": idempotencyKey("repository") },
+      headers: {
+        "Idempotency-Key": submissionIdempotencyKey(
+          "repository",
+          materialId,
+          url,
+        ),
+      },
       body: JSON.stringify({
         material_type: toApiMaterialType(materialId),
         source_type: "public_git",
@@ -317,7 +351,11 @@ const submissionApi: SubmissionWorkspaceApi = {
         enabled: boolean;
         instructions: string | null;
       }>;
-      submissions: Array<{ material_type: string; status: string }>;
+      submissions: Array<{
+        material_type: string;
+        status: string;
+        source_url: string | null;
+      }>;
     }>("/v1/applicant/submission-workspace");
     return {
       positionTitle: workspace.position_title,
@@ -330,6 +368,7 @@ const submissionApi: SubmissionWorkspaceApi = {
       submissions: workspace.submissions.map((submission) => ({
         materialId: fromApiMaterialType(submission.material_type),
         status: submission.status,
+        sourceUrl: submission.source_url,
       })),
     };
   },
@@ -459,6 +498,11 @@ export function InterviewRoute() {
   const [sessionStarting, setSessionStarting] = useState(false);
   const autoStartRequestedRef = useRef(false);
   const sessionStartPendingRef = useRef(false);
+  // `start` puts the new session id in the query string, which is what recovery keys off. That
+  // makes it indistinguishable from a reload unless the session started in this very mount is
+  // marked: recovery cannot know the equipment check id, so letting it replace a locally
+  // started session drops the id and the socket never sends `session.start`.
+  const locallyStartedRef = useRef(false);
   const strategyId = strategyIdFromSearch || resolvedStrategyId;
 
   useEffect(() => {
@@ -492,7 +536,7 @@ export function InterviewRoute() {
   }, [roomPreview, strategyIdFromSearch]);
 
   useEffect(() => {
-    if (roomPreview || !sessionIdFromSearch) {
+    if (roomPreview || !sessionIdFromSearch || locallyStartedRef.current) {
       setSessionRestoring(false);
       return;
     }
@@ -532,13 +576,7 @@ export function InterviewRoute() {
     }
     autoStartRequestedRef.current = true;
     void start(AUTOMATED_EQUIPMENT_RESULT, automationMode);
-  }, [
-    automationMode,
-    session,
-    sessionRestoring,
-    strategyId,
-    strategyLoading,
-  ]);
+  }, [automationMode, session, sessionRestoring, strategyId, strategyLoading]);
 
   if (roomPreview) {
     return (
@@ -593,6 +631,7 @@ export function InterviewRoute() {
           ),
         ),
       });
+      locallyStartedRef.current = true;
       setSession({
         sessionId: session.interview_session_id,
         equipmentCheckId: check.equipment_check_id,

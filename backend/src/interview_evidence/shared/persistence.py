@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Collection
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -167,14 +168,26 @@ class SQLOutbox:
         self._session.flush()
         return event
 
-    def pending(self) -> tuple[OutboxEvent, ...]:
-        rows = self._session.scalars(
+    def pending(
+        self,
+        *,
+        event_types: Collection[str] | None = None,
+    ) -> tuple[OutboxEvent, ...]:
+        statement = (
             select(OutboxEventRow)
             .where(OutboxEventRow.publish_status == PublishStatus.PENDING.value)
             .order_by(OutboxEventRow.occurred_at, OutboxEventRow.outbox_event_id)
+            # Several worker processes dispatch from the same outbox. Lock the rows for the
+            # current transaction and let the other dispatchers skip them; without this every
+            # process publishes the same event before any of them commits `published`.
             .with_for_update(skip_locked=True)
-            .limit(100)
         )
+        if event_types is not None:
+            # Narrowed before the limit, not after. Types nobody routes stay pending forever,
+            # and once enough of them accumulate to fill the page the caller only ever sees
+            # those -- every event behind them, `interview.completed` included, is invisible.
+            statement = statement.where(OutboxEventRow.event_type.in_(tuple(event_types)))
+        rows = self._session.scalars(statement.limit(100))
         return tuple(self._domain(row) for row in rows)
 
     def mark_published(self, event_id: UUID) -> None:

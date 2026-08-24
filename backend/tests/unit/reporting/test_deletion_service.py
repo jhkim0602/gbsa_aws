@@ -11,6 +11,8 @@ from interview_evidence.reporting.domain.deletion import (
     DeletionManifest,
     DeletionRequest,
     DeletionStatus,
+    DeletionTarget,
+    TargetStatus,
 )
 from interview_evidence.reporting.repositories.postgres import ReportingRepository
 from interview_evidence.runtime.worker import DeletionRequestedEventHandler
@@ -244,3 +246,45 @@ def test_deletion_worker_retries_until_every_target_is_verified() -> None:
 
     assert isinstance(manifest, DeletionManifest)
     assert manifest.status is DeletionStatus.COMPLETED
+
+
+def test_only_a_completed_manifest_is_settled() -> None:
+    """`is_settled` is what the worker above retries on, so it has to track `status` exactly.
+
+    The worker raises on every `False`, and the queue redelivers. A terminal state added to
+    `DeletionStatus` without an answer here would therefore be retried forever -- which is why
+    the worker asks the manifest instead of comparing the enum itself.
+    """
+    target = DeletionTarget.pending(
+        target_id=UUID("00000000-0000-7000-8000-000000000003"),
+        owner_lane="A",
+        store="aurora",
+        target_type="invitation",
+        resource_id=str(INVITATION_ID),
+    )
+    deleting = DeletionManifest(
+        manifest_id=UUID("00000000-0000-7000-8000-000000000004"),
+        deletion_request_id=UUID("00000000-0000-7000-8000-000000000005"),
+        manifest_version=1,
+        targets=(target,),
+    )
+    unsettled = (
+        deleting,
+        deleting.record_result(target.target_id, status=TargetStatus.RETRYING),
+        deleting.record_result(target.target_id, status=TargetStatus.FAILED),
+    )
+    assert {candidate.status for candidate in unsettled} == {
+        DeletionStatus.DELETING,
+        DeletionStatus.RETRYING,
+        DeletionStatus.PARTIALLY_COMPLETED,
+    }
+    for candidate in unsettled:
+        assert not candidate.is_settled
+
+    completed = deleting.record_result(
+        target.target_id,
+        status=TargetStatus.VERIFIED_ABSENT,
+        verified_at=NOW,
+    )
+    assert completed.status is DeletionStatus.COMPLETED
+    assert completed.is_settled

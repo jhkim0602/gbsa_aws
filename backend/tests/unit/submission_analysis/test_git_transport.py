@@ -601,6 +601,32 @@ def test_only_public_github_https_is_accepted(url: str) -> None:
         transport.fetch(url, limits=GitFetchLimits(), identity=None)
 
 
+def test_a_github_branch_page_url_analyzes_that_branch() -> None:
+    sha = _sha("a")
+    branch_api_root = API_ROOT
+    branch_listing_url = (
+        f"{branch_api_root}/commits?{urlencode({'sha': 'develop', 'per_page': 100})}"
+    )
+    detail = _detail(sha)
+    transport = RecordingTransport(
+        {
+            branch_api_root: {"default_branch": "main"},
+            branch_listing_url: [_listed(sha)],
+            f"{branch_api_root}/commits/{sha}": detail,
+            detail["files"][0]["raw_url"]: b"def branch_code():\n    return True\n",
+        }
+    )
+
+    snapshot = transport.fetch(
+        "https://github.com/example/candidate-project/tree/develop",
+        limits=GitFetchLimits(),
+        identity=None,
+    )
+
+    assert snapshot.default_branch == "develop"
+    assert snapshot.pinned_head_sha == sha
+
+
 def test_a_file_that_is_not_utf8_is_dropped_instead_of_failing_the_analysis() -> None:
     """Downstream analysis decodes every included file as UTF-8.
 

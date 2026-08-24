@@ -53,6 +53,28 @@ describe("Cognito company authentication", () => {
     expect(session.getItem("iep_company_oauth_state")).toBeTruthy();
   });
 
+  it("can force the shared demo account login screen without exposing a password", async () => {
+    const session = memoryStorage();
+    const location = await beginCompanyLogin(
+      config,
+      {
+        sessionStorage: session,
+        navigate: vi.fn(),
+      },
+      {
+        loginHint: "judge-demo@whyyou.example",
+        prompt: "login",
+      },
+    );
+    const url = new URL(location);
+
+    expect(url.searchParams.get("login_hint")).toBe(
+      "judge-demo@whyyou.example",
+    );
+    expect(url.searchParams.get("prompt")).toBe("login");
+    expect(location).not.toContain("password");
+  });
+
   it("validates state and exchanges the code before storing the access token", async () => {
     const session = memoryStorage();
     const local = memoryStorage();

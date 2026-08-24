@@ -1,4 +1,5 @@
 import {
+  AlertCircle,
   Bookmark,
   CheckCircle2,
   Clock3,
@@ -8,6 +9,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+import { reviewErrorMessage } from "./reviewErrors";
 import type { ReviewApi, ReviewDeletion, ReviewHistoryEntry } from "./types";
 
 // `.review-panel` + `.review-panel__*`, shared with ReportView/TimelineView.
@@ -56,14 +58,60 @@ export function HumanReview({
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const deletionProgress =
     deletion.expectedTargets === 0
       ? 0
       : Math.round((deletion.verifiedTargets / deletion.expectedTargets) * 100);
 
+  /**
+   * Record the hire/hold/reject decision.
+   *
+   * This used to have no catch and no pending state, and the buttons were wired as floating
+   * promises. A rejected write changed nothing on screen — no confirmation, no error — so the
+   * reviewer read it as an unresponsive button, clicked again, and whichever attempt succeeded
+   * recorded the decision more than once for the same applicant.
+   */
   async function decide(decision: "advance" | "reject" | "hold") {
-    await api.recordFinalDecision(invitationId, decision, reason);
-    setMessage("사람 결정이 기록되었습니다.");
+    await run(
+      () => api.recordFinalDecision(invitationId, decision, reason),
+      "사람 결정이 기록되었습니다.",
+      "최종 결정을 기록하지 못했습니다.",
+    );
+  }
+
+  async function saveBookmark() {
+    const saved = await run(
+      () => api.addBookmark(invitationId, note),
+      "검토 메모를 저장했습니다.",
+      "검토 메모를 저장하지 못했습니다.",
+    );
+    // Cleared only on success, so a failed save leaves the text for another attempt.
+    if (saved) setNote("");
+  }
+
+  async function run(
+    write: () => Promise<void>,
+    confirmation: string,
+    failure: string,
+  ): Promise<boolean> {
+    // Guarding here rather than relying on `disabled`, which reflects the previous render.
+    if (busy) return false;
+    setBusy(true);
+    setMessage("");
+    setError("");
+    try {
+      await write();
+      setMessage(confirmation);
+      return true;
+    } catch (cause) {
+      console.error("review write failed", cause);
+      setError(reviewErrorMessage(cause, failure));
+      return false;
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -107,8 +155,8 @@ export function HumanReview({
           <button
             className={`${DECISION_BUTTON} border-[rgb(5_150_105_/_30%)] text-success`}
             type="button"
-            disabled={!reason}
-            onClick={() => decide("advance")}
+            disabled={!reason || busy}
+            onClick={() => void decide("advance")}
           >
             <CheckCircle2 size={16} aria-hidden="true" />
             진행 결정
@@ -116,8 +164,8 @@ export function HumanReview({
           <button
             className={`${DECISION_BUTTON} border-[rgb(249_115_22_/_30%)] text-warning`}
             type="button"
-            disabled={!reason}
-            onClick={() => decide("hold")}
+            disabled={!reason || busy}
+            onClick={() => void decide("hold")}
           >
             <Clock3 size={16} aria-hidden="true" />
             보류 결정
@@ -125,8 +173,8 @@ export function HumanReview({
           <button
             className={`${DECISION_BUTTON} border-[rgb(220_38_38_/_28%)] text-danger`}
             type="button"
-            disabled={!reason}
-            onClick={() => decide("reject")}
+            disabled={!reason || busy}
+            onClick={() => void decide("reject")}
           >
             <XCircle size={16} aria-hidden="true" />
             불합격 결정
@@ -148,8 +196,8 @@ export function HumanReview({
           <button
             className={`${DECISION_BUTTON} border-border`}
             type="button"
-            disabled={!note}
-            onClick={() => api.addBookmark(invitationId, note)}
+            disabled={!note || busy}
+            onClick={() => void saveBookmark()}
           >
             <Bookmark size={16} aria-hidden="true" />
             북마크 저장
@@ -163,6 +211,16 @@ export function HumanReview({
           >
             <CheckCircle2 size={15} aria-hidden="true" />
             {message}
+          </p>
+        )}
+
+        {error && (
+          <p
+            className="flex items-center gap-1.5 rounded-[5px] bg-danger-soft p-[9px] text-[9px] text-danger"
+            role="alert"
+          >
+            <AlertCircle size={15} aria-hidden="true" />
+            {error}
           </p>
         )}
 
@@ -182,7 +240,20 @@ export function HumanReview({
                   key={entry.id}
                   className="grid gap-0.5 border-l-2 border-border pl-2"
                 >
-                  <strong className="text-[9px]">{entry.type}</strong>
+                  <strong className="text-[9px]">
+                    {entry.type}
+                    {entry.detail ? (
+                      <span className="font-normal text-ink-secondary">
+                        {" · "}
+                        {entry.detail}
+                      </span>
+                    ) : null}
+                  </strong>
+                  {entry.reason ? (
+                    <span className="text-[8px] leading-[1.5] text-ink-secondary">
+                      {entry.reason}
+                    </span>
+                  ) : null}
                   <span className="text-[8px] text-muted">
                     {entry.createdBy} · {entry.createdAt}
                   </span>

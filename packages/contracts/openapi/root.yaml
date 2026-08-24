@@ -2451,6 +2451,21 @@ components:
         created_at:
           type: string
           format: date-time
+        value:
+          type: object
+          additionalProperties: true
+          description: >-
+            What was recorded: the decision for a final_decision, the note text for a bookmark,
+            the new assessment state for an override. Without it the review history can say a
+            decision was made and not which one.
+        reason:
+          type: string
+          nullable: true
+          maxLength: 4000
+          description: >-
+            The reviewer's own justification, required when overruling the AI or recording a
+            final decision. Stored since those endpoints existed but not previously returned,
+            so the console had no way to show it back.
     DeletionRequestCreate:
       type: object
       additionalProperties: false

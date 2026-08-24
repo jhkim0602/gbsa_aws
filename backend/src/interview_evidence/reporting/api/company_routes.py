@@ -17,7 +17,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from interview_evidence.reporting.adapters.playback import ScopedPlaybackLocator
 from interview_evidence.reporting.application.deletion_service import DeletionService
-from interview_evidence.reporting.application.review_service import ReviewService
+from interview_evidence.reporting.application.review_service import (
+    InvitationStateAdvancer,
+    ReviewService,
+    close_invitation_review,
+)
 from interview_evidence.reporting.application.timeline_service import (
     QuestionRationaleProvider,
     TimelineService,
@@ -85,6 +89,11 @@ def _review_view(review: HumanReview) -> dict[str, object]:
         "review_type": str(review.review_type),
         "created_by": review.company_user_id,
         "created_at": review.created_at,
+        # Both were stored from the start and neither was returned, so the console could list
+        # that a review happened and never what it said: a reviewer could not read back the
+        # decision they recorded, nor the reason they wrote for overruling a score.
+        "value": dict(review.value),
+        "reason": review.reason,
     }
 
 
@@ -259,6 +268,7 @@ def create_company_router(
     deletion_service: DeletionService,
     playback: ScopedPlaybackLocator,
     rationale_provider: QuestionRationaleProvider | None = None,
+    invitations: InvitationStateAdvancer | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1")
     reviews = ReviewService(repository)
@@ -466,13 +476,27 @@ def create_company_router(
         report = repository.get_report_for_invitation(scope.context, invitation_id)
         if report is None:
             raise HTTPException(status_code=404)
+        occurred_at = clock.now()
         review = reviews.record_final_decision(
             scope.context,
             report_id=report.report_id,
             invitation_id=invitation_id,
             decision=Decision(body.decision),
             reason=body.reason,
-            occurred_at=clock.now(),
+            occurred_at=occurred_at,
+        )
+        # After the decision is recorded, never before: the decision is the part that must
+        # survive, and the invitation moving to `reviewed` is what the console reads to stop
+        # listing the applicant as awaiting review.
+        invitation_state = (
+            close_invitation_review(
+                invitations,
+                scope.context,
+                invitation_id=invitation_id,
+                occurred_at=occurred_at,
+            )
+            if invitations is not None
+            else None
         )
         audit.append(
             scope.context,
@@ -480,7 +504,11 @@ def create_company_router(
             resource_type="human_review",
             resource_id=review.human_review_id,
             result="created",
-            metadata={"invitation_id": str(invitation_id), "decision": body.decision},
+            metadata={
+                "invitation_id": str(invitation_id),
+                "decision": body.decision,
+                "invitation_state": invitation_state or "unchanged",
+            },
         )
         return _review_view(review)
 
@@ -559,6 +587,7 @@ def create_lane_d_runtime(
     clock: Clock,
     deletion_service: DeletionService | None = None,
     rationale_provider: QuestionRationaleProvider | None = None,
+    invitations: InvitationStateAdvancer | None = None,
 ) -> LaneDRuntime:
     active_repository = repository
     app = FastAPI(title="Interview Evidence Reporting")
@@ -580,6 +609,7 @@ def create_lane_d_runtime(
             deletion_service=service,
             playback=ScopedPlaybackLocator(),
             rationale_provider=rationale_provider,
+            invitations=invitations,
         )
     )
     return LaneDRuntime(

@@ -101,6 +101,17 @@ class DeletionManifest:
         return DeletionStatus.DELETING
 
     @property
+    def is_settled(self) -> bool:
+        """Whether this deletion needs no further attempt.
+
+        The worker turns `False` into a raise so the queue redelivers the message. A terminal
+        state that will never reach `COMPLETED` on its own therefore has to be admitted here
+        too, or that message is retried forever -- which is why the judgement lives beside
+        `status` rather than in the worker, where adding a state would not touch it.
+        """
+        return self.status is DeletionStatus.COMPLETED
+
+    @property
     def verified_targets(self) -> int:
         return sum(target.status is TargetStatus.VERIFIED_ABSENT for target in self.targets)
 

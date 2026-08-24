@@ -4,6 +4,11 @@ export type CompanyAuthConfig = Readonly<{
   redirectUri: string;
 }>;
 
+export type CompanyLoginOptions = Readonly<{
+  loginHint?: string;
+  prompt?: "login";
+}>;
+
 const VERIFIER_KEY = "iep_company_pkce_verifier";
 const STATE_KEY = "iep_company_oauth_state";
 const TOKEN_KEY = "iep_company_token";
@@ -15,8 +20,14 @@ export async function beginCompanyLogin(
     sessionStorage: Storage;
     navigate(location: string): void;
   },
+  options: CompanyLoginOptions = {},
 ): Promise<string> {
-  return beginCompanyAuthorization(config, "/oauth2/authorize", dependencies);
+  return beginCompanyAuthorization(
+    config,
+    "/oauth2/authorize",
+    dependencies,
+    options,
+  );
 }
 
 export async function beginCompanySignup(
@@ -36,6 +47,7 @@ async function beginCompanyAuthorization(
     sessionStorage: Storage;
     navigate(location: string): void;
   },
+  options: CompanyLoginOptions = {},
 ): Promise<string> {
   const verifier = randomBase64Url(48);
   const state = randomBase64Url(32);
@@ -44,7 +56,7 @@ async function beginCompanyAuthorization(
   dependencies.sessionStorage.setItem(STATE_KEY, state);
 
   const authorize = new URL(path, normalizedDomain(config.domain));
-  authorize.search = new URLSearchParams({
+  const parameters = new URLSearchParams({
     response_type: "code",
     client_id: config.clientId,
     redirect_uri: config.redirectUri,
@@ -57,7 +69,10 @@ async function beginCompanyAuthorization(
     state,
     code_challenge: challenge,
     code_challenge_method: "S256",
-  }).toString();
+  });
+  if (options.loginHint) parameters.set("login_hint", options.loginHint);
+  if (options.prompt) parameters.set("prompt", options.prompt);
+  authorize.search = parameters.toString();
   const location = authorize.toString();
   dependencies.navigate(location);
   return location;

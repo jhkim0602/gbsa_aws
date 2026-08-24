@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, Protocol
@@ -71,7 +71,11 @@ class ProcessedMessage(BaseModel):
 class Outbox(Protocol):
     def append(self, event: OutboxEvent) -> OutboxEvent: ...
 
-    def pending(self) -> tuple[OutboxEvent, ...]: ...
+    def pending(
+        self,
+        *,
+        event_types: Collection[str] | None = None,
+    ) -> tuple[OutboxEvent, ...]: ...
 
     def mark_published(self, event_id: UUID) -> None: ...
 
@@ -92,11 +96,16 @@ class InMemoryOutbox:
         self._idempotency_index[event.idempotency_key] = event.outbox_event_id
         return event
 
-    def pending(self) -> tuple[OutboxEvent, ...]:
+    def pending(
+        self,
+        *,
+        event_types: Collection[str] | None = None,
+    ) -> tuple[OutboxEvent, ...]:
         return tuple(
             event
             for event in self._events.values()
             if event.publish_status is PublishStatus.PENDING
+            and (event_types is None or event.event_type in event_types)
         )
 
     def mark_published(self, event_id: UUID) -> None:

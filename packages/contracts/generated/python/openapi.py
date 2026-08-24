@@ -889,6 +889,23 @@ class HumanReviewView(BaseModel):
     review_type: ReviewType1
     created_by: UUID
     created_at: AwareDatetime
+    value: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "What was recorded: the decision for a final_decision, the note text for a bookmark,"
+            " the new assessment state for an override. Without it the review history can say a"
+            " decision was made and not which one."
+        ),
+    )
+    reason: str | None = Field(
+        None,
+        description=(
+            "The reviewer's own justification, required when overruling the AI or recording a"
+            " final decision. Stored since those endpoints existed but not previously returned,"
+            " so the console had no way to show it back."
+        ),
+        max_length=4000,
+    )
 
 
 class ScopeType(StrEnum):

@@ -95,7 +95,10 @@ class OutboxDispatcher:
 
     def dispatch_once(self) -> int:
         published = 0
-        for event in self.outbox.pending():
+        # Ask only for what this dispatcher can route. An unroutable type is skipped below and
+        # so stays pending for good; left in the query it competes for the same page of rows and,
+        # once there are a page of them, hides every routable event queued behind it.
+        for event in self.outbox.pending(event_types=self._routing.keys()):
             queue_name = self._routing.get(event.event_type)
             if queue_name is None:
                 continue

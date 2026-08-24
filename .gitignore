@@ -6,6 +6,7 @@
 *.key
 # Google Cloud service-account exports for the personal WhyYou project.
 whyyou-*.json
+GCP_settings*.json
 
 # Python
 .venv/
@@ -15,6 +16,7 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.tmp/
 htmlcov/
 .coverage
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Protocol
 from uuid import UUID
 
 from interview_evidence.reporting.domain.report import AssessmentState
@@ -10,8 +11,80 @@ from interview_evidence.reporting.domain.review import (
     ReviewType,
 )
 from interview_evidence.reporting.repositories.postgres import ReportingRepository
-from interview_evidence.shared.ids import new_uuid7
+from interview_evidence.shared.ids import CommandMeta, new_uuid7
 from interview_evidence.shared.tenant import ActorType, TenantContext
+
+
+class InvitationReviewState(Protocol):
+    # Read-only: the hiring lane returns frozen models, which a mutable attribute would reject.
+    @property
+    def state(self) -> str: ...
+
+    @property
+    def row_version(self) -> int: ...
+
+
+class InvitationStateAdvancer(Protocol):
+    """The part of hiring that review needs: read an invitation's state and move it on.
+
+    Declared here as a structural type, the way `QuestionRationaleProvider` is, so reporting
+    states what it needs without importing the hiring lane.
+    """
+
+    def authorize_invitation(
+        self,
+        context: TenantContext,
+        invitation_id: UUID,
+        *,
+        required_state: str | frozenset[str],
+    ) -> InvitationReviewState: ...
+
+    def advance_invitation_state(
+        self,
+        context: TenantContext,
+        invitation_id: UUID,
+        *,
+        from_state: str,
+        to_state: str,
+        meta: CommandMeta,
+    ) -> InvitationReviewState: ...
+
+
+def close_invitation_review(
+    invitations: InvitationStateAdvancer,
+    context: TenantContext,
+    *,
+    invitation_id: UUID,
+    occurred_at: datetime,
+) -> str:
+    """Mark an invitation reviewed once a human has recorded the final decision.
+
+    Recording the decision used to write a `HumanReview` row and stop there, so the applicant
+    stayed at "검토 대기" in the console no matter how many decisions were made — the counter for
+    "검토 완료" reads `status == "reviewed"`, and nothing in the codebase produced that state.
+
+    Returns the state the invitation ended in, so the caller can report what happened. Failing
+    to advance is not raised: the decision itself is already recorded and is the part that must
+    not be lost, and a stale or already-reviewed invitation is not the reviewer's problem.
+    """
+    authorization = invitations.authorize_invitation(
+        context,
+        invitation_id,
+        required_state=frozenset({"completed", "reviewed"}),
+    )
+    if authorization.state != "completed":
+        return authorization.state
+    return invitations.advance_invitation_state(
+        context,
+        invitation_id,
+        from_state="completed",
+        to_state="reviewed",
+        meta=CommandMeta(
+            idempotency_key=f"invitation-reviewed-{invitation_id}",
+            expected_version=authorization.row_version,
+            occurred_at=occurred_at,
+        ),
+    ).state
 
 
 class ReviewService:

@@ -39,6 +39,32 @@ as though it did not exist. That is correct for CI and for the image, wrong for 
 
 `make up` is idempotent. Re-run it whenever a container has been reset.
 
+### Windows PowerShell
+
+Windows does not need Make or WSL. The PowerShell entry point mirrors the Makefile and also starts
+the four worker processes needed by the parallel analysis pipeline:
+
+```powershell
+Copy-Item .env.example .env   # first run only; then fill in AWS/GCP settings
+.\scripts\local.ps1 install
+.\scripts\local.ps1 doctor     # validates required values and Google credentials
+.\scripts\local.ps1 up
+```
+
+Open four PowerShell terminals from the repository root:
+
+```powershell
+.\scripts\local.ps1 api        # http://127.0.0.1:8080
+.\scripts\local.ps1 worker     # four workers; Ctrl+C stops all four
+.\scripts\local.ps1 company    # http://127.0.0.1:5173
+.\scripts\local.ps1 applicant  # http://127.0.0.1:5174
+```
+
+Use `.\scripts\local.ps1 status` for container/API health, `.\scripts\local.ps1 test` for all
+unit tests, `.\scripts\local.ps1 check` for the complete local CI check, and
+`.\scripts\local.ps1 down` to stop the containers. If script execution is disabled for only the
+current shell, run `Set-ExecutionPolicy -Scope Process Bypass` once in that shell.
+
 ## What is not local
 
 `runtime/aws.py:_client_factory` redirects exactly four services — S3, SQS, SES and Secrets

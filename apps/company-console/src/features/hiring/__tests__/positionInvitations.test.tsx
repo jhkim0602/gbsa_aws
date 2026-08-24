@@ -182,7 +182,9 @@ describe("PositionInvitations", () => {
         7,
       ),
     );
-    expect(await screen.findByText("1명의 초대를 발송했습니다.")).toBeTruthy();
+    expect(
+      await screen.findByText("1명에게 초대 메일을 발송했습니다."),
+    ).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("지원자 검색"), {
       target: { value: "김개발" },
@@ -352,6 +354,84 @@ describe("PositionInvitations", () => {
     expect(await screen.findByText("홍길동")).toBeTruthy();
     expect(screen.getByRole("button", { name: "수정" })).toBeTruthy();
     expect(screen.getByRole("button", { name: /초대 보내기/ })).toBeTruthy();
+  });
+
+  it("reports the invitations whose mail did not go out", async () => {
+    // `rejectedCount` was in the response and rendered nowhere, so a batch where delivery
+    // mostly failed reported as a plain success and the draft rows were cleared -- leaving no
+    // way to see who had been left out.
+    const api: PositionInvitationApi = {
+      listInvitations: vi.fn().mockResolvedValue(invitations),
+      createInvitations: vi.fn().mockResolvedValue({
+        acceptedCount: 1,
+        rejectedCount: 2,
+        invitations: [],
+      }),
+    };
+
+    render(
+      <MemoryRouter>
+        <PositionInvitations
+          positionId="position-1"
+          positionName="백엔드 개발자"
+          api={api}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: "지원자 관리" });
+    fireEvent.change(screen.getByLabelText("지원자 1 이름"), {
+      target: { value: "박지원" },
+    });
+    fireEvent.change(screen.getByLabelText("지원자 1 이메일"), {
+      target: { value: "park@example.com" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "1명에게 초대 보내기" }),
+    );
+
+    expect(
+      await screen.findByText(
+        /2명은 초대가 만들어졌지만 메일이 발송되지 않았습니다/,
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("1명에게 초대 메일을 발송했습니다.")).toBeTruthy();
+  });
+
+  it("does not call a batch with no delivered mail a success", async () => {
+    const api: PositionInvitationApi = {
+      listInvitations: vi.fn().mockResolvedValue(invitations),
+      createInvitations: vi.fn().mockResolvedValue({
+        acceptedCount: 0,
+        rejectedCount: 1,
+        invitations: [],
+      }),
+    };
+
+    render(
+      <MemoryRouter>
+        <PositionInvitations
+          positionId="position-1"
+          positionName="백엔드 개발자"
+          api={api}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: "지원자 관리" });
+    fireEvent.change(screen.getByLabelText("지원자 1 이름"), {
+      target: { value: "박지원" },
+    });
+    fireEvent.change(screen.getByLabelText("지원자 1 이메일"), {
+      target: { value: "park@example.com" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "1명에게 초대 보내기" }),
+    );
+
+    // `0명의 초대를 발송했습니다.` used to render here, as a success banner.
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.queryByText(/초대 메일을 발송했습니다/)).toBeNull();
   });
 });
 

@@ -82,6 +82,8 @@ from interview_evidence.workers.analysis.handlers import (
     RetryableAnalysisError,
 )
 
+MAX_EMBEDDING_INPUT_CHARACTERS = 7_000
+
 RETRYABLE_SOURCE_CODES = frozenset(
     {
         "public_git_fetch_failed",
@@ -173,7 +175,11 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
         self._git_fetcher = git_fetcher
 
     def embed(self, context: TenantContext, text: str) -> tuple[float, ...]:
-        return self._text_embedder.embed(context, text, dimensions=1024)
+        # Titan v2 accepts at most 8,192 tokens. Code and Korean text can approach one
+        # token per character, so bound the adapter input below that ceiling. The full
+        # source remains persisted and only its semantic representation is shortened.
+        bounded_text = text[:MAX_EMBEDDING_INPUT_CHARACTERS]
+        return self._text_embedder.embed(context, bounded_text, dimensions=1024)
 
     def embed_many(
         self,
