@@ -605,4 +605,39 @@ describe("interview protocol client", () => {
       lastFinalTurnId: "00000000-0000-7000-8000-000000000423",
     });
   });
+
+  it("announces the closing message before session completion", () => {
+    const socket = new FakeSocket();
+    const store = createInterviewSessionStore();
+    const onSessionClosing = vi.fn();
+    const client = new InterviewProtocolClient({
+      sessionId: "00000000-0000-7000-8000-000000000421",
+      socketFactory: () => socket,
+      store,
+      onQuestion: vi.fn(),
+      onSessionClosing,
+    });
+    client.connect();
+    socket.open();
+
+    socket.serverMessage({
+      protocol_version: "1.0",
+      message_type: "session.closing",
+      session_id: "00000000-0000-7000-8000-000000000421",
+      sequence: 9,
+      idempotency_key: "server-closing-0001",
+      correlation_id: "00000000-0000-7000-8000-000000000422",
+      sent_at: "2026-08-15T10:00:02Z",
+      payload: {
+        text: "답변 감사합니다. 오늘 면접은 여기까지입니다.",
+        audio_stream: true,
+      },
+    });
+
+    expect(onSessionClosing).toHaveBeenCalledWith({
+      text: "답변 감사합니다. 오늘 면접은 여기까지입니다.",
+      audioStream: true,
+    });
+    expect(store.getState().state).not.toBe("completed");
+  });
 });

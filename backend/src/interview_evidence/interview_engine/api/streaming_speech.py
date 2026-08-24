@@ -171,6 +171,25 @@ class StreamingSpeechConnection:
         )
         return response.model_copy(update={"payload": payload})
 
+    def prepare_closing_response(self, response: ServerEnvelope) -> ServerEnvelope:
+        if response.message_type != "session.completed":
+            return response
+        text = response.payload.get("closing_message")
+        if not isinstance(text, str) or not text.strip():
+            return response
+        audio_stream = self._runtime.text_to_speech is not None
+        return _message(
+            response,
+            message_type="session.closing",
+            payload={
+                "question_turn_id": "session-closing",
+                "text": text,
+                "audio_stream": audio_stream,
+                "text_only": not audio_stream,
+                "voice_id": response.payload.get("voice_id", "default"),
+            },
+        )
+
     async def start_question_audio(self, response: ServerEnvelope) -> None:
         provider = self._runtime.text_to_speech
         if provider is None or response.message_type != "question.ready":
@@ -209,6 +228,30 @@ class StreamingSpeechConnection:
         voice_id = response.payload.get("voice_id")
         self._speech_task = asyncio.create_task(
             self._stream_automated_answer_audio(
+                response,
+                text=text,
+                voice_id=voice_id if isinstance(voice_id, str) else "default",
+            )
+        )
+
+    async def start_closing_audio(self, response: ServerEnvelope) -> None:
+        provider = self._runtime.text_to_speech
+        if (
+            provider is None
+            or response.message_type != "session.closing"
+            or response.payload.get("audio_stream") is not True
+        ):
+            return
+        text = response.payload.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return
+        if self._speech_task is not None:
+            self._speech_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._speech_task
+        voice_id = response.payload.get("voice_id")
+        self._speech_task = asyncio.create_task(
+            self._stream_question_audio(
                 response,
                 text=text,
                 voice_id=voice_id if isinstance(voice_id, str) else "default",

@@ -136,6 +136,83 @@ describe("InterviewSession", () => {
     await waitFor(() => expect(onComplete).toHaveBeenCalledOnce());
   });
 
+  it("waits for the closing voice before opening the completion screen", async () => {
+    const protocol = {
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      startAnswer: vi.fn(),
+      completeAnswer: vi.fn(),
+      sendAudioFrame: vi.fn(),
+      repeatQuestion: vi.fn(),
+      requestAutomatedAnswer: vi.fn(),
+      submitAutomatedAnswer: vi.fn(),
+    };
+    let callbacks:
+      | Parameters<InterviewSessionDependencies["createProtocolClient"]>[0]
+      | undefined;
+    let playbackStateChanged: ((state: "playing" | "idle") => void) | undefined;
+    const audioPlayer = {
+      start: vi.fn(
+        async (
+          _sampleRateHz: number,
+          onStateChange: (state: "playing" | "idle") => void,
+        ) => {
+          playbackStateChanged = onStateChange;
+          onStateChange("playing");
+        },
+      ),
+      enqueue: vi.fn(),
+      end: vi.fn(),
+      stop: vi.fn(),
+    };
+    const dependencies: Partial<InterviewSessionDependencies> = {
+      socketFactory: vi.fn(),
+      mediaDevices: { getUserMedia: vi.fn() },
+      createAudioPlayer: vi.fn(() => audioPlayer),
+      createProtocolClient: vi.fn((input) => {
+        callbacks = input;
+        input.store.getState().setConnectionState("connected");
+        return protocol;
+      }),
+    };
+    const onComplete = vi.fn();
+    render(
+      <InterviewSession
+        sessionId="00000000-0000-7000-8000-000000000521"
+        websocketUrl="ws://localhost/session"
+        recordingApi={{ upload: vi.fn() }}
+        dependencies={dependencies}
+        onComplete={onComplete}
+      />,
+    );
+
+    act(() => {
+      callbacks?.onSessionClosing?.({
+        text: "답변 감사합니다. 오늘 면접은 여기까지입니다.",
+        audioStream: true,
+      });
+      callbacks?.onQuestionAudioStart?.({ sampleRateHz: 24000 });
+    });
+    expect(
+      await screen.findByText("답변 감사합니다. 오늘 면접은 여기까지입니다."),
+    ).toBeTruthy();
+    await waitFor(() => expect(audioPlayer.start).toHaveBeenCalledOnce());
+
+    act(() => {
+      callbacks?.store.getState().applyServerState({
+        state: "completed",
+        serverSequence: 9,
+        lastFinalTurnId: "00000000-0000-7000-8000-000000000522",
+        lastVerifiedRecordingChunkSequence: 0,
+        degradedModes: [],
+      });
+    });
+    expect(onComplete).not.toHaveBeenCalled();
+
+    act(() => playbackStateChanged?.("idle"));
+    await waitFor(() => expect(onComplete).toHaveBeenCalledOnce());
+  });
+
   it("replays locally buffered recording chunks after reconnect", async () => {
     const buffered: StoredMediaChunk = {
       sessionId: "00000000-0000-7000-8000-000000000503",

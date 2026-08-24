@@ -85,6 +85,7 @@ export type InterviewSessionDependencies = Readonly<{
       text: string;
       textOnly: boolean;
     }): void;
+    onSessionClosing?(closing: { text: string; audioStream: boolean }): void;
     onTranscript?(text: string, isFinal: boolean): void;
     onQuestionAudioStart?(format: { sampleRateHz: number }): void;
     onQuestionAudioChunk?(chunk: ArrayBuffer): void;
@@ -221,6 +222,13 @@ export function InterviewSession({
         setQuestionTurnId(nextQuestion.questionTurnId);
         setQuestionPlaybackComplete(nextQuestion.textOnly);
         if (nextQuestion.textOnly) setInterviewerSpeaking(false);
+      },
+      onSessionClosing(closing) {
+        setQuestion(closing.text);
+        setQuestionTurnId(null);
+        setTranscript("");
+        setInterviewerSpeaking(false);
+        setQuestionPlaybackComplete(!closing.audioStream);
       },
       onTranscript(text) {
         setTranscript(text);
@@ -366,10 +374,11 @@ export function InterviewSession({
       snapshot.state === "completed" ||
       snapshot.state === "report_generating" ||
       snapshot.state === "reviewable";
-    if (!terminal || completionNotifiedRef.current) return;
+    if (!terminal || !questionPlaybackComplete || completionNotifiedRef.current)
+      return;
     completionNotifiedRef.current = true;
     onComplete?.();
-  }, [onComplete, snapshot.state]);
+  }, [onComplete, questionPlaybackComplete, snapshot.state]);
 
   useEffect(() => {
     if (

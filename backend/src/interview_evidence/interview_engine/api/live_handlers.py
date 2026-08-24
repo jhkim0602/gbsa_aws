@@ -47,6 +47,8 @@ from interview_evidence.shared.ids import Clock, new_uuid7
 from interview_evidence.shared.security.principals import ApplicantPrincipal
 from interview_evidence.shared.tenant import TenantContext
 
+INTERVIEW_CLOSING_MESSAGE = "답변 감사합니다. 오늘 면접은 여기까지입니다."
+
 
 class LiveInterviewHandler:
     def __init__(
@@ -607,6 +609,8 @@ class LiveInterviewHandler:
                     ),
                     "last_turn_id": str(answer_turn_id),
                     "post_processing_status": "queued",
+                    "closing_message": INTERVIEW_CLOSING_MESSAGE,
+                    "voice_id": plan.voice_id,
                 },
             )
         target = (

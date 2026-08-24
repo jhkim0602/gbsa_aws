@@ -28,6 +28,7 @@ from interview_evidence.shared.security.principals import (
     CompanyPrincipal,
 )
 from interview_evidence.shared.speech.ports import (
+    SpeechAudioChunk,
     SpeechRecognitionConfig,
     SpeechRecognitionSession,
     TranscriptEvent,
@@ -119,6 +120,39 @@ class TemporarilyUnavailableProtocolHandler(FakeProtocolHandler):
                 retryable=True,
             )
         return super().handle(context, principal, envelope)
+
+
+class CompletingProtocolHandler(FakeProtocolHandler):
+    def handle(
+        self,
+        context: TenantContext,
+        principal: ApplicantPrincipal,
+        envelope: WebSocketEnvelope,
+    ) -> ServerEnvelope:
+        del context, principal
+        return _response(
+            envelope,
+            message_type="session.completed",
+            payload={
+                "state": "completed",
+                "closing_message": "답변 감사합니다. 오늘 면접은 여기까지입니다.",
+                "voice_id": "Seoyeon",
+            },
+        )
+
+
+class FakeClosingTextToSpeech:
+    async def synthesize_stream(
+        self,
+        context: TenantContext,
+        text: str,
+        *,
+        voice_id: str,
+    ) -> AsyncIterator[SpeechAudioChunk]:
+        assert context.company_id == COMPANY_ID
+        assert text == "답변 감사합니다. 오늘 면접은 여기까지입니다."
+        assert voice_id == "Seoyeon"
+        yield SpeechAudioChunk(content=b"closing", sample_rate_hz=24000)
 
 
 class FakeRecognitionSession(SpeechRecognitionSession):
@@ -257,6 +291,27 @@ def test_question_generation_failure_keeps_websocket_available_for_retry() -> No
 
             websocket.send_json(_envelope("answer.start", "answer-start-0002"))
             assert websocket.receive_json()["message_type"] == "answer.started"
+
+
+def test_websocket_plays_closing_audio_before_completing_session() -> None:
+    router = create_interview_websocket_router(
+        principal_provider=FakePrincipalProvider(),
+        handler=CompletingProtocolHandler(),  # type: ignore[arg-type]
+        speech=WebSocketSpeechRuntime(text_to_speech=FakeClosingTextToSpeech()),
+    )
+    app = create_app([router])
+
+    with TestClient(app) as client:
+        client.cookies.set("iep_applicant_session", "applicant-session")
+        with client.websocket_connect(
+            f"/v1/applicant/interview-sessions/{SESSION_ID}/stream"
+        ) as websocket:
+            websocket.send_json(_envelope("answer.complete", "answer-complete-0002"))
+            assert websocket.receive_json()["message_type"] == "session.closing"
+            assert websocket.receive_json()["message_type"] == "question.audio.begin"
+            assert websocket.receive_bytes() == b"closing"
+            assert websocket.receive_json()["message_type"] == "question.audio.end"
+            assert websocket.receive_json()["message_type"] == "session.completed"
 
 
 def _envelope(

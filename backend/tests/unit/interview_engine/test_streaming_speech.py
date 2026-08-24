@@ -265,6 +265,55 @@ class FakeAutomatedAnswerTextToSpeech:
         yield SpeechAudioChunk(content=b"answer-two", sample_rate_hz=24000)
 
 
+class FakeClosingTextToSpeech:
+    def synthesize_stream(
+        self,
+        context: TenantContext,
+        text: str,
+        *,
+        voice_id: str,
+    ) -> AsyncIterator[SpeechAudioChunk]:
+        assert context == _context()
+        assert text == "답변 감사합니다. 오늘 면접은 여기까지입니다."
+        assert voice_id == "Seoyeon"
+        return self._chunks()
+
+    async def _chunks(self) -> AsyncIterator[SpeechAudioChunk]:
+        yield SpeechAudioChunk(content=b"closing", sample_rate_hz=24000)
+
+
+@pytest.mark.asyncio
+async def test_streaming_connection_sends_closing_audio_before_completion() -> None:
+    published: list[ServerEnvelope | bytes] = []
+    connection = StreamingSpeechConnection(
+        context=_context(),
+        runtime=WebSocketSpeechRuntime(text_to_speech=FakeClosingTextToSpeech()),
+        publish=_publisher(published),
+    )
+    completed = ServerEnvelope(
+        message_type="session.completed",
+        session_id=SESSION_ID,
+        sequence=8,
+        idempotency_key="server:session-completed-0001",
+        correlation_id=UUID("00000000-0000-7000-8000-000000000019"),
+        sent_at=_envelope().sent_at,
+        payload={
+            "closing_message": "답변 감사합니다. 오늘 면접은 여기까지입니다.",
+            "voice_id": "Seoyeon",
+        },
+    )
+
+    closing = connection.prepare_closing_response(completed)
+    await connection.start_closing_audio(closing)
+    await connection.wait_for_question_audio()
+
+    assert closing.message_type == "session.closing"
+    assert closing.payload["audio_stream"] is True
+    assert [
+        item.message_type if isinstance(item, ServerEnvelope) else item for item in published
+    ] == ["question.audio.begin", b"closing", "question.audio.end"]
+
+
 @pytest.mark.asyncio
 async def test_streaming_connection_sends_generated_answer_audio_separately() -> None:
     published: list[ServerEnvelope | bytes] = []

@@ -23,6 +23,11 @@ type Question = Readonly<{
   textOnly: boolean;
 }>;
 
+type SessionClosing = Readonly<{
+  text: string;
+  audioStream: boolean;
+}>;
+
 export type InterviewProtocolError = Readonly<{
   code: string;
   message: string;
@@ -83,6 +88,7 @@ export class InterviewProtocolClient {
       socketFactory(): SocketLike;
       store: StoreApi<InterviewSessionStore>;
       onQuestion(question: Question): void;
+      onSessionClosing?(closing: SessionClosing): void;
       onTranscript?(text: string, isFinal: boolean): void;
       onQuestionAudioStart?(format: QuestionAudioFormat): void;
       onQuestionAudioChunk?(chunk: ArrayBuffer): void;
@@ -435,6 +441,17 @@ export class InterviewProtocolClient {
           current.lastVerifiedRecordingChunkSequence,
         degradedModes: current.degradedModes,
       });
+      return;
+    }
+
+    if (envelope.message_type === "session.closing") {
+      const text = readString(envelope.payload.text);
+      if (text) {
+        this.options.onSessionClosing?.({
+          text,
+          audioStream: envelope.payload.audio_stream === true,
+        });
+      }
       return;
     }
 

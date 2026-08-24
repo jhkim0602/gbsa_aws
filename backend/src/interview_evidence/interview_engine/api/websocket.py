@@ -471,6 +471,14 @@ def create_interview_websocket_router(
         )
 
         async def publish_handler_response(response: ServerEnvelope) -> None:
+            if response.message_type == "session.completed":
+                closing = streaming.prepare_closing_response(response)
+                if closing.message_type == "session.closing":
+                    await publish(closing)
+                    await streaming.start_closing_audio(closing)
+                    await streaming.wait_for_question_audio()
+                await publish(response)
+                return
             prepared = streaming.prepare_question_response(response)
             prepared = streaming.prepare_automated_answer_response(prepared)
             await publish(prepared)
