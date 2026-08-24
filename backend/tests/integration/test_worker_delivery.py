@@ -193,7 +193,14 @@ def test_consumer_requeues_retryable_failure_without_recording_success() -> None
 
 
 def test_consumer_requeues_retrying_outcome_without_recording_success() -> None:
-    queue = InMemoryQueue()
+    retry_delays: list[int] = []
+
+    class RetryQueue(InMemoryQueue):
+        def retry(self, receipt_handle: str, *, delay_seconds: int = 0) -> None:
+            retry_delays.append(delay_seconds)
+            super().retry(receipt_handle, delay_seconds=delay_seconds)
+
+    queue = RetryQueue()
     processed = InMemoryProcessedMessageStore()
     dispatcher = OutboxDispatcher(
         outbox=InMemoryOutbox(),
@@ -221,6 +228,7 @@ def test_consumer_requeues_retrying_outcome_without_recording_success() -> None:
         event_version=1,
     )
     assert queue.receive(max_messages=1)[0].receive_count == 2
+    assert retry_delays == [5]
 
 
 def test_consumer_commits_database_before_acknowledging_sqs() -> None:

@@ -227,7 +227,10 @@ class MessageConsumer:
                 rollback_transaction()
                 self._record_latency(delivery.event_type, delivery.event_version, started_at)
                 self._record_delivery("retrying")
-                self._queue.retry(delivery.receipt_handle)
+                self._queue.retry(
+                    delivery.receipt_handle,
+                    delay_seconds=_retry_delay_seconds(delivery.receive_count),
+                )
                 continue
             except BaseException:
                 rollback_transaction()
@@ -323,6 +326,11 @@ class MessageConsumer:
                 "outcome": outcome,
             },
         )
+
+
+def _retry_delay_seconds(receive_count: int) -> int:
+    exponent = min(max(0, receive_count - 1), 4)
+    return min(5 * (1 << exponent), 60)
 
 
 def _requests_retry(outcome: object) -> bool:

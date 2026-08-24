@@ -235,7 +235,7 @@ def test_sqs_long_poll_delivery_can_be_acknowledged_or_retried() -> None:
     delivery = queue.receive(max_messages=1)[0]
     assert delivery.event_id == event_id
     assert delivery.aggregate_id == aggregate_id
-    queue.retry(delivery.receipt_handle)
+    queue.retry(delivery.receipt_handle, delay_seconds=15)
     queue.extend_visibility(delivery.receipt_handle, 300)
     queue.acknowledge(delivery.receipt_handle)
     assert [call[0] for call in client.calls] == [
@@ -247,6 +247,7 @@ def test_sqs_long_poll_delivery_can_be_acknowledged_or_retried() -> None:
     assert client.calls[0][1]["WaitTimeSeconds"] == 1
     assert client.calls[0][1]["AttributeNames"] == ["ApproximateReceiveCount"]
     assert "VisibilityTimeout" not in client.calls[0][1]
+    assert client.calls[1][1]["VisibilityTimeout"] == 15
     assert client.calls[2][1]["VisibilityTimeout"] == 300
 
 

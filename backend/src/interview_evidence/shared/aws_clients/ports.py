@@ -132,7 +132,7 @@ class ConsumableQueue(EventQueue, Protocol):
 
     def acknowledge(self, receipt_handle: str) -> None: ...
 
-    def retry(self, receipt_handle: str) -> None: ...
+    def retry(self, receipt_handle: str, *, delay_seconds: int = 0) -> None: ...
 
     def extend_visibility(self, receipt_handle: str, timeout_seconds: int) -> None: ...
 
@@ -311,7 +311,9 @@ class InMemoryQueue:
     def acknowledge(self, receipt_handle: str) -> None:
         self._inflight.pop(receipt_handle, None)
 
-    def retry(self, receipt_handle: str) -> None:
+    def retry(self, receipt_handle: str, *, delay_seconds: int = 0) -> None:
+        if delay_seconds < 0:
+            raise ValueError("queue retry delay cannot be negative")
         delivery = self._inflight.pop(receipt_handle)
         self._available.append(
             replace(

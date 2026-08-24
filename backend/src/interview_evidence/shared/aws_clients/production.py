@@ -408,12 +408,14 @@ class AwsSqsQueue(ConsumableQueue):
         except Exception as error:
             raise AwsAdapterError("queue acknowledgement unavailable") from error
 
-    def retry(self, receipt_handle: str) -> None:
+    def retry(self, receipt_handle: str, *, delay_seconds: int = 0) -> None:
+        if not 0 <= delay_seconds <= 43_200:
+            raise ValueError("queue retry delay must be between 0 and 43200 seconds")
         try:
             self._client.change_message_visibility(
                 QueueUrl=self._queue_url,
                 ReceiptHandle=receipt_handle,
-                VisibilityTimeout=0,
+                VisibilityTimeout=delay_seconds,
             )
         except Exception as error:
             raise AwsAdapterError("queue retry unavailable") from error
