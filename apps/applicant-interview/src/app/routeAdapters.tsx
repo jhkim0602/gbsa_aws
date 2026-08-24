@@ -191,13 +191,12 @@ const accessApi: ApplicantAccessApi = {
       body: JSON.stringify({ invitation_token: token }),
     });
   },
-  async verifyIdentity(displayName, verificationValue) {
+  async verifyIdentity(displayName) {
     await applicantRequest("/v1/applicant/identity-verifications", {
       method: "POST",
       headers: { "Idempotency-Key": idempotencyKey("identity") },
       body: JSON.stringify({
         display_name: displayName,
-        verification_value: verificationValue,
       }),
     });
   },

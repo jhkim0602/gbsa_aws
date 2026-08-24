@@ -6,6 +6,10 @@ from uuid import UUID
 
 from fastapi.testclient import TestClient
 from interview_evidence.company_management.domain.company import Position, PositionStatus
+from interview_evidence.company_management.domain.hiring import (
+    Invitation,
+    RecruitingStage,
+)
 from interview_evidence.main import create_app
 from interview_evidence.recruiting_assistant.api import create_assistant_router
 from interview_evidence.recruiting_assistant.application import (
@@ -31,6 +35,7 @@ from interview_evidence.shared.security.principals import (
     CompanyPrincipal,
     PrincipalNotFoundError,
 )
+from interview_evidence.shared.submission_materials import DEFAULT_SUBMISSION_REQUIREMENTS
 from interview_evidence.shared.tenant import TenantContext
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -46,6 +51,8 @@ ITEM_ID = UUID("00000000-0000-7000-8000-000000000107")
 CRITERION_ID = UUID("00000000-0000-7000-8000-000000000108")
 VERSION_ID = UUID("00000000-0000-7000-8000-000000000109")
 NOW = datetime(2026, 8, 21, 13, 0, tzinfo=UTC)
+REVIEW_STAGE_ID = UUID("00000000-0000-7000-8000-000000000114")
+FINAL_STAGE_ID = UUID("00000000-0000-7000-8000-000000000115")
 
 
 class Principals:
@@ -77,14 +84,62 @@ class Positions:
             description="서비스 개발",
             created_by=USER_ID,
             status=PositionStatus.ACTIVE,
-            recruitment_end_at=(
-                date(2026, 8, 20) if self._archived else None
-            ),
+            recruitment_end_at=(date(2026, 8, 20) if self._archived else None),
             created_at=NOW,
         )
 
     def list_positions(self, context: TenantContext) -> tuple[Position, ...]:
         return (self.get_position(context, POSITION_ID),)
+
+
+class Pipeline:
+    def __init__(self) -> None:
+        self.invitation = Invitation.create(
+            invitation_id=INVITATION_ID,
+            company_id=COMPANY_ID,
+            position_id=POSITION_ID,
+            competency_model_version_id=VERSION_ID,
+            applicant_id=APPLICANT_ID,
+            applicant_email="minjun.kim@example.com",
+            applicant_display_name="김민준",
+            submission_requirements=DEFAULT_SUBMISSION_REQUIREMENTS,
+            token_hash="a" * 64,
+            expires_at=NOW,
+            recruiting_stage_id=REVIEW_STAGE_ID,
+        )
+
+    def list_recruiting_stages(
+        self,
+        context: TenantContext,
+        position_id: UUID | None = None,
+    ) -> tuple[RecruitingStage, ...]:
+        context.assert_company(COMPANY_ID)
+        assert position_id in {None, POSITION_ID}
+        return (
+            RecruitingStage(
+                recruiting_stage_id=REVIEW_STAGE_ID,
+                company_id=COMPANY_ID,
+                position_id=POSITION_ID,
+                name="검토",
+                sort_order=0,
+            ),
+            RecruitingStage(
+                recruiting_stage_id=FINAL_STAGE_ID,
+                company_id=COMPANY_ID,
+                position_id=POSITION_ID,
+                name="최종합격",
+                sort_order=1,
+            ),
+        )
+
+    def list_invitations(
+        self,
+        context: TenantContext,
+        position_id: UUID,
+    ) -> tuple[Invitation, ...]:
+        context.assert_company(COMPANY_ID)
+        assert position_id == POSITION_ID
+        return (self.invitation,)
 
 
 class Audit:
@@ -269,6 +324,78 @@ def test_assistant_http_search_and_grounded_answer() -> None:
         "assistant.answer",
         "assistant.answer_stream",
     ]
+
+
+def test_assistant_reads_live_pipeline_stage_and_counts_without_history() -> None:
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    session = Session(engine)
+    repository = SQLAlchemyAssistantDocumentRepository(session)
+    embedder = StaticTextEmbedder((1.0, *(0.0 for _ in range(1023))))
+    search = AssistantSearchService(repository, embedder)
+    pipeline = Pipeline()
+    app = create_app(
+        [
+            create_assistant_router(
+                principal_provider=Principals(),
+                company_service=Positions(),
+                search_service=search,
+                answer_service=AssistantAnswerService(search, GroundedModel()),
+                audit=Audit(),
+                clock=FrozenClock(NOW),
+                pipeline_reader=pipeline,
+            )
+        ]
+    )
+
+    with TestClient(app) as client:
+        before = client.post(
+            "/v1/assistant/answers",
+            headers={"Authorization": "Bearer company-token"},
+            json={
+                "scope": "position",
+                "position_id": str(POSITION_ID),
+                "query": "김민준 지원자의 현재 채용 단계는?",
+            },
+        )
+        pipeline.invitation = pipeline.invitation.move_to_recruiting_stage(
+            FINAL_STAGE_ID,
+            expected_version=1,
+        )
+        after = client.post(
+            "/v1/assistant/answers",
+            headers={"Authorization": "Bearer company-token"},
+            json={
+                "scope": "position",
+                "position_id": str(POSITION_ID),
+                "query": "김민준 지원자의 현재 상태는?",
+            },
+        )
+        counts = client.post(
+            "/v1/assistant/answers/stream",
+            headers={"Authorization": "Bearer company-token"},
+            json={
+                "scope": "position",
+                "position_id": str(POSITION_ID),
+                "query": "현재 단계별 인원을 알려줘",
+            },
+        )
+
+    session.close()
+    assert before.status_code == 200
+    assert "검토입니다" in before.json()["answer"]
+    assert before.json()["sources"] == []
+    assert after.status_code == 200
+    assert "최종합격입니다" in after.json()["answer"]
+    assert "검토" not in after.json()["answer"]
+    assert counts.status_code == 200
+    assert "검토 0명" in counts.text
+    assert "최종합격 1명" in counts.text
+    assert "event: sources" in counts.text
 
 
 def test_company_scope_excludes_archived_positions_but_explicit_scope_can_search() -> None:

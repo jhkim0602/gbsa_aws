@@ -170,26 +170,18 @@ const hiringApi: HiringWorkspaceApi = {
 
 const positionInvitationApi: PositionInvitationApi = {
   async listInvitations(positionId) {
-    const result = await companyRequest<
-      components["schemas"]["InvitationPage"]
-    >(`/v1/positions/${positionId}/invitations?limit=100`);
-    return result.items.map((invitation) => ({
-      invitationId: invitation.invitation_id,
-      positionId: invitation.position_id,
-      competencyModelVersionId: invitation.competency_model_version_id,
-      applicantEmail: invitation.applicant_email,
-      applicantDisplayName: invitation.applicant_display_name,
-      status: invitation.status as InvitationStatus,
-      expiresAt: invitation.expires_at,
-      rowVersion: invitation.row_version,
-      analysisStatus: invitation.analysis_status,
-      interviewStatus: invitation.interview_status,
-      reportStatus: invitation.report_status,
-      interviewSessionId: invitation.interview_session_id,
-      overallScore: invitation.overall_score ?? null,
-      scoredCriteriaCount: invitation.scored_criteria_count ?? null,
-      totalCriteriaCount: invitation.total_criteria_count ?? null,
-    }));
+    const items: components["schemas"]["InvitationView"][] = [];
+    let cursor: string | null = null;
+    do {
+      const query = new URLSearchParams({ limit: "500" });
+      if (cursor) query.set("cursor", cursor);
+      const page = await companyRequest<
+        components["schemas"]["InvitationPage"]
+      >(`/v1/positions/${positionId}/invitations?${query}`);
+      items.push(...page.items);
+      cursor = page.next_cursor ?? null;
+    } while (cursor);
+    return items.map(toCompanyInvitation);
   },
   async createInvitations(positionId, applicants, expiresInDays) {
     const result = await companyRequest<
@@ -219,6 +211,8 @@ const positionInvitationApi: PositionInvitationApi = {
         status: invitation.status as InvitationStatus,
         expiresAt: invitation.expires_at,
         rowVersion: invitation.row_version,
+        recruitingStageId: invitation.recruiting_stage_id,
+        pipelineRowVersion: invitation.pipeline_row_version,
       })),
     };
   },
@@ -340,6 +334,71 @@ const invitationEmailTemplateApi: InvitationEmailTemplateApi = {
 const companyOperationsApi: CompanyOperationsApi = {
   ...companyWorkspaceApi,
   listInvitations: positionInvitationApi.listInvitations,
+  async listRecruitingStages(positionId) {
+    const query = positionId
+      ? `?${new URLSearchParams({ position_id: positionId })}`
+      : "";
+    const result = await companyRequest<
+      components["schemas"]["RecruitingStagePage"]
+    >(`/v1/recruiting-stages${query}`);
+    return result.items.map(toCompanyRecruitingStage);
+  },
+  async createRecruitingStage(positionId, name) {
+    const result = await companyRequest<
+      components["schemas"]["RecruitingStage"]
+    >(`/v1/positions/${positionId}/recruiting-stages`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+    return toCompanyRecruitingStage(result);
+  },
+  async updateRecruitingStage(positionId, stageId, name, rowVersion) {
+    const result = await companyRequest<
+      components["schemas"]["RecruitingStage"]
+    >(`/v1/positions/${positionId}/recruiting-stages/${stageId}`, {
+      method: "PATCH",
+      headers: { "If-Match-Version": String(rowVersion) },
+      body: JSON.stringify({ name }),
+    });
+    return toCompanyRecruitingStage(result);
+  },
+  async reorderRecruitingStages(positionId, orderedStageIds) {
+    const result = await companyRequest<
+      components["schemas"]["RecruitingStagePage"]
+    >(`/v1/positions/${positionId}/recruiting-stages/reorder`, {
+      method: "POST",
+      body: JSON.stringify({ ordered_stage_ids: orderedStageIds }),
+    });
+    return result.items.map(toCompanyRecruitingStage);
+  },
+  async deleteRecruitingStage(positionId, stageId, replacementStageId) {
+    const result = await companyRequest<
+      components["schemas"]["RecruitingStagePage"]
+    >(`/v1/positions/${positionId}/recruiting-stages/${stageId}/delete`, {
+      method: "POST",
+      body: JSON.stringify({ replacement_stage_id: replacementStageId }),
+    });
+    return result.items.map(toCompanyRecruitingStage);
+  },
+  async moveApplicantsToRecruitingStage(positionId, targetStageId, applicants) {
+    const result = await companyRequest<
+      components["schemas"]["ApplicantPipelineAssignmentPage"]
+    >(`/v1/positions/${positionId}/invitations/recruiting-stage`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        target_stage_id: targetStageId,
+        applicants: applicants.map((applicant) => ({
+          invitation_id: applicant.invitationId,
+          expected_version: applicant.expectedVersion,
+        })),
+      }),
+    });
+    return result.items.map((assignment) => ({
+      invitationId: assignment.invitation_id,
+      recruitingStageId: assignment.recruiting_stage_id,
+      pipelineRowVersion: assignment.pipeline_row_version,
+    }));
+  },
   async requestApplicantDeletion(invitationId) {
     try {
       const result = await companyRequest<
@@ -395,6 +454,7 @@ const companyOperationsApi: CompanyOperationsApi = {
           description: input.description,
           role_type: input.roleType ?? null,
           headcount: input.headcount ?? null,
+          applicant_capacity: input.applicantCapacity ?? null,
           interview_capacity: input.interviewCapacity ?? null,
           interview_at: input.interviewAt
             ? new Date(input.interviewAt).toISOString()
@@ -419,6 +479,7 @@ const companyOperationsApi: CompanyOperationsApi = {
       description: result.description,
       roleType: result.role_type,
       headcount: result.headcount,
+      applicantCapacity: result.applicant_capacity,
       interviewCapacity: result.interview_capacity,
       interviewAt: result.interview_at,
       recruitmentStartAt: result.recruitment_start_at,
@@ -577,6 +638,42 @@ const companyOperationsApi: CompanyOperationsApi = {
   },
   publishCriteria: hiringApi.publishCriteria,
 };
+
+function toCompanyInvitation(
+  invitation: components["schemas"]["InvitationView"],
+) {
+  return {
+    invitationId: invitation.invitation_id,
+    positionId: invitation.position_id,
+    competencyModelVersionId: invitation.competency_model_version_id,
+    applicantEmail: invitation.applicant_email,
+    applicantDisplayName: invitation.applicant_display_name,
+    status: invitation.status as InvitationStatus,
+    expiresAt: invitation.expires_at,
+    rowVersion: invitation.row_version,
+    recruitingStageId: invitation.recruiting_stage_id,
+    pipelineRowVersion: invitation.pipeline_row_version,
+    analysisStatus: invitation.analysis_status,
+    interviewStatus: invitation.interview_status,
+    reportStatus: invitation.report_status,
+    interviewSessionId: invitation.interview_session_id,
+    overallScore: invitation.overall_score ?? null,
+    scoredCriteriaCount: invitation.scored_criteria_count ?? null,
+    totalCriteriaCount: invitation.total_criteria_count ?? null,
+  };
+}
+
+function toCompanyRecruitingStage(
+  stage: components["schemas"]["RecruitingStage"],
+) {
+  return {
+    recruitingStageId: stage.recruiting_stage_id,
+    positionId: stage.position_id,
+    name: stage.name,
+    sortOrder: stage.sort_order,
+    rowVersion: stage.row_version,
+  };
+}
 
 function toCompanyDeletionStatus(
   result: components["schemas"]["DeletionStatus"],

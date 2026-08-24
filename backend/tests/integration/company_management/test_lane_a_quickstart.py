@@ -194,7 +194,7 @@ async def test_lane_a_company_to_consented_applicant_journey() -> None:
         verified = await client.post(
             "/v1/applicant/identity-verifications",
             headers={"Idempotency-Key": "quickstart-identity"},
-            json={"display_name": "홍길동", "verification_value": "1234"},
+            json={"display_name": "홍길동"},
         )
         assert verified.status_code == 200
         assert verified.json()["state"] == "identity_verified"

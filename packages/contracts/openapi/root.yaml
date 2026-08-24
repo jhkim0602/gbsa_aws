@@ -37,6 +37,18 @@ paths:
     $ref: ./paths/company/paths.yaml#/~1competency-model-versions~1{version_id}~1publish
   /positions/{position_id}/invitations:
     $ref: ./paths/company/paths.yaml#/~1positions~1{position_id}~1invitations
+  /recruiting-stages:
+    $ref: ./paths/company/paths.yaml#/~1recruiting-stages
+  /positions/{position_id}/recruiting-stages:
+    $ref: ./paths/company/paths.yaml#/~1positions~1{position_id}~1recruiting-stages
+  /positions/{position_id}/recruiting-stages/reorder:
+    $ref: ./paths/company/paths.yaml#/~1positions~1{position_id}~1recruiting-stages~1reorder
+  /positions/{position_id}/recruiting-stages/{stage_id}:
+    $ref: ./paths/company/paths.yaml#/~1positions~1{position_id}~1recruiting-stages~1{stage_id}
+  /positions/{position_id}/recruiting-stages/{stage_id}/delete:
+    $ref: ./paths/company/paths.yaml#/~1positions~1{position_id}~1recruiting-stages~1{stage_id}~1delete
+  /positions/{position_id}/invitations/recruiting-stage:
+    $ref: ./paths/company/paths.yaml#/~1positions~1{position_id}~1invitations~1recruiting-stage
   /invitation-email-template:
     $ref: ./paths/company/paths.yaml#/~1invitation-email-template
   /invitation-email-template/preview:
@@ -422,6 +434,12 @@ components:
           - 'null'
           minimum: 1
           maximum: 10000
+        applicant_capacity:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 100000
         interview_capacity:
           type:
           - integer
@@ -476,6 +494,12 @@ components:
           - 'null'
           minimum: 1
           maximum: 10000
+        applicant_capacity:
+          type:
+          - integer
+          - 'null'
+          minimum: 1
+          maximum: 100000
         interview_capacity:
           type:
           - integer
@@ -1054,6 +1078,14 @@ components:
           - integer
           - 'null'
           minimum: 0
+        recruiting_stage_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        pipeline_row_version:
+          type: integer
+          minimum: 1
     InvitationPage:
       type: object
       additionalProperties: false
@@ -1068,6 +1100,70 @@ components:
           type:
           - string
           - 'null'
+    RecruitingStage:
+      type: object
+      additionalProperties: false
+      required:
+      - recruiting_stage_id
+      - position_id
+      - name
+      - sort_order
+      - row_version
+      properties:
+        recruiting_stage_id:
+          type: string
+          format: uuid
+        position_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 40
+        sort_order:
+          type: integer
+          minimum: 0
+          maximum: 19
+        row_version:
+          type: integer
+          minimum: 1
+    RecruitingStagePage:
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecruitingStage'
+    ApplicantPipelineAssignment:
+      type: object
+      additionalProperties: false
+      required:
+      - invitation_id
+      - recruiting_stage_id
+      - pipeline_row_version
+      properties:
+        invitation_id:
+          type: string
+          format: uuid
+        recruiting_stage_id:
+          type: string
+          format: uuid
+        pipeline_row_version:
+          type: integer
+          minimum: 1
+    ApplicantPipelineAssignmentPage:
+      type: object
+      additionalProperties: false
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApplicantPipelineAssignment'
     InvitationBatchResult:
       type: object
       additionalProperties: false
@@ -1286,16 +1382,11 @@ components:
       additionalProperties: false
       required:
       - display_name
-      - verification_value
       properties:
         display_name:
           type: string
           minLength: 1
           maxLength: 200
-        verification_value:
-          type: string
-          minLength: 1
-          maxLength: 500
     ApplicantAccessState:
       type: object
       additionalProperties: false

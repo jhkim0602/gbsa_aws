@@ -139,6 +139,7 @@ export function PositionQuickEditModal({
         description: form.description.trim(),
         roleType: form.roleType || null,
         headcount: form.headcount || null,
+        applicantCapacity: form.applicantCapacity || null,
         interviewCapacity: form.interviewCapacity || null,
         interviewAt,
         recruitmentStartAt: form.recruitmentStartAt || null,
@@ -253,6 +254,22 @@ export function PositionQuickEditModal({
                   setForm((current) => ({
                     ...current,
                     interviewCapacity: Number(event.target.value),
+                  }))
+                }
+              />
+            </label>
+            <label className={FORM_LABEL}>
+              <span className={FORM_LABEL_TEXT}>지원자 정원</span>
+              <input
+                className={FIELD_CONTROL}
+                type="number"
+                min={1}
+                max={100000}
+                value={form.applicantCapacity}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    applicantCapacity: Number(event.target.value),
                   }))
                 }
               />
@@ -643,6 +660,7 @@ function positionForm(position: CompanyPosition) {
     description: position.description,
     roleType: position.roleType ?? "개발",
     headcount: position.headcount ?? 1,
+    applicantCapacity: position.applicantCapacity ?? 100,
     interviewCapacity: position.interviewCapacity ?? 1,
     interviewAt: toDateTimeLocalValue(position.interviewAt),
     recruitmentStartAt: position.recruitmentStartAt ?? "",

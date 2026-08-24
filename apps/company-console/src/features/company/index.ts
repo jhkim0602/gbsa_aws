@@ -9,6 +9,7 @@ export type {
   CompanyDeletionStatus,
   CompanyApplicantInsight,
   CompanyApplicantReport,
+  CompanyRecruitingStage,
   CompanyInvitation,
   CompanyOperationsApi,
   CompanyPosition,

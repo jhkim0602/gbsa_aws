@@ -363,7 +363,11 @@ def test_async_ai_identity_and_audit_resources_enforce_safety_controls() -> None
     assert "aws_bedrock_guardrail" in ai_search
     assert "aws_opensearchserverless" not in ai_search
     assert "aws_bedrockagent_knowledge_base" not in ai_search
-    assert "minimum_length                   = 14" in identity
+    assert "minimum_length                   = 8" in identity
+    assert "require_lowercase                = false" in identity
+    assert "require_numbers                  = false" in identity
+    assert "require_symbols                  = false" in identity
+    assert "require_uppercase                = false" in identity
     assert "prevent_user_existence_errors" in identity
     assert '"ses:FromAddress"' in identity
     assert '"cloudwatch:PutMetricData"' in identity

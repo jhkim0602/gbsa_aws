@@ -634,6 +634,270 @@ describe("company workspace", () => {
     ).toBe("/positions/position-2/applicants/invitation-2");
   });
 
+  it("opens a completed applicant directly in the full review workspace from the list", async () => {
+    const apiWithCompletedSession: CompanyOperationsApi = {
+      ...operationsApi,
+      listInvitations: vi.fn().mockImplementation((positionId: string) =>
+        Promise.resolve(
+          positionId === "position-2"
+            ? [
+                {
+                  ...positionTwoInvitations[1],
+                  interviewSessionId: "session-1",
+                },
+              ]
+            : [],
+        ),
+      ),
+    };
+    render(
+      <MemoryRouter initialEntries={["/applicants"]}>
+        <ApplicantManagement api={apiWithCompletedSession} />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("link", {
+        name: "검토할 지원자 리포트 열기",
+      }),
+    );
+
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/review/session-1?invitationId=invitation-2",
+    );
+    expect(
+      screen.queryByRole("dialog", { name: "지원자 평가 요약서" }),
+    ).toBeNull();
+  });
+
+  it("switches to the configurable kanban, moves selected applicants, and opens the report modal", async () => {
+    const recruitingStages = [
+      "보류",
+      "검토",
+      "1차 합격",
+      "최종합격",
+      "불합격",
+    ].map((name, sortOrder) => ({
+      recruitingStageId: `stage-${sortOrder}`,
+      positionId: "position-2",
+      name,
+      sortOrder,
+      rowVersion: 1,
+    }));
+    const moveApplicantsToRecruitingStage = vi
+      .fn()
+      .mockImplementation((_positionId, targetStageId, applicants) =>
+        Promise.resolve(
+          applicants.map((applicant: { invitationId: string }) => ({
+            invitationId: applicant.invitationId,
+            recruitingStageId: targetStageId,
+            pipelineRowVersion: 2,
+          })),
+        ),
+      );
+    render(
+      <MemoryRouter>
+        <ApplicantManagement
+          api={{
+            ...operationsApi,
+            listRecruitingStages: vi.fn().mockResolvedValue(recruitingStages),
+            moveApplicantsToRecruitingStage,
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("준비된 지원자");
+    fireEvent.click(screen.getByRole("tab", { name: "칸반보드형" }));
+
+    expect(
+      await screen.findByRole("button", {
+        name: "준비된 지원자 요약 리포트 열기",
+      }),
+    ).toBeTruthy();
+    for (const name of ["보류", "검토", "1차 합격", "최종합격", "불합격"]) {
+      expect(screen.getAllByText(name).length).toBeGreaterThan(0);
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "준비된 지원자 선택" }));
+    fireEvent.change(screen.getByLabelText("일괄 이동할 단계"), {
+      target: { value: "stage-3" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "선택 지원자 이동" }));
+
+    await waitFor(() =>
+      expect(moveApplicantsToRecruitingStage).toHaveBeenCalledWith(
+        "position-2",
+        "stage-3",
+        [{ invitationId: "invitation-1", expectedVersion: 1 }],
+      ),
+    );
+    expect(
+      await screen.findByText("1명의 채용 단계를 변경했습니다."),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "준비된 지원자 요약 리포트 열기",
+      }),
+    );
+    expect(
+      await screen.findByRole("dialog", { name: "지원자 평가 요약서" }),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("link", { name: "지원자 상세보기" })
+        .getAttribute("href"),
+    ).toBe("/positions/position-2/applicants/invitation-1");
+    expect(screen.getByText("1 / 6")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "다음" }));
+    expect(screen.getByRole("heading", { name: "기준별 평가" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /6 최종 검토/ }));
+    expect(
+      screen.getByRole("heading", { name: "담당자 최종 확인" }),
+    ).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("최종 검토 채용 단계"), {
+      target: { value: "stage-4" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "선택한 단계로 변경" }));
+
+    await waitFor(() =>
+      expect(moveApplicantsToRecruitingStage).toHaveBeenLastCalledWith(
+        "position-2",
+        "stage-4",
+        [{ invitationId: "invitation-1", expectedVersion: 2 }],
+      ),
+    );
+    expect(
+      screen.queryByRole("dialog", { name: "지원자 평가 요약서" }),
+    ).toBeNull();
+  });
+
+  it("adds, renames, reorders, and deletes recruiting stages from kanban settings", async () => {
+    let stageState = ["보류", "검토", "1차 합격", "최종합격", "불합격"].map(
+      (name, sortOrder) => ({
+        recruitingStageId: `settings-stage-${sortOrder}`,
+        positionId: "position-2",
+        name,
+        sortOrder,
+        rowVersion: 1,
+      }),
+    );
+    const createRecruitingStage = vi
+      .fn()
+      .mockImplementation((_positionId, name) => {
+        const created = {
+          recruitingStageId: "settings-stage-new",
+          positionId: "position-2",
+          name,
+          sortOrder: stageState.length,
+          rowVersion: 1,
+        };
+        stageState = [...stageState, created];
+        return Promise.resolve(created);
+      });
+    const updateRecruitingStage = vi
+      .fn()
+      .mockImplementation((_positionId, stageId, name, rowVersion) => {
+        const updated = {
+          ...stageState.find((stage) => stage.recruitingStageId === stageId)!,
+          name,
+          rowVersion: rowVersion + 1,
+        };
+        stageState = stageState.map((stage) =>
+          stage.recruitingStageId === stageId ? updated : stage,
+        );
+        return Promise.resolve(updated);
+      });
+    const reorderRecruitingStages = vi
+      .fn()
+      .mockImplementation((_positionId, orderedIds: readonly string[]) => {
+        stageState = orderedIds.map((stageId, sortOrder) => ({
+          ...stageState.find((stage) => stage.recruitingStageId === stageId)!,
+          sortOrder,
+        }));
+        return Promise.resolve(stageState);
+      });
+    const deleteRecruitingStage = vi
+      .fn()
+      .mockImplementation((_positionId, stageId) => {
+        stageState = stageState
+          .filter((stage) => stage.recruitingStageId !== stageId)
+          .map((stage, sortOrder) => ({ ...stage, sortOrder }));
+        return Promise.resolve(stageState);
+      });
+
+    render(
+      <MemoryRouter>
+        <ApplicantManagement
+          api={{
+            ...operationsApi,
+            listRecruitingStages: vi
+              .fn()
+              .mockImplementation(() => Promise.resolve(stageState)),
+            createRecruitingStage,
+            updateRecruitingStage,
+            reorderRecruitingStages,
+            deleteRecruitingStage,
+          }}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText("준비된 지원자");
+    fireEvent.click(screen.getByRole("tab", { name: "칸반보드형" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "단계·정원 설정" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "채용 단계·지원자 정원" }),
+    ).toBeTruthy();
+
+    fireEvent.change(screen.getByPlaceholderText("새 단계 이름"), {
+      target: { value: "2차 면접" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "단계 추가" }));
+    await waitFor(() =>
+      expect(createRecruitingStage).toHaveBeenCalledWith(
+        "position-2",
+        "2차 면접",
+      ),
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "2차 면접 이름 수정" }),
+    );
+    fireEvent.change(screen.getByDisplayValue("2차 면접"), {
+      target: { value: "컬쳐핏" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "단계 이름 저장" }));
+    await waitFor(() =>
+      expect(updateRecruitingStage).toHaveBeenCalledWith(
+        "position-2",
+        "settings-stage-new",
+        "컬쳐핏",
+        1,
+      ),
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "컬쳐핏 위로 이동" }),
+    );
+    await waitFor(() => expect(reorderRecruitingStages).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "컬쳐핏 삭제" }));
+    fireEvent.click(screen.getByRole("button", { name: "이동 후 삭제" }));
+    await waitFor(() =>
+      expect(deleteRecruitingStage).toHaveBeenCalledWith(
+        "position-2",
+        "settings-stage-new",
+        expect.any(String),
+      ),
+    );
+  });
+
   it("keeps an applicant visible until asynchronous deletion completes", async () => {
     let resolveDeletion: ((status: CompanyDeletionStatus) => void) | undefined;
     const requestApplicantDeletion = vi.fn().mockResolvedValue({
@@ -806,6 +1070,12 @@ describe("company workspace", () => {
       await screen.findByRole("heading", { name: "종합 분석" }),
     ).toBeTruthy();
     expect(screen.getByRole("heading", { name: "기준별 역량" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "5축 역량 레이더" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("img", { name: /면접 점수 레이더 그래프/ }),
+    ).toBeTruthy();
     expect(
       screen.getByRole("heading", { name: "평가 기준과 답변 근거" }),
     ).toBeTruthy();

@@ -20,6 +20,8 @@ from interview_evidence.interview_engine.repositories.postgres import InterviewR
 from interview_evidence.shared.aws_clients.ports import AIModel
 from interview_evidence.shared.tenant import TenantContext
 
+ANTHROPIC_BEDROCK_VERSION = "bedrock-2023-05-31"
+
 _SYSTEM_PROMPT = """\
 당신은 로컬 자동 면접 테스트에서 지원자 역할의 답변을 만드는 생성기입니다.
 
@@ -144,6 +146,7 @@ class AutomatedAnswerGenerator:
             response = self._model.generate(
                 context,
                 {
+                    "anthropic_version": ANTHROPIC_BEDROCK_VERSION,
                     "system": _SYSTEM_PROMPT,
                     "max_tokens": 900,
                     "temperature": 0.35,

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import type {
   CompanyInvitation,
@@ -106,5 +106,33 @@ export function useRecruitingOperations(
     };
   }, [api, positionId, refreshIntervalMs]);
 
-  return state;
+  const updateInvitations = useCallback(
+    (
+      updater: (
+        current: readonly PositionedInvitation[],
+      ) => readonly PositionedInvitation[],
+    ) => {
+      setState((current) => ({
+        ...current,
+        invitations: updater(current.invitations),
+      }));
+    },
+    [],
+  );
+
+  const updatePositions = useCallback(
+    (
+      updater: (
+        current: readonly CompanyPosition[],
+      ) => readonly CompanyPosition[],
+    ) => {
+      setState((current) => ({
+        ...current,
+        positions: updater(current.positions),
+      }));
+    },
+    [],
+  );
+
+  return { ...state, updateInvitations, updatePositions };
 }

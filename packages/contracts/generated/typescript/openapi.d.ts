@@ -484,6 +484,102 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/recruiting-stages": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listRecruitingStages"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/positions/{position_id}/recruiting-stages": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["createRecruitingStage"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/positions/{position_id}/recruiting-stages/reorder": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["reorderRecruitingStages"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/positions/{position_id}/recruiting-stages/{stage_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch: operations["updateRecruitingStage"];
+        readonly trace?: never;
+    };
+    readonly "/positions/{position_id}/recruiting-stages/{stage_id}/delete": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["deleteRecruitingStage"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/positions/{position_id}/invitations/recruiting-stage": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch: operations["moveApplicantsToRecruitingStage"];
+        readonly trace?: never;
+    };
     readonly "/privacy/deletion-requests": {
         readonly parameters: {
             readonly query?: never;
@@ -621,7 +717,6 @@ export interface components {
         };
         readonly ApplicantIdentityVerification: {
             readonly display_name: string;
-            readonly verification_value: string;
         };
         readonly ApplicantTokenExchange: {
             readonly invitation_token: string;
@@ -970,6 +1065,28 @@ export interface components {
             readonly items: readonly components["schemas"]["InvitationView"][];
             readonly next_cursor?: string | null;
         };
+        readonly RecruitingStage: {
+            /** Format: uuid */
+            readonly recruiting_stage_id: string;
+            /** Format: uuid */
+            readonly position_id: string;
+            readonly name: string;
+            readonly sort_order: number;
+            readonly row_version: number;
+        };
+        readonly RecruitingStagePage: {
+            readonly items: readonly components["schemas"]["RecruitingStage"][];
+        };
+        readonly ApplicantPipelineAssignment: {
+            /** Format: uuid */
+            readonly invitation_id: string;
+            /** Format: uuid */
+            readonly recruiting_stage_id: string;
+            readonly pipeline_row_version: number;
+        };
+        readonly ApplicantPipelineAssignmentPage: {
+            readonly items: readonly components["schemas"]["ApplicantPipelineAssignment"][];
+        };
         readonly InvitationView: {
             readonly analysis_status?: string | null;
             readonly applicant_display_name?: string | null;
@@ -1002,6 +1119,9 @@ export interface components {
             /** @enum {string} */
             readonly status: "invited" | "identity_verified" | "consented" | "materials_submitted" | "analyzing" | "ready" | "interviewing" | "interrupted" | "completed" | "reviewed" | "expired" | "revoked" | "deleted";
             readonly total_criteria_count?: number | null;
+            /** Format: uuid */
+            readonly recruiting_stage_id?: string | null;
+            readonly pipeline_row_version?: number;
         };
         readonly JobRequirementInput: {
             readonly criterion_code: string;
@@ -1022,6 +1142,7 @@ export interface components {
         readonly PositionCreate: {
             readonly description: string;
             readonly headcount?: number | null;
+            readonly applicant_capacity?: number | null;
             /** Format: date-time */
             readonly interview_at?: string | null;
             readonly interview_capacity?: number | null;
@@ -1039,6 +1160,7 @@ export interface components {
         readonly PositionUpdate: {
             readonly description: string;
             readonly headcount?: number | null;
+            readonly applicant_capacity?: number | null;
             /** Format: date-time */
             readonly interview_at?: string | null;
             readonly interview_capacity?: number | null;
@@ -2359,6 +2481,185 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["InvitationBatchResult"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly listRecruitingStages: {
+        readonly parameters: {
+            readonly query?: {
+                readonly position_id?: string;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Tenant-scoped recruiting stages, ordered within each position */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RecruitingStagePage"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly createRecruitingStage: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly position_id: components["parameters"]["PositionId"];
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": {
+                    readonly name: string;
+                };
+            };
+        };
+        readonly responses: {
+            /** @description Recruiting stage created at the end of the board */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RecruitingStage"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly reorderRecruitingStages: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly position_id: components["parameters"]["PositionId"];
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": {
+                    readonly ordered_stage_ids: readonly string[];
+                };
+            };
+        };
+        readonly responses: {
+            /** @description Recruiting stages reordered */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RecruitingStagePage"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly updateRecruitingStage: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                readonly "If-Match-Version": components["parameters"]["IfMatchVersion"];
+            };
+            readonly path: {
+                readonly position_id: components["parameters"]["PositionId"];
+                readonly stage_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": {
+                    readonly name: string;
+                };
+            };
+        };
+        readonly responses: {
+            /** @description Recruiting stage renamed */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RecruitingStage"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly deleteRecruitingStage: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly position_id: components["parameters"]["PositionId"];
+                readonly stage_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": {
+                    /** Format: uuid */
+                    readonly replacement_stage_id: string;
+                };
+            };
+        };
+        readonly responses: {
+            /** @description Stage deleted after its applicants are moved to the replacement */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RecruitingStagePage"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly moveApplicantsToRecruitingStage: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly position_id: components["parameters"]["PositionId"];
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": {
+                    /** Format: uuid */
+                    readonly target_stage_id: string;
+                    readonly applicants: readonly {
+                        /** Format: uuid */
+                        readonly invitation_id: string;
+                        readonly expected_version: number;
+                    }[];
+                };
+            };
+        };
+        readonly responses: {
+            /** @description Applicants moved to their latest recruiting stage without history */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApplicantPipelineAssignmentPage"];
                 };
             };
             readonly default: components["responses"]["Error"];
