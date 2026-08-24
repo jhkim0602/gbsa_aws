@@ -198,9 +198,7 @@ async def test_applicant_can_register_only_one_public_github_project() -> None:
                     "material_type": "projects",
                     "source_type": "public_git",
                     "public_url": f"https://github.com/example/project-{index}",
-                    "candidate_identity_inputs": {
-                        "claimed_handles": ["candidate-dev"]
-                    },
+                    "candidate_identity_inputs": {"claimed_handles": ["candidate-dev"]},
                 },
             )
             for index in range(1, 3)
@@ -214,6 +212,81 @@ async def test_applicant_can_register_only_one_public_github_project() -> None:
     assert responses[1].status_code == 422
     assert responses[1].json()["detail"] == ("only one public GitHub project URL is allowed")
     assert len(repository.list_submissions(system_context(), APPLICANT_ID)) == 1
+
+
+@pytest.mark.asyncio
+async def test_failed_github_submission_is_requeued_when_submitted_again() -> None:
+    principal = ApplicantPrincipal(
+        company_id=COMPANY_ID,
+        invitation_id=INVITATION_ID,
+        applicant_id=APPLICANT_ID,
+        session_id=SESSION_ID,
+    )
+    repository = InMemorySubmissionRepository()
+    runtime = create_lane_b_runtime(
+        principal_provider=FakePrincipalProvider(
+            applicant_principals={"applicant-session": principal}
+        ),
+        authorization=FakeSubmissionAuthorization.allowed(principal),
+        repository=repository,
+        object_storage=InMemoryObjectStorage(),
+        audit=InMemoryAuditAppender(),
+        clock=FrozenClock(NOW),
+    )
+    request = {
+        "material_type": "projects",
+        "source_type": "public_git",
+        "public_url": "https://github.com/example/retry-project",
+        "candidate_identity_inputs": {"claimed_handles": ["candidate-dev"]},
+    }
+    headers = {"Idempotency-Key": "project-submission-retry"}
+
+    async with AsyncClient(
+        transport=ASGITransport(app=runtime.app),
+        base_url="https://testserver",
+        cookies={"iep_applicant_session": "applicant-session"},
+    ) as client:
+        created = await client.post(
+            "/v1/applicant/submissions",
+            headers=headers,
+            json=request,
+        )
+        submission_id = UUID(created.json()["submission_id"])
+        original_event = runtime.outbox.pending()[0]
+        runtime.outbox.mark_published(original_event.outbox_event_id)
+        failed = (
+            repository.get_submission(system_context(), submission_id)
+            .transition(SubmissionStatus.VALIDATING)
+            .transition(SubmissionStatus.ANALYZING)
+            .transition(
+                SubmissionStatus.FAILED,
+                failure_code="embedding_provider_unavailable",
+                impact_summary="분석 실패",
+            )
+        )
+        repository.save_submission(system_context(), failed)
+
+        retried = await client.post(
+            "/v1/applicant/submissions",
+            headers=headers,
+            json=request,
+        )
+        duplicate_retry = await client.post(
+            "/v1/applicant/submissions",
+            headers=headers,
+            json=request,
+        )
+
+    assert created.status_code == 202
+    assert retried.status_code == 202
+    assert duplicate_retry.status_code == 202
+    assert retried.json()["submission_id"] == str(submission_id)
+    assert retried.json()["status"] == "validating"
+    assert duplicate_retry.json()["status"] == "validating"
+    retry_events = runtime.outbox.pending()
+    assert len(retry_events) == 1
+    assert retry_events[0].payload["analysis_version"] == 1
+    assert retry_events[0].idempotency_key.startswith("analysis-retry-")
 
 
 @pytest.mark.asyncio

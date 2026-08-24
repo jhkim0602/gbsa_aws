@@ -52,6 +52,14 @@ class RecordingModels:
         return self.embedding_response
 
 
+class DynamicEmbeddingModels(RecordingModels):
+    def embed_content(self, **kwargs: object) -> FakeResponse:
+        self.embedding_calls.append(kwargs)
+        contents = kwargs["contents"]
+        assert isinstance(contents, list)
+        return FakeResponse(embeddings=[FakeEmbedding([3.0, 4.0]) for _ in contents])
+
+
 class FakeVertexClient:
     def __init__(self) -> None:
         self.models = RecordingModels()
@@ -128,6 +136,26 @@ def test_vertex_embedder_batches_multiple_texts_in_one_request() -> None:
     assert client.models.embedding_calls[0]["contents"] == [
         "첫 번째 문단",
         "두 번째 문단",
+    ]
+
+
+def test_vertex_embedder_splits_batches_before_the_request_size_limit() -> None:
+    client = FakeVertexClient()
+    client.models = DynamicEmbeddingModels()
+    embedder = GcpVertexTextEmbedder(client, model_id="embedding-test")
+
+    vectors = embedder.embed_many(
+        _context(),
+        ("가" * 10_000, "나" * 10_000, "작은 코드 조각"),
+        dimensions=2,
+    )
+
+    assert len(vectors) == 3
+    assert len(client.models.embedding_calls) == 2
+    assert client.models.embedding_calls[0]["contents"] == ["가" * 10_000]
+    assert client.models.embedding_calls[1]["contents"] == [
+        "나" * 10_000,
+        "작은 코드 조각",
     ]
 
 

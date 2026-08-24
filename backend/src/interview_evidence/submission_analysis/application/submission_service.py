@@ -31,9 +31,7 @@ from interview_evidence.submission_analysis.repositories.postgres import (
 )
 
 MAX_PUBLIC_GIT_PROJECTS = 1
-GITHUB_USERNAME = re.compile(
-    r"^(?!-)(?!.*--)[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"
-)
+GITHUB_USERNAME = re.compile(r"^(?!-)(?!.*--)[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,7 +107,10 @@ class SubmissionService:
             idempotency_key=idempotency_key,
         )
         if existing is not None:
-            return self._repository.get_submission(context, existing)
+            return self._retry_failed_submission(
+                context,
+                self._repository.get_submission(context, existing),
+            )
         intent = self._storage.resolve(
             context,
             upload_id=upload_id,
@@ -153,7 +154,10 @@ class SubmissionService:
             idempotency_key=idempotency_key,
         )
         if existing is not None:
-            return self._repository.get_submission(context, existing)
+            return self._retry_failed_submission(
+                context,
+                self._repository.get_submission(context, existing),
+            )
         validated_url = self._validator.validate_public_url(
             source_type=source_type,
             public_url=public_url,
@@ -161,9 +165,7 @@ class SubmissionService:
         resolved_material_type = _resolve_material_type(material_type, source_type)
         _validate_material_request(resolved_material_type, source_type, requirements)
         if source_type is SourceType.PUBLIC_GIT:
-            normalized_identity = _normalize_candidate_identity_inputs(
-                candidate_identity_inputs
-            )
+            normalized_identity = _normalize_candidate_identity_inputs(candidate_identity_inputs)
             _validate_github_identity(normalized_identity)
             existing_projects = tuple(
                 submission
@@ -178,9 +180,7 @@ class SubmissionService:
             if len(existing_projects) >= MAX_PUBLIC_GIT_PROJECTS:
                 raise ValueError("only one public GitHub project URL is allowed")
         else:
-            normalized_identity = _normalize_candidate_identity_inputs(
-                candidate_identity_inputs
-            )
+            normalized_identity = _normalize_candidate_identity_inputs(candidate_identity_inputs)
         submission = Submission(
             submission_id=new_uuid7(self._clock.now()),
             company_id=context.company_id,
@@ -285,6 +285,54 @@ class SubmissionService:
             idempotency_key=idempotency_key,
             resource_id=submission.submission_id,
         )
+        self._append_analysis_requested(
+            context,
+            submission,
+            analysis_version=1,
+            idempotency_key=f"analysis-request-{submission.submission_id}",
+        )
+        return submission
+
+    def _retry_failed_submission(
+        self,
+        context: TenantContext,
+        submission: Submission,
+    ) -> Submission:
+        if submission.status is not SubmissionStatus.FAILED:
+            return submission
+        analysis_version = (
+            max(
+                (
+                    analysis.analysis_version
+                    for analysis in self._repository.list_analyses(
+                        context,
+                        frozenset({submission.submission_id}),
+                    )
+                ),
+                default=0,
+            )
+            + 1
+        )
+        retrying = self._repository.save_submission(
+            context,
+            submission.transition(SubmissionStatus.VALIDATING),
+        )
+        self._append_analysis_requested(
+            context,
+            retrying,
+            analysis_version=analysis_version,
+            idempotency_key=(f"analysis-retry-{retrying.submission_id}-{retrying.row_version}"),
+        )
+        return retrying
+
+    def _append_analysis_requested(
+        self,
+        context: TenantContext,
+        submission: Submission,
+        *,
+        analysis_version: int,
+        idempotency_key: str,
+    ) -> None:
         self._outbox.append(
             OutboxEvent(
                 outbox_event_id=new_uuid7(self._clock.now()),
@@ -296,18 +344,17 @@ class SubmissionService:
                 event_version=1,
                 payload={
                     "submission_id": str(submission.submission_id),
-                    "analysis_version": 1,
+                    "analysis_version": analysis_version,
                     "source_type": submission.source_type.value,
                     "material_type": submission.material_type.value,
                     "source_object_id": str(submission.submission_id),
                     "limits_config_version": "analysis-limits-v1",
                 },
-                idempotency_key=f"analysis-request-{submission.submission_id}",
+                idempotency_key=idempotency_key,
                 trace_id=context.trace_id,
                 occurred_at=self._clock.now(),
             )
         )
-        return submission
 
 
 def _normalize_candidate_identity_inputs(

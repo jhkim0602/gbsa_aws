@@ -131,6 +131,22 @@ class UnavailableEmbedder:
         raise EmbeddingProviderError("provider unavailable")
 
 
+class BatchRecordingEmbedder(StaticTextEmbedder):
+    def __init__(self, vector: tuple[float, ...]) -> None:
+        super().__init__(vector)
+        self.batch_calls: list[tuple[str, ...]] = []
+
+    def embed_many(
+        self,
+        context: TenantContext,
+        texts: tuple[str, ...],
+        *,
+        dimensions: int = 1024,
+    ) -> tuple[tuple[float, ...], ...]:
+        self.batch_calls.append(texts)
+        return tuple(self.embed(context, text, dimensions=dimensions) for text in texts)
+
+
 def test_document_event_creates_durable_chunks_search_records_and_strategy() -> None:
     repository = InMemorySubmissionRepository()
     repository.save_submission(
@@ -399,7 +415,7 @@ def test_each_analyzed_commit_contributes_its_own_code_unit_evidence() -> None:
     )
     older_sha, newer_sha = "c" * 40, "b" * 40
     search = InMemorySearchIndex()
-    embedder = StaticTextEmbedder(tuple(1.0 if index == 0 else 0.0 for index in range(1024)))
+    embedder = BatchRecordingEmbedder(tuple(1.0 if index == 0 else 0.0 for index in range(1024)))
     pipeline = SubmissionAnalysisPipeline(
         repository=repository,
         extractor=DocumentExtractionAdapter(
@@ -494,6 +510,11 @@ def test_each_analyzed_commit_contributes_its_own_code_unit_evidence() -> None:
     # Each commit quotes the revision of the file it actually changed.
     assert symbols_by_sha[newer_sha] == {"retry_payment"}
     assert symbols_by_sha[older_sha] == {"charge_card"}
+    assert len(embedder.batch_calls) == 1
+    assert set(embedder.batch_calls[0]) == {
+        "def retry_payment():\n    return True",
+        "def charge_card():\n    return False",
+    }
 
 
 class IdentityRecordingGitTransport(StaticGitTransport):

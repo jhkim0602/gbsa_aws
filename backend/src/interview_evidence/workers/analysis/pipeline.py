@@ -141,6 +141,16 @@ class _PendingAxisDocument:
     content_hash: str
 
 
+@dataclass(frozen=True, slots=True)
+class _PendingCodeDocument:
+    unit: CandidateCodeUnit
+    text: str
+    locator: dict[str, object]
+    ownership_confidence: float
+    commit_sha: str
+    content_hash: str
+
+
 class AnalysisAxisProvider(Protocol):
     def get_axis(
         self,
@@ -186,10 +196,11 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
         context: TenantContext,
         texts: tuple[str, ...],
     ) -> tuple[tuple[float, ...], ...]:
+        bounded_texts = tuple(text[:MAX_EMBEDDING_INPUT_CHARACTERS] for text in texts)
         batch_embed = getattr(self._text_embedder, "embed_many", None)
         if callable(batch_embed):
-            return tuple(batch_embed(context, texts, dimensions=1024))
-        return tuple(self.embed(context, text) for text in texts)
+            return tuple(batch_embed(context, bounded_texts, dimensions=1024))
+        return tuple(self.embed(context, text) for text in bounded_texts)
 
     def process(self, context: TenantContext, job: AnalysisJob) -> AnalysisResult:
         existing = next(
@@ -484,6 +495,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
         )
         self._index_criterion_axis(context, axis)
         code_units: list[CandidateCodeUnit] = []
+        pending_code_documents: list[_PendingCodeDocument] = []
         candidates: list[SourceReferenceCandidate] = []
         commit_by_sha = {
             commit.commit_sha: (commit, analysis)
@@ -542,27 +554,15 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                         "end_line": unit.current_line_range[1],
                         "commit_sha": commit_sha,
                     }
-                    self._search_index.add(
-                        SearchDocument(
-                            document_id=document_id,
-                            company_id=context.company_id,
-                            applicant_id=submission.applicant_id,
-                            source_id=unit.code_unit_id,
-                            text=f"{unit.symbol}\n{excerpt}",
-                            vector=self.embed(context, excerpt),
-                            symbols=(unit.symbol,),
+                    content_hash = hashlib.sha256(excerpt.encode("utf-8")).hexdigest()
+                    pending_code_documents.append(
+                        _PendingCodeDocument(
+                            unit=unit,
+                            text=excerpt,
                             locator=locator,
                             ownership_confidence=commit_analysis.ownership_confidence,
-                            invitation_id=submission.invitation_id,
-                            competency_model_version_id=axis.competency_model_version_id,
-                            document_type="code_unit",
-                            source_type="candidate_code_unit",
-                            source_version=commit_sha,
-                            content_hash=hashlib.sha256(excerpt.encode("utf-8")).hexdigest(),
-                            embedding_model=self._text_embedder.model_id,
-                            embedding_version=self._text_embedder.embedding_version,
-                            path=unit.path,
-                            symbol=unit.symbol,
+                            commit_sha=commit_sha,
+                            content_hash=content_hash,
                         )
                     )
                     candidates.append(
@@ -570,13 +570,41 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                             source_id=unit.code_unit_id,
                             source_type="candidate_code_unit",
                             locator=locator,
-                            content_hash=hashlib.sha256(excerpt.encode("utf-8")).hexdigest(),
+                            content_hash=content_hash,
                             relevance_score=1.0,
                             ownership_confidence=commit_analysis.ownership_confidence,
                         )
                     )
         if not code_units:
             return self._record_partial_git(context, analyzing, job)
+        vectors = self.embed_many(
+            context,
+            tuple(document.text for document in pending_code_documents),
+        )
+        for document, vector in zip(pending_code_documents, vectors, strict=True):
+            self._search_index.add(
+                SearchDocument(
+                    document_id=str(document.unit.code_unit_id),
+                    company_id=context.company_id,
+                    applicant_id=submission.applicant_id,
+                    source_id=document.unit.code_unit_id,
+                    text=f"{document.unit.symbol}\n{document.text}",
+                    vector=vector,
+                    symbols=(document.unit.symbol,),
+                    locator=document.locator,
+                    ownership_confidence=document.ownership_confidence,
+                    invitation_id=submission.invitation_id,
+                    competency_model_version_id=axis.competency_model_version_id,
+                    document_type="code_unit",
+                    source_type="candidate_code_unit",
+                    source_version=document.commit_sha,
+                    content_hash=document.content_hash,
+                    embedding_model=self._text_embedder.model_id,
+                    embedding_version=self._text_embedder.embedding_version,
+                    path=document.unit.path,
+                    symbol=document.unit.symbol,
+                )
+            )
         self._repository.save_code_units(context, tuple(code_units))
         analysis = self._repository.save_analysis(
             context,
@@ -960,6 +988,8 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
             return submission.transition(SubmissionStatus.VALIDATING).transition(
                 SubmissionStatus.ANALYZING
             )
+        if submission.status is SubmissionStatus.VALIDATING:
+            return submission.transition(SubmissionStatus.ANALYZING)
         if submission.status is SubmissionStatus.FAILED:
             return submission.transition(SubmissionStatus.VALIDATING).transition(
                 SubmissionStatus.ANALYZING

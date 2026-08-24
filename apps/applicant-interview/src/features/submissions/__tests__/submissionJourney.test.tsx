@@ -153,6 +153,74 @@ describe("SubmissionWorkspace", () => {
     expect(onContinue).toHaveBeenCalledWith("strategy-ready");
   });
 
+  it("keeps polling an optional GitHub analysis after required materials are ready", async () => {
+    vi.useFakeTimers();
+    const getReadiness = vi
+      .fn()
+      .mockResolvedValueOnce({
+        overallStatus: "analyzing",
+        interviewReady: true,
+        strategyId: "strategy-ready",
+        materialStatuses: {
+          resume: "ready",
+          projects: "analyzing",
+        },
+      })
+      .mockResolvedValue({
+        overallStatus: "waiting",
+        interviewReady: true,
+        strategyId: "strategy-ready",
+        materialStatuses: {
+          resume: "ready",
+          projects: "failed",
+        },
+      });
+    const api: SubmissionWorkspaceApi = {
+      uploadDocument: vi.fn(),
+      registerRepository: vi.fn(),
+      getReadiness,
+      getWorkspace: vi.fn(),
+    };
+
+    render(
+      <SubmissionWorkspace
+        api={api}
+        requirements={[
+          { id: "resume", required: true, enabled: true },
+          { id: "projects", required: false, enabled: true },
+        ]}
+        submittedMaterials={[
+          { materialId: "resume", status: "ready" },
+          {
+            materialId: "projects",
+            status: "analyzing",
+            sourceUrl: "https://github.com/example/repo",
+          },
+        ]}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(
+      within(
+        screen.getByRole("button", { name: "대표 프로젝트 선택" }),
+      ).getByText("분석 중"),
+    ).toBeTruthy();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(READINESS_POLL_INTERVAL_MS_FOR_TEST);
+    });
+
+    expect(getReadiness).toHaveBeenCalledTimes(2);
+    expect(
+      within(
+        screen.getByRole("button", { name: "대표 프로젝트 선택" }),
+      ).getByText("분석 보류"),
+    ).toBeTruthy();
+  });
+
   it("shows analysis status independently for each submitted material", async () => {
     const api: SubmissionWorkspaceApi = {
       uploadDocument: vi.fn(),
@@ -367,6 +435,7 @@ describe("SubmissionWorkspace", () => {
     });
 
     expect(screen.getAllByText("확인 필요").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("분석 보류").length).toBeGreaterThan(0);
 
     fireEvent.change(screen.getByLabelText("GitHub 저장소 URL"), {
       target: { value: "https://github.com/example/repo" },

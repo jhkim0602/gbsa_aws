@@ -218,6 +218,9 @@ function analysisStatus(
   state: RequestState,
   submissionAnalysisStatus?: string,
 ) {
+  if (state === "error" || submissionAnalysisStatus === "failed") {
+    return { label: "분석 보류", tone: "danger" as const };
+  }
   if (state !== "success") {
     return { label: "분석 대기", tone: "neutral" as const };
   }
@@ -809,8 +812,23 @@ export function SubmissionWorkspace({
     readiness?.interviewReady === false &&
     (readiness.overallStatus === "ready" ||
       readiness.overallStatus === "partial");
+  const submittedMaterialIds = configuredMaterials
+    .filter((material) => materialStates[material.id] === "success")
+    .map((material) => material.id);
+  const materialAnalysisPending = readiness?.materialStatuses
+    ? submittedMaterialIds.some((materialId) => {
+        const status = readiness.materialStatuses?.[materialId];
+        return (
+          !status ||
+          status === "received" ||
+          status === "validating" ||
+          status === "analyzing"
+        );
+      })
+    : readiness?.overallStatus === "waiting" ||
+      readiness?.overallStatus === "analyzing";
   const readinessSettled =
-    readiness?.interviewReady === true || readiness?.overallStatus === "failed";
+    readiness !== null && !materialAnalysisPending && !strategyPreparing;
   const readinessPollInterval = strategyPreparing
     ? STRATEGY_POLL_INTERVAL_MS
     : READINESS_POLL_INTERVAL_MS;
@@ -1198,8 +1216,10 @@ export function SubmissionWorkspace({
                     {activeAnalysisStatus.label}
                   </strong>
                   <small className="mt-0.5 block truncate text-[11px] text-muted">
-                    {readiness?.impactSummary ??
-                      "제출 완료 후 분석 상태가 자동으로 반영됩니다."}
+                    {activeAnalysisStatus.tone === "danger" &&
+                    readiness?.impactSummary
+                      ? readiness.impactSummary
+                      : "제출 완료 후 분석 상태가 자동으로 반영됩니다."}
                   </small>
                 </span>
               </div>

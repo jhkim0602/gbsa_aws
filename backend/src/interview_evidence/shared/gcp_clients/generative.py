@@ -45,6 +45,10 @@ class GcpEmbeddingProviderError(GcpGenerativeAdapterError, EmbeddingProviderErro
     pass
 
 
+MAX_EMBEDDING_BATCH_INPUTS = 250
+MAX_EMBEDDING_BATCH_CHARACTERS = 18_000
+
+
 class GcpVertexModel(AIModel):
     def __init__(
         self,
@@ -119,27 +123,48 @@ class GcpVertexTextEmbedder(TextEmbedder):
         if dimensions <= 0:
             raise ValueError("embedding dimensions must be positive")
         try:
-            response = self._client.models.embed_content(
-                model=self.model_id,
-                contents=list(normalized_texts),
-                config=types.EmbedContentConfig(
-                    task_type="SEMANTIC_SIMILARITY",
-                    output_dimensionality=dimensions,
-                ),
-            )
-            embeddings = getattr(response, "embeddings", None)
-            if not isinstance(embeddings, Sequence) or len(embeddings) != len(normalized_texts):
-                raise ValueError("Vertex embedding values are unavailable")
-            vectors = tuple(
-                _normalized_embedding(
-                    getattr(embedding, "values", None),
-                    dimensions=dimensions,
+            vectors: list[tuple[float, ...]] = []
+            for batch in _embedding_batches(normalized_texts):
+                response = self._client.models.embed_content(
+                    model=self.model_id,
+                    contents=list(batch),
+                    config=types.EmbedContentConfig(
+                        task_type="SEMANTIC_SIMILARITY",
+                        output_dimensionality=dimensions,
+                    ),
                 )
-                for embedding in embeddings
-            )
+                embeddings = getattr(response, "embeddings", None)
+                if not isinstance(embeddings, Sequence) or len(embeddings) != len(batch):
+                    raise ValueError("Vertex embedding values are unavailable")
+                vectors.extend(
+                    _normalized_embedding(
+                        getattr(embedding, "values", None),
+                        dimensions=dimensions,
+                    )
+                    for embedding in embeddings
+                )
         except Exception as error:
             raise GcpEmbeddingProviderError("text embedding unavailable") from error
-        return vectors
+        return tuple(vectors)
+
+
+def _embedding_batches(texts: Sequence[str]) -> tuple[tuple[str, ...], ...]:
+    batches: list[tuple[str, ...]] = []
+    current: list[str] = []
+    current_characters = 0
+    for text in texts:
+        if current and (
+            len(current) >= MAX_EMBEDDING_BATCH_INPUTS
+            or current_characters + len(text) > MAX_EMBEDDING_BATCH_CHARACTERS
+        ):
+            batches.append(tuple(current))
+            current = []
+            current_characters = 0
+        current.append(text)
+        current_characters += len(text)
+    if current:
+        batches.append(tuple(current))
+    return tuple(batches)
 
 
 def _normalized_embedding(
