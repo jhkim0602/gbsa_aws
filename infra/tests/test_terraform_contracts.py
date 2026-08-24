@@ -374,6 +374,11 @@ def test_application_roots_deliver_gcp_credentials_by_reference_only() -> None:
             assert name in secrets, f"{root.parent.name} never delivers {name}"
         assert re.search(r'AI_PROVIDER\s*=\s*"gcp"', environment)
         assert re.search(r'EMBEDDING_PROVIDER\s*=\s*"aws"', environment)
+        assert re.search(r'DOCUMENT_OCR_PROVIDER\s*=\s*"gcp_document_ai"', environment)
+        assert re.search(r'STT_PROVIDER\s*=\s*"gcp_streaming"', environment)
+        assert re.search(r'TTS_PROVIDER\s*=\s*"gcp_streaming"', environment)
+        assert re.search(r'RETRIEVAL_BACKEND\s*=\s*"aurora"', environment)
+        assert re.search(r'AUTOMATED_INTERVIEW_ENABLED\s*=\s*"true"', environment)
 
 
 def test_async_ai_identity_and_audit_resources_enforce_safety_controls() -> None:

@@ -67,8 +67,8 @@ aws secretsmanager put-secret-value \
 
 The runtime uses GCP for Gemini generation, streaming speech and Document AI, while embeddings
 remain on Amazon Titan. The service-account JSON is injected only into the container process and is
-never written to the image or Terraform state. The deployed dev applicant bundle exposes automated
-interview verification; the production bundle and API keep it disabled.
+never written to the image or Terraform state. Both deployed applicant bundles expose automated
+interview verification and use the same API, retrieval and reporting paths as live interviews.
 
 The Aurora master secret is the one secret the application reads through the SDK
 (`AURORA_MASTER_SECRET_ARN`); it is written by RDS, not by hand.

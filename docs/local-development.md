@@ -166,7 +166,8 @@ document ids.
 
 ## Automated interview locally
 
-The applicant interview environment-check screen exposes two development-only actions:
+The applicant interview environment-check screen exposes two verification actions locally and in
+the deployed environments:
 
 - **빠른 자동 면접 실행** records a synthetic local video and submits generated Korean text
   answers without opening STT. Question generation, GCP TTS, interview progression, media upload,

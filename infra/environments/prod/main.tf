@@ -185,7 +185,7 @@ module "compute" {
   task_environment = {
     APPLICANT_ACCESS_BASE_URL       = "${module.edge.site_urls["applicant"]}/access"
     APP_ENVIRONMENT                 = "prod"
-    AUTOMATED_INTERVIEW_ENABLED     = "false"
+    AUTOMATED_INTERVIEW_ENABLED     = "true"
     AI_PROVIDER                     = "gcp"
     EMBEDDING_PROVIDER              = "aws"
     AWS_REGION                      = var.aws_region
