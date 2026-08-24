@@ -73,8 +73,7 @@ both and goes to the account your credentials name:
 
 | Service | Locally | Consequence |
 |---|---|---|
-| **Vertex AI Gemini** | real GCP by default | Question generation and criterion assessment are billed per call. |
-| **Titan Embeddings** | real AWS by default | Embedding and RAG indexing use the AWS account configured on the workstation and are billed per call. |
+| **Vertex AI Gemini** | real GCP by default | Question generation, criterion assessment, embedding and RAG indexing are billed per call. |
 | **Bedrock generation** | optional real AWS fallback | Set `AI_PROVIDER=aws` to restore Claude. `BEDROCK_MODEL_ID` must be enabled in `AWS_REGION`. |
 | **Cognito** | real AWS | Production uses it; local company-console auth uses the fixed local identity below. |
 | Speech-to-Text / Text-to-Speech | real GCP | Billed. One streaming STT connection is opened per answer; question PCM is streamed back over the interview WebSocket. |
@@ -122,13 +121,13 @@ provider authenticates the request but does not seed application data.
 
 Enable Vertex AI, Speech-to-Text, Text-to-Speech, and Document AI in the personal GCP project.
 Grant the service account Vertex AI User access, store its JSON outside the repository, create a
-Document OCR processor, and point the ignored root `.env` at that file and processor. Embeddings
-remain on AWS Titan so the local and deployed retrieval indexes share one vector space:
+Document OCR processor, and point the ignored root `.env` at that file and processor. Local paid
+AI calls remain in GCP; the deployed AWS environment overrides only embeddings to Titan:
 
 ```bash
 GOOGLE_APPLICATION_CREDENTIALS=$HOME/.config/whyyou/gcp-service-account.json
 AI_PROVIDER=gcp
-EMBEDDING_PROVIDER=aws
+EMBEDDING_PROVIDER=gcp
 GCP_VERTEX_AI_LOCATION=global
 GCP_VERTEX_AI_MODEL_ID=gemini-2.5-flash
 STT_PROVIDER=gcp_streaming
@@ -141,8 +140,9 @@ GCP_TTS_VOICE_NAME=ko-KR-Chirp3-HD-Achernar
 ```
 
 Vertex AI defaults to `GCP_DOCUMENT_AI_PROJECT_ID`; set `GCP_VERTEX_AI_PROJECT_ID` only when the
-generation project differs. Materials indexed before the Titan switch must be analyzed again.
-Retrieval filters by embedding model and version so GCP and Titan vectors are never compared.
+generation project differs. Switching embedding providers requires the affected environment's
+materials to be analyzed again. Retrieval filters by embedding model and version so local GCP and
+deployed Titan vectors are never compared, and the two environments keep separate databases.
 
 The browser sends 16 kHz mono PCM in roughly 40 ms packets. The API keeps one GCP recognition
 stream open until `answer.complete`, persists the combined final transcript once, and sends GCP
