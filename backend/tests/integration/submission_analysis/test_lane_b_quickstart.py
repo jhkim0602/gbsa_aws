@@ -209,6 +209,7 @@ async def test_applicant_can_register_only_one_public_github_project() -> None:
         "exactly one candidate GitHub username is required"
     )
     assert responses[0].status_code == 202
+    assert responses[0].json()["github_username"] == "candidate-dev"
     assert responses[1].status_code == 422
     assert responses[1].json()["detail"] == ("only one public GitHub project URL is allowed")
     assert len(repository.list_submissions(system_context(), APPLICANT_ID)) == 1

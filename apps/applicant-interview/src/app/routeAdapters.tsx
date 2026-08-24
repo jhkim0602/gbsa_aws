@@ -355,6 +355,7 @@ const submissionApi: SubmissionWorkspaceApi = {
         material_type: string;
         status: string;
         source_url: string | null;
+        github_username: string | null;
       }>;
     }>("/v1/applicant/submission-workspace");
     return {
@@ -369,6 +370,7 @@ const submissionApi: SubmissionWorkspaceApi = {
         materialId: fromApiMaterialType(submission.material_type),
         status: submission.status,
         sourceUrl: submission.source_url,
+        githubUsername: submission.github_username,
       })),
     };
   },

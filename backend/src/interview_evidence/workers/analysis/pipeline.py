@@ -469,6 +469,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                         commit_sha=commit.commit_sha,
                         author_name=commit.author_name,
                         author_email=commit.author_email,
+                        author_login=commit.author_login,
                         changed_paths=commit.changed_paths,
                     ),
                     changed_line_count=sum(

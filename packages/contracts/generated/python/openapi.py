@@ -555,6 +555,7 @@ class SubmissionView(BaseModel):
     )
     submission_id: UUID
     source_type: str
+    github_username: str | None = None
     status: Status5
     failure_code: str | None = None
     impact_summary: str | None = None

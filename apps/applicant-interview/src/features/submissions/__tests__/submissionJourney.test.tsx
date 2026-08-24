@@ -98,6 +98,7 @@ describe("SubmissionWorkspace", () => {
     expect(
       screen.getByText("https://github.com/example/project-one"),
     ).toBeTruthy();
+    expect(screen.getByText("@candidate-dev")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "프로젝트 제출" })).toBeNull();
 
     expect((await screen.findAllByText("일부 완료")).length).toBeGreaterThan(0);
@@ -310,6 +311,19 @@ describe("SubmissionWorkspace", () => {
         {
           extractor_version: "hybrid-pypdf-gcp-document-ai-v1",
           status: "ready",
+          claims: [{ type: "document_extracted", chunk_count: 70 }],
+        },
+        {
+          extractor_version: "bounded-ranked-public-git-v2",
+          status: "ready",
+          claims: [
+            {
+              type: "public_git_snapshot",
+              commit_count: 5,
+              code_unit_count: 41,
+              discovered_code_unit_count: 382,
+            },
+          ],
         },
       ],
       extracted_documents: [
@@ -374,6 +388,10 @@ describe("SubmissionWorkspace", () => {
       screen.getAllByText("백엔드 서비스 개발 및 운영 경험").length,
     ).toBeGreaterThan(0);
     expect(screen.getByText("원본 JSON 보기")).toBeTruthy();
+    expect(screen.getByText("ready · 70개 문단")).toBeTruthy();
+    expect(
+      screen.getByText("ready · 41개 코드 근거 · 382개 후보 · 5개 커밋"),
+    ).toBeTruthy();
     expect(getAnalysisDebug).toHaveBeenCalledOnce();
   });
 
@@ -396,6 +414,7 @@ describe("SubmissionWorkspace", () => {
             materialId: "projects",
             status: "ready",
             sourceUrl: "https://github.com/example/repo",
+            githubUsername: "candidate-dev",
           },
         ]}
       />,
@@ -406,6 +425,7 @@ describe("SubmissionWorkspace", () => {
 
     expect(screen.getAllByText("제출 완료").length).toBeGreaterThan(0);
     expect(screen.getByText("등록된 공개 저장소")).toBeTruthy();
+    expect(screen.getByText("@candidate-dev")).toBeTruthy();
     expect(screen.getByText("https://github.com/example/repo")).toBeTruthy();
     expect(screen.queryByLabelText("GitHub 저장소 URL")).toBeNull();
     expect(screen.queryByRole("button", { name: "프로젝트 제출" })).toBeNull();

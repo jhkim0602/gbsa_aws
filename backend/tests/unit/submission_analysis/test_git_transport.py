@@ -62,10 +62,12 @@ def _detail(
     parents: list[str] | None = None,
     files: list[dict[str, Any]] | None = None,
     email: str = APPLICANT_EMAIL,
+    login: str | None = "candidate-dev",
 ) -> dict[str, Any]:
     parent_shas = parents if parents is not None else [_sha("f")]
     return {
         "sha": sha,
+        "author": {"login": login} if login is not None else None,
         "parents": [{"sha": parent} for parent in parent_shas],
         "commit": {"author": {"name": "홍길동", "email": email}},
         "files": files
@@ -453,6 +455,7 @@ def test_the_candidate_s_own_commits_are_requested_from_github() -> None:
     )
 
     assert [commit.commit_sha for commit in snapshot.commits] == [theirs]
+    assert snapshot.commits[0].author_login == "candidate-dev"
     assert any("author=" in url for url in transport.requested)
     # The recorded head is still the branch head, so the analysis says which repository
     # state it read even when the commits it analyzed are older.

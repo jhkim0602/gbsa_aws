@@ -1218,6 +1218,7 @@ export interface components {
             /** Format: date-time */
             readonly created_at: string;
             readonly failure_code?: string | null;
+            readonly github_username?: string | null;
             readonly impact_summary?: string | null;
             readonly source_type: string;
             /** @enum {string} */

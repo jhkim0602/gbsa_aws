@@ -47,6 +47,26 @@ def test_low_confidence_commit_is_context_only_and_generates_verification_need()
     assert "본인이 작성한 범위" in result.verification_prompt
 
 
+def test_exact_github_login_is_strong_ownership_evidence() -> None:
+    commit = GitCommitCandidate(
+        parent_sha="a" * 40,
+        commit_sha="d" * 40,
+        author_name="Applicant",
+        author_email="private@example.com",
+        author_login="candidate-dev",
+        changed_paths=("src/payment.py",),
+    )
+
+    result = classify_commit_ownership(
+        commit,
+        CommitIdentityInput(claimed_handles=("candidate-dev",)),
+    )
+
+    assert result.ownership_class is OwnershipClass.PRIMARY_OWNED
+    assert result.confidence >= 0.7
+    assert "github_login_match" in result.explanation_codes
+
+
 def test_python_ast_expands_changed_lines_to_symbol_and_related_test() -> None:
     source = """
 def calculate_total(items):

@@ -106,6 +106,7 @@ class RepositoryCommit:
     author_name: str
     author_email: str
     changed_line_ranges: dict[str, tuple[tuple[int, int], ...]]
+    author_login: str | None = None
 
     @property
     def changed_paths(self) -> tuple[str, ...]:
@@ -212,8 +213,9 @@ class GitHubPublicTransport:
                 author_name=author_name,
                 author_email=author_email,
                 changed_line_ranges=ranges_by_sha[sha],
+                author_login=author_login,
             )
-            for sha, detail, (author_name, author_email) in (
+            for sha, detail, (author_name, author_email, author_login) in (
                 (sha, detail, _commit_author(detail)) for sha, detail in selected
             )
             # A commit whose every change was a deletion or an unreadable blob carries
@@ -647,14 +649,20 @@ def _first_parent_sha(detail: dict[str, object]) -> str:
     return _required_string(cast(dict[str, object], parents[0]), "sha")
 
 
-def _commit_author(detail: dict[str, object]) -> tuple[str, str]:
+def _commit_author(detail: dict[str, object]) -> tuple[str, str, str | None]:
     commit = detail.get("commit")
     if not isinstance(commit, dict):
         raise GitFetchError("public_git_author_unavailable")
     author = commit.get("author")
     if not isinstance(author, dict):
         raise GitFetchError("public_git_author_unavailable")
-    return _required_string(author, "name"), _required_string(author, "email")
+    github_author = detail.get("author")
+    author_login = github_author.get("login") if isinstance(github_author, dict) else None
+    return (
+        _required_string(author, "name"),
+        _required_string(author, "email"),
+        author_login if isinstance(author_login, str) and author_login else None,
+    )
 
 
 def _changed_blobs(detail: dict[str, object]) -> list[tuple[str, str, object]]:

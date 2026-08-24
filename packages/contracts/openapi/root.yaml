@@ -1594,6 +1594,10 @@ components:
           - string
           - 'null'
           format: uri
+        github_username:
+          type:
+          - string
+          - 'null'
         status:
           type: string
           enum:

@@ -86,6 +86,7 @@ class SubmissionView(BaseModel):
     source_type: str
     original_filename: str | None
     source_url: str | None
+    github_username: str | None
     status: str
     failure_code: str | None
     impact_summary: str | None
@@ -432,11 +433,20 @@ def _submission_view(submission: Submission) -> SubmissionView:
             if submission.source_type in {SourceType.PUBLIC_GIT, SourceType.PUBLIC_URL}
             else None
         ),
+        github_username=_github_username(submission),
         status=submission.status.value,
         failure_code=submission.failure_code,
         impact_summary=submission.impact_summary,
         created_at=submission.created_at,
     )
+
+
+def _github_username(submission: Submission) -> str | None:
+    if submission.source_type is not SourceType.PUBLIC_GIT:
+        return None
+    identity = submission.candidate_identity_inputs or {}
+    handles = identity.get("claimed_handles", ())
+    return handles[0] if handles else None
 
 
 def _optional_uuid(value: str | None) -> UUID | None:

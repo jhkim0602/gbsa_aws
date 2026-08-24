@@ -54,6 +54,7 @@ export type SubmissionWorkspaceData = Readonly<{
     status: string;
     /** Set for repository submissions, so a reload can show what was submitted. */
     sourceUrl?: string | null;
+    githubUsername?: string | null;
   }[];
 }>;
 
@@ -87,6 +88,9 @@ type AnalysisDebugData = Readonly<{
     claims?: readonly Readonly<{
       type?: string;
       chunk_count?: number;
+      commit_count?: number;
+      code_unit_count?: number;
+      discovered_code_unit_count?: number;
     }>[];
   }>[];
   extracted_documents?: readonly AnalysisDebugDocument[];
@@ -359,11 +363,23 @@ function RepositorySubmissionEditor({
           <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-surface text-success">
             <CheckCircle2 aria-hidden="true" size={17} />
           </span>
-          <div className="min-w-0">
-            <p className="m-0 text-xs font-semibold text-success">
-              등록된 공개 저장소
-            </p>
-            <p className="mt-1 break-all text-sm font-medium text-ink">{url}</p>
+          <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-[minmax(120px,0.35fr)_minmax(0,1fr)]">
+            <div>
+              <p className="m-0 text-[11px] font-semibold text-muted">
+                GitHub 아이디
+              </p>
+              <p className="mt-1 text-sm font-bold text-ink">
+                {githubUsername ? `@${githubUsername}` : "확인 불가"}
+              </p>
+            </div>
+            <div className="min-w-0">
+              <p className="m-0 text-[11px] font-semibold text-muted">
+                등록된 공개 저장소
+              </p>
+              <p className="mt-1 break-all text-sm font-medium text-ink">
+                {url}
+              </p>
+            </div>
           </div>
         </div>
         <p
@@ -685,6 +701,26 @@ function AnalysisDebugPanel({
                 const chunkCount = analysis.claims?.find(
                   (claim) => claim.type === "document_extracted",
                 )?.chunk_count;
+                const gitSnapshot = analysis.claims?.find(
+                  (claim) => claim.type === "public_git_snapshot",
+                );
+                const analysisDetail =
+                  typeof chunkCount === "number"
+                    ? `${chunkCount}개 문단`
+                    : typeof gitSnapshot?.code_unit_count === "number"
+                      ? [
+                          `${gitSnapshot.code_unit_count}개 코드 근거`,
+                          typeof gitSnapshot.discovered_code_unit_count ===
+                          "number"
+                            ? `${gitSnapshot.discovered_code_unit_count}개 후보`
+                            : null,
+                          typeof gitSnapshot.commit_count === "number"
+                            ? `${gitSnapshot.commit_count}개 커밋`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")
+                      : null;
                 return (
                   <div
                     key={`${analysis.extractor_version}-${index}`}
@@ -695,9 +731,7 @@ function AnalysisDebugPanel({
                     </span>
                     <span className="text-muted">
                       {analysis.status ?? "상태 없음"}
-                      {typeof chunkCount === "number"
-                        ? ` · ${chunkCount}개 문단`
-                        : ""}
+                      {analysisDetail ? ` · ${analysisDetail}` : ""}
                     </span>
                   </div>
                 );
@@ -798,7 +832,12 @@ export function SubmissionWorkspace({
         (submission) => submission.materialId === "projects",
       )?.sourceUrl ?? "",
   );
-  const [githubUsername, setGithubUsername] = useState("");
+  const [githubUsername, setGithubUsername] = useState(
+    () =>
+      submittedMaterials.find(
+        (submission) => submission.materialId === "projects",
+      )?.githubUsername ?? "",
+  );
   const [materialStates, setMaterialStates] = useState(() => ({
     ...INITIAL_STATES,
     ...Object.fromEntries(
