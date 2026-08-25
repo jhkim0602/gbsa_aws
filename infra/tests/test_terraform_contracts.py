@@ -563,6 +563,10 @@ def test_one_manual_workflow_manages_the_complete_dev_environment() -> None:
     assert "run_database_migration" in bring_up
     assert "publish_frontends" in bring_up
 
+    smoke = read(ROOT.parent / "scripts" / "smoke_deployed.sh")
+    assert '--output "$bundle_file"' in smoke
+    assert "grep -q 'amazoncognito\\.com' \"$bundle_file\"" in smoke
+
     tear_down = script.split("tear_down() {")[1].split("\ncase ")[0]
     application = tear_down.index('terraform_destroy_if_present "$APPLICATION_ROOT" application')
     data_ai = tear_down.index('terraform_destroy_if_present "$DATA_AI_ROOT" data-ai')

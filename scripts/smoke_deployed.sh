@@ -105,12 +105,15 @@ check "company origin routes /v1 to the API" 401 "$(status_of "$COMPANY_URL/v1/m
 # emitted JavaScript and its presence is checkable from outside.
 document="$(curl --silent --show-error --location --max-time 20 "$COMPANY_URL/")"
 bundle="$(grep -o '/assets/[A-Za-z0-9._-]*\.js' <<<"$document" | head -1 || true)"
+bundle_file="$(mktemp)"
+trap 'rm -f "$bundle_file"' EXIT
 if [[ -z "$bundle" ]]; then
   echo "FAILED   console document names no bundle"
   failures=$((failures + 1))
 else
-  if curl --silent --show-error --location --max-time 30 "$COMPANY_URL$bundle" |
-    grep -q 'amazoncognito\.com'; then
+  if curl --silent --show-error --location --max-time 30 \
+    --output "$bundle_file" "$COMPANY_URL$bundle" &&
+    grep -q 'amazoncognito\.com' "$bundle_file"; then
     echo "ok       console bundle carries a Cognito login domain"
   else
     echo "FAILED   console bundle has no Cognito login domain; it would fall back to a demo token"
