@@ -212,6 +212,7 @@ module "compute" {
     GCP_VERTEX_AI_LOCATION          = "global"
     GCP_VERTEX_AI_MAX_ATTEMPTS      = "2"
     GCP_VERTEX_AI_MODEL_ID          = "gemini-2.5-flash"
+    GCP_VERTEX_AI_FALLBACK_MODEL_ID = "gemini-2.5-flash-lite"
     GCP_VERTEX_AI_THINKING_BUDGET   = "0"
     GCP_VERTEX_AI_TIMEOUT_SECONDS   = "30"
     STT_PROVIDER                    = "gcp_streaming"
@@ -259,6 +260,23 @@ module "edge" {
   applicant_bucket_domain_name = module.data.bucket_regional_domain_names["applicant-spa"]
   api_origin_domain_name       = module.compute.alb_dns_name
   tags                         = local.tags
+}
+
+# Presigned URLs authorize each object operation, while this rule only allows the deployed
+# applicant browser to issue those uploads. Public bucket access remains blocked separately.
+resource "aws_s3_bucket_cors_configuration" "browser_uploads" {
+  for_each = toset(["source", "media"])
+
+  bucket = module.data.bucket_ids[each.key]
+
+  cors_rule {
+    id              = "applicant-browser-uploads"
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "HEAD", "PUT"]
+    allowed_origins = [module.edge.site_urls["applicant"]]
+    expose_headers  = ["ETag", "x-amz-checksum-sha256"]
+    max_age_seconds = 3000
+  }
 }
 
 # The same shape the dev application root publishes, because one pipeline job reads it for

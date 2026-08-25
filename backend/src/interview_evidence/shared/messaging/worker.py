@@ -229,7 +229,10 @@ class MessageConsumer:
                 self._record_delivery("retrying")
                 self._queue.retry(
                     delivery.receipt_handle,
-                    delay_seconds=_retry_delay_seconds(delivery.receive_count),
+                    delay_seconds=_retry_delay_seconds(
+                        delivery.event_type,
+                        delivery.receive_count,
+                    ),
                 )
                 continue
             except BaseException:
@@ -328,7 +331,13 @@ class MessageConsumer:
         )
 
 
-def _retry_delay_seconds(receive_count: int) -> int:
+_REPORT_GENERATION_RETRY_DELAYS_SECONDS = (15, 45, 120, 300, 600, 900)
+
+
+def _retry_delay_seconds(event_type: str, receive_count: int) -> int:
+    if event_type == "report.generation_requested":
+        index = min(max(0, receive_count - 1), len(_REPORT_GENERATION_RETRY_DELAYS_SECONDS) - 1)
+        return _REPORT_GENERATION_RETRY_DELAYS_SECONDS[index]
     exponent = min(max(0, receive_count - 1), 4)
     return min(5 * (1 << exponent), 60)
 

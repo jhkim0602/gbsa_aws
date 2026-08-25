@@ -7,10 +7,9 @@ axis must cite Evidence that actually exists, and the citation is resolved befor
 is stored. A score whose support does not resolve is withheld, because a reviewer cannot
 overrule reasoning they are unable to check.
 
-Scoring is deliberately non-fatal. If the model is unavailable the report is still
-generated, just without axis scores, because the transcript, the video intervals and the
-Evidence trail are the part a reviewer cannot reconstruct themselves -- losing those to a
-model outage would be the worse failure.
+Callers choose whether scoring is required. Interactive and diagnostic callers may retain the
+Evidence trail without scores, while the production report worker treats a model outage as a
+retryable dependency failure so a final report is not published without its assessment.
 """
 
 from __future__ import annotations
@@ -57,6 +56,10 @@ class CriterionAssessment:
     follow_up_question: str | None
 
 
+class AssessmentGenerationUnavailable(ConnectionError):
+    pass
+
+
 class CriterionAssessor:
     def __init__(
         self,
@@ -64,12 +67,14 @@ class CriterionAssessor:
         *,
         prompt: AssessmentPromptTemplate | None = None,
         metrics: MetricRecorder | None = None,
+        require_scores: bool = False,
     ) -> None:
         self._model = model
         # An explicit template pins every level to it, which is what a scoring-calibration
         # experiment wants. Left unset, the interview's level chooses.
         self._prompt = prompt
         self._metrics = metrics or NullMetricRecorder()
+        self._require_scores = require_scores
 
     def prompt_for(self, level: InterviewLevel) -> AssessmentPromptTemplate:
         return self._prompt or assessment_prompt_for(level)
@@ -106,10 +111,20 @@ class CriterionAssessor:
                 ),
             )
             verdict = parse_assessment_response(response)
-        except (RuntimeError, ValidationError, TypeError, ValueError, KeyError):
-            # Deliberately swallowed: see the module docstring. A scoring failure must not
-            # cost the reviewer the Evidence trail.
+        except (
+            RuntimeError,
+            ConnectionError,
+            TimeoutError,
+            ValidationError,
+            TypeError,
+            ValueError,
+            KeyError,
+        ) as error:
             self._record_criterion_outcome("model_unavailable")
+            if self._require_scores:
+                raise AssessmentGenerationUnavailable(
+                    "criterion assessment generation unavailable"
+                ) from error
             return None
         verified = verdict.verified_against(frozenset(answer.evidence_id for answer in answers))
         accepted_axes = sum(score.score is not None for score in verified.axis_scores)

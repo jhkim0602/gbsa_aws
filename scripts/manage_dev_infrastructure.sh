@@ -80,8 +80,8 @@ build_and_push_images() {
   export API_IMAGE WORKER_IMAGE
 
   aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
-  docker build --target api --tag "$API_IMAGE" --file backend/Containerfile .
-  docker build --target worker --tag "$WORKER_IMAGE" --file backend/Containerfile .
+  docker build --platform linux/amd64 --target api --tag "$API_IMAGE" --file backend/Containerfile .
+  docker build --platform linux/amd64 --target worker --tag "$WORKER_IMAGE" --file backend/Containerfile .
   docker push "$API_IMAGE"
   docker push "$WORKER_IMAGE"
 }

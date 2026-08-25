@@ -4,6 +4,7 @@ import pytest
 from interview_evidence.runtime.generative_ai import create_generative_ai_dependencies
 from interview_evidence.shared.aws_clients.production import AwsTitanTextEmbedder
 from interview_evidence.shared.gcp_clients.generative import (
+    GcpFallbackModel,
     GcpVertexModel,
     GcpVertexTextEmbedder,
 )
@@ -33,7 +34,7 @@ def test_gcp_providers_share_one_vertex_client_and_skip_bedrock() -> None:
         ),
     )
 
-    assert isinstance(dependencies.model, GcpVertexModel)
+    assert isinstance(dependencies.model, GcpFallbackModel)
     assert isinstance(dependencies.embedder, GcpVertexTextEmbedder)
     assert dependencies.embedder.model_id == "embedding-test"
     assert vertex_calls == [("project-from-document-ai", "global")]
@@ -63,6 +64,21 @@ def test_gcp_generation_can_share_an_aws_titan_embedding_space() -> None:
         vertex_client_factory=lambda _project, _location: client,
     )
 
-    assert isinstance(dependencies.model, GcpVertexModel)
+    assert isinstance(dependencies.model, GcpFallbackModel)
     assert isinstance(dependencies.embedder, AwsTitanTextEmbedder)
     assert aws_calls == ["bedrock-runtime"]
+
+
+def test_an_empty_gcp_fallback_model_setting_disables_fallback() -> None:
+    dependencies = create_generative_ai_dependencies(
+        {
+            "AI_PROVIDER": "gcp",
+            "EMBEDDING_PROVIDER": "aws",
+            "GCP_DOCUMENT_AI_PROJECT_ID": "project-id",
+            "GCP_VERTEX_AI_FALLBACK_MODEL_ID": "",
+        },
+        aws_client_factory=lambda _service: object(),
+        vertex_client_factory=lambda _project, _location: FakeVertexClient(),
+    )
+
+    assert isinstance(dependencies.model, GcpVertexModel)

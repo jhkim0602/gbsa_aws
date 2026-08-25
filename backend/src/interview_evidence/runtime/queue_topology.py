@@ -29,9 +29,10 @@ DEFAULT_VISIBILITY_TIMEOUT_SECONDS = 300
 QUEUE_MESSAGE_RETENTION_SECONDS = 345_600
 DEAD_LETTER_MESSAGE_RETENTION_SECONDS = 1_209_600
 
-#: `var.max_receive_count`. Without a redrive policy a message that always fails is retried
-#: until retention expires and then disappears, which is how the local setup behaved.
+#: Most failures should reach the DLQ quickly. Reports get a longer window because shared GCP
+#: model capacity can recover without any code or data change.
 QUEUE_MAX_RECEIVE_COUNT = 5
+REPORTING_QUEUE_MAX_RECEIVE_COUNT = 12
 
 
 def queue_visibility_timeout_seconds(name: str, environment: Mapping[str, str]) -> int:
@@ -44,6 +45,11 @@ def queue_visibility_timeout_seconds(name: str, environment: Mapping[str, str]) 
         MEDIA_VISIBILITY_TIMEOUT_SECONDS if name == "media" else DEFAULT_VISIBILITY_TIMEOUT_SECONDS
     )
     return int(environment.get(f"SQS_{name.upper()}_VISIBILITY_TIMEOUT_SECONDS", str(default)))
+
+
+def queue_max_receive_count(name: str, environment: Mapping[str, str]) -> int:
+    default = REPORTING_QUEUE_MAX_RECEIVE_COUNT if name == "reporting" else QUEUE_MAX_RECEIVE_COUNT
+    return int(environment.get(f"SQS_{name.upper()}_MAX_RECEIVE_COUNT", str(default)))
 
 
 def dead_letter_queue_name(queue_name: str) -> str:

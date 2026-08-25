@@ -35,6 +35,7 @@ SUPPORTED_PLACEHOLDERS: Final = (
 
 MAX_GUIDE_LINES: Final = 12
 GUIDE_SEPARATOR: Final = "|"
+FIXED_INTERVIEW_DURATION_GUIDE: Final = "소요 시간 | 약 30분 (중간 저장되며 이어서 진행 가능)"
 
 LOOPBACK_HTTP_PREFIXES: Final = ("http://localhost", "http://127.0.0.1")
 
@@ -85,7 +86,20 @@ class InvitationEmailTemplate(BaseModel):
     @field_validator("guides")
     @classmethod
     def drop_blank_guides(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        return tuple(line.strip() for line in value if line.strip())
+        normalized: list[str] = []
+        duration_added = False
+        for raw_line in value:
+            line = raw_line.strip()
+            if not line:
+                continue
+            label, separator, _ = line.partition(GUIDE_SEPARATOR)
+            if separator and label.strip() == "소요 시간":
+                if not duration_added:
+                    normalized.append(FIXED_INTERVIEW_DURATION_GUIDE)
+                    duration_added = True
+                continue
+            normalized.append(line)
+        return tuple(normalized)
 
 
 DEFAULT_INVITATION_EMAIL_TEMPLATE: Final = InvitationEmailTemplate(
@@ -98,7 +112,7 @@ DEFAULT_INVITATION_EMAIL_TEMPLATE: Final = InvitationEmailTemplate(
         "아래 버튼으로 편한 시간에 바로 시작하실 수 있습니다."
     ),
     guides=(
-        "소요 시간 | 약 25분 (중간 저장되며 이어서 진행 가능)",
+        FIXED_INTERVIEW_DURATION_GUIDE,
         "준비물 | 웹캠, 마이크 — 헤드셋 사용을 권장합니다",
         "권장 환경 | Chrome 최신 버전, 조용하고 밝은 공간",
         "사전 제출 | 이력서·포트폴리오는 면접 시작 전 화면에서 등록합니다",

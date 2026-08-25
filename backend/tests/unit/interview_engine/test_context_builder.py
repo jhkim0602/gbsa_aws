@@ -42,6 +42,8 @@ def test_context_builder_prioritizes_recent_turns_within_budget() -> None:
         verification_objective="원인 분석과 직접 복구 역할을 확인한다.",
         missing_dimensions=("원인 분석", "직접 수행한 복구"),
         follow_up_directions=("본인이 직접 수행한 복구 작업",),
+        answer_evidence_gaps=("검증 결과",),
+        stage_evidence_available=False,
     )
 
     assert result.estimated_tokens <= 140
@@ -55,4 +57,6 @@ def test_context_builder_prioritizes_recent_turns_within_budget() -> None:
     assert payload["retrieved_sources"][0]["excerpt"].startswith("ECS 배포")
     assert payload["verification_objective"] == ("원인 분석과 직접 복구 역할을 확인한다.")
     assert payload["follow_up_directions"] == ["본인이 직접 수행한 복구 작업"]
+    assert payload["answer_evidence_gaps"] == ["검증 결과"]
+    assert payload["stage_evidence_available"] is False
     assert payload["retrieved_sources"][0]["material_type"] == "resume"

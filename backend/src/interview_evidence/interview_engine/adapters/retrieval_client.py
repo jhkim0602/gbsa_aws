@@ -42,6 +42,13 @@ _COLLABORATION_TERMS: Final = (
     "갈등",
     "의사소통",
     "팀",
+    "팀원",
+    "동료",
+    "조율",
+    "합의",
+    "설득",
+    "역할",
+    "책임",
 )
 
 
@@ -197,6 +204,13 @@ class RetrievalClient:
                 results.extend(
                     result for result in git_results if result.source_id not in known_source_ids
                 )
+            if interview_stage is InterviewStage.BEHAVIORAL:
+                results = [
+                    result
+                    for result in results
+                    if _record_source_type(result) != "candidate_code_unit"
+                    or _has_collaboration_signal(result)
+                ]
         except Exception:
             return RetrievalOutcome(
                 hits=(),
@@ -237,13 +251,19 @@ def _stage_adjusted_score(record: RetrievalRecord, stage: InterviewStage) -> flo
     source_type = _record_source_type(record)
     material_type = _optional_string(getattr(record, "material_type", None))
     source_boost = _STAGE_SOURCE_BOOSTS[stage].get(source_type, 0.0)
-    if stage is InterviewStage.BEHAVIORAL and source_type == "candidate_code_unit":
-        excerpt = str(getattr(record, "excerpt", "")).casefold()
-        if any(term.casefold() in excerpt for term in _COLLABORATION_TERMS):
-            source_boost = 0.05
+    if (
+        stage is InterviewStage.BEHAVIORAL
+        and source_type == "candidate_code_unit"
+        and _has_collaboration_signal(record)
+    ):
+        source_boost = 0.05
+    collaboration_boost = (
+        0.35 if stage is InterviewStage.BEHAVIORAL and _has_collaboration_signal(record) else 0.0
+    )
     return (
         record.score
         + source_boost
+        + collaboration_boost
         + _STAGE_MATERIAL_BOOSTS[stage].get(
             material_type or "",
             0.0,
@@ -290,3 +310,8 @@ def _record_source_type(record: RetrievalRecord) -> str:
 
 def _optional_string(value: object) -> str | None:
     return str(value) if value is not None else None
+
+
+def _has_collaboration_signal(record: RetrievalRecord) -> bool:
+    excerpt = str(getattr(record, "excerpt", "")).casefold()
+    return any(term.casefold() in excerpt for term in _COLLABORATION_TERMS)

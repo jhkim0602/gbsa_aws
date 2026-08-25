@@ -4,6 +4,7 @@ import json
 from uuid import UUID
 
 from interview_evidence.submission_analysis.application.strategy_prompt import (
+    MAX_STRATEGY_OUTPUT_TOKENS,
     build_strategy_prompt,
     parse_strategy_response,
     strategy_task_payload_of,
@@ -26,7 +27,7 @@ def test_strategy_prompt_is_a_valid_anthropic_messages_request() -> None:
     )
 
     assert prompt["anthropic_version"] == "bedrock-2023-05-31"
-    assert prompt["max_tokens"] == 2_048
+    assert prompt["max_tokens"] == MAX_STRATEGY_OUTPUT_TOKENS == 8_192
     payload = strategy_task_payload_of(prompt)
     assert payload is not None
     assert payload["provided_criterion_ids"] == [str(CRITERION_ID)]

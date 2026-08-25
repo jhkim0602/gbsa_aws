@@ -4,6 +4,7 @@ from interview_evidence.interview_engine.application.interview_plan import (
     FIXED_INTERVIEW_DURATION_SECONDS,
     InterviewPlan,
     InterviewStage,
+    StageQuestionDecision,
     VerificationTargetPlan,
 )
 
@@ -39,6 +40,30 @@ def _plan() -> InterviewPlan:
     )
 
 
+def _next(
+    plan: InterviewPlan,
+    *,
+    current_stage: InterviewStage,
+    stage_core_question_count: int,
+    stage_elapsed_seconds: int,
+    total_elapsed_seconds: int,
+    last_question_was_final: bool,
+    consecutive_follow_up_count: int = 0,
+    answer_needs_follow_up: bool = False,
+    follow_up_limit: int = 2,
+) -> StageQuestionDecision:
+    return plan.next_stage_question(
+        current_stage=current_stage,
+        stage_core_question_count=stage_core_question_count,
+        consecutive_follow_up_count=consecutive_follow_up_count,
+        stage_elapsed_seconds=stage_elapsed_seconds,
+        total_elapsed_seconds=total_elapsed_seconds,
+        last_question_was_final=last_question_was_final,
+        answer_needs_follow_up=answer_needs_follow_up,
+        follow_up_limit=follow_up_limit,
+    )
+
+
 def test_stage_time_budgets_split_the_fixed_thirty_minutes() -> None:
     plan = _plan()
 
@@ -54,23 +79,26 @@ def test_stage_time_budgets_split_the_fixed_thirty_minutes() -> None:
 def test_fast_answers_use_question_limits_instead_of_looping_forever() -> None:
     plan = _plan()
 
-    opening = plan.next_stage_question(
+    opening = _next(
+        plan,
         current_stage=InterviewStage.TECHNICAL,
-        stage_question_count=0,
+        stage_core_question_count=0,
         stage_elapsed_seconds=0,
         total_elapsed_seconds=0,
         last_question_was_final=False,
     )
-    final = plan.next_stage_question(
+    final = _next(
+        plan,
         current_stage=InterviewStage.TECHNICAL,
-        stage_question_count=5,
+        stage_core_question_count=5,
         stage_elapsed_seconds=10,
         total_elapsed_seconds=10,
         last_question_was_final=False,
     )
-    project = plan.next_stage_question(
+    project = _next(
+        plan,
         current_stage=InterviewStage.TECHNICAL,
-        stage_question_count=6,
+        stage_core_question_count=6,
         stage_elapsed_seconds=20,
         total_elapsed_seconds=20,
         last_question_was_final=True,
@@ -85,9 +113,10 @@ def test_fast_answers_use_question_limits_instead_of_looping_forever() -> None:
 def test_long_answer_moves_to_next_stage_after_it_finishes() -> None:
     plan = _plan()
 
-    decision = plan.next_stage_question(
+    decision = _next(
+        plan,
         current_stage=InterviewStage.TECHNICAL,
-        stage_question_count=1,
+        stage_core_question_count=1,
         stage_elapsed_seconds=550,
         total_elapsed_seconds=550,
         last_question_was_final=False,
@@ -100,16 +129,18 @@ def test_long_answer_moves_to_next_stage_after_it_finishes() -> None:
 def test_stage_asks_a_final_question_before_moving_on_at_the_time_boundary() -> None:
     plan = _plan()
 
-    final = plan.next_stage_question(
+    final = _next(
+        plan,
         current_stage=InterviewStage.TECHNICAL,
-        stage_question_count=2,
+        stage_core_question_count=2,
         stage_elapsed_seconds=480,
         total_elapsed_seconds=480,
         last_question_was_final=False,
     )
-    project = plan.next_stage_question(
+    project = _next(
+        plan,
         current_stage=InterviewStage.TECHNICAL,
-        stage_question_count=3,
+        stage_core_question_count=3,
         stage_elapsed_seconds=570,
         total_elapsed_seconds=570,
         last_question_was_final=True,
@@ -124,23 +155,26 @@ def test_stage_asks_a_final_question_before_moving_on_at_the_time_boundary() -> 
 def test_expired_total_time_still_preserves_one_question_in_later_stages() -> None:
     plan = _plan()
 
-    project = plan.next_stage_question(
+    project = _next(
+        plan,
         current_stage=InterviewStage.TECHNICAL,
-        stage_question_count=1,
+        stage_core_question_count=1,
         stage_elapsed_seconds=1800,
         total_elapsed_seconds=1800,
         last_question_was_final=False,
     )
-    behavioral = plan.next_stage_question(
+    behavioral = _next(
+        plan,
         current_stage=InterviewStage.PROJECT_DEEP_DIVE,
-        stage_question_count=1,
+        stage_core_question_count=1,
         stage_elapsed_seconds=60,
         total_elapsed_seconds=1860,
         last_question_was_final=False,
     )
-    completed = plan.next_stage_question(
+    completed = _next(
+        plan,
         current_stage=InterviewStage.BEHAVIORAL,
-        stage_question_count=1,
+        stage_core_question_count=1,
         stage_elapsed_seconds=60,
         total_elapsed_seconds=1920,
         last_question_was_final=False,
@@ -149,6 +183,48 @@ def test_expired_total_time_still_preserves_one_question_in_later_stages() -> No
     assert project.stage is InterviewStage.PROJECT_DEEP_DIVE
     assert behavioral.stage is InterviewStage.BEHAVIORAL
     assert completed.completes_interview
+
+
+def test_follow_ups_do_not_consume_the_core_question_limit() -> None:
+    plan = _plan()
+
+    first_follow_up = _next(
+        plan,
+        current_stage=InterviewStage.TECHNICAL,
+        stage_core_question_count=1,
+        consecutive_follow_up_count=0,
+        stage_elapsed_seconds=60,
+        total_elapsed_seconds=60,
+        last_question_was_final=False,
+        answer_needs_follow_up=True,
+        follow_up_limit=2,
+    )
+    second_follow_up = _next(
+        plan,
+        current_stage=InterviewStage.TECHNICAL,
+        stage_core_question_count=1,
+        consecutive_follow_up_count=1,
+        stage_elapsed_seconds=120,
+        total_elapsed_seconds=120,
+        last_question_was_final=False,
+        answer_needs_follow_up=True,
+        follow_up_limit=2,
+    )
+    next_core = _next(
+        plan,
+        current_stage=InterviewStage.TECHNICAL,
+        stage_core_question_count=1,
+        consecutive_follow_up_count=2,
+        stage_elapsed_seconds=180,
+        total_elapsed_seconds=180,
+        last_question_was_final=False,
+        answer_needs_follow_up=True,
+        follow_up_limit=2,
+    )
+
+    assert first_follow_up.question_type == "follow_up"
+    assert second_follow_up.question_type == "follow_up"
+    assert next_core.question_type == "core"
 
 
 def test_target_exhaustion_does_not_end_the_interview() -> None:

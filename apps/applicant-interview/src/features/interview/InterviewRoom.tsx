@@ -372,7 +372,9 @@ export function InterviewRoom({
                 </span>
                 <span
                   className={`min-w-0 font-semibold text-slate-900 ${
-                    applicantCaptionActive ? "truncate" : "line-clamp-3"
+                    applicantCaptionActive
+                      ? "truncate"
+                      : "whitespace-pre-wrap break-words"
                   }`}
                 >
                   {question}
@@ -389,8 +391,8 @@ export function InterviewRoom({
                 <p className="mb-1.5 text-xs font-bold text-brand-strong">
                   지원자 답변
                 </p>
-                <div className="h-[4.5rem] overflow-hidden">
-                  <p className="line-clamp-3 text-left text-sm font-medium leading-6 text-slate-800">
+                <div>
+                  <p className="whitespace-pre-wrap break-words text-left text-sm font-medium leading-6 text-slate-800">
                     {transcript}
                   </p>
                 </div>

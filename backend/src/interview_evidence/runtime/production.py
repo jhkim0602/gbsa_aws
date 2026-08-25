@@ -540,7 +540,11 @@ def create_production_runtime(
             "report_generation": ReportGenerator(
                 lane_d.repository,
                 EvidenceService(lane_d.repository),
-                CriterionAssessor(model, metrics=active_metrics),
+                CriterionAssessor(
+                    model,
+                    metrics=active_metrics,
+                    require_scores=True,
+                ),
             ),
             "privacy_deletion": lane_d.deletion_service,
         },

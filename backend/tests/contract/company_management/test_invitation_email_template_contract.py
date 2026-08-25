@@ -106,7 +106,7 @@ async def test_company_template_defaults_then_persists_company_edits() -> None:
     assert reread.json() == saved.json()
     # Colours are normalised so the stored value is what the renderer emits.
     assert reread.json()["brand_color"] == "#0f766e"
-    assert reread.json()["guides"] == ["소요 시간 | 약 25분"]
+    assert reread.json()["guides"] == ["소요 시간 | 약 30분 (중간 저장되며 이어서 진행 가능)"]
 
     # Reverting hands the platform default back, so the console never has to hold its
     # own copy of the Korean wording.
@@ -174,6 +174,8 @@ async def test_preview_renders_sample_data_without_sending() -> None:
     assert preview.json()["subject"] == "[넥스트하이어] 백엔드 엔지니어 면접 안내"
     assert "김지원님" in preview.json()["html_body"]
     assert "#0f766e" in preview.json()["html_body"]
+    assert "약 30분" in preview.json()["html_body"]
+    assert "약 25분" not in preview.json()["html_body"]
     assert stored.json()["cta_label"] == "면접 시작하기"
 
 

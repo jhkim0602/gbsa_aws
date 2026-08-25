@@ -10,13 +10,17 @@ are the ways a score misleads someone making a hiring decision.
 from typing import Any
 from uuid import UUID
 
+import pytest
 from interview_evidence.reporting.application.assessment_prompt import (
     ASSESSMENT_AXES,
     AnswerForAssessment,
     build_assessment_prompt,
     parse_assessment_response,
 )
-from interview_evidence.reporting.application.assessment_service import CriterionAssessor
+from interview_evidence.reporting.application.assessment_service import (
+    AssessmentGenerationUnavailable,
+    CriterionAssessor,
+)
 from interview_evidence.reporting.domain.report import (
     AssessmentState,
     AxisAssessment,
@@ -74,6 +78,11 @@ class StubModel:
 class FailingModel:
     def generate(self, _context: TenantContext, _model_input: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError("bedrock is unavailable")
+
+
+class QuotaExhaustedModel:
+    def generate(self, _context: TenantContext, _model_input: dict[str, Any]) -> dict[str, Any]:
+        raise ConnectionError("vertex quota is exhausted")
 
 
 def verdict(**overrides: Any) -> dict[str, Any]:
@@ -231,6 +240,31 @@ def test_a_model_outage_costs_the_scores_but_not_the_report() -> None:
     # None means "no judgement", which the caller renders as an item without scores. A
     # raise here would lose the reviewer the Evidence trail they cannot reconstruct.
     assert assessment is None
+
+
+def test_a_gcp_quota_error_costs_the_scores_but_not_the_report() -> None:
+    assessment = CriterionAssessor(QuotaExhaustedModel()).assess(
+        context(),
+        criterion_id=CRITERION_ID,
+        criterion_name="장애 대응 판단",
+        criterion_text="장애 상황에서 대안을 비교할 수 있다.",
+        answers=(answer(),),
+        model_config_version="report-config-v1",
+    )
+
+    assert assessment is None
+
+
+def test_the_production_report_worker_retries_when_required_scores_are_unavailable() -> None:
+    with pytest.raises(AssessmentGenerationUnavailable):
+        CriterionAssessor(QuotaExhaustedModel(), require_scores=True).assess(
+            context(),
+            criterion_id=CRITERION_ID,
+            criterion_name="장애 대응 판단",
+            criterion_text="장애 상황에서 대안을 비교할 수 있다.",
+            answers=(answer(),),
+            model_config_version="report-config-v1",
+        )
 
 
 def test_an_unrecognized_assessment_state_asks_for_a_human_rather_than_confirming() -> None:

@@ -90,9 +90,14 @@ def test_system_prompt_uses_grounded_conversational_bridges_and_natural_axis_cov
     assert "매 질문마다 또는\n    연속해서 사용하지 않습니다" in system
     assert "source_reference_ids에 유지합니다" in system
     assert "지원자의 답변을 미리 평가하거나 정답을 암시하지 않으며" in system
+    assert '"설명해 주세요", "말씀해 주세요" 같은 요청형은' in system
+    assert "실제 의문형만 물음표로 끝냅니다" in system
     for label in ("정확성", "깊이", "CS 기본기", "본인 기여", "설명력"):
         assert label in system
     assert "한 질문에 다섯 관점을 모두 담지 않습니다" in system
+    assert "기술 구현, 장애 해결, 성능 개선만 묻는 질문은 만들지 않습니다" in system
+    assert "answer_evidence_gaps" in system
+    assert "stage_alignment_retry" in system
 
 
 def test_task_payload_round_trips_through_the_message() -> None:

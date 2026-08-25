@@ -393,7 +393,7 @@ export function InterviewDesigner({
                       가중치 {stage.weight}/10 → {stage.duration}분
                     </dd>
                     <dd className="text-[8px] text-muted">
-                      질문 최대 {stage.questionLimit}개
+                      핵심 질문 최대 {stage.questionLimit}개
                     </dd>
                   </div>
                 ))}
@@ -403,7 +403,9 @@ export function InterviewDesigner({
                 <span>
                   단계 시간은 답변을 강제로 끊는 시간이 아니라 진행 기준입니다.
                   답변 중 기준 시간이 지나면 답변을 마친 뒤 다음 단계로
-                  이동하므로 실제 종료 시각은 조금 달라질 수 있습니다.
+                  이동하므로 실제 종료 시각은 조금 달라질 수 있습니다. 답변
+                  근거가 부족할 때의 꼬리질문은 핵심 질문 상한에 포함하지 않지만
+                  전체 30분 안에서 진행합니다.
                 </span>
               </p>
             </div>

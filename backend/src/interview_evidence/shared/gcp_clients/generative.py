@@ -49,6 +49,28 @@ MAX_EMBEDDING_BATCH_INPUTS = 250
 MAX_EMBEDDING_BATCH_CHARACTERS = 18_000
 
 
+class GcpFallbackModel(AIModel):
+    def __init__(self, models: Sequence[AIModel]) -> None:
+        if not models:
+            raise ValueError("at least one GCP model is required")
+        self._models = tuple(models)
+
+    def generate(
+        self,
+        context: TenantContext,
+        model_input: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        last_error: GcpGenerativeAdapterError | None = None
+        for model in self._models:
+            try:
+                return model.generate(context, model_input)
+            except GcpGenerativeAdapterError as error:
+                last_error = error
+        if last_error is None:
+            raise GcpGenerativeAdapterError("model generation unavailable")
+        raise GcpGenerativeAdapterError("all configured GCP models are unavailable") from last_error
+
+
 class GcpVertexModel(AIModel):
     def __init__(
         self,

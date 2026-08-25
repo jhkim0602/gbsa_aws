@@ -9,6 +9,7 @@ from interview_evidence.submission_analysis.domain.source import SourceReference
 
 TASK_BUILD_INTERVIEW_STRATEGY: Final = "build_interview_strategy"
 ANTHROPIC_BEDROCK_VERSION: Final = "bedrock-2023-05-31"
+MAX_STRATEGY_OUTPUT_TOKENS: Final = 8_192
 
 OUTPUT_SCHEMA: Final[Mapping[str, Any]] = {
     "common_topics": ["string"],
@@ -77,7 +78,7 @@ def build_strategy_prompt(
     return {
         "anthropic_version": ANTHROPIC_BEDROCK_VERSION,
         "system": _SYSTEM_PROMPT,
-        "max_tokens": 2_048,
+        "max_tokens": MAX_STRATEGY_OUTPUT_TOKENS,
         "temperature": 0,
         "messages": [
             {

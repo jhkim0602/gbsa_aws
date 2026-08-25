@@ -6,6 +6,7 @@ from uuid import UUID
 import pytest
 from google.genai import types
 from interview_evidence.shared.gcp_clients.generative import (
+    GcpFallbackModel,
     GcpGenerativeAdapterError,
     GcpVertexModel,
     GcpVertexTextEmbedder,
@@ -63,6 +64,22 @@ class DynamicEmbeddingModels(RecordingModels):
 class FakeVertexClient:
     def __init__(self) -> None:
         self.models = RecordingModels()
+
+
+class StubGcpModel:
+    def __init__(self, response: dict[str, object] | None = None) -> None:
+        self.response = response
+        self.calls = 0
+
+    def generate(
+        self,
+        _context: TenantContext,
+        _model_input: dict[str, object],
+    ) -> dict[str, object]:
+        self.calls += 1
+        if self.response is None:
+            raise GcpGenerativeAdapterError("shared capacity unavailable")
+        return self.response
 
 
 def test_vertex_model_translates_anthropic_prompt_and_returns_structured_fields() -> None:
@@ -186,3 +203,30 @@ def test_vertex_model_rejects_non_json_response() -> None:
             _context(),
             {"messages": [{"role": "user", "content": "{}"}]},
         )
+
+
+def test_gcp_fallback_model_uses_the_primary_when_it_is_available() -> None:
+    primary = StubGcpModel({"question": "기본 모델 질문"})
+    fallback = StubGcpModel({"question": "대체 모델 질문"})
+
+    response = GcpFallbackModel((primary, fallback)).generate(_context(), {})
+
+    assert response == {"question": "기본 모델 질문"}
+    assert primary.calls == 1
+    assert fallback.calls == 0
+
+
+def test_gcp_fallback_model_uses_the_next_model_after_a_provider_failure() -> None:
+    primary = StubGcpModel()
+    fallback = StubGcpModel({"question": "대체 모델 질문"})
+
+    response = GcpFallbackModel((primary, fallback)).generate(_context(), {})
+
+    assert response == {"question": "대체 모델 질문"}
+    assert primary.calls == 1
+    assert fallback.calls == 1
+
+
+def test_gcp_fallback_model_propagates_when_every_model_is_unavailable() -> None:
+    with pytest.raises(GcpGenerativeAdapterError, match="all configured GCP models"):
+        GcpFallbackModel((StubGcpModel(), StubGcpModel())).generate(_context(), {})

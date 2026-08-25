@@ -187,7 +187,7 @@ describe("HiringWorkspace", () => {
     fireEvent.click(screen.getByText("시간 배분은 어떻게 동작하나요?"));
     expect(timeExplanation?.hasAttribute("open")).toBe(true);
     expect(screen.getByText("가중치 4/10 → 12분")).toBeTruthy();
-    expect(screen.getByText("질문 최대 8개")).toBeTruthy();
+    expect(screen.getByText("핵심 질문 최대 8개")).toBeTruthy();
     expect(
       screen.getByText(/답변을 마친 뒤 다음 단계로 이동하므로/),
     ).toBeTruthy();

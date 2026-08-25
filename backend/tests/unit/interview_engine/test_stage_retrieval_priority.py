@@ -152,7 +152,7 @@ def test_behavioral_stage_prioritizes_narrative_materials() -> None:
     ranked = _retrieve(InterviewStage.BEHAVIORAL)
 
     assert ranked[0] == "cover_letter"
-    assert ranked[-1] == "candidate_code_unit"
+    assert "candidate_code_unit" not in ranked
 
 
 def test_technical_stage_uses_resume_before_supporting_code() -> None:
@@ -180,7 +180,7 @@ def test_retrieval_query_combines_stage_target_and_latest_answer() -> None:
         question_target=target,
     )
 
-    assert "프로젝트 목표" in query
+    assert "하나의 실제 프로젝트" in query
     assert target.objective in query
     assert "직접 구현 범위" in query
     assert query.endswith("결제 서비스를 개발했습니다.")

@@ -4,6 +4,9 @@ from math import ceil
 from typing import Protocol
 from uuid import UUID
 
+from interview_evidence.interview_engine.application.question_policy import (
+    is_interview_prompt,
+)
 from interview_evidence.shared.interview_level import (
     DEFAULT_INTERVIEW_LEVEL,
     MAX_FOLLOW_UPS,
@@ -24,9 +27,18 @@ DEFAULT_INTERVIEW_STAGES = (
     InterviewStage.BEHAVIORAL,
 )
 INTERVIEW_STAGE_FOCUS = {
-    InterviewStage.TECHNICAL: "기술 선택, 구현 원리, 문제 해결 과정과 트레이드오프",
-    InterviewStage.PROJECT_DEEP_DIVE: "프로젝트 목표, 본인 역할, 설계와 구현, 결과와 회고",
-    InterviewStage.BEHAVIORAL: "협업, 갈등 조정, 의사소통, 피드백과 책임",
+    InterviewStage.TECHNICAL: (
+        "기술 선택, 구현 원리, 문제 해결 과정, 대안과 트레이드오프를 확인합니다. "
+        "협업 방식 자체를 중심 질문으로 삼지 않습니다."
+    ),
+    InterviewStage.PROJECT_DEEP_DIVE: (
+        "하나의 실제 프로젝트를 기준으로 목표, 본인 역할, 설계와 구현 범위, 결과와 회고를 "
+        "연결해 확인합니다. 단편적인 기술 원리만 다시 묻지 않습니다."
+    ),
+    InterviewStage.BEHAVIORAL: (
+        "실제 경험에서 함께 일한 사람, 역할 조율, 의견 차이, 의사소통, 피드백과 책임을 "
+        "확인합니다. 기술 구현이나 장애 해결만 묻는 질문은 사용하지 않습니다."
+    ),
 }
 INTERVIEW_STAGE_WEIGHTS = {
     InterviewStage.TECHNICAL: 3,
@@ -35,6 +47,17 @@ INTERVIEW_STAGE_WEIGHTS = {
 }
 FIXED_INTERVIEW_DURATION_SECONDS = 30 * 60
 EXPECTED_QUESTION_SECONDS = 90
+FOLLOW_UP_QUESTION_TYPE = "follow_up"
+CORE_QUESTION_TYPES = frozenset(
+    {
+        "common",
+        "personalized",
+        "adaptive",
+        "core",
+        "stage_opening",
+        "stage_final",
+    }
+)
 DEFAULT_OPENING_MESSAGE = "안녕하세요. 오늘은 기술, 프로젝트, 협업 경험을 중심으로 진행하겠습니다."
 DEFAULT_WARM_UP_QUESTION = (
     "먼저 간단한 자기소개와 지원 직무와 관련해 가장 자신 있는 경험을 말씀해 주시겠어요?"
@@ -74,6 +97,34 @@ class StageQuestionDecision:
     completes_interview: bool = False
 
 
+def is_follow_up_question_type(question_type: str) -> bool:
+    return question_type == FOLLOW_UP_QUESTION_TYPE
+
+
+def is_core_question_type(question_type: str) -> bool:
+    return question_type in CORE_QUESTION_TYPES or not is_follow_up_question_type(question_type)
+
+
+def stage_verification_objective(
+    stage: InterviewStage,
+    target: VerificationTargetPlan,
+) -> str:
+    if stage is InterviewStage.TECHNICAL:
+        return (
+            f"{target.objective} 답변에서는 실제 기술 선택, 구현 방식, 판단 근거와 검증 결과를 "
+            "확인합니다."
+        )
+    if stage is InterviewStage.PROJECT_DEEP_DIVE:
+        return (
+            f"{target.objective} 하나의 프로젝트 안에서 목표, 본인 역할, 설계·구현 범위, 결과와 "
+            "회고를 연결해 확인합니다."
+        )
+    return (
+        "앞서 확인한 실제 경험과 연결해 함께 일한 사람, 역할이나 의견을 조율한 행동, "
+        "그 결과와 배운 점을 확인합니다. 자료에 협업 사실이 없으면 있다고 전제하지 않습니다."
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class InterviewPlan:
     criterion_ids: tuple[UUID, ...]
@@ -93,9 +144,9 @@ class InterviewPlan:
     def __post_init__(self) -> None:
         if not self.criterion_ids:
             raise ValueError("interview plan requires at least one criterion")
-        if not self.initial_question.strip().endswith("?"):
+        if not is_interview_prompt(self.initial_question):
             raise ValueError("initial interview prompt must be one question")
-        if not self.fallback_question.strip().endswith("?"):
+        if not is_interview_prompt(self.fallback_question):
             raise ValueError("fallback interview prompt must be one question")
         if self.remaining_time_seconds != FIXED_INTERVIEW_DURATION_SECONDS:
             raise ValueError("interview plan requires the fixed 30 minute duration")
@@ -107,7 +158,7 @@ class InterviewPlan:
             raise ValueError("interview plan requires the fixed interview stage sequence")
         if not self.opening_message.strip():
             raise ValueError("interview plan requires an opening message")
-        if not self.warm_up_question.strip().endswith("?"):
+        if not is_interview_prompt(self.warm_up_question):
             raise ValueError("interview warm-up prompt must be one question")
 
     @property
@@ -147,14 +198,23 @@ class InterviewPlan:
         self,
         *,
         current_stage: InterviewStage,
-        stage_question_count: int,
+        stage_core_question_count: int,
+        consecutive_follow_up_count: int,
         stage_elapsed_seconds: int,
         total_elapsed_seconds: int,
         last_question_was_final: bool,
+        answer_needs_follow_up: bool,
+        follow_up_limit: int,
     ) -> StageQuestionDecision:
-        if stage_question_count < 0 or stage_elapsed_seconds < 0 or total_elapsed_seconds < 0:
+        if (
+            stage_core_question_count < 0
+            or consecutive_follow_up_count < 0
+            or stage_elapsed_seconds < 0
+            or total_elapsed_seconds < 0
+            or follow_up_limit < 0
+        ):
             raise ValueError("interview stage progress cannot be negative")
-        if stage_question_count == 0:
+        if stage_core_question_count == 0:
             question_type = (
                 "stage_final" if self.stage_question_limit(current_stage) == 1 else "stage_opening"
             )
@@ -165,7 +225,7 @@ class InterviewPlan:
         stage_exhausted = (
             last_question_was_final
             or stage_elapsed_seconds >= stage_budget
-            or stage_question_count >= stage_limit
+            or stage_core_question_count >= stage_limit
             or total_elapsed_seconds >= self.remaining_time_seconds
         )
         if stage_exhausted:
@@ -184,14 +244,14 @@ class InterviewPlan:
         stage_remaining = stage_budget - stage_elapsed_seconds
         total_remaining = self.remaining_time_seconds - total_elapsed_seconds
         final_window = max(30, min(90, stage_budget // 4))
-        next_question_is_final = (
-            stage_question_count + 1 >= stage_limit
-            or stage_remaining <= final_window
-            or total_remaining <= final_window
-        )
+        next_question_is_final = stage_remaining <= final_window or total_remaining <= final_window
+        if next_question_is_final:
+            return StageQuestionDecision(current_stage, "stage_final")
+        if answer_needs_follow_up and consecutive_follow_up_count < follow_up_limit:
+            return StageQuestionDecision(current_stage, FOLLOW_UP_QUESTION_TYPE)
         return StageQuestionDecision(
             current_stage,
-            "stage_final" if next_question_is_final else "adaptive",
+            "stage_final" if stage_core_question_count + 1 >= stage_limit else "core",
         )
 
     def next_target_for_question(

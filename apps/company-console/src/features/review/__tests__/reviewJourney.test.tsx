@@ -136,6 +136,7 @@ describe("Lane D review journey", () => {
       screen.getByText("ECS 배포 경험은 있으나 장애 대응 설명은 없습니다."),
     ).toBeTruthy();
     expect(screen.getAllByText("프로젝트 심층").length).toBeGreaterThan(0);
+    expect(screen.getByText("꼬리질문")).toBeTruthy();
   });
 
   it("summarizes question counts in the fixed interview stage order", () => {
@@ -286,6 +287,12 @@ describe("Lane D review journey", () => {
       .closest("section");
     expect(timelinePanel?.parentElement?.className).not.toContain("sticky");
     expect(humanReviewPanel?.parentElement?.className).toContain("sticky");
+    expect(timelinePanel?.parentElement?.parentElement).toBe(
+      humanReviewPanel?.parentElement?.parentElement,
+    );
+    expect(timelinePanel?.parentElement?.parentElement?.className).toContain(
+      "[grid-area:sidebar]",
+    );
 
     const reportTabList = screen.getByRole("tablist", {
       name: "리포트 항목",

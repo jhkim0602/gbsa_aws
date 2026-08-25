@@ -41,6 +41,8 @@ class BuiltInterviewContext(BaseModel):
     verification_objective: str = ""
     missing_dimensions: tuple[str, ...] = ()
     follow_up_directions: tuple[str, ...] = ()
+    answer_evidence_gaps: tuple[str, ...] = ()
+    stage_evidence_available: bool = True
     estimated_tokens: int = Field(ge=0)
 
     def model_payload(self) -> dict[str, object]:
@@ -66,6 +68,8 @@ class BuiltInterviewContext(BaseModel):
             "verification_objective": self.verification_objective,
             "missing_dimensions": list(self.missing_dimensions),
             "follow_up_directions": list(self.follow_up_directions),
+            "answer_evidence_gaps": list(self.answer_evidence_gaps),
+            "stage_evidence_available": self.stage_evidence_available,
             "retrieved_sources": [
                 {
                     "source_id": str(source.source_id),
@@ -106,6 +110,8 @@ class ContextBuilder:
         verification_objective: str = "",
         missing_dimensions: tuple[str, ...] = (),
         follow_up_directions: tuple[str, ...] = (),
+        answer_evidence_gaps: tuple[str, ...] = (),
+        stage_evidence_available: bool = True,
     ) -> BuiltInterviewContext:
         base_text = " ".join(
             (
@@ -120,6 +126,8 @@ class ContextBuilder:
                 verification_objective,
                 *missing_dimensions,
                 *follow_up_directions,
+                *answer_evidence_gaps,
+                str(stage_evidence_available),
                 *(source.excerpt for source in retrieved_sources),
             )
         )
@@ -152,5 +160,7 @@ class ContextBuilder:
             verification_objective=verification_objective,
             missing_dimensions=missing_dimensions,
             follow_up_directions=follow_up_directions,
+            answer_evidence_gaps=answer_evidence_gaps,
+            stage_evidence_available=stage_evidence_available,
             estimated_tokens=min(estimated, self._token_budget),
         )

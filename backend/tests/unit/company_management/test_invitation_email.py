@@ -65,6 +65,8 @@ def test_handler_renders_the_company_template_into_the_delivered_message() -> No
     assert f"{APPLICANT_NAME}님" in rendered.html_body
     assert SECRET_URL in rendered.html_body
     assert "면접 시작하기" in rendered.text_body
+    assert "약 30분" in rendered.text_body
+    assert "약 25분" not in rendered.text_body
 
 
 def test_disabling_the_name_toggle_keeps_the_applicant_name_out_of_the_body() -> None:

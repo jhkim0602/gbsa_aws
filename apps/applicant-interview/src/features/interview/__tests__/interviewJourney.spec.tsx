@@ -138,6 +138,9 @@ describe("applicant interview journey", () => {
     expect(
       screen.getByLabelText("면접관 질문").getAttribute("data-caption-mode"),
     ).toBe("prominent");
+    expect(screen.getByText(longQuestion).className).not.toContain(
+      "line-clamp",
+    );
     fireEvent.click(screen.getByRole("button", { name: "답변 시작" }));
 
     rerender(
@@ -161,11 +164,12 @@ describe("applicant interview journey", () => {
     expect(applicantCaption.className).toContain("bg-white/95");
     expect(applicantCaption.className).not.toContain("bg-slate-950");
     const captionViewport = applicantCaption.querySelector("div");
-    expect(captionViewport?.className).toContain("overflow-hidden");
+    expect(captionViewport?.className).not.toContain("overflow-hidden");
     expect(captionViewport?.className).not.toContain("overflow-auto");
-    expect(screen.getByText(longTranscript).className).toContain(
-      "line-clamp-3",
+    expect(screen.getByText(longTranscript).className).not.toContain(
+      "line-clamp",
     );
+    expect(screen.getByText(longTranscript).className).toContain("break-words");
     expect(screen.getByText(longTranscript).className).not.toContain(
       "bottom-0",
     );

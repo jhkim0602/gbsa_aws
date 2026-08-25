@@ -288,6 +288,13 @@ export function TimelineView({
                               )}
                             </small>
                           ) : null}
+                          {entry.questionRationale?.questionType ? (
+                            <small className="rounded-full bg-surface-strong px-1.5 py-0.5 text-[7px] font-[650] text-ink-secondary">
+                              {questionTypeLabel(
+                                entry.questionRationale.questionType,
+                              )}
+                            </small>
+                          ) : null}
                         </span>
                         <time
                           className={`font-mono text-subtle ${
@@ -416,6 +423,10 @@ function interviewStageLabel(
     project_deep_dive: "프로젝트 심층",
     behavioral: "협업·인성",
   }[stage];
+}
+
+function questionTypeLabel(questionType: string) {
+  return questionType === "follow_up" ? "꼬리질문" : "핵심 질문";
 }
 
 function playbackLabel(

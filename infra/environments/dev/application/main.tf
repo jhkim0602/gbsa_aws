@@ -250,6 +250,7 @@ module "compute" {
     GCP_VERTEX_AI_LOCATION          = "global"
     GCP_VERTEX_AI_MAX_ATTEMPTS      = "2"
     GCP_VERTEX_AI_MODEL_ID          = "gemini-2.5-flash"
+    GCP_VERTEX_AI_FALLBACK_MODEL_ID = "gemini-2.5-flash-lite"
     GCP_VERTEX_AI_THINKING_BUDGET   = "0"
     GCP_VERTEX_AI_TIMEOUT_SECONDS   = "30"
     STT_PROVIDER                    = "gcp_streaming"
@@ -301,6 +302,28 @@ module "edge" {
   applicant_bucket_domain_name = local.data.bucket_regional_domain_names["applicant-spa"]
   api_origin_domain_name       = module.compute.alb_dns_name
   tags                         = local.tags
+}
+
+# Applicant documents and interview recordings are uploaded by the browser with short-lived,
+# checksum-bound presigned URLs. S3 still evaluates CORS before accepting those signed PUTs, so
+# the data buckets must name the applicant origins even though public access remains blocked.
+resource "aws_s3_bucket_cors_configuration" "browser_uploads" {
+  for_each = toset(["source", "media"])
+
+  bucket = local.data.bucket_ids[each.key]
+
+  cors_rule {
+    id              = "applicant-browser-uploads"
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "HEAD", "PUT"]
+    allowed_origins = [
+      module.edge.site_urls["applicant"],
+      "http://127.0.0.1:5174",
+      "http://localhost:5174",
+    ]
+    expose_headers  = ["ETag", "x-amz-checksum-sha256"]
+    max_age_seconds = 3000
+  }
 }
 
 output "application" {

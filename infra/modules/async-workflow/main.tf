@@ -22,6 +22,13 @@ variable "max_receive_count" {
   default = 5
 }
 
+variable "max_receive_count_by_workflow" {
+  type = map(number)
+  default = {
+    reporting = 12
+  }
+}
+
 variable "tags" {
   type    = map(string)
   default = {}
@@ -54,7 +61,7 @@ resource "aws_sqs_queue" "work" {
   message_retention_seconds         = 345600
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.dlq[each.key].arn
-    maxReceiveCount     = var.max_receive_count
+    maxReceiveCount     = lookup(var.max_receive_count_by_workflow, each.key, var.max_receive_count)
   })
   tags = merge(local.tags, { Workflow = each.key })
 }

@@ -299,6 +299,7 @@ def test_application_roots_pass_complete_production_adapter_configuration() -> N
         "DOCUMENT_OCR_PROVIDER",
         "GCP_DOCUMENT_AI_LOCATION",
         "GCP_TTS_VOICE_NAME",
+        "GCP_VERTEX_AI_FALLBACK_MODEL_ID",
         "GCP_VERTEX_AI_MODEL_ID",
         "STT_PROVIDER",
         "TTS_PROVIDER",
@@ -323,6 +324,27 @@ def test_application_roots_pass_complete_production_adapter_configuration() -> N
     assert '"cognito-idp:GetUser"' in compute
     assert '"ses:SendEmail"' in compute
     assert "MEDIACONVERT_ROLE_ARN" in compute
+
+
+def test_application_roots_allow_only_applicant_browser_upload_origins() -> None:
+    dev = read(ROOT / "environments" / "dev" / "application" / "main.tf")
+    prod = read(ROOT / "environments" / "prod" / "main.tf")
+
+    for source in (dev, prod):
+        cors = source.split(
+            'resource "aws_s3_bucket_cors_configuration" "browser_uploads"'
+        )[1].split("output ", 1)[0]
+        assert 'for_each = toset(["source", "media"])' in cors
+        assert 'allowed_methods = ["GET", "HEAD", "PUT"]' in cors
+        assert 'allowed_headers = ["*"]' in cors
+        assert 'module.edge.site_urls["applicant"]' in cors
+        assert 'module.edge.site_urls["company"]' not in cors
+        assert 'allowed_origins = ["*"]' not in cors
+
+    assert '"http://127.0.0.1:5174"' in dev
+    assert '"http://localhost:5174"' in dev
+    assert '"http://127.0.0.1:5174"' not in prod
+    assert '"http://localhost:5174"' not in prod
 
 
 def test_every_task_command_runs_python_through_the_image_virtualenv() -> None:
@@ -409,6 +431,8 @@ def test_async_ai_identity_and_audit_resources_enforce_safety_controls() -> None
     assert "redrive_policy" in async_workflow
     assert "deadLetterTargetArn" in async_workflow
     assert "message_retention_seconds         = 1209600" in async_workflow
+    assert "reporting = 12" in async_workflow
+    assert "lookup(var.max_receive_count_by_workflow" in async_workflow
     assert "aws_bedrock_guardrail" in ai_search
     assert "aws_opensearchserverless" not in ai_search
     assert "aws_bedrockagent_knowledge_base" not in ai_search

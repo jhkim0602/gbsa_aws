@@ -17,7 +17,9 @@ from interview_evidence.runtime.queue_topology import (
     MEDIA_VISIBILITY_TIMEOUT_SECONDS,
     QUEUE_MAX_RECEIVE_COUNT,
     QUEUE_MESSAGE_RETENTION_SECONDS,
+    REPORTING_QUEUE_MAX_RECEIVE_COUNT,
     WORKFLOW_QUEUE_NAMES,
+    queue_max_receive_count,
     queue_visibility_timeout_seconds,
 )
 
@@ -103,6 +105,25 @@ def test_work_queue_redrives_to_its_dead_letter_queue() -> None:
     assert int(dead_letter["MessageRetentionPeriod"]) > QUEUE_MESSAGE_RETENTION_SECONDS
 
 
+def test_reporting_queue_gets_a_longer_retry_window() -> None:
+    client = _provision("reporting")
+
+    policy = json.loads(_work_queue_attributes(client, "reporting")["RedrivePolicy"])
+
+    assert policy["maxReceiveCount"] == REPORTING_QUEUE_MAX_RECEIVE_COUNT
+    assert queue_max_receive_count("analysis", {}) == QUEUE_MAX_RECEIVE_COUNT
+    assert queue_max_receive_count("reporting", {}) == REPORTING_QUEUE_MAX_RECEIVE_COUNT
+
+
+def test_reporting_retry_count_can_be_overridden_locally() -> None:
+    environment = {"SQS_REPORTING_MAX_RECEIVE_COUNT": "20"}
+    client = _provision("reporting", environment)
+
+    policy = json.loads(_work_queue_attributes(client, "reporting")["RedrivePolicy"])
+
+    assert policy["maxReceiveCount"] == 20
+
+
 def test_attributes_are_asserted_rather_than_passed_to_create_queue() -> None:
     """`create_queue` leaves an existing queue as it is, so a queue created before these
     attributes existed would keep the SQS defaults forever. Setting them afterwards repairs it."""
@@ -135,6 +156,8 @@ def test_the_shared_values_match_the_terraform_module() -> None:
     receive_count = re.search(r"variable \"max_receive_count\"[^}]*default\s*=\s*(\d+)", module)
     assert receive_count is not None, "terraform no longer defaults max_receive_count"
     assert int(receive_count.group(1)) == QUEUE_MAX_RECEIVE_COUNT
+    assert "reporting = 12" in module
+    assert "lookup(var.max_receive_count_by_workflow" in module
 
 
 def test_the_workflow_list_matches_terraform() -> None:

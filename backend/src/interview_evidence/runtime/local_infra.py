@@ -10,10 +10,10 @@ from botocore.config import Config  # type: ignore[import-untyped]
 
 from interview_evidence.runtime.queue_topology import (
     DEAD_LETTER_MESSAGE_RETENTION_SECONDS,
-    QUEUE_MAX_RECEIVE_COUNT,
     QUEUE_MESSAGE_RETENTION_SECONDS,
     WORKFLOW_QUEUE_NAMES,
     dead_letter_queue_name,
+    queue_max_receive_count,
     queue_visibility_timeout_seconds,
 )
 
@@ -128,7 +128,7 @@ def _ensure_workflow_queue(
             "RedrivePolicy": json.dumps(
                 {
                     "deadLetterTargetArn": dead_letter_arn,
-                    "maxReceiveCount": QUEUE_MAX_RECEIVE_COUNT,
+                    "maxReceiveCount": queue_max_receive_count(name, environment),
                 }
             ),
         },

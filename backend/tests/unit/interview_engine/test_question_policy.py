@@ -31,6 +31,7 @@ def test_policy_accepts_one_short_question_on_fixed_axis() -> None:
 
     assert result.accepted is True
     assert result.question.target_criterion_id == CRITERION_A
+    assert result.question.text == "최근 프로젝트에서 장애를 진단한 과정을 설명해 주세요."
     assert result.reason_codes == ()
 
 
@@ -68,7 +69,7 @@ def test_policy_replaces_forbidden_duplicate_multi_question_or_axis_change() -> 
             fallback_criterion_id=CRITERION_A,
         )
         assert result.accepted is False
-        assert result.question.text == "문제를 해결한 과정을 설명해 주세요?"
+        assert result.question.text == "문제를 해결한 과정을 설명해 주세요."
         assert result.question.target_criterion_id == CRITERION_A
         assert expected_reason in result.reason_codes
 
@@ -104,7 +105,7 @@ def test_policy_never_replays_an_already_used_fallback_question() -> None:
 
     assert result.accepted is False
     assert result.question.text not in previous
-    assert result.question.text.endswith("?")
+    assert result.question.text.endswith(".")
 
 
 def test_policy_rejects_a_near_verbatim_question_rewrite() -> None:
@@ -142,7 +143,7 @@ def test_policy_removes_a_repeated_submission_source_opening() -> None:
     )
 
     assert result.accepted is True
-    assert result.question.text == ("자동 VAD 종료 문제에서 어떤 책임을 분리했는지 설명해 주세요?")
+    assert result.question.text == ("자동 VAD 종료 문제에서 어떤 책임을 분리했는지 설명해 주세요.")
 
 
 def test_policy_keeps_the_first_submission_source_opening() -> None:
@@ -158,10 +159,10 @@ def test_policy_keeps_the_first_submission_source_opening() -> None:
     )
 
     assert result.accepted is True
-    assert result.question.text == question
+    assert result.question.text == "제출한 자료를 보면, 장애 원인을 좁힌 과정을 설명해 주세요."
 
 
-def test_policy_naturalizes_a_polite_request_before_validation() -> None:
+def test_policy_uses_a_period_for_a_polite_request_before_validation() -> None:
     result = QuestionPolicy().evaluate(
         draft("운영 문제를 해결하며 맡았던 역할을 설명해 주세요."),
         allowed_criterion_ids=frozenset({CRITERION_A}),
@@ -172,4 +173,35 @@ def test_policy_naturalizes_a_polite_request_before_validation() -> None:
     )
 
     assert result.accepted is True
-    assert result.question.text == "운영 문제를 해결하며 맡았던 역할을 설명해 주시겠어요?"
+    assert result.question.text == "운영 문제를 해결하며 맡았던 역할을 설명해 주세요."
+
+
+def test_policy_replaces_a_question_that_does_not_match_the_interview_stage() -> None:
+    result = QuestionPolicy().evaluate(
+        draft("운영 장애의 기술적 원인과 복구 방법을 설명해 주세요."),
+        allowed_criterion_ids=frozenset({CRITERION_A}),
+        prohibited_topics=(),
+        previous_questions=(),
+        fallback_question="협업 경험을 설명해 주세요.",
+        fallback_criterion_id=CRITERION_A,
+        interview_stage="behavioral",
+    )
+
+    assert result.accepted is False
+    assert "stage_mismatch" in result.reason_codes
+    assert "팀원" in result.question.text or "협업" in result.question.text
+
+
+def test_behavioral_follow_up_can_rely_on_the_previous_question_context() -> None:
+    result = QuestionPolicy().evaluate(
+        draft("그때 의견을 어떤 방식으로 조율했는지 말씀해 주세요."),
+        allowed_criterion_ids=frozenset({CRITERION_A}),
+        prohibited_topics=(),
+        previous_questions=(),
+        fallback_question="협업 경험을 설명해 주세요.",
+        fallback_criterion_id=CRITERION_A,
+        interview_stage="behavioral",
+        question_type="follow_up",
+    )
+
+    assert result.accepted is True

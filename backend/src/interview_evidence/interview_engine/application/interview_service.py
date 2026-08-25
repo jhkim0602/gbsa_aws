@@ -13,6 +13,9 @@ from interview_evidence.interview_engine.adapters.retrieval_client import (
     RetrievalClient,
     RetrievedContext,
 )
+from interview_evidence.interview_engine.application.answer_evidence import (
+    missing_answer_evidence,
+)
 from interview_evidence.interview_engine.application.checkpoints import CheckpointService
 from interview_evidence.interview_engine.application.context_builder import (
     ContextBuilder,
@@ -24,6 +27,8 @@ from interview_evidence.interview_engine.application.interview_plan import (
     INTERVIEW_STAGE_FOCUS,
     InterviewStage,
     VerificationTargetPlan,
+    is_follow_up_question_type,
+    stage_verification_objective,
 )
 from interview_evidence.interview_engine.application.question_generator import (
     QuestionGenerationUnavailable,
@@ -32,6 +37,7 @@ from interview_evidence.interview_engine.application.question_generator import (
 from interview_evidence.interview_engine.application.question_policy import (
     QuestionDraft,
     QuestionPolicy,
+    stage_fallback_question,
 )
 from interview_evidence.interview_engine.application.recovery_service import (
     RecoveryMessage,
@@ -227,6 +233,7 @@ class InterviewService:
             answered_target=answered_target,
             question_target=question_target,
             existing_progress=existing_progress,
+            next_question_type=question_type,
             occurred_at=occurred_at,
         )
         retrieval = self._retrieval.retrieve(
@@ -264,6 +271,16 @@ class InterviewService:
             None,
         )
         turns = self._repository.list_final_turns(context, session_id)
+        verification_objective = (
+            stage_verification_objective(interview_stage, question_target)
+            if question_target
+            else ""
+        )
+        answer_evidence_gaps = (
+            missing_answer_evidence(answer_text, interview_stage.value)
+            if question_type == "follow_up" and answered_stage is interview_stage
+            else ()
+        )
         built_context = self._context_builder.build(
             recent_turns=tuple(
                 ContextTurn(
@@ -292,9 +309,15 @@ class InterviewService:
                 for hit in retrieval.hits
             ),
             criterion_text=(question_target.criterion_text if question_target else ""),
-            verification_objective=(question_target.objective if question_target else ""),
+            verification_objective=verification_objective,
             missing_dimensions=(question_target.missing_dimensions if question_target else ()),
             follow_up_directions=(question_target.follow_up_directions if question_target else ()),
+            answer_evidence_gaps=answer_evidence_gaps,
+            stage_evidence_available=_stage_evidence_available(
+                interview_stage,
+                answer_text=answer_text,
+                retrieval_hits=retrieval.hits,
+            ),
         )
         try:
             draft = self._generator.generate(
@@ -316,7 +339,11 @@ class InterviewService:
             )
             self._repository.save_session(context, degraded)
             draft = QuestionDraft(
-                text=fallback_question,
+                text=stage_fallback_question(
+                    interview_stage.value,
+                    previous_questions=previous_questions,
+                    default=fallback_question,
+                ),
                 target_criterion_id=target_criterion_id,
                 source_reference_ids=(),
                 model_config_version=model_config_version,
@@ -350,7 +377,46 @@ class InterviewService:
             previous_questions=previous_questions,
             fallback_question=fallback_question,
             fallback_criterion_id=target_criterion_id,
+            interview_stage=interview_stage.value,
+            question_type=question_type,
         )
+        if "stage_mismatch" in policy_result.reason_codes:
+            retry_payload = built_context.model_payload()
+            retry_payload["stage_alignment_retry"] = {
+                "interview_stage": interview_stage.value,
+                "rejected_question": draft.text,
+            }
+            try:
+                retried = self._generator.generate(
+                    context,
+                    target_criterion_id=target_criterion_id,
+                    context_payload=retry_payload,
+                    model_config_version=model_config_version,
+                    retrieval_config_version=retrieval_config_version,
+                    interview_level=interview_level,
+                )
+            except QuestionGenerationUnavailable:
+                pass
+            else:
+                retried = retried.model_copy(
+                    update={
+                        "source_reference_ids": tuple(
+                            source_id
+                            for source_id in retried.source_reference_ids
+                            if source_id in retrieved_by_id
+                        )
+                    }
+                )
+                policy_result = self._policy.evaluate(
+                    retried,
+                    allowed_criterion_ids=allowed_criterion_ids,
+                    prohibited_topics=prohibited_topics,
+                    previous_questions=previous_questions,
+                    fallback_question=fallback_question,
+                    fallback_criterion_id=target_criterion_id,
+                    interview_stage=interview_stage.value,
+                    question_type=question_type,
+                )
         question = policy_result.question
         if not policy_result.accepted:
             question = question.model_copy(update={"source_reference_ids": ()})
@@ -407,7 +473,7 @@ class InterviewService:
                     criterion_id=question_target.criterion_id,
                     verification_target_id=(question_target.verification_target_id),
                     verification_target_type=question_target.target_type,
-                    objective=question_target.objective,
+                    objective=verification_objective,
                     question_type=question_type,
                     interview_stage=interview_stage.value,
                     retrieval_version=retrieval_config_version,
@@ -506,6 +572,7 @@ class InterviewService:
             answered_target=answered_target,
             question_target=None,
             existing_progress=existing_progress,
+            next_question_type=None,
             occurred_at=occurred_at,
         )
         in_progress = self._state_machine.transition(
@@ -564,6 +631,7 @@ class InterviewService:
         answered_target: VerificationTargetPlan | None,
         question_target: VerificationTargetPlan | None,
         existing_progress: VerificationProgress | None,
+        next_question_type: str | None,
         occurred_at: datetime,
     ) -> None:
         if answered_target is None:
@@ -574,7 +642,9 @@ class InterviewService:
         }:
             return
         follows_same_target = (
-            question_target is not None
+            next_question_type is not None
+            and is_follow_up_question_type(next_question_type)
+            and question_target is not None
             and question_target.verification_target_id == answered_target.verification_target_id
             and answered_stage is not None
             and answered_stage is question_stage
@@ -630,7 +700,10 @@ def _retrieval_query(
     question_target: VerificationTargetPlan | None,
 ) -> str:
     target_parts = (
-        (question_target.objective, *question_target.missing_dimensions)
+        (
+            stage_verification_objective(interview_stage, question_target),
+            *question_target.missing_dimensions,
+        )
         if question_target is not None
         else ()
     )
@@ -643,6 +716,34 @@ def _retrieval_query(
         )
         if part.strip()
     )
+
+
+_BEHAVIORAL_CONTEXT_TERMS = (
+    "팀",
+    "팀원",
+    "동료",
+    "협업",
+    "조율",
+    "소통",
+    "피드백",
+    "합의",
+    "설득",
+    "갈등",
+    "역할",
+    "책임",
+)
+
+
+def _stage_evidence_available(
+    interview_stage: InterviewStage,
+    *,
+    answer_text: str,
+    retrieval_hits: tuple[RetrievedContext, ...],
+) -> bool:
+    if interview_stage is not InterviewStage.BEHAVIORAL:
+        return True
+    combined = " ".join((answer_text, *(hit.excerpt for hit in retrieval_hits))).casefold()
+    return any(term.casefold() in combined for term in _BEHAVIORAL_CONTEXT_TERMS)
 
 
 def _git_project_question(

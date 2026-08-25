@@ -701,7 +701,11 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
                 generator=ReportGenerator(
                     lane_d.repository,
                     EvidenceService(lane_d.repository),
-                    CriterionAssessor(aws.model, metrics=metrics),
+                    CriterionAssessor(
+                        aws.model,
+                        metrics=metrics,
+                        require_scores=True,
+                    ),
                 ),
                 clock=clock,
                 assistant_projector=assistant_projector,

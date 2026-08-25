@@ -16,6 +16,7 @@ from interview_evidence.shared.aws_clients.production import (
     BedrockClient,
 )
 from interview_evidence.shared.gcp_clients.generative import (
+    GcpFallbackModel,
     GcpVertexModel,
     GcpVertexTextEmbedder,
     VertexClient,
@@ -56,12 +57,33 @@ def create_generative_ai_dependencies(
     if model_provider == "gcp":
         if vertex_client is None:
             raise RuntimeError("Vertex AI client is unavailable")
-        model: AIModel = GcpVertexModel(
+        model_settings = {
+            "thinking_budget": int(environment.get("GCP_VERTEX_AI_THINKING_BUDGET", "0")),
+            "timeout_seconds": float(environment.get("GCP_VERTEX_AI_TIMEOUT_SECONDS", "30")),
+            "max_attempts": int(environment.get("GCP_VERTEX_AI_MAX_ATTEMPTS", "2")),
+        }
+        primary_model = GcpVertexModel(
             vertex_client,
             model_id=environment.get("GCP_VERTEX_AI_MODEL_ID", "gemini-2.5-flash").strip(),
-            thinking_budget=int(environment.get("GCP_VERTEX_AI_THINKING_BUDGET", "0")),
-            timeout_seconds=float(environment.get("GCP_VERTEX_AI_TIMEOUT_SECONDS", "30")),
-            max_attempts=int(environment.get("GCP_VERTEX_AI_MAX_ATTEMPTS", "2")),
+            **model_settings,
+        )
+        fallback_model_id = environment.get(
+            "GCP_VERTEX_AI_FALLBACK_MODEL_ID",
+            "gemini-2.5-flash-lite",
+        ).strip()
+        model = (
+            GcpFallbackModel(
+                (
+                    primary_model,
+                    GcpVertexModel(
+                        vertex_client,
+                        model_id=fallback_model_id,
+                        **model_settings,
+                    ),
+                )
+            )
+            if fallback_model_id
+            else primary_model
         )
     else:
         model = AwsBedrockModel(

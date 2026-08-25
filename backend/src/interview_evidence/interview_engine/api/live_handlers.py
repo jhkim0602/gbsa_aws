@@ -12,6 +12,9 @@ from interview_evidence.interview_engine.api.websocket import (
     ServerEnvelope,
     WebSocketEnvelope,
 )
+from interview_evidence.interview_engine.application.answer_evidence import (
+    answer_needs_follow_up,
+)
 from interview_evidence.interview_engine.application.automated_answer_generator import (
     AutomatedAnswerGenerationUnavailable,
     AutomatedAnswerGenerator,
@@ -22,6 +25,8 @@ from interview_evidence.interview_engine.application.interview_plan import (
     InterviewPlan,
     InterviewPlanProvider,
     InterviewStage,
+    is_core_question_type,
+    is_follow_up_question_type,
 )
 from interview_evidence.interview_engine.application.interview_service import InterviewService
 from interview_evidence.interview_engine.application.session_service import (
@@ -515,6 +520,14 @@ class LiveInterviewHandler:
         stage_rationales = tuple(
             item for item in rationales if item.interview_stage == current_stage.value
         )
+        stage_core_question_count = sum(
+            1 for item in stage_rationales if is_core_question_type(item.question_type)
+        )
+        consecutive_follow_up_count = 0
+        for item in reversed(stage_rationales):
+            if not is_follow_up_question_type(item.question_type):
+                break
+            consecutive_follow_up_count += 1
         stage_elapsed_seconds = (
             max(
                 0,
@@ -526,15 +539,6 @@ class LiveInterviewHandler:
             )
             if stage_rationales
             else 0
-        )
-        stage_decision = plan.next_stage_question(
-            current_stage=current_stage,
-            stage_question_count=len(stage_rationales),
-            stage_elapsed_seconds=stage_elapsed_seconds,
-            total_elapsed_seconds=self._elapsed_seconds(session),
-            last_question_was_final=(
-                rationale is not None and rationale.question_type == "stage_final"
-            ),
         )
         progress_rows = self._repository.list_verification_progress(
             context,
@@ -549,22 +553,6 @@ class LiveInterviewHandler:
         if rationale is not None and plan.verification_targets:
             answered_target = plan.target(rationale.verification_target_id)
             existing_progress = progress_by_target.get(answered_target.verification_target_id)
-            question_target = plan.next_target_for_question(
-                answered_target_id=answered_target.verification_target_id,
-                follow_up_count=(
-                    existing_progress.follow_up_count if existing_progress is not None else 0
-                ),
-                completed_target_ids=frozenset(
-                    progress.verification_target_id
-                    for progress in progress_rows
-                    if progress.state
-                    in {
-                        VerificationProgressState.COMPLETED,
-                        VerificationProgressState.EXHAUSTED,
-                    }
-                ),
-                prefer_new_target=stage_decision.stage is not current_stage,
-            )
         elif (
             previous_question is not None
             and plan.is_warm_up_question(previous_question.text)
@@ -575,6 +563,43 @@ class LiveInterviewHandler:
                 existing_progress = progress_by_target.get(question_target.verification_target_id)
         elif plan.verification_targets:
             question_target = plan.initial_target()
+
+        stage_decision = plan.next_stage_question(
+            current_stage=current_stage,
+            stage_core_question_count=stage_core_question_count,
+            consecutive_follow_up_count=consecutive_follow_up_count,
+            stage_elapsed_seconds=stage_elapsed_seconds,
+            total_elapsed_seconds=self._elapsed_seconds(session),
+            last_question_was_final=(
+                rationale is not None and rationale.question_type == "stage_final"
+            ),
+            answer_needs_follow_up=(
+                rationale is not None and answer_needs_follow_up(answer.text, current_stage.value)
+            ),
+            follow_up_limit=(
+                plan.follow_up_budget(answered_target) if answered_target is not None else 0
+            ),
+        )
+        if answered_target is not None:
+            if is_follow_up_question_type(stage_decision.question_type):
+                question_target = answered_target
+            else:
+                question_target = plan.next_target_for_question(
+                    answered_target_id=answered_target.verification_target_id,
+                    follow_up_count=(
+                        existing_progress.follow_up_count if existing_progress is not None else 0
+                    ),
+                    completed_target_ids=frozenset(
+                        progress.verification_target_id
+                        for progress in progress_rows
+                        if progress.state
+                        in {
+                            VerificationProgressState.COMPLETED,
+                            VerificationProgressState.EXHAUSTED,
+                        }
+                    ),
+                    prefer_new_target=True,
+                )
 
         if stage_decision.completes_interview:
             self._interview_service.finalize_answer_and_complete(

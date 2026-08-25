@@ -23,6 +23,7 @@ from interview_evidence.shared.messaging.worker import (
     InMemoryProcessedMessageStore,
     MessageConsumer,
     OutboxDispatcher,
+    _retry_delay_seconds,
 )
 from interview_evidence.shared.operations import InMemoryMetricRecorder
 from interview_evidence.shared.tenant import ActorType, TenantContext
@@ -229,6 +230,23 @@ def test_consumer_requeues_retrying_outcome_without_recording_success() -> None:
     )
     assert queue.receive(max_messages=1)[0].receive_count == 2
     assert retry_delays == [5]
+
+
+@pytest.mark.parametrize(
+    ("receive_count", "expected_delay"),
+    ((1, 15), (2, 45), (3, 120), (4, 300), (5, 600), (6, 900), (12, 900)),
+)
+def test_report_generation_uses_a_long_bounded_retry_schedule(
+    receive_count: int,
+    expected_delay: int,
+) -> None:
+    assert _retry_delay_seconds("report.generation_requested", receive_count) == expected_delay
+
+
+def test_other_workflows_keep_the_existing_short_retry_schedule() -> None:
+    assert _retry_delay_seconds("submission.analysis_requested", 1) == 5
+    assert _retry_delay_seconds("submission.analysis_requested", 5) == 60
+    assert _retry_delay_seconds("submission.analysis_requested", 12) == 60
 
 
 def test_consumer_commits_database_before_acknowledging_sqs() -> None:
