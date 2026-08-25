@@ -31,6 +31,12 @@ variable "force_destroy" {
   default = false
 }
 
+variable "create_application_secret" {
+  description = "Create the runtime secret with the data layer instead of using a persistent external secret."
+  type        = bool
+  default     = true
+}
+
 variable "aurora_min_capacity" {
   type    = number
   default = 0.5
@@ -234,6 +240,8 @@ resource "aws_rds_cluster_instance" "this" {
 }
 
 resource "aws_secretsmanager_secret" "application" {
+  count = var.create_application_secret ? 1 : 0
+
   name                    = "${var.name}/application/config"
   kms_key_id              = aws_kms_key.data.arn
   recovery_window_in_days = var.deletion_protection ? 30 : 7
@@ -284,7 +292,7 @@ output "aurora_master_secret_arn" {
 }
 
 output "application_secret_arn" {
-  value = aws_secretsmanager_secret.application.arn
+  value = try(aws_secretsmanager_secret.application[0].arn, null)
 }
 
 output "dynamodb_table_arn" {

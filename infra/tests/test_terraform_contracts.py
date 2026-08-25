@@ -349,7 +349,10 @@ def test_application_roots_deliver_the_github_credential_by_reference_only() -> 
         secrets = assignment_body(source, "task_secrets")
         assert "GITHUB_TOKEN" not in environment, f"{root.parent.name} exposes the token"
         assert "GITHUB_TOKEN" in secrets, f"{root.parent.name} never delivers the token"
-        assert "application_secret_arn" in secrets
+        assert (
+            "application_secret_arn" in secrets
+            or "aws_secretsmanager_secret.application.arn" in secrets
+        )
 
     compute = read(ROOT / "modules" / "compute" / "main.tf")
     assert "valueFrom = value_from" in compute
@@ -488,6 +491,68 @@ def test_the_deploy_role_trusts_the_numeric_repository_subject() -> None:
         tfvars,
         re.MULTILINE,
     )
+
+
+def test_dev_resources_can_be_destroyed_and_recreated_without_name_conflicts() -> None:
+    compute = read(ROOT / "modules" / "compute" / "main.tf")
+    data = read(ROOT / "modules" / "data" / "main.tf")
+    observability = read(ROOT / "modules" / "observability" / "main.tf")
+    identity = read(ROOT / "modules" / "identity" / "main.tf")
+    dev_application = read(ROOT / "environments" / "dev" / "application" / "main.tf")
+    dev_data_ai = read(ROOT / "environments" / "dev" / "data-ai" / "main.tf")
+    dev_foundation = read(ROOT / "environments" / "dev" / "foundation" / "main.tf")
+    bootstrap = read(ROOT / "environments" / "bootstrap" / "main.tf")
+    prod = read(ROOT / "environments" / "prod" / "main.tf")
+
+    assert "force_delete         = var.force_delete_repositories" in compute
+    assert "force_delete_repositories = true" in dev_application
+    assert "force_delete_repositories = true" not in prod
+
+    assert "force_destroy = var.force_destroy_buckets" in observability
+    assert "force_destroy_buckets = true" in dev_data_ai
+    assert "force_destroy_buckets = true" not in prod
+
+    assert "create_application_secret" in data
+    assert re.search(r"create_application_secret\s*=\s*false", dev_data_ai)
+    assert not re.search(r"create_application_secret\s*=\s*false", prod)
+
+    assert "create_email_identity" in identity
+    assert re.search(r"create_email_identity\s*=\s*false", dev_foundation)
+    assert 'resource "aws_sesv2_email_identity" "dev_sender"' in bootstrap
+    assert 'email_identity = "seojh2j@naver.com"' in bootstrap
+
+
+def test_one_manual_workflow_manages_the_complete_dev_environment() -> None:
+    workflow = read(ROOT.parent / ".github" / "workflows" / "manage-dev-infrastructure.yml")
+    script = read(ROOT.parent / "scripts" / "manage_dev_infrastructure.sh")
+
+    assert "workflow_dispatch:" in workflow
+    assert "- up" in workflow
+    assert "- down" in workflow
+    assert "github.ref == 'refs/heads/main'" in workflow
+    assert "scripts/manage_dev_infrastructure.sh" in workflow
+    assert "secrets.DEV_" not in workflow
+    assert "validate_runtime_secret" in script
+
+    bring_up = script.split("bring_up() {")[1].split("\ntear_down() {")[0]
+    assert bring_up.index('terraform_plan_apply "$FOUNDATION_ROOT" foundation') < bring_up.index(
+        'terraform_plan_apply "$DATA_AI_ROOT" data-ai'
+    )
+    assert bring_up.index('terraform_plan_apply "$DATA_AI_ROOT" data-ai') < bring_up.index(
+        'terraform_plan_apply "$APPLICATION_ROOT" registries'
+    )
+    assert bring_up.index("build_and_push_images") < bring_up.index(
+        'terraform_plan_apply "$APPLICATION_ROOT" application'
+    )
+    assert "run_database_migration" in bring_up
+    assert "publish_frontends" in bring_up
+
+    tear_down = script.split("tear_down() {")[1].split("\ncase ")[0]
+    application = tear_down.index('terraform_destroy_if_present "$APPLICATION_ROOT" application')
+    data_ai = tear_down.index('terraform_destroy_if_present "$DATA_AI_ROOT" data-ai')
+    foundation = tear_down.index('terraform_destroy_if_present "$FOUNDATION_ROOT" foundation')
+    assert application < data_ai < foundation
+    assert 'CONFIRM_DESTROY" != "destroy-dev' in tear_down
 
 
 def test_the_prompt_attack_filter_scores_input_only() -> None:

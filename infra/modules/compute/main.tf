@@ -64,6 +64,12 @@ variable "enable_deletion_protection" {
   default = false
 }
 
+variable "force_delete_repositories" {
+  description = "Delete ECR repositories with their images when an ephemeral environment is destroyed."
+  type        = bool
+  default     = false
+}
+
 variable "task_environment" {
   type    = map(string)
   default = {}
@@ -283,7 +289,7 @@ locals {
 resource "aws_ecr_repository" "api" {
   name                 = "${var.name}/api"
   image_tag_mutability = "IMMUTABLE"
-  force_delete         = false
+  force_delete         = var.force_delete_repositories
 
   encryption_configuration {
     encryption_type = "AES256"
@@ -299,7 +305,7 @@ resource "aws_ecr_repository" "api" {
 resource "aws_ecr_repository" "worker" {
   name                 = "${var.name}/worker"
   image_tag_mutability = "IMMUTABLE"
-  force_delete         = false
+  force_delete         = var.force_delete_repositories
 
   encryption_configuration {
     encryption_type = "AES256"

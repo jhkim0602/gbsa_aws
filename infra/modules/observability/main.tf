@@ -23,6 +23,12 @@ variable "alarm_email" {
   default = null
 }
 
+variable "force_destroy_buckets" {
+  description = "Delete operational log buckets with their objects in disposable environments."
+  type        = bool
+  default     = false
+}
+
 variable "queue_arns" {
   type    = map(string)
   default = {}
@@ -114,7 +120,7 @@ resource "aws_sns_topic" "alarms" {
  */
 resource "aws_s3_bucket" "access_logs" {
   bucket        = "${var.name}-alb-logs-${data.aws_caller_identity.current.account_id}-${data.aws_region.current.name}"
-  force_destroy = false
+  force_destroy = var.force_destroy_buckets
   tags          = local.tags
 }
 
@@ -460,7 +466,7 @@ resource "aws_budgets_budget" "monthly" {
 
 resource "aws_s3_bucket" "audit" {
   bucket        = "${var.name}-cloudtrail-${data.aws_caller_identity.current.account_id}-${data.aws_region.current.name}"
-  force_destroy = false
+  force_destroy = var.force_destroy_buckets
   tags          = local.tags
 }
 

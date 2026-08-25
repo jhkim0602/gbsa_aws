@@ -84,6 +84,12 @@ variable "create_e2e_client" {
   default     = false
 }
 
+variable "create_email_identity" {
+  description = "Create the SES identity in this module instead of using a persistent verified identity."
+  type        = bool
+  default     = true
+}
+
 variable "deletion_protection" {
   type    = bool
   default = false
@@ -93,6 +99,8 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+data "aws_caller_identity" "current" {}
 
 data "aws_region" "current" {}
 
@@ -129,6 +137,12 @@ locals {
 # no send grant, and no SES_FROM_ADDRESS for the API to start with.
 locals {
   send_email = local.email_identity != null
+  email_identity_arn = local.send_email ? format(
+    "arn:aws:ses:%s:%s:identity/%s",
+    data.aws_region.current.name,
+    data.aws_caller_identity.current.account_id,
+    local.email_identity,
+  ) : null
 }
 
 resource "terraform_data" "identity_inputs" {
@@ -141,7 +155,7 @@ resource "terraform_data" "identity_inputs" {
 }
 
 resource "aws_sesv2_configuration_set" "transactional" {
-  count = local.send_email ? 1 : 0
+  count = local.send_email && var.create_email_identity ? 1 : 0
 
   configuration_set_name = "${var.name}-transactional"
   reputation_options {
@@ -153,7 +167,7 @@ resource "aws_sesv2_configuration_set" "transactional" {
 }
 
 resource "aws_sesv2_email_identity" "company" {
-  count = local.send_email ? 1 : 0
+  count = local.send_email && var.create_email_identity ? 1 : 0
 
   email_identity = local.email_identity
 
@@ -396,7 +410,7 @@ resource "aws_iam_role_policy" "email_sender" {
         "ses:SendEmail",
         "ses:SendRawEmail",
       ]
-      Resource = one(aws_sesv2_email_identity.company[*].arn)
+      Resource = local.email_identity_arn
       Condition = {
         StringEquals = {
           "ses:FromAddress" = local.from_address
@@ -436,7 +450,7 @@ output "email_identity" {
     The SES identity to verify: a domain, a single address in sandbox, or null when this
     environment cannot send mail yet.
   EOT
-  value       = one(aws_sesv2_email_identity.company[*].email_identity)
+  value       = local.email_identity
 }
 
 # The exact redirect targets the pool will accept. A root that hands the console a

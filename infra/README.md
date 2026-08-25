@@ -31,6 +31,23 @@ Each environment uses an independent remote-state key, deployment role, KMS key 
 store. The dev roots are separated into `foundation`, `data-ai` and `application` so frequently
 deployed compute changes cannot plan replacements for retained data resources.
 
+## Development Environment Lifecycle
+
+The `Manage Dev Infrastructure` GitHub Action owns the complete disposable dev environment. Run it
+from `main`, choose `up` or `down`, and choose whether the application source comes from `develop`
+or `main`. Destruction requires entering `destroy-dev` in the confirmation field.
+
+`up` applies `foundation`, `data-ai` and `application` in order, builds immutable API and worker
+images, runs the database migration, publishes both browser applications and runs the deployed
+smoke checks. `down` destroys those roots in reverse order. The Terraform state bucket, GitHub OIDC
+role, verified dev sender and `iep-dev/application/config` secret remain in the bootstrap root, so
+credentials never pass through GitHub and the sender address does not need verification after every
+recreation.
+
+The workflow appears in the Actions tab only after its definition is present on the repository's
+default branch. Selecting a different workflow branch is rejected; use the `source_ref` input to
+deploy `develop` while the trusted workflow itself continues to run from `main`.
+
 ## Runtime Configuration and Secrets
 
 Task configuration is split by whether the value is a credential. Non-secret values are passed as

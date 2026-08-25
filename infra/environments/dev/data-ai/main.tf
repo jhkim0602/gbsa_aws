@@ -66,6 +66,7 @@ module "data" {
   database_security_group_id = data.terraform_remote_state.foundation.outputs.network.database_security_group_id
   deletion_protection        = false
   force_destroy              = true
+  create_application_secret  = false
   aurora_min_capacity        = 0.5
   aurora_max_capacity        = 8
   tags                       = local.tags
@@ -89,10 +90,11 @@ module "ai_search" {
 module "observability" {
   source = "../../../modules/observability"
 
-  name        = local.name
-  alarm_email = var.alarm_email
-  queue_arns  = module.async_workflow.queue_arns
-  dlq_arns    = module.async_workflow.dlq_arns
+  name                  = local.name
+  alarm_email           = var.alarm_email
+  force_destroy_buckets = true
+  queue_arns            = module.async_workflow.queue_arns
+  dlq_arns              = module.async_workflow.dlq_arns
   # The identifier rather than the ARN, because that is the dimension AWS/RDS metrics carry.
   # Passing it here is what creates the two Aurora alarms at all; the module defaults it to
   # null so the root can be applied before the cluster exists.

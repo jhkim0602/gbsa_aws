@@ -221,6 +221,10 @@ resource "aws_iam_openid_connect_provider" "github" {
   client_id_list  = ["sts.amazonaws.com"]
   thumbprint_list = []
   tags            = local.tags
+
+  lifecycle {
+    ignore_changes = [thumbprint_list]
+  }
 }
 
 data "aws_iam_policy_document" "deploy_trust" {
@@ -287,6 +291,26 @@ resource "aws_iam_role_policy_attachment" "deploy" {
   policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
 }
 
+resource "aws_secretsmanager_secret" "dev_runtime" {
+  name                    = "iep-dev/application/config"
+  description             = "Persistent credentials used whenever the disposable dev environment is running."
+  recovery_window_in_days = 7
+  tags                    = local.tags
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "aws_sesv2_email_identity" "dev_sender" {
+  email_identity = "seojh2j@naver.com"
+  tags           = local.tags
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 output "state_bucket" {
   value = aws_s3_bucket.state.id
 }
@@ -294,4 +318,12 @@ output "state_bucket" {
 output "deploy_role_arn" {
   description = "Set this as the AWS_DEPLOY_ROLE_ARN repository variable in GitHub."
   value       = aws_iam_role.deploy.arn
+}
+
+output "dev_runtime_secret_arn" {
+  value = aws_secretsmanager_secret.dev_runtime.arn
+}
+
+output "dev_sender_identity" {
+  value = aws_sesv2_email_identity.dev_sender.email_identity
 }

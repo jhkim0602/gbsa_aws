@@ -111,6 +111,7 @@ module "identity" {
   console_base_urls     = var.console_base_urls
   cognito_domain_prefix = var.cognito_domain_prefix
   deletion_protection   = false
+  create_email_identity = false
   # On in dev, off in prod. The browser suite runs against this environment and has no human
   # to complete a hosted login, so it needs the app client that lets an admin caller exchange
   # a password for a token. See the module for why that grants a browser nothing.

@@ -121,6 +121,10 @@ data "terraform_remote_state" "data_ai" {
   }
 }
 
+data "aws_secretsmanager_secret" "application" {
+  name = "iep-dev/application/config"
+}
+
 locals {
   name      = data.terraform_remote_state.foundation.outputs.name
   data      = data.terraform_remote_state.data_ai.outputs.data
@@ -173,11 +177,12 @@ module "compute" {
   worker_queue_names = toset([
     for arn in values(local.workflow.queue_arns) : element(reverse(split(":", arn)), 0)
   ])
-  task_role_arn    = local.identity.application_runtime_role_arn
-  task_role_name   = local.identity.application_runtime_role_name
-  create_task_role = false
-  secret_arns      = [local.data.application_secret_arn, local.data.aurora_master_secret_arn]
-  kms_key_arns     = [local.data.kms_key_arn]
+  task_role_arn             = local.identity.application_runtime_role_arn
+  task_role_name            = local.identity.application_runtime_role_name
+  create_task_role          = false
+  force_delete_repositories = true
+  secret_arns               = [data.aws_secretsmanager_secret.application.arn, local.data.aurora_master_secret_arn]
+  kms_key_arns              = [local.data.kms_key_arn]
   data_resource_arns = concat(
     local.bucket_resources,
     [local.data.dynamodb_table_arn],
@@ -254,10 +259,10 @@ module "compute" {
   # needs it to read a candidate's public repository above the 60-request anonymous
   # hourly limit. The JSON key is written into the secret outside Terraform.
   task_secrets = {
-    GITHUB_TOKEN                 = "${local.data.application_secret_arn}:github_token::"
-    GCP_DOCUMENT_AI_PROCESSOR_ID = "${local.data.application_secret_arn}:gcp_document_ai_processor_id::"
-    GCP_DOCUMENT_AI_PROJECT_ID   = "${local.data.application_secret_arn}:gcp_project_id::"
-    GCP_SERVICE_ACCOUNT_JSON     = "${local.data.application_secret_arn}:gcp_service_account_json::"
+    GITHUB_TOKEN                 = "${data.aws_secretsmanager_secret.application.arn}:github_token::"
+    GCP_DOCUMENT_AI_PROCESSOR_ID = "${data.aws_secretsmanager_secret.application.arn}:gcp_document_ai_processor_id::"
+    GCP_DOCUMENT_AI_PROJECT_ID   = "${data.aws_secretsmanager_secret.application.arn}:gcp_project_id::"
+    GCP_SERVICE_ACCOUNT_JSON     = "${data.aws_secretsmanager_secret.application.arn}:gcp_service_account_json::"
   }
   tags = local.tags
 }
