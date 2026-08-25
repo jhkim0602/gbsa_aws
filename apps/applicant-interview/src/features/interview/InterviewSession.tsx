@@ -9,6 +9,7 @@ import {
 
 import type { InterviewerLevel } from "./Avatar";
 import {
+  automatedAnswerProfile,
   createAutomatedMedia,
   delay,
   resampleAutomatedPcm,
@@ -532,6 +533,7 @@ export function InterviewSession({
       (await client.requestAutomatedAnswer({
         questionTurnId,
         includeAudio: automationMode === "speech",
+        answerProfile: automatedAnswerProfile(automationMode),
       }));
     generatedAnswersRef.current.set(questionTurnId, generated);
     const answer = generated.text;
@@ -539,10 +541,14 @@ export function InterviewSession({
     const evidenceStatus = generated.grounded
       ? `제출 자료 근거 ${generated.sourceReferenceCount}개`
       : "확인 가능한 제출 자료 없음";
-    setAutomationStatus(
+    const automationLabel =
       automationMode === "speech"
-        ? `음성 자동 답변 ${answerIndex + 1}개를 전송하고 있습니다. (${evidenceStatus})`
-        : `빠른 자동 답변 ${answerIndex + 1}개를 처리하고 있습니다. (${evidenceStatus})`,
+        ? "음성 자동 답변"
+        : automationMode === "entry-low"
+          ? "신입형 자동 답변"
+          : "빠른 자동 답변";
+    setAutomationStatus(
+      `${automationLabel} ${answerIndex + 1}개를 처리하고 있습니다. (${evidenceStatus})`,
     );
 
     const media = await resolved.createAutomatedMedia(answer);

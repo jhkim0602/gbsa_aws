@@ -6,12 +6,15 @@ vi.mock("../../features/interview/InterviewSession", () => ({
   InterviewSession: ({
     onComplete,
     equipmentCheckId,
+    automationMode,
   }: {
     onComplete(): void;
     equipmentCheckId?: string;
+    automationMode?: string;
   }) => (
     <>
       <span data-testid="equipment-check-id">{equipmentCheckId ?? ""}</span>
+      <span data-testid="automation-mode">{automationMode ?? ""}</span>
       <button type="button" onClick={onComplete}>
         자동 면접 완료
       </button>
@@ -26,6 +29,47 @@ afterEach(() => {
 });
 
 describe("automated interview completion", () => {
+  it("starts a separate entry-level scoring verification interview", async () => {
+    const strategyId = "00000000-0000-7000-8000-000000000691";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            equipment_check_id: "00000000-0000-7000-8000-000000000692",
+          }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            interview_session_id: "00000000-0000-7000-8000-000000000693",
+            websocket_path:
+              "/v1/applicant/interview-sessions/00000000-0000-7000-8000-000000000693/stream",
+          }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={[`/interview?strategyId=${strategyId}`]}>
+        <ApplicantRoutes />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "신입 답변 점수 검증" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("automation-mode").textContent).toBe(
+        "entry-low",
+      ),
+    );
+  });
+
   it("returns the applicant to the interview completion screen", async () => {
     const strategyId = "00000000-0000-7000-8000-000000000701";
     const fetchMock = vi

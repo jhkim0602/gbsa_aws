@@ -1,4 +1,12 @@
-export type AutomatedInterviewMode = "fast" | "speech";
+export type AutomatedInterviewMode = "fast" | "speech" | "entry-low";
+
+export type AutomatedAnswerProfile = "standard" | "entry_low";
+
+export function automatedAnswerProfile(
+  mode: AutomatedInterviewMode,
+): AutomatedAnswerProfile {
+  return mode === "entry-low" ? "entry_low" : "standard";
+}
 
 export type AutomatedMedia = Readonly<{
   stream: MediaStream;

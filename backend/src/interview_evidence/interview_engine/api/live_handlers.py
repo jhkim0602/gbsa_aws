@@ -18,6 +18,7 @@ from interview_evidence.interview_engine.application.answer_evidence import (
 from interview_evidence.interview_engine.application.automated_answer_generator import (
     AutomatedAnswerGenerationUnavailable,
     AutomatedAnswerGenerator,
+    AutomatedAnswerProfile,
 )
 from interview_evidence.interview_engine.application.checkpoints import CheckpointService
 from interview_evidence.interview_engine.application.idempotency import IdempotencyStore
@@ -407,6 +408,9 @@ class LiveInterviewHandler:
             )
         try:
             question_turn_id = UUID(str(envelope.payload["question_turn_id"]))
+            answer_profile = AutomatedAnswerProfile(
+                str(envelope.payload.get("answer_profile", "standard"))
+            )
         except (KeyError, TypeError, ValueError):
             return self._error(
                 envelope,
@@ -428,6 +432,7 @@ class LiveInterviewHandler:
                 question_turn_id=question_turn_id,
                 retrieval_config_version=plan.retrieval_config_version,
                 fallback_stage=plan.initial_stage,
+                answer_profile=answer_profile,
             )
         except AutomatedAnswerGenerationUnavailable:
             return self._error(
@@ -452,6 +457,7 @@ class LiveInterviewHandler:
                 "text": generated.text,
                 "source_reference_count": generated.source_reference_count,
                 "grounded": generated.grounded,
+                "answer_profile": answer_profile.value,
                 "audio_requested": envelope.payload.get("include_audio") is True,
                 "voice_id": "automated_applicant",
             },

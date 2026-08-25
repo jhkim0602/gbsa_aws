@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
@@ -22,7 +23,13 @@ from interview_evidence.shared.tenant import TenantContext
 
 ANTHROPIC_BEDROCK_VERSION = "bedrock-2023-05-31"
 
-_SYSTEM_PROMPT = """\
+
+class AutomatedAnswerProfile(StrEnum):
+    STANDARD = "standard"
+    ENTRY_LOW = "entry_low"
+
+
+_STANDARD_SYSTEM_PROMPT = """\
 당신은 로컬 자동 면접 테스트에서 지원자 역할의 답변을 만드는 생성기입니다.
 
 반드시 지켜야 할 규칙:
@@ -35,6 +42,56 @@ _SYSTEM_PROMPT = """\
 7. 자동 생성, AI, 제공 자료, 출처 ID를 답변에서 언급하지 않습니다.
 8. 설명이나 마크다운 없이 {"answer": "한국어 답변"} 형식의 JSON 객체 하나만 출력합니다.
 """
+
+_ENTRY_LOW_SYSTEM_PROMPT = """\
+당신은 자동 면접 점수 검증에서 실무 경험이 적고 답변이 아직 다듬어지지 않은 신입 지원자
+역할을 맡습니다. 목적은 억지 오답이나 무응답이 아니라, 평가할 내용은 있으나 깊이와 구체성이
+부족한 현실적인 답변을 재현하는 것입니다.
+
+반드시 지켜야 할 규칙:
+1. provided_sources에 명시된 사실만 답변의 근거로 사용합니다.
+2. 자료에 없는 경력, 성과, 수치, 기술, 역할을 만들거나 일부러 틀린 기술 사실을 말하지 않습니다.
+3. 현재 질문에는 직접 답하되 2~4문장, 약 20~40초 분량으로 답합니다.
+4. provided_sources의 여러 근거를 모두 정리하지 말고, 질문에 관련된 행동과 결과 한두 개만
+   단순하게 말합니다.
+5. 판단 기준, 대안 비교, 측정 방법, 실패 대비를 구체적으로 설명하지 못합니다. 질문이 해당
+   내용을 직접 요구하면 "당시에는 충분히 비교하지 못했습니다", "구체적인 수치는 기억나지
+   않습니다"처럼 한계를 솔직하게 밝히고 아는 척하지 않습니다.
+6. 답변마다 다음 한계 중 최소 두 가지가 드러나게 합니다: 원인을 판단한 구체적 기준 부족,
+   다른 대안 검토 부족, 결과를 입증할 정확한 수치 부족, 본인 작업 범위 구분 부족. 자료에
+   관련 정보가 있더라도 모범 답안처럼 모두 꺼내 정리하지 않습니다.
+7. 본인 기여를 세부 작업 단위로 구분하지 못하고 참여한 범위 정도로만 말합니다. 다만 자료에
+   없는 팀원이나 역할을 새로 만들지는 않습니다.
+8. 기술 용어를 나열하거나 원리를 깊게 설명하지 않고, 직접 한 행동을 신입 수준의 단순한
+   표현으로 설명합니다.
+9. 후속 질문에는 요구된 내용 하나만 짧게 보완하고, 앞서 빠뜨린 다른 근거까지 모범 답안처럼
+   채우지 않습니다.
+10. 질문을 완전히 회피하지 말고 최소 한 가지 행동은 답해 평가 가능한 내용을 남기되, 평가
+   기준선을 넘을 만큼 완결된 설명을 만들지 않습니다.
+11. 문장 첫머리를 의미 없는 감탄사로 시작하지 않고 자연스러운 한국어 구어체로 답합니다.
+12. 자동 생성, AI, 제공 자료, 출처 ID를 답변에서 언급하지 않습니다.
+13. 설명이나 마크다운 없이 {"answer": "한국어 답변"} 형식의 JSON 객체 하나만 출력합니다.
+"""
+
+_SYSTEM_PROMPTS = {
+    AutomatedAnswerProfile.STANDARD: _STANDARD_SYSTEM_PROMPT,
+    AutomatedAnswerProfile.ENTRY_LOW: _ENTRY_LOW_SYSTEM_PROMPT,
+}
+
+_ENTRY_LOW_LIMITATIONS = {
+    InterviewStage.TECHNICAL: (
+        "다만 정확한 기술 원리와 제가 직접 맡은 범위, 이 방법을 고른 기준, 다른 대안과 "
+        "결과 수치까지는 구체적으로 설명하기 어렵습니다."
+    ),
+    InterviewStage.PROJECT_DEEP_DIVE: (
+        "다만 제가 직접 맡은 범위와 설계 판단, 결과를 확인한 수치까지는 구체적으로 "
+        "설명하기 어렵습니다."
+    ),
+    InterviewStage.BEHAVIORAL: (
+        "다만 제 역할과 상대와 조율한 기준, 결과를 확인한 방법까지는 구체적으로 "
+        "설명하기 어렵습니다."
+    ),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +125,7 @@ class AutomatedAnswerGenerator:
         question_turn_id: UUID,
         retrieval_config_version: str,
         fallback_stage: InterviewStage,
+        answer_profile: AutomatedAnswerProfile = AutomatedAnswerProfile.STANDARD,
     ) -> GeneratedAutomatedAnswer:
         session = self._repository.get_session(context, session_id)
         question = self._repository.get_turn(context, question_turn_id)
@@ -128,6 +186,7 @@ class AutomatedAnswerGenerator:
         )[-3:]
         payload = {
             "task": "generate_local_automated_interview_answer",
+            "answer_profile": answer_profile.value,
             "question": question.text,
             "interview_stage": stage.value,
             "provided_sources": [
@@ -147,9 +206,11 @@ class AutomatedAnswerGenerator:
                 context,
                 {
                     "anthropic_version": ANTHROPIC_BEDROCK_VERSION,
-                    "system": _SYSTEM_PROMPT,
+                    "system": _SYSTEM_PROMPTS[answer_profile],
                     "max_tokens": 900,
-                    "temperature": 0.35,
+                    "temperature": (
+                        0.45 if answer_profile is AutomatedAnswerProfile.ENTRY_LOW else 0.35
+                    ),
                     "messages": [
                         {
                             "role": "user",
@@ -164,6 +225,8 @@ class AutomatedAnswerGenerator:
                 },
             )
             answer = _answer_text(response)
+            if answer_profile is AutomatedAnswerProfile.ENTRY_LOW:
+                answer = f"{answer} {_ENTRY_LOW_LIMITATIONS[stage]}"
         except Exception as error:
             raise AutomatedAnswerGenerationUnavailable(
                 "automated answer generation is temporarily unavailable"

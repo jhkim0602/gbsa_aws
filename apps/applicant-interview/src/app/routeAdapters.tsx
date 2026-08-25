@@ -703,6 +703,16 @@ export function InterviewRoute() {
               >
                 음성 포함 자동 면접 실행
               </button>
+              <button
+                className="min-h-10 rounded-panel border border-[#e4c56a] bg-[#fff9e7] px-4 text-[12px] font-semibold text-[#725713]"
+                type="button"
+                disabled={sessionStarting}
+                onClick={() =>
+                  void start(AUTOMATED_EQUIPMENT_RESULT, "entry-low")
+                }
+              >
+                신입 답변 점수 검증
+              </button>
             </div>
             {sessionStarting ? (
               <p className="mt-2 text-[12px] text-muted" role="status">
@@ -737,5 +747,7 @@ export function InterviewRoute() {
 function parseAutomationMode(
   value: string | null,
 ): AutomatedInterviewMode | undefined {
-  return value === "fast" || value === "speech" ? value : undefined;
+  return value === "fast" || value === "speech" || value === "entry-low"
+    ? value
+    : undefined;
 }

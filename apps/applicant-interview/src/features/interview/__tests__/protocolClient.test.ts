@@ -283,12 +283,14 @@ describe("interview protocol client", () => {
     const answerPromise = client.requestAutomatedAnswer({
       questionTurnId,
       includeAudio: false,
+      answerProfile: "standard",
     });
     expect(JSON.parse(String(socket.sent[1]))).toMatchObject({
       message_type: "answer.automated.generate",
       payload: {
         question_turn_id: questionTurnId,
         include_audio: false,
+        answer_profile: "standard",
       },
     });
 
@@ -335,6 +337,7 @@ describe("interview protocol client", () => {
     const answerPromise = client.requestAutomatedAnswer({
       questionTurnId,
       includeAudio: true,
+      answerProfile: "standard",
     });
     socket.serverMessage({
       protocol_version: "1.0",
@@ -403,6 +406,13 @@ describe("interview protocol client", () => {
     const answerPromise = client.requestAutomatedAnswer({
       questionTurnId: "00000000-0000-7000-8000-000000000437",
       includeAudio: false,
+      answerProfile: "entry_low",
+    });
+    expect(JSON.parse(String(socket.sent[1]))).toMatchObject({
+      message_type: "answer.automated.generate",
+      payload: {
+        answer_profile: "entry_low",
+      },
     });
     socket.serverMessage({
       protocol_version: "1.0",

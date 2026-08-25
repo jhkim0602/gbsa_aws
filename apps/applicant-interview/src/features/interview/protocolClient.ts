@@ -178,6 +178,7 @@ export class InterviewProtocolClient {
     input: Readonly<{
       questionTurnId: string;
       includeAudio: boolean;
+      answerProfile: "standard" | "entry_low";
     }>,
   ): Promise<GeneratedAutomatedAnswer> {
     const existing = this.pendingAutomatedAnswers.get(input.questionTurnId);
@@ -195,6 +196,7 @@ export class InterviewProtocolClient {
       this.sendEnvelope("answer.automated.generate", {
         question_turn_id: input.questionTurnId,
         include_audio: input.includeAudio,
+        answer_profile: input.answerProfile,
       });
     } catch (error) {
       const pending = this.pendingAutomatedAnswers.get(input.questionTurnId);

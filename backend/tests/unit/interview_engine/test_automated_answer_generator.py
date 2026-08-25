@@ -6,6 +6,7 @@ from uuid import UUID
 from interview_evidence.interview_engine.application.automated_answer_generator import (
     ANTHROPIC_BEDROCK_VERSION,
     AutomatedAnswerGenerator,
+    AutomatedAnswerProfile,
 )
 from interview_evidence.interview_engine.application.interview_plan import InterviewStage
 from interview_evidence.interview_engine.domain.session import InterviewSession
@@ -122,5 +123,22 @@ def test_generated_answer_uses_the_current_questions_source_excerpts() -> None:
     assert prompt["anthropic_version"] == ANTHROPIC_BEDROCK_VERSION
     payload = json.loads(prompt["messages"][0]["content"][0]["text"])
     assert payload["question"] == question.text
+    assert payload["answer_profile"] == AutomatedAnswerProfile.STANDARD.value
     assert payload["provided_sources"][0]["excerpt"] == source.excerpt
     assert payload["recent_answers_for_repetition_avoidance"] == [previous_answer.text]
+
+    entry_generated = generator.generate(
+        context(),
+        session_id=SESSION_ID,
+        question_turn_id=QUESTION_ID,
+        retrieval_config_version="hybrid-v1",
+        fallback_stage=InterviewStage.TECHNICAL,
+        answer_profile=AutomatedAnswerProfile.ENTRY_LOW,
+    )
+
+    entry_prompt = model.calls[1][1]
+    entry_payload = json.loads(entry_prompt["messages"][0]["content"][0]["text"])
+    assert entry_payload["answer_profile"] == AutomatedAnswerProfile.ENTRY_LOW.value
+    assert "깊이와 구체성이" in str(entry_prompt["system"])
+    assert "평가 가능한 내용" in str(entry_prompt["system"])
+    assert "다른 대안과 결과 수치" in entry_generated.text
