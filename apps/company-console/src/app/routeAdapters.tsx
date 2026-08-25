@@ -7,6 +7,7 @@ import {
 } from "react-router-dom";
 
 import {
+  activateDemoCompanyAccess,
   beginCompanyLogin,
   beginCompanySignup,
   completeCompanyLogin,
@@ -73,6 +74,7 @@ import {
 } from "./styles/primitives";
 
 const DEMO_COMPANY_EMAIL = import.meta.env.VITE_DEMO_COMPANY_EMAIL?.trim();
+const DEMO_COMPANY_TOKEN = import.meta.env.VITE_DEMO_COMPANY_TOKEN?.trim();
 const AUTOMATED_INTERVIEW_ENABLED =
   import.meta.env.DEV ||
   import.meta.env.VITE_AUTOMATED_INTERVIEW_ENABLED === "true";
@@ -1231,6 +1233,11 @@ export function CompanyLoginRoute() {
   }
 
   async function demoLogin() {
+    if (DEMO_COMPANY_TOKEN) {
+      activateDemoCompanyAccess(localStorage, DEMO_COMPANY_TOKEN);
+      navigate("/company", { replace: true });
+      return;
+    }
     if (!AUTH_CONFIG) {
       navigate("/company", { replace: true });
       return;
@@ -1280,6 +1287,11 @@ export function CompanySignupRoute() {
   }
 
   async function demoLogin() {
+    if (DEMO_COMPANY_TOKEN) {
+      activateDemoCompanyAccess(localStorage, DEMO_COMPANY_TOKEN);
+      navigate("/company", { replace: true });
+      return;
+    }
     if (!AUTH_CONFIG) {
       navigate("/company", { replace: true });
       return;

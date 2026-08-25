@@ -56,14 +56,45 @@ class LocalCompanyPrincipalProvider:
         raise PrincipalNotFoundError("applicant principal not found")
 
 
+class FallbackCompanyPrincipalProvider:
+    def __init__(
+        self,
+        *,
+        primary: PrincipalProvider,
+        fallback: PrincipalProvider,
+    ) -> None:
+        self._primary = primary
+        self._fallback = fallback
+
+    def get_company_principal(self, credential: str) -> CompanyPrincipal:
+        try:
+            return self._primary.get_company_principal(credential)
+        except PrincipalNotFoundError:
+            return self._fallback.get_company_principal(credential)
+
+    def get_applicant_principal(self, credential: str) -> ApplicantPrincipal:
+        return self._fallback.get_applicant_principal(credential)
+
+
 def resolve_company_principal_provider(
     environment: Mapping[str, str],
     *,
     default: PrincipalProvider,
 ) -> PrincipalProvider:
-    if environment.get("APP_ENVIRONMENT", "").strip().casefold() != "local":
+    if environment.get("APP_ENVIRONMENT", "").strip().casefold() == "local":
+        return LocalCompanyPrincipalProvider.from_environment(environment)
+    if environment.get("DEMO_COMPANY_ACCESS_ENABLED", "").strip().casefold() != "true":
         return default
-    return LocalCompanyPrincipalProvider.from_environment(environment)
+    return FallbackCompanyPrincipalProvider(
+        primary=LocalCompanyPrincipalProvider(
+            access_token=_required(environment, "DEMO_COMPANY_ACCESS_TOKEN"),
+            company_id=_required_uuid(environment, "DEMO_COMPANY_ID"),
+            company_user_id=_required_uuid(environment, "DEMO_COMPANY_USER_ID"),
+            identity_subject=_required(environment, "DEMO_COMPANY_IDENTITY_SUBJECT"),
+            email=environment.get("DEMO_COMPANY_EMAIL", "").strip() or None,
+        ),
+        fallback=default,
+    )
 
 
 def _required(environment: Mapping[str, str], name: str) -> str:

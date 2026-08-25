@@ -131,6 +131,13 @@ locals {
   workflow  = data.terraform_remote_state.data_ai.outputs.workflow
   ai_search = data.terraform_remote_state.data_ai.outputs.ai_search
   identity  = data.terraform_remote_state.foundation.outputs.identity
+  demo_company = {
+    access_token     = sha256("${data.terraform_remote_state.foundation.outputs.name}:public-demo-access:v1")
+    company_id       = "00000000-0000-7000-8000-000000000101"
+    company_user_id  = "00000000-0000-7000-8000-000000000102"
+    identity_subject = "public-demo-company-user-v1"
+    email            = "demo@whyyou.example"
+  }
   # `lookup` with a default rather than a direct read: the output was added after the data-ai
   # root had already been applied once, and a state written before it exists would make this
   # root fail to plan on a missing attribute. Absent, the load balancer runs without access
@@ -220,6 +227,12 @@ module "compute" {
     BEDROCK_GUARDRAIL_ID            = local.ai_search.guardrail_id
     BEDROCK_MODEL_ID                = var.interview_model_id
     COGNITO_USER_POOL_ID            = local.identity.user_pool_id
+    DEMO_COMPANY_ACCESS_ENABLED     = "true"
+    DEMO_COMPANY_ACCESS_TOKEN       = local.demo_company.access_token
+    DEMO_COMPANY_EMAIL              = local.demo_company.email
+    DEMO_COMPANY_ID                 = local.demo_company.company_id
+    DEMO_COMPANY_IDENTITY_SUBJECT   = local.demo_company.identity_subject
+    DEMO_COMPANY_USER_ID            = local.demo_company.company_user_id
     DOCUMENT_OCR_PROVIDER           = "gcp_document_ai"
     DYNAMODB_TABLE_NAME             = local.data.dynamodb_table_name
     EVENT_BUS_ARN                   = local.workflow.event_bus_arn
@@ -341,6 +354,10 @@ output "frontend" {
       login_domain = local.identity.user_pool_login_domain
       client_id    = local.identity.user_pool_client_id
       redirect_uri = "${module.edge.site_urls["company"]}/auth/callback"
+    }
+    demo = {
+      access_token = local.demo_company.access_token
+      email        = local.demo_company.email
     }
   }
 }

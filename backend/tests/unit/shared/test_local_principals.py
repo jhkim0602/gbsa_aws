@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from uuid import UUID
 
 import pytest
@@ -49,6 +50,54 @@ def test_local_provider_is_selected_only_for_local_environment() -> None:
     assert selected is not default
     assert selected.get_company_principal("local-company-token").company_id == COMPANY_ID
     assert production is default
+
+
+def test_demo_provider_accepts_shared_token_and_preserves_default_auth() -> None:
+    default = LocalCompanyPrincipalProvider.from_environment(_environment(token="default-token"))
+    environment = {
+        "APP_ENVIRONMENT": "dev",
+        "DEMO_COMPANY_ACCESS_ENABLED": "true",
+        "DEMO_COMPANY_ACCESS_TOKEN": "shared-demo-token",
+        "DEMO_COMPANY_ID": str(COMPANY_ID),
+        "DEMO_COMPANY_USER_ID": str(COMPANY_USER_ID),
+        "DEMO_COMPANY_IDENTITY_SUBJECT": "shared-demo-company-user",
+        "DEMO_COMPANY_EMAIL": "demo@whyyou.example",
+    }
+
+    selected = resolve_company_principal_provider(environment, default=default)
+
+    demo = selected.get_company_principal("shared-demo-token")
+    regular = selected.get_company_principal("default-token")
+    assert demo.company_id == COMPANY_ID
+    assert demo.company_user_id == COMPANY_USER_ID
+    assert demo.email == "demo@whyyou.example"
+    assert regular.identity_subject == "local-production-company-user"
+
+
+def test_demo_provider_allows_concurrent_access_with_the_same_token() -> None:
+    default = LocalCompanyPrincipalProvider.from_environment(_environment(token="default-token"))
+    selected = resolve_company_principal_provider(
+        {
+            "APP_ENVIRONMENT": "dev",
+            "DEMO_COMPANY_ACCESS_ENABLED": "true",
+            "DEMO_COMPANY_ACCESS_TOKEN": "shared-demo-token",
+            "DEMO_COMPANY_ID": str(COMPANY_ID),
+            "DEMO_COMPANY_USER_ID": str(COMPANY_USER_ID),
+            "DEMO_COMPANY_IDENTITY_SUBJECT": "shared-demo-company-user",
+        },
+        default=default,
+    )
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        principals = tuple(
+            executor.map(
+                selected.get_company_principal,
+                ["shared-demo-token"] * 32,
+            )
+        )
+
+    assert {principal.company_id for principal in principals} == {COMPANY_ID}
+    assert {principal.company_user_id for principal in principals} == {COMPANY_USER_ID}
 
 
 def test_local_provider_requires_explicit_identity_configuration() -> None:

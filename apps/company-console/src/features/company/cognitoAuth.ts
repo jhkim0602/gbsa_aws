@@ -13,6 +13,7 @@ const VERIFIER_KEY = "iep_company_pkce_verifier";
 const STATE_KEY = "iep_company_oauth_state";
 const TOKEN_KEY = "iep_company_token";
 const EXPIRES_AT_KEY = "iep_company_token_expires_at";
+const DEMO_ACCESS_TTL_MS = 8 * 60 * 60 * 1000;
 
 export async function beginCompanyLogin(
   config: CompanyAuthConfig,
@@ -152,6 +153,16 @@ export function getCompanyAccessToken(storage: Storage): string | null {
     return null;
   }
   return token;
+}
+
+export function activateDemoCompanyAccess(
+  storage: Storage,
+  accessToken: string,
+): void {
+  const token = accessToken.trim();
+  if (!token) throw new Error("Demo company access token is required");
+  storage.setItem(TOKEN_KEY, token);
+  storage.setItem(EXPIRES_AT_KEY, String(Date.now() + DEMO_ACCESS_TTL_MS));
 }
 
 export function clearCompanyLogin(storage: Storage): void {

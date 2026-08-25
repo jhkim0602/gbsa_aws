@@ -123,6 +123,7 @@ run_database_migration() {
 publish_frontends() {
   local frontend company_bucket applicant_bucket company_distribution applicant_distribution
   local company_url applicant_url cognito_domain cognito_client_id cognito_redirect_uri
+  local demo_company_email demo_company_token
   local company_invalidation applicant_invalidation
 
   frontend="$(terraform -chdir="$APPLICATION_ROOT" output -json frontend)"
@@ -135,6 +136,8 @@ publish_frontends() {
   cognito_domain="$(jq -er '.cognito.login_domain' <<<"$frontend")"
   cognito_client_id="$(jq -er '.cognito.client_id' <<<"$frontend")"
   cognito_redirect_uri="$(jq -er '.cognito.redirect_uri' <<<"$frontend")"
+  demo_company_email="$(jq -er '.demo.email' <<<"$frontend")"
+  demo_company_token="$(jq -er '.demo.access_token' <<<"$frontend")"
 
   VITE_API_BASE_URL="" \
   VITE_APPLICANT_APP_URL="$applicant_url/access" \
@@ -142,7 +145,8 @@ publish_frontends() {
   VITE_COGNITO_CLIENT_ID="$cognito_client_id" \
   VITE_COGNITO_REDIRECT_URI="$cognito_redirect_uri" \
   VITE_AUTOMATED_INTERVIEW_ENABLED="true" \
-  VITE_DEMO_COMPANY_EMAIL="${DEMO_COMPANY_EMAIL:-}" \
+  VITE_DEMO_COMPANY_EMAIL="$demo_company_email" \
+  VITE_DEMO_COMPANY_TOKEN="$demo_company_token" \
     npm run build
 
   aws s3 cp apps/company-console/dist "s3://$company_bucket" --recursive

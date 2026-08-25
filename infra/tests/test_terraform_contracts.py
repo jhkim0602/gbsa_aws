@@ -575,6 +575,16 @@ def test_one_manual_workflow_manages_the_complete_dev_environment() -> None:
     assert 'CONFIRM_DESTROY" != "destroy-dev' in tear_down
 
 
+def test_dev_deployment_exposes_shared_demo_access_without_cognito_login() -> None:
+    application = read(ROOT / "environments" / "dev" / "application" / "main.tf")
+    script = read(ROOT.parent / "scripts" / "manage_dev_infrastructure.sh")
+
+    assert 'DEMO_COMPANY_ACCESS_ENABLED     = "true"' in application
+    assert "DEMO_COMPANY_ACCESS_TOKEN       = local.demo_company.access_token" in application
+    assert "access_token = local.demo_company.access_token" in application
+    assert 'VITE_DEMO_COMPANY_TOKEN="$demo_company_token"' in script
+
+
 def test_the_prompt_attack_filter_scores_input_only() -> None:
     """Bedrock refuses any response strength but NONE for PROMPT_ATTACK.
 

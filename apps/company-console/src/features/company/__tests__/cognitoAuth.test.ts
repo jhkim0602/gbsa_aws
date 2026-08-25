@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  activateDemoCompanyAccess,
   beginCompanyLogin,
   beginCompanySignup,
   completeCompanyLogin,
+  getCompanyAccessToken,
   type CompanyAuthConfig,
 } from "../cognitoAuth";
 
@@ -14,6 +16,14 @@ const config: CompanyAuthConfig = {
 };
 
 describe("Cognito company authentication", () => {
+  it("activates shared demo access without opening Cognito", () => {
+    const local = memoryStorage();
+
+    activateDemoCompanyAccess(local, " shared-demo-token ");
+
+    expect(getCompanyAccessToken(local)).toBe("shared-demo-token");
+  });
+
   it("creates a PKCE authorization URL without persisting a raw credential", async () => {
     const session = memoryStorage();
     const location = await beginCompanyLogin(config, {
