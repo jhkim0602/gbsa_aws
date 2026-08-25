@@ -7,6 +7,7 @@ from interview_evidence.submission_analysis.application.strategy_prompt import (
     strategy_task_payload_of,
 )
 from interview_evidence.submission_analysis.application.strategy_service import (
+    FIXED_INTERVIEW_DURATION_SECONDS,
     MAX_STRATEGY_PROMPT_SOURCES,
     MIN_GIT_STRATEGY_PROMPT_SOURCES,
     StrategyGenerationError,
@@ -134,6 +135,37 @@ def test_strategy_repairs_unknown_source_references() -> None:
     )
 
     assert strategy.verification_points[0].source_ids == (source_reference().source_id,)
+
+
+def test_strategy_repairs_malformed_source_references() -> None:
+    model = DeterministicAIModel(
+        {
+            "common_topics": ["프로젝트 구조"],
+            "verification_points": [
+                {
+                    "criterion_id": str(CRITERION_ID),
+                    "prompt": "프로젝트에서 직접 구현한 부분을 확인한다.",
+                    "source_ids": ["src/service.py#process", "not-a-uuid"],
+                }
+            ],
+            "follow_up_directions": {},
+            "time_budget": {"total_seconds": 0},
+            "required_evidence_plan": {str(CRITERION_ID): 1},
+        }
+    )
+
+    strategy = StrategyService(model, model_config_version="strategy-v1").generate(
+        context(),
+        invitation_id=INVITATION_ID,
+        applicant_id=APPLICANT_ID,
+        competency_model_version_id=CRITERION_VERSION_ID,
+        criterion_ids=(CRITERION_ID,),
+        source_candidates=(source_reference(),),
+        strategy_version=1,
+    )
+
+    assert strategy.verification_points[0].source_ids == (source_reference().source_id,)
+    assert strategy.time_budget["total_seconds"] == FIXED_INTERVIEW_DURATION_SECONDS
 
 
 def test_strategy_limits_and_deduplicates_prompt_sources_but_keeps_full_provenance() -> None:

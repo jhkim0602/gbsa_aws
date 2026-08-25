@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from uuid import UUID
 
 from interview_evidence.shared.aws_clients.ports import AIModel
@@ -29,6 +30,7 @@ class StrategyGenerationError(ValueError):
 
 MAX_STRATEGY_PROMPT_SOURCES = 24
 MIN_GIT_STRATEGY_PROMPT_SOURCES = 4
+FIXED_INTERVIEW_DURATION_SECONDS = 30 * 60
 
 
 class StrategyService:
@@ -82,11 +84,19 @@ class StrategyService:
         allowed_sources = {candidate.source_id for candidate in prompt_candidates}
         try:
             parsed_verification_points = tuple(
-                VerificationPoint.model_validate(item) for item in result["verification_points"]
+                _verification_point_from_model(
+                    item,
+                    allowed_criteria=allowed_criteria,
+                    allowed_sources=allowed_sources,
+                    fallback_source_id=(
+                        prompt_candidates[0].source_id if prompt_candidates else None
+                    ),
+                )
+                for item in result["verification_points"]
             )
             common_topics = tuple(str(item) for item in result["common_topics"])
             follow_up_directions = dict(result["follow_up_directions"])
-            time_budget = dict(result["time_budget"])
+            time_budget = _normalized_time_budget(result["time_budget"])
             required_evidence_plan = dict(result["required_evidence_plan"])
         except (KeyError, TypeError, ValueError) as error:
             raise StrategyGenerationError("invalid structured strategy output") from error
@@ -94,16 +104,7 @@ class StrategyService:
         for point in parsed_verification_points:
             if point.criterion_id not in allowed_criteria:
                 raise StrategyGenerationError("strategy referenced an unknown criterion")
-            valid_source_ids = tuple(
-                dict.fromkeys(
-                    source_id for source_id in point.source_ids if source_id in allowed_sources
-                )
-            )
-            if not valid_source_ids:
-                if not prompt_candidates:
-                    raise StrategyGenerationError("strategy has no available source")
-                valid_source_ids = (prompt_candidates[0].source_id,)
-            verification_points.append(point.model_copy(update={"source_ids": valid_source_ids}))
+            verification_points.append(point)
         strategy = InterviewStrategy(
             interview_strategy_id=new_uuid7(),
             company_id=context.company_id,
@@ -180,3 +181,53 @@ def _select_prompt_candidates(
         if len(selected) == MAX_STRATEGY_PROMPT_SOURCES:
             break
     return tuple(selected)
+
+
+def _verification_point_from_model(
+    value: object,
+    *,
+    allowed_criteria: set[UUID],
+    allowed_sources: set[UUID],
+    fallback_source_id: UUID | None,
+) -> VerificationPoint:
+    if not isinstance(value, Mapping):
+        raise TypeError("verification point must be an object")
+    criterion_id = UUID(str(value["criterion_id"]))
+    if criterion_id not in allowed_criteria:
+        raise StrategyGenerationError("strategy referenced an unknown criterion")
+    raw_source_ids = value.get("source_ids", ())
+    if isinstance(raw_source_ids, str):
+        source_values: Sequence[object] = (raw_source_ids,)
+    elif isinstance(raw_source_ids, Sequence):
+        source_values = raw_source_ids
+    else:
+        source_values = ()
+    valid_source_ids: list[UUID] = []
+    for raw_source_id in source_values:
+        try:
+            source_id = UUID(str(raw_source_id))
+        except (TypeError, ValueError):
+            continue
+        if source_id in allowed_sources and source_id not in valid_source_ids:
+            valid_source_ids.append(source_id)
+    if not valid_source_ids:
+        if fallback_source_id is None:
+            raise StrategyGenerationError("strategy has no available source")
+        valid_source_ids.append(fallback_source_id)
+    return VerificationPoint(
+        criterion_id=criterion_id,
+        prompt=value["prompt"],
+        source_ids=tuple(valid_source_ids),
+    )
+
+
+def _normalized_time_budget(value: object) -> dict[str, int]:
+    normalized: dict[str, int] = {}
+    if isinstance(value, Mapping):
+        for key, raw_value in value.items():
+            try:
+                normalized[str(key)] = int(raw_value)
+            except (TypeError, ValueError):
+                continue
+    normalized["total_seconds"] = FIXED_INTERVIEW_DURATION_SECONDS
+    return normalized
