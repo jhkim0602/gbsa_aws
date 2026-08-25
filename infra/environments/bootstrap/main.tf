@@ -303,7 +303,7 @@ resource "aws_secretsmanager_secret" "dev_runtime" {
 }
 
 resource "aws_sesv2_email_identity" "dev_sender" {
-  email_identity = "seojh2j@naver.com"
+  email_identity = "seojh2j1@naver.com"
   tags           = local.tags
 
   lifecycle {
