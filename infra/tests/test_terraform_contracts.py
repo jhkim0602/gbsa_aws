@@ -27,6 +27,7 @@ MODULE_RESOURCES = {
     "data": {
         "aws_rds_cluster",
         "aws_rds_cluster_instance",
+        "aws_db_instance",
         "aws_dynamodb_table",
         "aws_s3_bucket",
         "aws_kms_key",
@@ -205,6 +206,21 @@ def test_compute_and_data_define_durable_private_runtime_boundaries() -> None:
     assert "point_in_time_recovery" in data
     assert "manage_master_user_password" in data
     assert "deletion_protection             = var.deletion_protection" in data
+
+
+def test_dev_uses_small_private_rds_while_prod_keeps_aurora() -> None:
+    data = read(ROOT / "modules" / "data" / "main.tf")
+    dev = read(ROOT / "environments" / "dev" / "data-ai" / "main.tf")
+    prod = read(ROOT / "environments" / "prod" / "main.tf")
+
+    assert 'database_engine             = "rds-postgres"' in dev
+    assert 'rds_instance_class          = "db.t4g.micro"' in dev
+    assert "rds_allocated_storage       = 20" in dev
+    assert 'database_engine            = "aurora-postgres"' in prod
+    assert "publicly_accessible             = false" in data
+    assert "multi_az                        = false" in data
+    assert "max_allocated_storage           = 0" in data
+    assert 'local.is_aurora ? "DBClusterIdentifier" : "DBInstanceIdentifier"' in data
 
 
 def test_the_task_role_can_run_every_readiness_probe() -> None:
@@ -509,8 +525,8 @@ def test_dev_resources_can_be_destroyed_and_recreated_without_name_conflicts() -
     assert "force_delete_repositories = true" not in prod
 
     assert "force_destroy = var.force_destroy_buckets" in observability
-    assert "force_destroy_buckets = true" in dev_data_ai
-    assert "force_destroy_buckets = true" not in prod
+    assert re.search(r"force_destroy_buckets\s*=\s*true", dev_data_ai)
+    assert not re.search(r"force_destroy_buckets\s*=\s*true", prod)
 
     assert "create_application_secret" in data
     assert re.search(r"create_application_secret\s*=\s*false", dev_data_ai)

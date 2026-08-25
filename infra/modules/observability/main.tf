@@ -51,12 +51,26 @@ variable "dlq_arns" {
  * creates them and whose state it cannot read without a cycle -- and an alarm belongs with the
  * resource it watches in any case.
  */
-variable "aurora_cluster_identifier" {
+variable "database_identifier" {
   type    = string
   default = null
 }
 
-variable "aurora_max_connections" {
+variable "database_metric_dimension_name" {
+  description = "CloudWatch dimension used by the selected RDS database implementation."
+  type        = string
+  default     = "DBClusterIdentifier"
+
+  validation {
+    condition = contains(
+      ["DBClusterIdentifier", "DBInstanceIdentifier"],
+      var.database_metric_dimension_name,
+    )
+    error_message = "database_metric_dimension_name must be DBClusterIdentifier or DBInstanceIdentifier."
+  }
+}
+
+variable "database_max_connections" {
   description = <<-EOT
     The connection ceiling the alarm is a fraction of.
 
@@ -230,30 +244,30 @@ resource "aws_cloudwatch_metric_alarm" "queue_age" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "aurora_connections" {
-  count = var.aurora_cluster_identifier == null ? 0 : 1
+  count = var.database_identifier == null ? 0 : 1
 
-  alarm_name          = "${var.name}-aurora-connections"
-  alarm_description   = "Aurora is near its connection ceiling."
+  alarm_name          = "${var.name}-database-connections"
+  alarm_description   = "The database is near its connection ceiling."
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
   metric_name         = "DatabaseConnections"
   namespace           = "AWS/RDS"
   period              = 300
   statistic           = "Maximum"
-  threshold           = floor(var.aurora_max_connections * 0.8)
+  threshold           = floor(var.database_max_connections * 0.8)
   alarm_actions       = [aws_sns_topic.alarms.arn]
   treat_missing_data  = "notBreaching"
   dimensions = {
-    DBClusterIdentifier = var.aurora_cluster_identifier
+    (var.database_metric_dimension_name) = var.database_identifier
   }
   tags = local.tags
 }
 
 resource "aws_cloudwatch_metric_alarm" "aurora_cpu" {
-  count = var.aurora_cluster_identifier == null ? 0 : 1
+  count = var.database_identifier == null ? 0 : 1
 
-  alarm_name          = "${var.name}-aurora-cpu"
-  alarm_description   = "Aurora is CPU-saturated; queries will be slow before they fail."
+  alarm_name          = "${var.name}-database-cpu"
+  alarm_description   = "The database is CPU-saturated; queries will be slow before they fail."
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 3
   metric_name         = "CPUUtilization"
@@ -264,7 +278,7 @@ resource "aws_cloudwatch_metric_alarm" "aurora_cpu" {
   alarm_actions       = [aws_sns_topic.alarms.arn]
   treat_missing_data  = "notBreaching"
   dimensions = {
-    DBClusterIdentifier = var.aurora_cluster_identifier
+    (var.database_metric_dimension_name) = var.database_identifier
   }
   tags = local.tags
 }

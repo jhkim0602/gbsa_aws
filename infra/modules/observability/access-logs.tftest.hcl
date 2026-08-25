@@ -88,14 +88,13 @@ run "request_logs_are_deliverable_and_expire" {
     error_message = "the request-log bucket must not be reachable publicly"
   }
 
-  # Without a cluster identifier the alarms are absent rather than pointed at nothing, because
-  # the data-ai root can be applied before the cluster exists.
+  # Without a database identifier the alarms are absent rather than pointed at nothing.
   assert {
     condition = alltrue([
       length(aws_cloudwatch_metric_alarm.aurora_connections) == 0,
       length(aws_cloudwatch_metric_alarm.aurora_cpu) == 0,
     ])
-    error_message = "no cluster identifier must produce no Aurora alarm, not an alarm with a null dimension"
+    error_message = "no database identifier must produce no alarm with a null dimension"
   }
 }
 
@@ -103,7 +102,7 @@ run "database_alarms_key_on_the_dimension_rds_metrics_carry" {
   command = apply
 
   variables {
-    aurora_cluster_identifier = "iep-probe-aurora"
+    database_identifier = "iep-probe-aurora"
   }
 
   override_data {
@@ -128,7 +127,7 @@ run "database_alarms_key_on_the_dimension_rds_metrics_carry" {
       aws_cloudwatch_metric_alarm.aurora_connections[0].dimensions["DBClusterIdentifier"] == "iep-probe-aurora",
       aws_cloudwatch_metric_alarm.aurora_cpu[0].dimensions["DBClusterIdentifier"] == "iep-probe-aurora",
     ])
-    error_message = "both Aurora alarms must key on DBClusterIdentifier"
+    error_message = "both database alarms must key on DBClusterIdentifier"
   }
 
   # Connection exhaustion is this platform's likeliest database failure: every interview holds a
@@ -145,5 +144,43 @@ run "database_alarms_key_on_the_dimension_rds_metrics_carry" {
       aws_cloudwatch_metric_alarm.aurora_cpu[0].alarm_actions == toset([aws_sns_topic.alarms.arn]),
     ])
     error_message = "an alarm with no action appears in the console as coverage while notifying nobody"
+  }
+}
+
+run "rds_database_alarms_use_the_instance_dimension" {
+  command = apply
+
+  variables {
+    database_identifier            = "iep-probe-postgres"
+    database_metric_dimension_name = "DBInstanceIdentifier"
+    database_max_connections       = 112
+  }
+
+  override_data {
+    target = data.aws_caller_identity.current
+    values = { account_id = "000000000000" }
+  }
+
+  override_data {
+    target = data.aws_region.current
+    values = { name = "ap-northeast-2" }
+  }
+
+  override_data {
+    target = data.aws_elb_service_account.current
+    values = { arn = "arn:aws:iam::600734575887:root" }
+  }
+
+  assert {
+    condition = alltrue([
+      aws_cloudwatch_metric_alarm.aurora_connections[0].dimensions["DBInstanceIdentifier"] == "iep-probe-postgres",
+      aws_cloudwatch_metric_alarm.aurora_cpu[0].dimensions["DBInstanceIdentifier"] == "iep-probe-postgres",
+    ])
+    error_message = "RDS alarms must key on DBInstanceIdentifier"
+  }
+
+  assert {
+    condition     = aws_cloudwatch_metric_alarm.aurora_connections[0].threshold == 89
+    error_message = "the RDS connection alarm must use the development instance ceiling"
   }
 }

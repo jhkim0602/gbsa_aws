@@ -109,6 +109,7 @@ module "data" {
   name                       = local.name
   private_subnet_ids         = module.network.private_subnet_ids
   database_security_group_id = module.network.database_security_group_id
+  database_engine            = "aurora-postgres"
   deletion_protection        = true
   force_destroy              = false
   aurora_min_capacity        = 2
@@ -133,13 +134,12 @@ module "ai_search" {
 module "observability" {
   source = "../../modules/observability"
 
-  name       = local.name
-  queue_arns = module.async_workflow.queue_arns
-  dlq_arns   = module.async_workflow.dlq_arns
-  # The dimension AWS/RDS metrics carry, which is what creates the two Aurora alarms. Prod
-  # holds every module in one root, so no state read is involved here.
-  aurora_cluster_identifier = module.data.aurora_cluster_identifier
-  # `aurora_max_connections` is left at its default. Aurora PostgreSQL Serverless v2 sets
+  name                           = local.name
+  queue_arns                     = module.async_workflow.queue_arns
+  dlq_arns                       = module.async_workflow.dlq_arns
+  database_identifier            = module.data.database_identifier
+  database_metric_dimension_name = module.data.database_metric_dimension_name
+  # `database_max_connections` is left at its default. Aurora PostgreSQL Serverless v2 sets
   # `max_connections` from the current ACU in steps, and 0.5 through 2 ACU all resolve to 189 --
   # so prod's 2-ACU floor is the same ceiling as dev's 0.5, and an override here would only
   # invent a difference the engine does not have.
@@ -166,7 +166,7 @@ module "compute" {
   task_role_arn              = module.identity.application_runtime_role_arn
   task_role_name             = module.identity.application_runtime_role_name
   create_task_role           = false
-  secret_arns                = [module.data.application_secret_arn, module.data.aurora_master_secret_arn]
+  secret_arns                = [module.data.application_secret_arn, module.data.database_master_secret_arn]
   kms_key_arns               = [module.data.kms_key_arn]
   data_resource_arns = concat(
     values(module.data.bucket_arns),
@@ -189,9 +189,9 @@ module "compute" {
     AI_PROVIDER                     = "gcp"
     EMBEDDING_PROVIDER              = "aws"
     AWS_REGION                      = var.aws_region
-    AURORA_DATABASE                 = module.data.aurora_database_name
-    AURORA_ENDPOINT                 = module.data.aurora_endpoint
-    AURORA_MASTER_SECRET_ARN        = module.data.aurora_master_secret_arn
+    AURORA_DATABASE                 = module.data.database_name
+    AURORA_ENDPOINT                 = module.data.database_endpoint
+    AURORA_MASTER_SECRET_ARN        = module.data.database_master_secret_arn
     BEDROCK_EMBEDDING_MODEL_ID      = "amazon.titan-embed-text-v2:0"
     BEDROCK_GUARDRAIL_ID            = module.ai_search.guardrail_id
     BEDROCK_MODEL_ID                = var.interview_model_id

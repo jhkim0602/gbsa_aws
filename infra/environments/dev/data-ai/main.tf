@@ -61,16 +61,18 @@ locals {
 module "data" {
   source = "../../../modules/data"
 
-  name                           = local.name
-  private_subnet_ids             = data.terraform_remote_state.foundation.outputs.network.private_subnet_ids
-  database_security_group_id     = data.terraform_remote_state.foundation.outputs.network.database_security_group_id
-  deletion_protection            = false
-  force_destroy                  = true
-  create_application_secret      = false
-  aurora_min_capacity            = 0.5
-  aurora_max_capacity            = 4
-  aurora_backup_retention_period = 1
-  tags                           = local.tags
+  name                        = local.name
+  private_subnet_ids          = data.terraform_remote_state.foundation.outputs.network.private_subnet_ids
+  database_security_group_id  = data.terraform_remote_state.foundation.outputs.network.database_security_group_id
+  database_engine             = "rds-postgres"
+  rds_instance_class          = "db.t4g.micro"
+  rds_engine_version          = "16.11"
+  rds_allocated_storage       = 20
+  rds_backup_retention_period = 1
+  deletion_protection         = false
+  force_destroy               = true
+  create_application_secret   = false
+  tags                        = local.tags
 }
 
 module "async_workflow" {
@@ -91,16 +93,15 @@ module "ai_search" {
 module "observability" {
   source = "../../../modules/observability"
 
-  name                  = local.name
-  alarm_email           = var.alarm_email
-  force_destroy_buckets = true
-  queue_arns            = module.async_workflow.queue_arns
-  dlq_arns              = module.async_workflow.dlq_arns
-  # The identifier rather than the ARN, because that is the dimension AWS/RDS metrics carry.
-  # Passing it here is what creates the two Aurora alarms at all; the module defaults it to
-  # null so the root can be applied before the cluster exists.
-  aurora_cluster_identifier = module.data.aurora_cluster_identifier
-  tags                      = local.tags
+  name                           = local.name
+  alarm_email                    = var.alarm_email
+  force_destroy_buckets          = true
+  queue_arns                     = module.async_workflow.queue_arns
+  dlq_arns                       = module.async_workflow.dlq_arns
+  database_identifier            = module.data.database_identifier
+  database_metric_dimension_name = module.data.database_metric_dimension_name
+  database_max_connections       = 112
+  tags                           = local.tags
 }
 
 output "data" {
@@ -109,10 +110,10 @@ output "data" {
     bucket_ids                   = module.data.bucket_ids
     bucket_arns                  = module.data.bucket_arns
     bucket_regional_domain_names = module.data.bucket_regional_domain_names
-    aurora_cluster_arn           = module.data.aurora_cluster_arn
-    aurora_database_name         = module.data.aurora_database_name
-    aurora_endpoint              = module.data.aurora_endpoint
-    aurora_master_secret_arn     = module.data.aurora_master_secret_arn
+    aurora_cluster_arn           = module.data.database_arn
+    aurora_database_name         = module.data.database_name
+    aurora_endpoint              = module.data.database_endpoint
+    aurora_master_secret_arn     = module.data.database_master_secret_arn
     application_secret_arn       = module.data.application_secret_arn
     dynamodb_table_arn           = module.data.dynamodb_table_arn
     dynamodb_table_name          = module.data.dynamodb_table_name

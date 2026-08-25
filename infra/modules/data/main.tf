@@ -37,6 +37,49 @@ variable "create_application_secret" {
   default     = true
 }
 
+variable "database_engine" {
+  description = "Database implementation. Use rds-postgres for a small private dev database and aurora-postgres for production."
+  type        = string
+  default     = "aurora-postgres"
+
+  validation {
+    condition     = contains(["aurora-postgres", "rds-postgres"], var.database_engine)
+    error_message = "database_engine must be aurora-postgres or rds-postgres."
+  }
+}
+
+variable "rds_instance_class" {
+  type    = string
+  default = "db.t4g.micro"
+}
+
+variable "rds_engine_version" {
+  type    = string
+  default = "16.11"
+}
+
+variable "rds_allocated_storage" {
+  description = "Fixed general-purpose storage for the development RDS instance."
+  type        = number
+  default     = 20
+
+  validation {
+    condition     = var.rds_allocated_storage >= 20
+    error_message = "rds_allocated_storage must be at least 20 GiB."
+  }
+}
+
+variable "rds_backup_retention_period" {
+  description = "Number of days RDS backups are retained."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.rds_backup_retention_period >= 0 && var.rds_backup_retention_period <= 35
+    error_message = "rds_backup_retention_period must be between 0 and 35 days."
+  }
+}
+
 variable "aurora_min_capacity" {
   type    = number
   default = 0.5
@@ -71,6 +114,9 @@ data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
 locals {
+  is_aurora     = var.database_engine == "aurora-postgres"
+  is_rds        = var.database_engine == "rds-postgres"
+  database_name = "interview_evidence"
   bucket_names = toset([
     "source",
     "media",
@@ -216,9 +262,11 @@ resource "aws_db_subnet_group" "this" {
 }
 
 resource "aws_rds_cluster" "this" {
+  count = local.is_aurora ? 1 : 0
+
   cluster_identifier              = "${var.name}-aurora"
   engine                          = "aurora-postgresql"
-  database_name                   = "interview_evidence"
+  database_name                   = local.database_name
   master_username                 = "platform_admin"
   manage_master_user_password     = true
   master_user_secret_kms_key_id   = aws_kms_key.data.arn
@@ -243,14 +291,50 @@ resource "aws_rds_cluster" "this" {
 }
 
 resource "aws_rds_cluster_instance" "this" {
-  count = 2
+  count = local.is_aurora ? 2 : 0
 
   identifier         = "${var.name}-aurora-${count.index + 1}"
-  cluster_identifier = aws_rds_cluster.this.id
+  cluster_identifier = aws_rds_cluster.this[0].id
   instance_class     = "db.serverless"
-  engine             = aws_rds_cluster.this.engine
-  engine_version     = aws_rds_cluster.this.engine_version
+  engine             = aws_rds_cluster.this[0].engine
+  engine_version     = aws_rds_cluster.this[0].engine_version
   tags               = local.tags
+}
+
+resource "aws_db_instance" "this" {
+  count = local.is_rds ? 1 : 0
+
+  identifier                      = "${var.name}-postgres"
+  engine                          = "postgres"
+  engine_version                  = var.rds_engine_version
+  instance_class                  = var.rds_instance_class
+  db_name                         = local.database_name
+  username                        = "platform_admin"
+  manage_master_user_password     = true
+  master_user_secret_kms_key_id   = aws_kms_key.data.arn
+  allocated_storage               = var.rds_allocated_storage
+  max_allocated_storage           = 0
+  storage_type                    = "gp3"
+  storage_encrypted               = true
+  kms_key_id                      = aws_kms_key.data.arn
+  db_subnet_group_name            = aws_db_subnet_group.this.name
+  vpc_security_group_ids          = [var.database_security_group_id]
+  publicly_accessible             = false
+  multi_az                        = false
+  backup_retention_period         = var.rds_backup_retention_period
+  backup_window                   = "18:00-19:00"
+  maintenance_window              = "sun:19:00-sun:20:00"
+  auto_minor_version_upgrade      = true
+  apply_immediately               = !var.deletion_protection
+  copy_tags_to_snapshot           = true
+  deletion_protection             = var.deletion_protection
+  skip_final_snapshot             = !var.deletion_protection
+  final_snapshot_identifier       = var.deletion_protection ? "${var.name}-postgres-final" : null
+  delete_automated_backups        = !var.deletion_protection
+  enabled_cloudwatch_logs_exports = ["postgresql"]
+  performance_insights_enabled    = false
+
+  tags = local.tags
 }
 
 resource "aws_secretsmanager_secret" "application" {
@@ -280,28 +364,33 @@ output "bucket_regional_domain_names" {
   }
 }
 
-output "aurora_cluster_arn" {
-  value = aws_rds_cluster.this.arn
+output "database_arn" {
+  value = local.is_aurora ? aws_rds_cluster.this[0].arn : aws_db_instance.this[0].arn
 }
 
-# The `DBClusterIdentifier` dimension every AWS/RDS alarm keys on. Not derivable from the ARN
-# without string surgery, and not the endpoint either -- an alarm pointed at the wrong
-# dimension name reports INSUFFICIENT_DATA forever, which looks the same as healthy.
-output "aurora_cluster_identifier" {
-  value = aws_rds_cluster.this.cluster_identifier
+output "database_identifier" {
+  value = local.is_aurora ? aws_rds_cluster.this[0].cluster_identifier : aws_db_instance.this[0].identifier
 }
 
-output "aurora_database_name" {
-  value = aws_rds_cluster.this.database_name
+output "database_metric_dimension_name" {
+  value = local.is_aurora ? "DBClusterIdentifier" : "DBInstanceIdentifier"
 }
 
-output "aurora_endpoint" {
-  value     = aws_rds_cluster.this.endpoint
+output "database_name" {
+  value = local.database_name
+}
+
+output "database_endpoint" {
+  value     = local.is_aurora ? aws_rds_cluster.this[0].endpoint : aws_db_instance.this[0].address
   sensitive = true
 }
 
-output "aurora_master_secret_arn" {
-  value     = aws_rds_cluster.this.master_user_secret[0].secret_arn
+output "database_master_secret_arn" {
+  value = local.is_aurora ? (
+    aws_rds_cluster.this[0].master_user_secret[0].secret_arn
+    ) : (
+    aws_db_instance.this[0].master_user_secret[0].secret_arn
+  )
   sensitive = true
 }
 
