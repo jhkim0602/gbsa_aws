@@ -198,7 +198,11 @@ bring_up() {
   fi
 
   terraform_init "$FOUNDATION_ROOT"
-  terraform_plan_apply "$FOUNDATION_ROOT" foundation "${foundation_overrides[@]}"
+  if ((${#foundation_overrides[@]})); then
+    terraform_plan_apply "$FOUNDATION_ROOT" foundation "${foundation_overrides[@]}"
+  else
+    terraform_plan_apply "$FOUNDATION_ROOT" foundation
+  fi
 
   terraform_init "$DATA_AI_ROOT"
   terraform_plan_apply "$DATA_AI_ROOT" data-ai
