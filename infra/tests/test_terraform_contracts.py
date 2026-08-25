@@ -519,7 +519,7 @@ def test_dev_resources_can_be_destroyed_and_recreated_without_name_conflicts() -
     assert "create_email_identity" in identity
     assert re.search(r"create_email_identity\s*=\s*false", dev_foundation)
     assert 'resource "aws_sesv2_email_identity" "dev_sender"' in bootstrap
-    assert 'email_identity = "seojh2j@naver.com"' in bootstrap
+    assert 'email_identity = "seojh2j1@naver.com"' in bootstrap
 
 
 def test_one_manual_workflow_manages_the_complete_dev_environment() -> None:

@@ -61,15 +61,16 @@ locals {
 module "data" {
   source = "../../../modules/data"
 
-  name                       = local.name
-  private_subnet_ids         = data.terraform_remote_state.foundation.outputs.network.private_subnet_ids
-  database_security_group_id = data.terraform_remote_state.foundation.outputs.network.database_security_group_id
-  deletion_protection        = false
-  force_destroy              = true
-  create_application_secret  = false
-  aurora_min_capacity        = 0.5
-  aurora_max_capacity        = 8
-  tags                       = local.tags
+  name                           = local.name
+  private_subnet_ids             = data.terraform_remote_state.foundation.outputs.network.private_subnet_ids
+  database_security_group_id     = data.terraform_remote_state.foundation.outputs.network.database_security_group_id
+  deletion_protection            = false
+  force_destroy                  = true
+  create_application_secret      = false
+  aurora_min_capacity            = 0.5
+  aurora_max_capacity            = 8
+  aurora_backup_retention_period = 1
+  tags                           = local.tags
 }
 
 module "async_workflow" {

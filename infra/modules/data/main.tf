@@ -47,6 +47,20 @@ variable "aurora_max_capacity" {
   default = 8
 }
 
+variable "aurora_backup_retention_period" {
+  description = "Number of days Aurora backups are retained. Defaults to 35 with deletion protection and 7 otherwise."
+  type        = number
+  default     = null
+
+  validation {
+    condition = (
+      var.aurora_backup_retention_period == null ||
+      (var.aurora_backup_retention_period >= 1 && var.aurora_backup_retention_period <= 35)
+    )
+    error_message = "aurora_backup_retention_period must be between 1 and 35 days."
+  }
+}
+
 variable "tags" {
   type    = map(string)
   default = {}
@@ -212,7 +226,7 @@ resource "aws_rds_cluster" "this" {
   vpc_security_group_ids          = [var.database_security_group_id]
   storage_encrypted               = true
   kms_key_id                      = aws_kms_key.data.arn
-  backup_retention_period         = var.deletion_protection ? 35 : 7
+  backup_retention_period         = coalesce(var.aurora_backup_retention_period, var.deletion_protection ? 35 : 7)
   preferred_backup_window         = "18:00-19:00"
   preferred_maintenance_window    = "sun:19:00-sun:20:00"
   deletion_protection             = var.deletion_protection
