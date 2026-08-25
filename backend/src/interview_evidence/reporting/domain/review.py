@@ -90,3 +90,37 @@ class HumanReview:
             reason=reason,
             created_at=created_at,
         )
+
+    @classmethod
+    def recruiting_stage_decision(
+        cls,
+        *,
+        human_review_id: UUID,
+        company_id: UUID,
+        report_id: UUID,
+        company_user_id: UUID,
+        invitation_id: UUID,
+        actor_type: ActorType,
+        recruiting_stage_id: UUID,
+        recruiting_stage_name: str,
+        created_at: datetime,
+    ) -> HumanReview:
+        if actor_type is not ActorType.COMPANY_USER:
+            raise PermissionError("final decision requires a human company user")
+        normalized_name = " ".join(recruiting_stage_name.split())
+        if not normalized_name:
+            raise ValueError("recruiting stage name is required")
+        return cls(
+            human_review_id=human_review_id,
+            company_id=company_id,
+            report_id=report_id,
+            company_user_id=company_user_id,
+            review_type=ReviewType.FINAL_DECISION,
+            target_id=invitation_id,
+            value={
+                "recruiting_stage_id": str(recruiting_stage_id),
+                "recruiting_stage_name": normalized_name,
+            },
+            reason=None,
+            created_at=created_at,
+        )

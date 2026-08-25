@@ -87,6 +87,13 @@ class PipelineRepository:
         context.assert_company(COMPANY_ID)
         return next(item for item in self.invitations if item.invitation_id == invitation_id)
 
+    def get_invitation(
+        self,
+        context: TenantContext,
+        invitation_id: UUID,
+    ) -> Invitation:
+        return self.get_invitation_for_update(context, invitation_id)
+
     def save_invitation(
         self,
         context: TenantContext,
@@ -207,3 +214,29 @@ def test_service_backfills_from_system_progress_and_moves_the_latest_state() -> 
     assert moved[0].recruiting_stage_id == final_pass.recruiting_stage_id
     assert moved[0].pipeline_row_version == 3
     assert moved[0].status.value == "completed"
+
+
+def test_recruiting_state_uses_the_invitation_assignment_as_the_single_source() -> None:
+    current = invitation().model_copy(
+        update={
+            "status": InvitationStatus.COMPLETED,
+            "recruiting_stage_id": None,
+        }
+    )
+    repository = PipelineRepository(current)
+    service = HiringService(
+        repository,  # type: ignore[arg-type]
+        object(),  # type: ignore[arg-type]
+        FrozenClock(NOW),
+        object(),  # type: ignore[arg-type]
+    )
+
+    state = service.get_applicant_recruiting_state(context(), current.invitation_id)
+
+    assigned = next(
+        stage
+        for stage in state.stages
+        if stage.recruiting_stage_id == state.invitation.recruiting_stage_id
+    )
+    assert assigned.name == "1차 합격"
+    assert state.invitation.pipeline_row_version == 2

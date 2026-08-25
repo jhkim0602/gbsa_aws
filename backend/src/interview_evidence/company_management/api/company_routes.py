@@ -361,6 +361,18 @@ class ApplicantPipelineAssignmentPage(BaseModel):
     items: list[ApplicantPipelineAssignmentView]
 
 
+class ApplicantRecruitingStateView(BaseModel):
+    """Live pipeline state used by reports, lists, and the kanban board."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    invitation_id: UUID
+    position_id: UUID
+    recruiting_stage_id: UUID
+    pipeline_row_version: int
+    stages: list[RecruitingStageView]
+
+
 class InvitationSessionSnapshot(Protocol):
     @property
     def interview_session_id(self) -> UUID: ...
@@ -786,6 +798,36 @@ def create_company_router(
         except TenantScopedResourceNotFound as error:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
         return RecruitingStagePage(items=[_recruiting_stage_view(stage) for stage in stages])
+
+    @router.get(
+        "/invitations/{invitation_id}/recruiting-state",
+        response_model=ApplicantRecruitingStateView,
+        operation_id="getApplicantRecruitingState",
+    )
+    def get_applicant_recruiting_state(
+        invitation_id: UUID,
+        scope: Scope,
+    ) -> ApplicantRecruitingStateView:
+        try:
+            state = hiring_service.get_applicant_recruiting_state(
+                scope.context,
+                invitation_id,
+            )
+        except TenantScopedResourceNotFound as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        stage_id = state.invitation.recruiting_stage_id
+        if stage_id is None:  # Guard the HTTP contract even if a custom repository is broken.
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="applicant recruiting stage is not initialized",
+            )
+        return ApplicantRecruitingStateView(
+            invitation_id=state.invitation.invitation_id,
+            position_id=state.invitation.position_id,
+            recruiting_stage_id=stage_id,
+            pipeline_row_version=state.invitation.pipeline_row_version,
+            stages=[_recruiting_stage_view(stage) for stage in state.stages],
+        )
 
     @router.post(
         "/positions/{position_id}/recruiting-stages",

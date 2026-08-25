@@ -23,9 +23,7 @@ import type {
 
 const api: ReviewApi = {
   overrideAssessment: vi.fn().mockResolvedValue(undefined),
-  addBookmark: vi.fn().mockResolvedValue(undefined),
-  recordFinalDecision: vi.fn().mockResolvedValue(undefined),
-  requestDeletion: vi.fn().mockResolvedValue(undefined),
+  addNote: vi.fn().mockResolvedValue(undefined),
 };
 
 const DIRECT_EVIDENCE: EvidenceRange = {
@@ -324,11 +322,7 @@ describe("evidence traceability", () => {
             url: "https://media.example.test/interview.m3u8",
           },
         }}
-        deletion={{
-          status: "not_requested",
-          verifiedTargets: 0,
-          expectedTargets: 0,
-        }}
+        recruitingState={null}
       />,
     );
 
@@ -364,11 +358,7 @@ describe("evidence traceability", () => {
             url: "https://media.example.test/interview.m3u8",
           },
         }}
-        deletion={{
-          status: "not_requested",
-          verifiedTargets: 0,
-          expectedTargets: 0,
-        }}
+        recruitingState={null}
       />,
     );
 

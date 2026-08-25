@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from typing import Annotated
+from datetime import datetime
+from typing import Annotated, Literal, cast
 from uuid import UUID
 
 from fastapi import (
@@ -18,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from interview_evidence.reporting.adapters.playback import ScopedPlaybackLocator
 from interview_evidence.reporting.application.deletion_service import DeletionService
 from interview_evidence.reporting.application.review_service import (
+    InvitationDecisionWriter,
     InvitationStateAdvancer,
     ReviewService,
     close_invitation_review,
@@ -28,7 +30,7 @@ from interview_evidence.reporting.application.timeline_service import (
 )
 from interview_evidence.reporting.domain.deletion import DeletionManifest
 from interview_evidence.reporting.domain.report import Report
-from interview_evidence.reporting.domain.review import Decision, HumanReview, ReviewType
+from interview_evidence.reporting.domain.review import HumanReview, ReviewType
 from interview_evidence.reporting.domain.scoring import Aggregate
 from interview_evidence.reporting.repositories.postgres import (
     ReportingRepository,
@@ -52,15 +54,36 @@ class HumanAssessmentReviewCreate(BaseModel):
 
 class ReviewArtifactCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    review_type: str
+    review_type: Literal["note"]
     target_id: UUID
     value: str = Field(min_length=1, max_length=10_000)
 
 
 class FinalDecisionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    decision: str
-    reason: str = Field(min_length=1, max_length=5000)
+    recruiting_stage_id: UUID
+    expected_pipeline_version: int = Field(ge=1)
+
+
+class HumanReviewResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    human_review_id: UUID
+    review_type: str
+    created_by: UUID
+    created_at: datetime
+    value: dict[str, str]
+    reason: str | None
+
+
+class FinalDecisionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    human_review: HumanReviewResponse
+    invitation_id: UUID
+    position_id: UUID
+    recruiting_stage_id: UUID
+    recruiting_stage_name: str
+    pipeline_row_version: int = Field(ge=1)
+    invitation_state: str
 
 
 class DeletionRequestCreate(BaseModel):
@@ -268,7 +291,7 @@ def create_company_router(
     deletion_service: DeletionService,
     playback: ScopedPlaybackLocator,
     rationale_provider: QuestionRationaleProvider | None = None,
-    invitations: InvitationStateAdvancer | None = None,
+    invitations: InvitationDecisionWriter | InvitationStateAdvancer | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1")
     reviews = ReviewService(repository)
@@ -447,7 +470,7 @@ def create_company_router(
             scope.context,
             report_id=report.report_id,
             target_id=body.target_id,
-            review_type=ReviewType(body.review_type),
+            review_type=ReviewType.NOTE,
             value=body.value,
             occurred_at=clock.now(),
         )
@@ -464,6 +487,7 @@ def create_company_router(
     @router.post(
         "/invitations/{invitation_id}/final-decisions",
         status_code=201,
+        response_model=FinalDecisionResponse,
         operation_id="recordHumanFinalDecision",
     )
     def record_final_decision(
@@ -476,27 +500,42 @@ def create_company_router(
         report = repository.get_report_for_invitation(scope.context, invitation_id)
         if report is None:
             raise HTTPException(status_code=404)
+        if invitations is None or not hasattr(invitations, "move_to_recruiting_stage"):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="recruiting stage decision writer is unavailable",
+            )
         occurred_at = clock.now()
-        review = reviews.record_final_decision(
+        decision_writer = cast(InvitationDecisionWriter, invitations)
+        try:
+            stage = decision_writer.move_to_recruiting_stage(
+                scope.context,
+                invitation_id,
+                recruiting_stage_id=body.recruiting_stage_id,
+                expected_pipeline_version=body.expected_pipeline_version,
+            )
+        except ValueError as error:
+            # The one-applicant move validates its stage and optimistic-lock version before
+            # persisting. A stale report therefore remains a conflict with no partial write.
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(error),
+            ) from error
+        review = reviews.record_recruiting_stage_decision(
             scope.context,
             report_id=report.report_id,
             invitation_id=invitation_id,
-            decision=Decision(body.decision),
-            reason=body.reason,
+            recruiting_stage_id=stage.recruiting_stage_id,
+            recruiting_stage_name=stage.recruiting_stage_name,
             occurred_at=occurred_at,
         )
-        # After the decision is recorded, never before: the decision is the part that must
-        # survive, and the invitation moving to `reviewed` is what the console reads to stop
-        # listing the applicant as awaiting review.
-        invitation_state = (
-            close_invitation_review(
-                invitations,
-                scope.context,
-                invitation_id=invitation_id,
-                occurred_at=occurred_at,
-            )
-            if invitations is not None
-            else None
+        # Do not translate failures after the pipeline write to a 4xx response: the shared
+        # request middleware rolls back on an exception/5xx, keeping these three writes atomic.
+        invitation_state = close_invitation_review(
+            decision_writer,
+            scope.context,
+            invitation_id=invitation_id,
+            occurred_at=occurred_at,
         )
         audit.append(
             scope.context,
@@ -506,11 +545,20 @@ def create_company_router(
             result="created",
             metadata={
                 "invitation_id": str(invitation_id),
-                "decision": body.decision,
+                "recruiting_stage_id": str(stage.recruiting_stage_id),
+                "recruiting_stage_name": stage.recruiting_stage_name,
                 "invitation_state": invitation_state or "unchanged",
             },
         )
-        return _review_view(review)
+        return {
+            "human_review": _review_view(review),
+            "invitation_id": stage.invitation_id,
+            "position_id": stage.position_id,
+            "recruiting_stage_id": stage.recruiting_stage_id,
+            "recruiting_stage_name": stage.recruiting_stage_name,
+            "pipeline_row_version": stage.pipeline_row_version,
+            "invitation_state": invitation_state,
+        }
 
     @router.post(
         "/privacy/deletion-requests",

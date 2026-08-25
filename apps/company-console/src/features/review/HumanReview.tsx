@@ -1,94 +1,54 @@
-import {
-  AlertCircle,
-  Bookmark,
-  CheckCircle2,
-  Clock3,
-  History,
-  ShieldCheck,
-  XCircle,
-} from "lucide-react";
-import { useState } from "react";
+import { AlertCircle, CheckCircle2, FileText, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { reviewErrorMessage } from "./reviewErrors";
-import type { ReviewApi, ReviewDeletion, ReviewHistoryEntry } from "./types";
+import type { ReviewApi, ReviewRecruitingState } from "./types";
 
-// `.review-panel` + `.review-panel__*`, shared with ReportView/TimelineView.
 const PANEL = "overflow-hidden rounded-md border border-border bg-surface";
-
 const PANEL_HEADER =
-  "flex min-h-[58px] items-center justify-between gap-3 border-b border-border-muted" +
-  " px-[14px] py-3 mw-520:items-start";
-
+  "flex min-h-[58px] items-center justify-between gap-3 border-b border-border-muted px-[14px] py-3";
 const PANEL_ICON =
-  "grid size-[30px] flex-[0_0_30px] place-items-center rounded-md border" +
-  " border-border-muted bg-surface-muted text-brand-strong";
-
-const HUMAN_ONLY_BADGE =
-  "inline-flex min-h-[22px] items-center gap-[5px] rounded-full bg-brand-soft" +
-  " px-[7px] text-[8px] font-[650] whitespace-nowrap text-brand" +
-  " mw-520:max-w-[108px] mw-520:whitespace-normal";
-
-// `.review-field input/textarea`. Preflight already gives the textarea `resize: vertical`,
-// so the source's `resize` declaration needs no utility.
+  "grid size-[30px] flex-[0_0_30px] place-items-center rounded-md border border-border-muted bg-surface-muted text-brand-strong";
 const FIELD_CONTROL =
-  "w-full rounded-md border border-border bg-surface px-[9px] py-[7px] text-[10px]" +
-  " text-ink focus:border-brand focus:outline-2" +
-  " focus:outline-[rgb(89_102_206_/_12%)] focus:outline-offset-0";
-
-const FIELD_TEXTAREA = `min-h-[86px] leading-[1.55] ${FIELD_CONTROL}`;
-
-// `.decision-actions button, .bookmark-control > button`. Border *color* is left off: each
-// decision button carries its own tone, which outranked this rule at 0,2,0 vs 0,1,1.
-const DECISION_BUTTON =
-  "inline-flex min-h-[34px] items-center justify-center gap-[5px] rounded-[5px] border" +
-  " bg-surface px-2 text-[9px] font-semibold disabled:cursor-not-allowed" +
-  " disabled:opacity-45";
+  "w-full rounded-md border border-border bg-surface px-[9px] py-[7px] text-[10px] text-ink focus:border-brand focus:outline-2 focus:outline-[rgb(89_102_206_/_12%)] focus:outline-offset-0";
+const ACTION_BUTTON =
+  "inline-flex min-h-[36px] items-center justify-center gap-1.5 rounded-md bg-brand px-3 text-[9px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45";
 
 export function HumanReview({
   api,
   invitationId,
-  deletion,
-  history = [],
+  recruitingState,
 }: {
   api: ReviewApi;
   invitationId: string;
-  deletion: ReviewDeletion;
-  history?: ReviewHistoryEntry[];
+  recruitingState: ReviewRecruitingState | null;
 }) {
-  const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
+  const [selectedStageId, setSelectedStageId] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const deletionProgress =
-    deletion.expectedTargets === 0
-      ? 0
-      : Math.round((deletion.verifiedTargets / deletion.expectedTargets) * 100);
 
-  /**
-   * Record the hire/hold/reject decision.
-   *
-   * This used to have no catch and no pending state, and the buttons were wired as floating
-   * promises. A rejected write changed nothing on screen — no confirmation, no error — so the
-   * reviewer read it as an unresponsive button, clicked again, and whichever attempt succeeded
-   * recorded the decision more than once for the same applicant.
-   */
-  async function decide(decision: "advance" | "reject" | "hold") {
-    await run(
-      () => api.recordFinalDecision(invitationId, decision, reason),
-      "사람 결정이 기록되었습니다.",
-      "최종 결정을 기록하지 못했습니다.",
+  useEffect(() => {
+    setSelectedStageId(recruitingState?.recruitingStageId ?? "");
+  }, [recruitingState?.recruitingStageId]);
+
+  async function saveNote() {
+    const saved = await run(
+      () => api.addNote(invitationId, note),
+      "메모를 저장했습니다.",
+      "메모를 저장하지 못했습니다.",
     );
+    if (saved) setNote("");
   }
 
-  async function saveBookmark() {
-    const saved = await run(
-      () => api.addBookmark(invitationId, note),
-      "검토 메모를 저장했습니다.",
-      "검토 메모를 저장하지 못했습니다.",
+  async function saveFinalDecision() {
+    if (!api.saveFinalDecisionStage || !selectedStageId) return;
+    await run(
+      () => api.saveFinalDecisionStage?.(selectedStageId) ?? Promise.resolve(),
+      "최종 결정을 저장했습니다.",
+      "최종 결정을 저장하지 못했습니다.",
     );
-    // Cleared only on success, so a failed save leaves the text for another attempt.
-    if (saved) setNote("");
   }
 
   async function run(
@@ -96,7 +56,6 @@ export function HumanReview({
     confirmation: string,
     failure: string,
   ): Promise<boolean> {
-    // Guarding here rather than relying on `disabled`, which reflects the previous render.
     if (busy) return false;
     setBusy(true);
     setMessage("");
@@ -114,6 +73,10 @@ export function HumanReview({
     }
   }
 
+  const currentStage = recruitingState?.stages.find(
+    (stage) => stage.recruitingStageId === recruitingState.recruitingStageId,
+  );
+
   return (
     <section className={PANEL} aria-labelledby="human-review-title">
       <header className={PANEL_HEADER}>
@@ -130,180 +93,100 @@ export function HumanReview({
             </h2>
           </span>
         </div>
-        <span className={HUMAN_ONLY_BADGE}>사람만 최종 결정</span>
+        <span className="rounded-full bg-brand-soft px-2 py-1 text-[8px] font-semibold text-brand">
+          사람만 최종 결정
+        </span>
       </header>
 
-      <div className="grid gap-[14px] p-[14px]">
-        <label className="grid gap-1.5">
-          <span className="text-[9px] font-semibold text-ink-secondary">
-            최종 결정 사유
-          </span>
+      <div className="grid gap-4 p-[14px]">
+        <section className="grid gap-2" aria-labelledby="review-note-title">
+          <div className="flex items-center gap-1.5 text-ink-secondary">
+            <FileText size={15} aria-hidden="true" />
+            <h3 id="review-note-title" className="text-[10px] font-semibold">
+              메모
+            </h3>
+          </div>
           <textarea
-            className={FIELD_TEXTAREA}
-            required
+            className={`min-h-[86px] resize-y leading-[1.55] ${FIELD_CONTROL}`}
             rows={4}
-            value={reason}
-            placeholder="Evidence와 인터뷰 내용을 근거로 판단 사유를 기록하세요."
-            onChange={(event) => setReason(event.target.value)}
+            value={note}
+            aria-label="검토 메모"
+            placeholder="지원자에 대해 공유할 메모를 입력하세요."
+            onChange={(event) => setNote(event.target.value)}
           />
-        </label>
-
-        <div
-          className="grid grid-cols-3 gap-[5px] mw-520:grid-cols-[1fr]"
-          aria-label="최종 결정"
-        >
           <button
-            className={`${DECISION_BUTTON} border-[rgb(5_150_105_/_30%)] text-success`}
+            className={`${ACTION_BUTTON} justify-self-end`}
             type="button"
-            disabled={!reason || busy}
-            onClick={() => void decide("advance")}
+            disabled={!note.trim() || busy}
+            onClick={() => void saveNote()}
           >
-            <CheckCircle2 size={16} aria-hidden="true" />
-            진행 결정
+            메모 저장
           </button>
-          <button
-            className={`${DECISION_BUTTON} border-[rgb(249_115_22_/_30%)] text-warning`}
-            type="button"
-            disabled={!reason || busy}
-            onClick={() => void decide("hold")}
-          >
-            <Clock3 size={16} aria-hidden="true" />
-            보류 결정
-          </button>
-          <button
-            className={`${DECISION_BUTTON} border-[rgb(220_38_38_/_28%)] text-danger`}
-            type="button"
-            disabled={!reason || busy}
-            onClick={() => void decide("reject")}
-          >
-            <XCircle size={16} aria-hidden="true" />
-            불합격 결정
-          </button>
-        </div>
-
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-1.5 mw-520:grid-cols-[1fr]">
-          <label className="grid gap-1.5">
-            <span className="text-[9px] font-semibold text-ink-secondary">
-              검토 메모
-            </span>
-            <input
-              className={`min-h-[34px] ${FIELD_CONTROL}`}
-              value={note}
-              placeholder="팀과 공유할 메모"
-              onChange={(event) => setNote(event.target.value)}
-            />
-          </label>
-          <button
-            className={`${DECISION_BUTTON} border-border`}
-            type="button"
-            disabled={!note || busy}
-            onClick={() => void saveBookmark()}
-          >
-            <Bookmark size={16} aria-hidden="true" />
-            북마크 저장
-          </button>
-        </div>
-
-        {message && (
-          <p
-            className="flex items-center gap-1.5 rounded-[5px] bg-success-soft p-[9px] text-[9px] text-success"
-            role="status"
-          >
-            <CheckCircle2 size={15} aria-hidden="true" />
-            {message}
-          </p>
-        )}
-
-        {error && (
-          <p
-            className="flex items-center gap-1.5 rounded-[5px] bg-danger-soft p-[9px] text-[9px] text-danger"
-            role="alert"
-          >
-            <AlertCircle size={15} aria-hidden="true" />
-            {error}
-          </p>
-        )}
-
-        <section className="border-t border-border-muted pt-[13px]">
-          <h3 className="mb-[9px] flex items-center gap-1.5 text-[10px]">
-            <History size={16} aria-hidden="true" />
-            검토 이력
-          </h3>
-          {history.length === 0 ? (
-            <p className="text-[9px] text-muted">
-              아직 기록된 검토 이력이 없습니다.
-            </p>
-          ) : (
-            <ol className="grid gap-[7px]">
-              {history.map((entry) => (
-                <li
-                  key={entry.id}
-                  className="grid gap-0.5 border-l-2 border-border pl-2"
-                >
-                  <strong className="text-[9px]">
-                    {entry.type}
-                    {entry.detail ? (
-                      <span className="font-normal text-ink-secondary">
-                        {" · "}
-                        {entry.detail}
-                      </span>
-                    ) : null}
-                  </strong>
-                  {entry.reason ? (
-                    <span className="text-[8px] leading-[1.5] text-ink-secondary">
-                      {entry.reason}
-                    </span>
-                  ) : null}
-                  <span className="text-[8px] text-muted">
-                    {entry.createdBy} · {entry.createdAt}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          )}
         </section>
 
         <section
-          className="grid gap-2 rounded-md border border-border-muted bg-surface-muted p-2.5"
-          aria-label="개인정보 삭제 확인"
+          className="grid gap-2 border-t border-border-muted pt-4"
+          aria-labelledby="final-decision-title"
         >
-          <header className="flex items-center justify-between gap-2.5">
-            <span className="flex items-center gap-[5px] text-[8px] text-muted">
-              <ShieldCheck size={16} aria-hidden="true" />
-              삭제 검증
+          <div className="flex items-center justify-between gap-2">
+            <h3 id="final-decision-title" className="text-[10px] font-semibold">
+              최종 결정
+            </h3>
+            <span className="text-[8px] text-muted">
+              현재 단계 · {currentStage?.name ?? "불러오는 중"}
             </span>
-            <strong className="text-[8px]">
-              삭제 확인 {deletion.verifiedTargets}/{deletion.expectedTargets}
-            </strong>
-          </header>
-          <div
-            className="h-1 overflow-hidden rounded-[2px] bg-surface-strong"
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={deletion.expectedTargets}
-            aria-valuenow={deletion.verifiedTargets}
-          >
-            <span
-              className="block h-full bg-success"
-              style={{ width: `${deletionProgress}%` }}
-            />
           </div>
-          <p className="text-[8px] text-muted">
-            {deletionStatusLabel(deletion.status)}
-          </p>
+          <select
+            className={FIELD_CONTROL}
+            aria-label="최종 결정 채용 단계"
+            value={selectedStageId}
+            disabled={!recruitingState || busy}
+            onChange={(event) => setSelectedStageId(event.target.value)}
+          >
+            <option value="">채용 단계를 선택하세요</option>
+            {[...(recruitingState?.stages ?? [])]
+              .sort((left, right) => left.sortOrder - right.sortOrder)
+              .map((stage) => (
+                <option
+                  key={stage.recruitingStageId}
+                  value={stage.recruitingStageId}
+                >
+                  {stage.name}
+                </option>
+              ))}
+          </select>
+          <button
+            className={ACTION_BUTTON}
+            type="button"
+            title={
+              api.saveFinalDecisionStage
+                ? undefined
+                : "최종 결정 저장은 채용 단계 쓰기 연동 후 활성화됩니다."
+            }
+            disabled={!selectedStageId || busy || !api.saveFinalDecisionStage}
+            onClick={() => void saveFinalDecision()}
+          >
+            최종 결정 저장
+          </button>
         </section>
+
+        {message ? (
+          <p
+            className="flex items-center gap-1.5 rounded-md bg-success-soft p-2 text-[9px] text-success"
+            role="status"
+          >
+            <CheckCircle2 size={14} aria-hidden="true" /> {message}
+          </p>
+        ) : null}
+        {error ? (
+          <p
+            className="flex items-center gap-1.5 rounded-md bg-danger-soft p-2 text-[9px] text-danger"
+            role="alert"
+          >
+            <AlertCircle size={14} aria-hidden="true" /> {error}
+          </p>
+        ) : null}
       </div>
     </section>
-  );
-}
-
-function deletionStatusLabel(status: string) {
-  return (
-    {
-      not_requested: "삭제 요청 없음",
-      pending: "삭제 대기",
-      retrying: "일부 저장소 재확인 중",
-      completed: "모든 대상 삭제 확인",
-    }[status] ?? status
   );
 }

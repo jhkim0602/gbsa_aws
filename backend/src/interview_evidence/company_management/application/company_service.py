@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -446,6 +446,11 @@ class CompanyManagementPublic:
         required_states = (
             frozenset({required_state}) if isinstance(required_state, str) else required_state
         )
+        expires_at = invitation.expires_at
+        if expires_at.tzinfo is None:
+            # SQLite drops timezone metadata even for DateTime(timezone=True). Normalize the
+            # persisted UTC instant so local/test runtimes follow PostgreSQL's aware behavior.
+            expires_at = expires_at.replace(tzinfo=UTC)
         return InvitationAuthorization(
             company_id=context.company_id,
             invitation_id=invitation.invitation_id,
@@ -453,11 +458,10 @@ class CompanyManagementPublic:
             position_id=invitation.position_id,
             competency_model_version_id=invitation.competency_model_version_id,
             state=invitation.status.value,
-            expires_at=invitation.expires_at,
+            expires_at=expires_at,
             row_version=invitation.row_version,
             authorized=(
-                invitation.status.value in required_states
-                and self._clock.now() < invitation.expires_at
+                invitation.status.value in required_states and self._clock.now() < expires_at
             ),
         )
 

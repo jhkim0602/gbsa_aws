@@ -50,6 +50,36 @@ class InvitationStateAdvancer(Protocol):
     ) -> InvitationReviewState: ...
 
 
+class RecruitingStageDecision(Protocol):
+    @property
+    def invitation_id(self) -> UUID: ...
+
+    @property
+    def position_id(self) -> UUID: ...
+
+    @property
+    def recruiting_stage_id(self) -> UUID: ...
+
+    @property
+    def recruiting_stage_name(self) -> str: ...
+
+    @property
+    def pipeline_row_version(self) -> int: ...
+
+
+class InvitationDecisionWriter(InvitationStateAdvancer, Protocol):
+    """Hiring-side write boundary used by the final-decision transaction."""
+
+    def move_to_recruiting_stage(
+        self,
+        context: TenantContext,
+        invitation_id: UUID,
+        *,
+        recruiting_stage_id: UUID,
+        expected_pipeline_version: int,
+    ) -> RecruitingStageDecision: ...
+
+
 def close_invitation_review(
     invitations: InvitationStateAdvancer,
     context: TenantContext,
@@ -63,9 +93,9 @@ def close_invitation_review(
     stayed at "검토 대기" in the console no matter how many decisions were made — the counter for
     "검토 완료" reads `status == "reviewed"`, and nothing in the codebase produced that state.
 
-    Returns the state the invitation ended in, so the caller can report what happened. Failing
-    to advance is not raised: the decision itself is already recorded and is the part that must
-    not be lost, and a stale or already-reviewed invitation is not the reviewer's problem.
+    Returns the state the invitation ended in, so the caller can report what happened. Errors
+    are intentionally propagated so the HTTP transaction can roll the stage, audit review and
+    invitation-state writes back together.
     """
     authorization = invitations.authorize_invitation(
         context,
@@ -131,7 +161,7 @@ class ReviewService:
     ) -> HumanReview:
         if context.actor_type is not ActorType.COMPANY_USER:
             raise PermissionError("review artifact requires a company user")
-        if review_type not in {ReviewType.NOTE, ReviewType.BOOKMARK}:
+        if review_type is not ReviewType.NOTE:
             raise ValueError("unsupported review artifact")
         review = HumanReview(
             human_review_id=new_uuid7(occurred_at),
@@ -166,6 +196,30 @@ class ReviewService:
             actor_type=context.actor_type,
             decision=decision,
             reason=reason,
+            created_at=occurred_at,
+        )
+        return self._repository.save_review(context, review)
+
+    def record_recruiting_stage_decision(
+        self,
+        context: TenantContext,
+        *,
+        report_id: UUID,
+        invitation_id: UUID,
+        recruiting_stage_id: UUID,
+        recruiting_stage_name: str,
+        occurred_at: datetime,
+    ) -> HumanReview:
+        self._repository.get_report(context, report_id)
+        review = HumanReview.recruiting_stage_decision(
+            human_review_id=new_uuid7(occurred_at),
+            company_id=context.company_id,
+            report_id=report_id,
+            company_user_id=context.actor_id,
+            invitation_id=invitation_id,
+            actor_type=context.actor_type,
+            recruiting_stage_id=recruiting_stage_id,
+            recruiting_stage_name=recruiting_stage_name,
             created_at=occurred_at,
         )
         return self._repository.save_review(context, review)

@@ -484,6 +484,22 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/invitations/{invitation_id}/recruiting-state": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["getApplicantRecruitingState"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/recruiting-stages": {
         readonly parameters: {
             readonly query?: never;
@@ -933,9 +949,21 @@ export interface components {
             readonly video_start_ms: number;
         };
         readonly FinalDecisionCreate: {
-            /** @enum {string} */
-            readonly decision: "advance" | "reject" | "hold" | "withdrawn";
-            readonly reason: string;
+            readonly expected_pipeline_version: number;
+            /** Format: uuid */
+            readonly recruiting_stage_id: string;
+        };
+        readonly FinalDecisionView: {
+            readonly human_review: components["schemas"]["HumanReviewView"];
+            /** Format: uuid */
+            readonly invitation_id: string;
+            readonly invitation_state: string;
+            readonly pipeline_row_version: number;
+            /** Format: uuid */
+            readonly position_id: string;
+            /** Format: uuid */
+            readonly recruiting_stage_id: string;
+            readonly recruiting_stage_name: string;
         };
         readonly HumanAssessmentReviewCreate: {
             readonly assessment_state: components["schemas"]["AssessmentState"];
@@ -948,11 +976,11 @@ export interface components {
             readonly created_by: string;
             /** Format: uuid */
             readonly human_review_id: string;
-            /** @description The reviewer's own justification, required when overruling the AI or recording a final decision. Stored since those endpoints existed but not previously returned, so the console had no way to show it back. */
+            /** @description The reviewer's own justification when overruling an AI assessment. Dynamic recruiting-stage decisions do not require a separate reason. */
             readonly reason?: string | null;
             /** @enum {string} */
             readonly review_type: "assessment_override" | "note" | "bookmark" | "final_decision";
-            /** @description What was recorded: the decision for a final_decision, the note text for a bookmark, the new assessment state for an override. Without it the review history can say a decision was made and not which one. */
+            /** @description What was recorded: recruiting stage id and name for a final decision, note text for a note, or the new assessment state for an override. */
             readonly value?: Readonly<Record<string, never>> | Readonly<Record<string, unknown>>;
         };
         readonly InterviewerProfile: components["schemas"]["InterviewerProfileCreate"] & {
@@ -1076,6 +1104,16 @@ export interface components {
         };
         readonly RecruitingStagePage: {
             readonly items: readonly components["schemas"]["RecruitingStage"][];
+        };
+        readonly ApplicantRecruitingState: {
+            /** Format: uuid */
+            readonly invitation_id: string;
+            readonly pipeline_row_version: number;
+            /** Format: uuid */
+            readonly position_id: string;
+            /** Format: uuid */
+            readonly recruiting_stage_id: string;
+            readonly stages: readonly components["schemas"]["RecruitingStage"][];
         };
         readonly ApplicantPipelineAssignment: {
             /** Format: uuid */
@@ -1270,8 +1308,8 @@ export interface components {
             readonly unscored_criteria_count?: number;
         };
         readonly ReviewArtifactCreate: {
-            /** @enum {string} */
-            readonly review_type: "note" | "bookmark";
+            /** @constant */
+            readonly review_type: "note";
             /** Format: uuid */
             readonly target_id: string;
             readonly value: string;
@@ -1922,7 +1960,7 @@ export interface operations {
             };
         };
         readonly responses: {
-            /** @description Note or bookmark created */
+            /** @description Reviewer note created */
             readonly 201: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -2167,13 +2205,13 @@ export interface operations {
             };
         };
         readonly responses: {
-            /** @description Human-authored final decision record */
+            /** @description Recruiting stage updated with its human decision audit record */
             readonly 201: {
                 headers: {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["HumanReviewView"];
+                    readonly "application/json": components["schemas"]["FinalDecisionView"];
                 };
             };
             readonly default: components["responses"]["Error"];
@@ -2481,6 +2519,29 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["InvitationBatchResult"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly getApplicantRecruitingState: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly invitation_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Live applicant recruiting stage and the position's configurable stages */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApplicantRecruitingState"];
                 };
             };
             readonly default: components["responses"]["Error"];

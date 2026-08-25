@@ -45,7 +45,10 @@ from interview_evidence.integration.production_deletion import (
     RelationalTargetVerifier,
     SearchTargetVerifier,
 )
-from interview_evidence.integration.reporting_company import ReportingCompanyBoundary
+from interview_evidence.integration.reporting_company import (
+    ReportingCompanyBoundary,
+    ReportingHiringBoundary,
+)
 from interview_evidence.integration.submission_interview import (
     SubmissionInterviewBoundary,
 )
@@ -380,6 +383,7 @@ def create_production_runtime(
         },
         outbox=outbox,
     )
+    reporting_hiring = ReportingHiringBoundary(company_public, lane_a.hiring_service)
     lane_d = create_lane_d_runtime(
         principal_provider=principals,
         repository=base_lane_d.repository,
@@ -387,7 +391,7 @@ def create_production_runtime(
         clock=clock,
         deletion_service=deletion_service,
         rationale_provider=interview_public,
-        invitations=company_public,
+        invitations=reporting_hiring,
     )
     media_processor = MediaPostProcessor(lane_d.repository)
     interview_reporting = InterviewReportingBoundary(
@@ -487,7 +491,7 @@ def create_production_runtime(
                 audit=audit,
                 clock=clock,
                 deletion_service=lane_d.deletion_service,
-                invitations=company_public,
+                invitations=reporting_hiring,
                 # The presigner comes from the media bucket's own storage adapter, so the
                 # URL the console puts in `<video src>` is a signed read of the assembled
                 # recording rather than a placeholder host that resolves nowhere.
