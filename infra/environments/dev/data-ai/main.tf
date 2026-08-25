@@ -68,7 +68,7 @@ module "data" {
   force_destroy                  = true
   create_application_secret      = false
   aurora_min_capacity            = 0.5
-  aurora_max_capacity            = 8
+  aurora_max_capacity            = 4
   aurora_backup_retention_period = 1
   tags                           = local.tags
 }
