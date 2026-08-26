@@ -15,6 +15,8 @@ import {
   PositionStep,
 } from "./steps/HiringSteps";
 import {
+  createDefaultCriteria,
+  inferRequirementCriterionCode,
   initialHiringDraft,
   type CriteriaConfiguration,
   type CriteriaHiringStep,
@@ -39,7 +41,7 @@ const stepCopy = {
   evaluation: {
     eyebrow: "3 / 4 · 평가 설계",
     title: "어떤 기준으로 평가할까요?",
-    description: "필수·우대 자격요건과 평가 가중치를 설정합니다.",
+    description: "필수·우대 자격요건과 답변 평가 관점을 설정합니다.",
   },
   interview: {
     eyebrow: "4 / 4 · 면접 운영",
@@ -60,8 +62,8 @@ const HIRING_PANEL = "min-w-0 overflow-visible";
 
 const positionSteps: PositionHiringStep[] = ["position", "application"];
 const criteriaSteps: CriteriaHiringStep[] = ["evaluation", "interview"];
-const hiringDraftStorageKey = "iep.company-console.hiring-draft.v1";
-const hiringDraftStorageVersion = 1;
+const hiringDraftStorageKey = "iep.company-console.hiring-draft.v2";
+const hiringDraftStorageVersion = 2;
 
 function readStoredDraft(): HiringDraft {
   if (typeof window === "undefined" || import.meta.env.MODE === "test") {
@@ -83,17 +85,16 @@ function readStoredDraft(): HiringDraft {
     const restored = {
       ...initialHiringDraft,
       ...parsed.draft,
-      techStack: Array.isArray(parsed.draft.techStack)
-        ? parsed.draft.techStack.filter(
-            (technology): technology is string =>
-              typeof technology === "string",
-          )
-        : [],
       descriptionCompleted: parsed.draft.descriptionCompleted === true,
     };
     return {
       ...restored,
-      criteria: normalizeCriterionWeights(restored.criteria),
+      criteria: createDefaultCriteria(),
+      jobRequirements: restored.jobRequirements.map((requirement, index) => ({
+        ...requirement,
+        priority: Math.min(index + 1, 5),
+        criterionCode: inferRequirementCriterionCode(requirement.statement),
+      })),
     };
   } catch {
     return initialHiringDraft;
@@ -295,37 +296,29 @@ export function toCriteriaConfiguration(
   draft: HiringDraft,
 ): CriteriaConfiguration {
   return {
-    jobRequirements: draft.jobRequirements.map((requirement) => ({
+    jobRequirements: draft.jobRequirements.map((requirement, index) => ({
       requirementType: requirement.requirementType,
       statement: requirement.statement.trim(),
-      priority: requirement.priority,
-      criterionCode: requirement.criterionCode,
+      priority: Math.min(index + 1, 5),
+      criterionCode: inferRequirementCriterionCode(requirement.statement),
     })),
-    criteria: draft.criteria.map((criterion) => {
-      const linkedRequirement = draft.jobRequirements.find(
-        (requirement) => requirement.criterionCode === criterion.code,
-      );
-      const evaluationAxis =
-        linkedRequirement?.statement.trim() || criterion.name.trim();
-
-      return {
-        code: criterion.code,
-        name: evaluationAxis,
-        description: criterion.description.trim() || evaluationAxis,
-        weight: criterion.weight,
-        required: criterion.required,
-        verificationGuide: {
-          observableDimensions: splitLines(criterion.observableDimensions),
-          strongAnswerSignals: splitLines(criterion.strongAnswerSignals),
-          weakAnswerSignals: splitLines(criterion.weakAnswerSignals),
-          followUpDirections: splitLines(criterion.followUpDirections),
-          maxFollowUps: criterion.maxFollowUps,
-          timeBudgetSeconds: criterion.timeBudgetSeconds,
-        },
-        abstainGuidance: criterion.abstainGuidance.trim(),
-        commonQuestions: splitLines(criterion.commonQuestions),
-      };
-    }),
+    criteria: draft.criteria.map((criterion) => ({
+      code: criterion.code,
+      name: criterion.name.trim(),
+      description: criterion.description.trim(),
+      weight: criterion.weight,
+      required: criterion.required,
+      verificationGuide: {
+        observableDimensions: splitLines(criterion.observableDimensions),
+        strongAnswerSignals: splitLines(criterion.strongAnswerSignals),
+        weakAnswerSignals: splitLines(criterion.weakAnswerSignals),
+        followUpDirections: splitLines(criterion.followUpDirections),
+        maxFollowUps: criterion.maxFollowUps,
+        timeBudgetSeconds: criterion.timeBudgetSeconds,
+      },
+      abstainGuidance: criterion.abstainGuidance.trim(),
+      commonQuestions: splitLines(criterion.commonQuestions),
+    })),
     prohibitedTopics: splitCommaSeparated(draft.prohibitedTopics),
     interviewDurationMinutes: draft.interviewDurationMinutes,
     interviewLevel: draft.interviewLevel,
@@ -338,41 +331,6 @@ export function toCriteriaConfiguration(
       voiceId: draft.interviewerVoiceId,
     },
   };
-}
-
-function normalizeCriterionWeights(criteria: HiringDraft["criteria"]) {
-  if (criteria.length === 0) return criteria;
-  const total = criteria.reduce((sum, criterion) => sum + criterion.weight, 0);
-  if (total === 100) return criteria;
-  if (total <= 0) {
-    return distributeEvenly(criteria);
-  }
-  return distributeByRatio(criteria, 100, total);
-}
-
-function distributeEvenly(criteria: HiringDraft["criteria"]) {
-  const base = Math.floor(100 / criteria.length);
-  let remainder = 100 - base * criteria.length;
-  return criteria.map((criterion) => ({
-    ...criterion,
-    weight: base + (remainder-- > 0 ? 1 : 0),
-  }));
-}
-
-function distributeByRatio(
-  criteria: HiringDraft["criteria"],
-  targetTotal: number,
-  currentTotal: number,
-) {
-  let assigned = 0;
-  return criteria.map((criterion, index) => {
-    const weight =
-      index === criteria.length - 1
-        ? targetTotal - assigned
-        : Math.round((criterion.weight / currentTotal) * targetTotal);
-    assigned += weight;
-    return { ...criterion, weight };
-  });
 }
 
 function splitLines(value: string) {

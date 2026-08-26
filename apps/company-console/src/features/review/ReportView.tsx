@@ -17,6 +17,8 @@ import type {
   ReviewReport,
   ReviewReportItem,
   ReviewTimeline,
+  RequirementAssessment,
+  RequirementAssessmentStatus,
   ScoreBreakdown,
 } from "./types";
 
@@ -121,6 +123,7 @@ const reportTabs = [
   { id: "overview", label: "종합평가" },
   { id: "criteria", label: "기준별 평가" },
   { id: "timeline", label: "면접 타임라인" },
+  { id: "requirements", label: "자격요건 충족도" },
   { id: "followups", label: "추가 확인" },
 ] as const;
 
@@ -159,6 +162,7 @@ export function ReportView({
   selectedStartMs,
   onSelectEvidence,
   onOverride,
+  onOverrideRequirement,
 }: {
   report: ReviewReport;
   /** Resolves a citation to the answer it quoted. Absent leaves the spans unresolved. */
@@ -172,8 +176,14 @@ export function ReportView({
     assessmentState: AssessmentState,
     reason: string,
   ): Promise<void>;
+  onOverrideRequirement?(
+    requirementAssessmentId: string,
+    requirementStatus: RequirementAssessmentStatus,
+    reason: string,
+  ): Promise<void>;
 }) {
   const [activeTab, setActiveTab] = useState<ReportTab>("overview");
+  const requirementAssessments = report.requirementAssessments ?? [];
   const availableTabs = timeline
     ? reportTabs
     : reportTabs.filter((tab) => tab.id !== "timeline");
@@ -323,6 +333,12 @@ export function ReportView({
                     onOverride={onOverride}
                   />
                 ) : null}
+                {activeTab === "requirements" ? (
+                  <RequirementsPage
+                    assessments={requirementAssessments}
+                    onOverride={onOverrideRequirement}
+                  />
+                ) : null}
                 {activeTab === "followups" ? (
                   <FollowUpPage report={report} />
                 ) : null}
@@ -341,6 +357,251 @@ export function ReportView({
         </>
       )}
     </section>
+  );
+}
+
+const requirementStatusLabels: Record<RequirementAssessmentStatus, string> = {
+  met: "충족",
+  partially_met: "부분 충족",
+  not_met: "미충족",
+  unknown: "판단 불가",
+};
+
+const requirementStatusTone: Record<RequirementAssessmentStatus, string> = {
+  met: "bg-success-soft text-success",
+  partially_met: "bg-warning-soft text-warning",
+  not_met: "bg-danger-soft text-danger",
+  unknown: "bg-surface-strong text-muted",
+};
+
+function RequirementsPage({
+  assessments,
+  onOverride,
+}: {
+  assessments: RequirementAssessment[];
+  onOverride?(
+    requirementAssessmentId: string,
+    requirementStatus: RequirementAssessmentStatus,
+    reason: string,
+  ): Promise<void>;
+}) {
+  if (assessments.length === 0) {
+    return (
+      <div className="grid gap-3">
+        <p className={REPORT_EMPTY}>
+          이 리포트에는 자격요건 충족도 판정이 없습니다. 기존 리포트는 그대로
+          유지되며 새로 생성되는 리포트부터 별도 판정이 추가됩니다.
+        </p>
+      </div>
+    );
+  }
+  const required = assessments.filter(
+    (item) => item.requirementType === "required",
+  );
+  const preferred = assessments.filter(
+    (item) => item.requirementType === "preferred",
+  );
+
+  return (
+    <div className="grid gap-4">
+      <p className="rounded-e-[5px] border-l-2 border-brand bg-brand-soft px-3 py-2.5 text-[9px] leading-[1.65] text-ink-secondary">
+        자격요건 충족도는 제출 자료와 면접 답변의 근거 유무를 보여주는 별도
+        정보입니다. 면접 역량 점수에는 더하거나 빼지 않으며, 근거가 없으면
+        미충족이 아니라 판단 불가로 표시합니다.
+      </p>
+      <RequirementGroup
+        assessments={required}
+        label="필수 자격"
+        onOverride={onOverride}
+      />
+      <RequirementGroup
+        assessments={preferred}
+        label="우대 사항"
+        onOverride={onOverride}
+      />
+    </div>
+  );
+}
+
+function RequirementGroup({
+  label,
+  assessments,
+  onOverride,
+}: {
+  label: string;
+  assessments: RequirementAssessment[];
+  onOverride?(
+    requirementAssessmentId: string,
+    requirementStatus: RequirementAssessmentStatus,
+    reason: string,
+  ): Promise<void>;
+}) {
+  return (
+    <section className={REPORT_SECTION} aria-label={label}>
+      <h4 className={REPORT_SECTION_HEADING}>{label}</h4>
+      {assessments.length ? (
+        <div className="grid gap-2.5">
+          {assessments.map((assessment, index) => (
+            <RequirementCard
+              assessment={assessment}
+              index={index}
+              key={assessment.requirementAssessmentId}
+              onOverride={onOverride}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className={REPORT_EMPTY}>등록된 항목이 없습니다.</p>
+      )}
+    </section>
+  );
+}
+
+function RequirementCard({
+  assessment,
+  index,
+  onOverride,
+}: {
+  assessment: RequirementAssessment;
+  index: number;
+  onOverride?(
+    requirementAssessmentId: string,
+    requirementStatus: RequirementAssessmentStatus,
+    reason: string,
+  ): Promise<void>;
+}) {
+  const initialStatus = assessment.humanOverride?.status ?? assessment.status;
+  const [status, setStatus] =
+    useState<RequirementAssessmentStatus>(initialStatus);
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+  const changed = status !== initialStatus;
+
+  async function save() {
+    if (!onOverride || saving || !changed || !reason.trim()) return;
+    setSaving(true);
+    setSaved(false);
+    setError("");
+    try {
+      await onOverride(
+        assessment.requirementAssessmentId,
+        status,
+        reason.trim(),
+      );
+      setSaved(true);
+    } catch (cause) {
+      console.error("requirement override failed", cause);
+      setError(
+        reviewErrorMessage(cause, "자격요건 판단을 기록하지 못했습니다."),
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <article className="grid gap-2 rounded-md border border-border-muted bg-surface-muted/50 p-3 break-inside-avoid">
+      <header className="flex items-start justify-between gap-3">
+        <strong className="text-[11px] leading-[1.55] text-ink">
+          {assessment.statement}
+        </strong>
+        <span
+          className={`${BADGE_BASE} ${requirementStatusTone[initialStatus]}`}
+        >
+          {assessment.humanOverride ? "사람 판단 · " : ""}
+          {requirementStatusLabels[initialStatus]}
+        </span>
+      </header>
+      <p className="text-[9px] leading-[1.65] text-muted">
+        {assessment.rationale}
+      </p>
+      <span className="font-mono text-[8px] text-subtle">
+        근거 {assessment.evidence.length}건
+        {assessment.status === "unknown"
+          ? " · 신뢰도 계산 안 함"
+          : ` · 판정 신뢰도 ${Math.round(assessment.confidence * 100)}%`}
+      </span>
+      {assessment.evidence.length ? (
+        <div className="grid gap-1.5">
+          {assessment.evidence.map((evidence) => (
+            <div
+              className="rounded-md border border-border-muted bg-surface px-2.5 py-2"
+              key={`${assessment.requirementAssessmentId}-${evidence.evidenceId}`}
+            >
+              <div className="flex flex-wrap items-center gap-1.5 text-[8px] text-subtle">
+                <b className="text-brand">
+                  {evidence.sourceKind === "interview"
+                    ? "면접 답변"
+                    : "제출 자료"}
+                </b>
+                <span>{sourceTypeLabel(evidence.sourceType)}</span>
+                <span>{formatLocator(evidence.locator)}</span>
+              </div>
+              <p className="mt-1 text-[9px] leading-[1.55] text-ink-secondary">
+                {evidence.excerpt}
+              </p>
+              <p className="mt-1 text-[8px] leading-[1.5] text-muted">
+                {evidence.explanation}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {onOverride ? (
+        <div className="grid gap-1.5 border-t border-border-muted pt-2 print:hidden">
+          <label className="grid gap-1">
+            <span className="text-[8px] font-semibold text-ink-secondary">
+              사람 판단
+            </span>
+            <select
+              aria-label={`자격요건 사람 판단 ${index + 1}`}
+              className="min-h-[32px] rounded-md border border-border bg-surface px-2 text-[9px]"
+              value={status}
+              onChange={(event) => {
+                setStatus(event.target.value as RequirementAssessmentStatus);
+                setSaved(false);
+              }}
+            >
+              <option value="met">충족</option>
+              <option value="partially_met">부분 충족</option>
+              <option value="not_met">미충족</option>
+              <option value="unknown">판단 불가</option>
+            </select>
+          </label>
+          {changed ? (
+            <>
+              <textarea
+                aria-label={`자격요건 수정 사유 ${index + 1}`}
+                className="min-h-[52px] resize-y rounded-md border border-border bg-surface px-2 py-1.5 text-[9px] leading-[1.5]"
+                placeholder="자료와 답변을 확인한 판단 근거를 적어 주세요."
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+              />
+              <button
+                className={`${BUTTON_SECONDARY} justify-self-start`}
+                disabled={!reason.trim() || saving}
+                type="button"
+                onClick={() => void save()}
+              >
+                {saving ? "저장 중…" : "사람 판단 저장"}
+              </button>
+            </>
+          ) : null}
+          {saved ? (
+            <p className="text-[8px] text-success" role="status">
+              사람 판단을 별도로 기록했습니다.
+            </p>
+          ) : null}
+          {error ? (
+            <p className="text-[8px] text-danger" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </article>
   );
 }
 

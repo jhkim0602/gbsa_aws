@@ -11,6 +11,11 @@ from interview_evidence.reporting.application.assessment_service import (
     CriterionAssessor,
 )
 from interview_evidence.reporting.application.evidence_service import EvidenceService
+from interview_evidence.reporting.application.requirement_assessment import (
+    RequirementAssessor,
+    RequirementDefinition,
+    RequirementEvidenceCandidate,
+)
 from interview_evidence.reporting.domain.report import (
     COMMUNICATION_SEPARATED_CONFIG_VERSION,
     AssessmentState,
@@ -20,6 +25,7 @@ from interview_evidence.reporting.domain.report import (
     ReportItem,
     ReportKind,
     ReportStatus,
+    RequirementAssessment,
     Sufficiency,
 )
 from interview_evidence.reporting.domain.timeline import (
@@ -64,12 +70,21 @@ class CriterionInput:
     weight: float = 1.0
 
 
+@dataclass(frozen=True, slots=True)
+class RequirementInput:
+    job_requirement_id: UUID
+    requirement_type: str
+    statement: str
+    material_evidence: tuple[RequirementEvidenceCandidate, ...] = ()
+
+
 class ReportGenerator:
     def __init__(
         self,
         repository: ReportingRepository,
         evidence_service: EvidenceService,
         assessor: CriterionAssessor | None = None,
+        requirement_assessor: RequirementAssessor | None = None,
     ) -> None:
         self._repository = repository
         self._evidence_service = evidence_service
@@ -77,6 +92,7 @@ class ReportGenerator:
         # before scoring existed look the same way, and the console reads both as
         # "no scores on this report".
         self._assessor = assessor
+        self._requirement_assessor = requirement_assessor
 
     def generate(
         self,
@@ -86,6 +102,7 @@ class ReportGenerator:
         invitation_id: UUID,
         competency_model_version_id: UUID,
         criteria: tuple[CriterionInput, ...],
+        requirements: tuple[RequirementInput, ...] = (),
         recording: RecordingAsset,
         events: tuple[SessionEvent, ...],
         occurred_at: datetime,
@@ -197,6 +214,13 @@ class ReportGenerator:
                     axis_weights=dict(axis_weights or {}),
                 )
             )
+        requirement_assessments = self._assess_requirements(
+            context,
+            requirements=requirements,
+            criteria=criteria,
+            report_items=tuple(items),
+            model_config_version=model_config_version,
+        )
         report = Report(
             report_id=report_id,
             company_id=context.company_id,
@@ -213,8 +237,54 @@ class ReportGenerator:
             summary="평가 질문별 최종 답변 Evidence에 기반한 AI 원본 리포트",
             created_at=occurred_at,
             items=tuple(items),
+            requirement_assessments=requirement_assessments,
         )
         return self._repository.save_report(context, report)
+
+    def _assess_requirements(
+        self,
+        context: TenantContext,
+        *,
+        requirements: tuple[RequirementInput, ...],
+        criteria: tuple[CriterionInput, ...],
+        report_items: tuple[ReportItem, ...],
+        model_config_version: str,
+    ) -> tuple[RequirementAssessment, ...]:
+        if self._requirement_assessor is None or not requirements:
+            return ()
+        answers_by_turn = {
+            answer.answer_turn_id: answer for criterion in criteria for answer in criterion.answers
+        }
+        interview_evidence = tuple(
+            RequirementEvidenceCandidate(
+                evidence_id=evidence.evidence_id,
+                source_kind="interview",
+                source_type="interview_answer",
+                excerpt=answers_by_turn[evidence.answer_turn_id].transcript.text,
+                locator={
+                    "answer_turn_id": str(evidence.answer_turn_id),
+                    "transcript_segment_id": str(evidence.transcript_segment_id),
+                    "video_start_ms": evidence.video_start_ms,
+                    "video_end_ms": evidence.video_end_ms,
+                },
+            )
+            for item in report_items
+            for evidence in item.evidence
+            if evidence.answer_turn_id in answers_by_turn
+        )
+        return tuple(
+            self._requirement_assessor.assess(
+                context,
+                requirement=RequirementDefinition(
+                    job_requirement_id=requirement.job_requirement_id,
+                    requirement_type=requirement.requirement_type,
+                    statement=requirement.statement,
+                ),
+                candidates=(*requirement.material_evidence, *interview_evidence),
+                model_config_version=model_config_version,
+            )
+            for requirement in requirements
+        )
 
     @staticmethod
     def _unscored_item(

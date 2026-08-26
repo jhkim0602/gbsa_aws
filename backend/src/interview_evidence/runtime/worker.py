@@ -32,9 +32,17 @@ from interview_evidence.reporting.api import LaneDRuntime
 from interview_evidence.reporting.application.assessment_service import CriterionAssessor
 from interview_evidence.reporting.application.deletion_service import DeletionService
 from interview_evidence.reporting.application.evidence_service import EvidenceService
+from interview_evidence.reporting.application.requirement_assessment import (
+    RequirementAssessor,
+    RequirementEvidenceCandidate,
+)
 from interview_evidence.reporting.domain.timeline import TranscriptSegment
 from interview_evidence.runtime.document_ai import create_document_extractor
-from interview_evidence.shared.aws_clients.ports import ConsumableQueue, InMemoryQueue
+from interview_evidence.shared.aws_clients.ports import (
+    ConsumableQueue,
+    InMemoryQueue,
+    TextEmbedder,
+)
 from interview_evidence.shared.aws_clients.task_protection import (
     TaskProtection,
     create_task_protection,
@@ -55,6 +63,9 @@ from interview_evidence.shared.tenant import TenantContext
 from interview_evidence.shared.tracing import configure_worker_tracing
 from interview_evidence.submission_analysis.adapters.search import SearchIndex
 from interview_evidence.submission_analysis.api import LaneBRuntime
+from interview_evidence.submission_analysis.application.public import (
+    SubmissionAnalysisPublic,
+)
 from interview_evidence.workers.analysis.event_handler import (
     AnalysisCompletedEventHandler,
     AnalysisRequestedEventHandler,
@@ -70,6 +81,7 @@ from interview_evidence.workers.reporting.report import (
     CriterionAnswerInput,
     CriterionInput,
     ReportGenerator,
+    RequirementInput,
 )
 
 EVENT_QUEUE_ROUTING = {
@@ -303,6 +315,8 @@ class ReportRequestedEventHandler:
         generator: ReportGenerator,
         clock: Clock,
         assistant_projector: ReportSearchProjector | None = None,
+        submission: SubmissionAnalysisPublic | None = None,
+        embedder: TextEmbedder | None = None,
     ) -> None:
         self._company = company
         self._interview = interview
@@ -310,6 +324,8 @@ class ReportRequestedEventHandler:
         self._generator = generator
         self._clock = clock
         self._assistant_projector = assistant_projector
+        self._submission = submission
+        self._embedder = embedder
 
     def __call__(self, context: TenantContext, event: OutboxEvent) -> object:
         session_id = UUID(str(event.payload["interview_session_id"]))
@@ -372,12 +388,20 @@ class ReportRequestedEventHandler:
             )
             for criterion_item in criterion.criteria
         )
+        requirements = self._requirement_inputs(
+            context,
+            applicant_id=subject.applicant_id,
+            invitation_id=snapshot.invitation_id,
+            competency_model_version_id=snapshot.competency_model_version_id,
+            requirements=criterion.job_requirements,
+        )
         report = self._generator.generate(
             context,
             session_id=session_id,
             invitation_id=snapshot.invitation_id,
             competency_model_version_id=snapshot.competency_model_version_id,
             criteria=inputs,
+            requirements=requirements,
             recording=recording,
             events=self._reporting.repository.list_session_events(context, session_id),
             occurred_at=self._clock.now(),
@@ -395,6 +419,67 @@ class ReportRequestedEventHandler:
             )
         return report
 
+    def _requirement_inputs(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+        competency_model_version_id: UUID,
+        requirements: Sequence[_RequirementLike],
+    ) -> tuple[RequirementInput, ...]:
+        return tuple(
+            RequirementInput(
+                job_requirement_id=UUID(str(requirement.job_requirement_id)),
+                requirement_type=str(requirement.requirement_type),
+                statement=str(requirement.statement),
+                material_evidence=self._requirement_material_evidence(
+                    context,
+                    applicant_id=applicant_id,
+                    invitation_id=invitation_id,
+                    competency_model_version_id=competency_model_version_id,
+                    statement=str(requirement.statement),
+                ),
+            )
+            for requirement in requirements
+        )
+
+    def _requirement_material_evidence(
+        self,
+        context: TenantContext,
+        *,
+        applicant_id: UUID,
+        invitation_id: UUID,
+        competency_model_version_id: UUID,
+        statement: str,
+    ) -> tuple[RequirementEvidenceCandidate, ...]:
+        if self._submission is None or self._embedder is None:
+            return ()
+        results = self._submission.retrieve_context(
+            context,
+            applicant_id=applicant_id,
+            invitation_id=invitation_id,
+            competency_model_version_id=competency_model_version_id,
+            query=statement,
+            query_vector=self._embedder.embed(context, statement, dimensions=1024),
+            criterion_id=None,
+            config_version="requirement-assessment-retrieval-v1",
+            limit=6,
+            embedding_model=self._embedder.model_id,
+            embedding_version=self._embedder.embedding_version,
+        )
+        return tuple(
+            RequirementEvidenceCandidate(
+                evidence_id=result.source_id,
+                source_kind="submission",
+                source_type=(result.material_type or result.source_type),
+                excerpt=result.excerpt,
+                locator=result.locator,
+            )
+            for result in results
+            if result.score > 0
+        )
+
 
 class _TurnLike(Protocol):
     """The three fields pairing needs, so this helper is testable without a live Lane C."""
@@ -407,6 +492,17 @@ class _TurnLike(Protocol):
 
     @property
     def text(self) -> str | None: ...
+
+
+class _RequirementLike(Protocol):
+    @property
+    def job_requirement_id(self) -> UUID: ...
+
+    @property
+    def requirement_type(self) -> str: ...
+
+    @property
+    def statement(self) -> str: ...
 
 
 class _SpeakerLike(Protocol):
@@ -588,6 +684,7 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
     company = runtime.boundaries["company_management"]
     interview = runtime.boundaries["interview_engine"]
     reporting_boundary = runtime.boundaries["interview_reporting"]
+    submission = runtime.boundaries["submission_analysis"]
     assistant_projector = runtime.resources["assistant_projector"]
     lane_d = runtime.lanes["reporting"]
     if not isinstance(lane_b, LaneBRuntime):
@@ -598,6 +695,8 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
         raise TypeError("production interview boundary is invalid")
     if not isinstance(reporting_boundary, InterviewReportingBoundary):
         raise TypeError("production reporting projection is invalid")
+    if not isinstance(submission, SubmissionAnalysisPublic):
+        raise TypeError("production submission boundary is invalid")
     if not isinstance(lane_d, LaneDRuntime):
         raise TypeError("production reporting runtime is invalid")
     if not isinstance(assistant_projector, ReportSearchProjector):
@@ -706,9 +805,15 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
                         metrics=metrics,
                         require_scores=True,
                     ),
+                    RequirementAssessor(
+                        aws.model,
+                        require_assessment=True,
+                    ),
                 ),
                 clock=clock,
                 assistant_projector=assistant_projector,
+                submission=submission,
+                embedder=aws.embedder,
             ),
             "deletion.requested": DeletionRequestedEventHandler(
                 deletion_service,

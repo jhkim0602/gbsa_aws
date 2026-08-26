@@ -7,11 +7,8 @@ import type { ReactNode } from "react";
  * modal, which renders `CriteriaStep`). Descendant selectors resolved that automatically;
  * as utilities the caller has to declare it, which is what `variant` carries.
  *
- * `"prominent"` is the wizard's `.position-tech-stack` case, which enlarges the label and
- * hint. It cannot combine with the modal — `.position-tech-stack` only exists in
- * `PositionStep`, which the modal never renders.
  */
-export type FormVariant = "wizard" | "modal" | "prominent";
+export type FormVariant = "wizard" | "modal";
 
 // `.form-field input` is fully replaced inside `.hiring-panel`: transparent, bottom border
 // only, square, 14px/52px. The base 34px/6px/11px boxed input renders only in the modal.
@@ -37,15 +34,11 @@ const LABEL: Record<FormVariant, string> = {
   modal: "text-[10px] font-semibold",
   // `.hiring-panel .form-field__control > span > strong` lifts it to 11px.
   wizard: "text-[11px] font-semibold",
-  // `.hiring-panel .position-tech-stack ...` lifts it again to 15px/700.
-  prominent: "text-[15px] font-bold",
 };
 
-// `.form-field__hint` is 8px/-2px; `.position-tech-stack .form-field__hint` is 10px/+8px.
 const HINT: Record<FormVariant, string> = {
   modal: "-mt-0.5 text-[8px]",
   wizard: "-mt-0.5 text-[8px]",
-  prominent: "mt-2 text-[10px]",
 };
 
 export function Field({

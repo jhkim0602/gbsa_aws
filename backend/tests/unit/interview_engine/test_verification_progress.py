@@ -192,23 +192,17 @@ def _leveled_plan(
     )
 
 
-def test_the_level_decides_how_many_follow_ups_one_target_earns() -> None:
-    """The same criteria have to serve a 신입 and a 시니어 posting differently.
-
-    ``max_follow_ups`` is 2 on both targets here, so any difference in where the
-    interview moves next comes from the level rather than from the configuration.
-    """
+def test_every_level_uses_the_same_configured_follow_up_budget() -> None:
     entry = _leveled_plan(InterviewLevel.ENTRY)
     senior = _leveled_plan(InterviewLevel.SENIOR)
 
-    # One follow-up already asked: 신입 moves on, 시니어 keeps digging.
     assert (
         entry.next_target_after_answer(
             answered_target_id=FIRST_TARGET_ID,
             follow_up_count=1,
             completed_target_ids=frozenset(),
         ).verification_target_id
-        == SECOND_TARGET_ID
+        == FIRST_TARGET_ID
     )
     assert (
         senior.next_target_after_answer(
@@ -218,8 +212,8 @@ def test_the_level_decides_how_many_follow_ups_one_target_earns() -> None:
         ).verification_target_id
         == FIRST_TARGET_ID
     )
-    assert entry.follow_up_budget(entry.verification_targets[0]) == 1
-    assert senior.follow_up_budget(senior.verification_targets[0]) == 3
+    assert entry.follow_up_budget(entry.verification_targets[0]) == 2
+    assert senior.follow_up_budget(senior.verification_targets[0]) == 2
 
 
 def test_the_plan_refuses_to_open_a_criterion_the_clock_cannot_finish() -> None:

@@ -155,7 +155,7 @@ class SubmissionAnalysisPublic:
         competency_model_version_id: UUID,
         query: str,
         query_vector: tuple[float, ...],
-        criterion_id: UUID,
+        criterion_id: UUID | None,
         config_version: str,
         limit: int,
         exact_symbol: str | None = None,

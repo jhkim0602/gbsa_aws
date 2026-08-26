@@ -10,6 +10,7 @@ from interview_evidence.shared.tenant import ActorType
 
 class ReviewType(StrEnum):
     ASSESSMENT_OVERRIDE = "assessment_override"
+    REQUIREMENT_OVERRIDE = "requirement_override"
     NOTE = "note"
     BOOKMARK = "bookmark"
     FINAL_DECISION = "final_decision"
@@ -57,6 +58,33 @@ class HumanReview:
             review_type=ReviewType.ASSESSMENT_OVERRIDE,
             target_id=report_item_id,
             value={"assessment_state": assessment_state},
+            reason=reason,
+            created_at=created_at,
+        )
+
+    @classmethod
+    def requirement_override(
+        cls,
+        *,
+        human_review_id: UUID,
+        company_id: UUID,
+        report_id: UUID,
+        company_user_id: UUID,
+        requirement_assessment_id: UUID,
+        requirement_status: str,
+        reason: str,
+        created_at: datetime,
+    ) -> HumanReview:
+        if not reason.strip():
+            raise ValueError("requirement override reason is required")
+        return cls(
+            human_review_id=human_review_id,
+            company_id=company_id,
+            report_id=report_id,
+            company_user_id=company_user_id,
+            review_type=ReviewType.REQUIREMENT_OVERRIDE,
+            target_id=requirement_assessment_id,
+            value={"requirement_status": requirement_status},
             reason=reason,
             created_at=created_at,
         )

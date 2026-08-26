@@ -73,6 +73,7 @@ function report(overrides: Partial<ReviewReport> = {}): ReviewReport {
     unscoredCriteriaCount: 0,
     scoringBreakdown: null,
     items: [item()],
+    requirementAssessments: [],
     ...overrides,
   };
 }
@@ -91,6 +92,34 @@ function renderReport(
 }
 
 describe("report scoring", () => {
+  it("shows qualification fulfillment separately from interview scores", () => {
+    renderReport(
+      report({
+        requirementAssessments: [
+          {
+            requirementAssessmentId: "requirement-assessment-1",
+            jobRequirementId: "requirement-1",
+            requirementType: "required",
+            statement: "Java 기반 서비스 개발 경험",
+            status: "unknown",
+            rationale: "관련 근거를 찾지 못했습니다.",
+            confidence: 0,
+            evidence: [],
+            humanOverride: null,
+          },
+        ],
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "자격요건 충족도" }));
+
+    expect(screen.getByText("Java 기반 서비스 개발 경험")).toBeTruthy();
+    expect(screen.getByText("판단 불가")).toBeTruthy();
+    expect(
+      screen.getByText(/면접 역량 점수에는 더하거나 빼지 않으며/),
+    ).toBeTruthy();
+  });
+
   it("opens on 종합평가 and shows the score beside what it does not cover", () => {
     renderReport(
       report({

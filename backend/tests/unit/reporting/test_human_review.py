@@ -63,6 +63,25 @@ def test_only_company_user_can_author_final_decision() -> None:
         )
 
 
+def test_requirement_override_is_a_separate_append_only_review() -> None:
+    requirement_assessment_id = UUID("00000000-0000-7000-8000-000000000009")
+
+    review = HumanReview.requirement_override(
+        human_review_id=UUID("00000000-0000-7000-8000-000000000010"),
+        company_id=COMPANY_ID,
+        report_id=UUID("00000000-0000-7000-8000-000000000002"),
+        company_user_id=UUID("00000000-0000-7000-8000-000000000006"),
+        requirement_assessment_id=requirement_assessment_id,
+        requirement_status="partially_met",
+        reason="자료에는 관련 경험이 있으나 직접 수행 범위는 추가 확인이 필요합니다.",
+        created_at=NOW,
+    )
+
+    assert review.review_type is ReviewType.REQUIREMENT_OVERRIDE
+    assert review.target_id == requirement_assessment_id
+    assert review.value == {"requirement_status": "partially_met"}
+
+
 def test_new_review_artifacts_only_accept_notes() -> None:
     note = ReviewArtifactCreate(
         review_type="note",

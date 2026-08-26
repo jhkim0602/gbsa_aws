@@ -97,6 +97,8 @@ paths:
     $ref: ./paths/reporting/paths.yaml#/~1interview-sessions~1{session_id}~1timeline
   /reports/{report_id}/items/{report_item_id}/reviews:
     $ref: ./paths/reporting/paths.yaml#/~1reports~1{report_id}~1items~1{report_item_id}~1reviews
+  /reports/{report_id}/requirements/{requirement_assessment_id}/reviews:
+    $ref: ./paths/reporting/paths.yaml#/~1reports~1{report_id}~1requirements~1{requirement_assessment_id}~1reviews
   /interview-sessions/{session_id}/review-artifacts:
     $ref: ./paths/reporting/paths.yaml#/~1interview-sessions~1{session_id}~1review-artifacts
   /invitations/{invitation_id}/final-decisions:
@@ -767,14 +769,10 @@ components:
         required:
           type: boolean
     InterviewLevel:
-      description: 'How deep the AI interviewer digs. The level shifts the follow-up
-        budget the
-
-        criteria configure and selects the question-depth instructions the model is
-
-        given; it never changes which criteria are verified. Versions published before
-
-        the toggle existed read back as `junior`.
+      description: 'How deep the AI interviewer digs. The level selects the
+        question-depth instructions the model is given; it never changes the configured
+        follow-up budget or which criteria are verified. Versions published before the
+        toggle existed read back as `junior`.
 
         '
       type: string
@@ -2309,6 +2307,108 @@ components:
           minimum: 0
         axis_breakdown:
           $ref: '#/components/schemas/ScoreBreakdown'
+    RequirementAssessmentStatus:
+      type: string
+      enum:
+      - met
+      - partially_met
+      - not_met
+      - unknown
+    RequirementEvidenceView:
+      type: object
+      additionalProperties: false
+      required:
+      - evidence_id
+      - source_kind
+      - source_type
+      - excerpt
+      - locator
+      - relation
+      - explanation
+      properties:
+        evidence_id:
+          type: string
+          format: uuid
+        source_kind:
+          type: string
+          enum:
+          - submission
+          - interview
+        source_type:
+          type: string
+        excerpt:
+          type: string
+        locator:
+          type: object
+          additionalProperties: true
+        relation:
+          type: string
+          enum:
+          - supports
+          - partially_supports
+          - contradicts
+        explanation:
+          type: string
+    RequirementHumanOverrideView:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      - reason
+      - created_at
+      properties:
+        status:
+          $ref: '#/components/schemas/RequirementAssessmentStatus'
+        reason:
+          type:
+          - string
+          - 'null'
+        created_at:
+          type: string
+          format: date-time
+    RequirementAssessmentView:
+      type: object
+      additionalProperties: false
+      required:
+      - requirement_assessment_id
+      - job_requirement_id
+      - requirement_type
+      - statement
+      - status
+      - rationale
+      - confidence
+      - evidence
+      - human_override
+      properties:
+        requirement_assessment_id:
+          type: string
+          format: uuid
+        job_requirement_id:
+          type: string
+          format: uuid
+        requirement_type:
+          type: string
+          enum:
+          - required
+          - preferred
+        statement:
+          type: string
+        status:
+          $ref: '#/components/schemas/RequirementAssessmentStatus'
+        rationale:
+          type: string
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/RequirementEvidenceView'
+        human_override:
+          oneOf:
+          - $ref: '#/components/schemas/RequirementHumanOverrideView'
+          - type: 'null'
     ReportView:
       type: object
       additionalProperties: false
@@ -2318,6 +2418,7 @@ components:
       - status
       - summary
       - items
+      - requirement_assessments
       - ai_original_immutable
       properties:
         report_id:
@@ -2339,6 +2440,11 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ReportItemView'
+        requirement_assessments:
+          description: Required and preferred qualification fulfillment, kept separate from interview scores.
+          type: array
+          items:
+            $ref: '#/components/schemas/RequirementAssessmentView'
         overall_score:
           description: 'Weighted mean across the criteria that could be scored, using
             the weights
@@ -2547,6 +2653,19 @@ components:
           type: string
           minLength: 1
           maxLength: 5000
+    HumanRequirementReviewCreate:
+      type: object
+      additionalProperties: false
+      required:
+      - requirement_status
+      - reason
+      properties:
+        requirement_status:
+          $ref: '#/components/schemas/RequirementAssessmentStatus'
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 5000
     ReviewArtifactCreate:
       type: object
       additionalProperties: false
@@ -2625,6 +2744,7 @@ components:
           type: string
           enum:
           - assessment_override
+          - requirement_override
           - note
           - bookmark
           - final_decision

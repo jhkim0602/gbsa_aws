@@ -2,7 +2,7 @@
 
 The toggle crosses three modules: Lane A stores it on the published competency version,
 the integration boundary copies it onto the interview plan, and Lane C turns it into a
-prompt template and a follow-up budget. A level that is stored but dropped at any hop
+prompt template. A level that is stored but dropped at any hop
 looks configured in the console while every interview stays identical, which is the
 failure this test exists to catch.
 
@@ -234,20 +234,20 @@ def _plan(level: InterviewLevel):
 @pytest.mark.parametrize(
     ("level", "expected_follow_ups"),
     [
-        (InterviewLevel.ENTRY, 1),
+        (InterviewLevel.ENTRY, 2),
         (InterviewLevel.JUNIOR, 2),
-        (InterviewLevel.SENIOR, 3),
+        (InterviewLevel.SENIOR, 2),
     ],
 )
-def test_published_level_reaches_the_plan_and_moves_the_follow_up_budget(
+def test_published_level_reaches_the_plan_without_moving_the_follow_up_budget(
     level: InterviewLevel,
     expected_follow_ups: int,
 ) -> None:
     plan = _plan(level)
 
     assert plan.interview_level is level
-    # The criterion is configured with max_follow_ups=2 in every case, so the
-    # difference comes only from the level the recruiter published.
+    # The criterion is configured with max_follow_ups=2 in every case. The level
+    # reaches the prompt but does not alter that budget.
     target = plan.verification_targets[0]
     assert target.max_follow_ups == 2
     assert plan.follow_up_budget(target) == expected_follow_ups

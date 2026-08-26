@@ -660,6 +660,22 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/reports/{report_id}/requirements/{requirement_assessment_id}/reviews": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["createHumanRequirementReview"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -969,6 +985,10 @@ export interface components {
             readonly assessment_state: components["schemas"]["AssessmentState"];
             readonly reason: string;
         };
+        readonly HumanRequirementReviewCreate: {
+            readonly reason: string;
+            readonly requirement_status: components["schemas"]["RequirementAssessmentStatus"];
+        };
         readonly HumanReviewView: {
             /** Format: date-time */
             readonly created_at: string;
@@ -979,7 +999,7 @@ export interface components {
             /** @description The reviewer's own justification when overruling an AI assessment. Dynamic recruiting-stage decisions do not require a separate reason. */
             readonly reason?: string | null;
             /** @enum {string} */
-            readonly review_type: "assessment_override" | "note" | "bookmark" | "final_decision";
+            readonly review_type: "assessment_override" | "requirement_override" | "note" | "bookmark" | "final_decision";
             /** @description What was recorded: recruiting stage id and name for a final decision, note text for a note, or the new assessment state for an override. */
             readonly value?: Readonly<Record<string, never>> | Readonly<Record<string, unknown>>;
         };
@@ -1001,10 +1021,10 @@ export interface components {
             readonly next_cursor?: string | null;
         };
         /**
-         * @description How deep the AI interviewer digs. The level shifts the follow-up budget the
-         *     criteria configure and selects the question-depth instructions the model is
-         *     given; it never changes which criteria are verified. Versions published before
-         *     the toggle existed read back as `junior`.
+         * @description How deep the AI interviewer digs. The level selects the
+         *     question-depth instructions the model is given; it never changes the configured
+         *     follow-up budget or which criteria are verified. Versions published before the
+         *     toggle existed read back as `junior`.
          * @default junior
          * @enum {string}
          */
@@ -1314,12 +1334,47 @@ export interface components {
             /** Format: uuid */
             readonly report_id: string;
             readonly report_version: number;
+            /** @description Required and preferred qualification fulfillment, kept separate from interview scores. */
+            readonly requirement_assessments: readonly components["schemas"]["RequirementAssessmentView"][];
             readonly scoring_breakdown?: components["schemas"]["ScoreBreakdown"];
             /** @enum {string} */
             readonly status: "generating" | "ready" | "partial" | "failed";
             readonly summary: string;
             /** @description How many criteria produced no score, so the reviewer can see what overall_score does not cover. */
             readonly unscored_criteria_count?: number;
+        };
+        readonly RequirementAssessmentStatus: "met" | "partially_met" | "not_met" | "unknown";
+        readonly RequirementAssessmentView: {
+            readonly confidence: number;
+            readonly evidence: readonly components["schemas"]["RequirementEvidenceView"][];
+            readonly human_override: components["schemas"]["RequirementHumanOverrideView"] | null;
+            /** Format: uuid */
+            readonly job_requirement_id: string;
+            readonly rationale: string;
+            /** Format: uuid */
+            readonly requirement_assessment_id: string;
+            /** @enum {string} */
+            readonly requirement_type: "required" | "preferred";
+            readonly statement: string;
+            readonly status: components["schemas"]["RequirementAssessmentStatus"];
+        };
+        readonly RequirementEvidenceView: {
+            /** Format: uuid */
+            readonly evidence_id: string;
+            readonly excerpt: string;
+            readonly explanation: string;
+            readonly locator: Readonly<Record<string, never>> | Readonly<Record<string, unknown>>;
+            /** @enum {string} */
+            readonly relation: "supports" | "partially_supports" | "contradicts";
+            /** @enum {string} */
+            readonly source_kind: "submission" | "interview";
+            readonly source_type: string;
+        };
+        readonly RequirementHumanOverrideView: {
+            /** Format: date-time */
+            readonly created_at: string;
+            readonly reason: string | null;
+            readonly status: components["schemas"]["RequirementAssessmentStatus"];
         };
         readonly ReviewArtifactCreate: {
             /** @constant */
@@ -2839,6 +2894,36 @@ export interface operations {
         };
         readonly responses: {
             /** @description Append-only human assessment review */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HumanReviewView"];
+                };
+            };
+            readonly default: components["responses"]["Error"];
+        };
+    };
+    readonly createHumanRequirementReview: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                readonly "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            readonly path: {
+                readonly report_id: components["parameters"]["ReportId"];
+                readonly requirement_assessment_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["HumanRequirementReviewCreate"];
+            };
+        };
+        readonly responses: {
+            /** @description Append-only human requirement review */
             readonly 201: {
                 headers: {
                     readonly [name: string]: unknown;

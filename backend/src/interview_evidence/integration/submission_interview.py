@@ -162,25 +162,11 @@ class SubmissionInterviewBoundary:
             competency_model_version_id=competency_model_version_id,
         )
         criteria_by_id = {criterion.criterion_id: criterion for criterion in criteria.criteria}
-        requirements_by_code: dict[str, list[str]] = {}
-        for requirement in criteria.job_requirements:
-            requirements_by_code.setdefault(
-                requirement.criterion_code,
-                [],
-            ).append(requirement.statement)
         verification_targets = tuple(
             VerificationTargetPlan(
                 verification_target_id=target.verification_target_id,
                 criterion_id=target.criterion_id,
-                criterion_text=_criterion_text(
-                    criteria_by_id[target.criterion_id],
-                    tuple(
-                        requirements_by_code.get(
-                            criteria_by_id[target.criterion_id].code,
-                            (),
-                        )
-                    ),
-                ),
+                criterion_text=_criterion_text(criteria_by_id[target.criterion_id]),
                 target_type=target.target_type,
                 objective=target.objective,
                 missing_dimensions=target.missing_dimensions,
@@ -255,7 +241,6 @@ def _as_question(value: str) -> str:
 
 def _criterion_text(
     criterion: CriterionSnapshot,
-    requirements: tuple[str, ...],
 ) -> str:
     guide = criterion.verification_guide
     dimensions = _string_tuple(guide.get("observable_dimensions"))
@@ -264,7 +249,6 @@ def _criterion_text(
         for value in (
             criterion.name,
             criterion.description,
-            *requirements,
             *dimensions,
         )
         if value.strip()

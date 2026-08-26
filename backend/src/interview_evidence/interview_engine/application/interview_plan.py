@@ -289,8 +289,8 @@ class InterviewPlan:
     def follow_up_budget(self, target: VerificationTargetPlan) -> int:
         """How many follow-ups this interview allows on one target.
 
-        The recruiter configures the number per criterion; the interview level moves it
-        so the same criteria can be reused for a 신입 and a 시니어 posting.
+        The criterion configures the number. Interview level changes question depth,
+        not how many follow-ups the target receives.
         """
         return self.interview_level.follow_up_budget(target.max_follow_ups)
 

@@ -211,6 +211,43 @@ describe("applicant interview journey", () => {
     expect(screen.getByText("음성 없이 질문을 표시합니다.")).toBeTruthy();
   });
 
+  it.each([
+    ["entry", "신입"],
+    ["junior", "주니어"],
+    ["senior", "시니어"],
+  ] as const)(
+    "uses the %s interviewer assets with eye and mouth masks",
+    (level, label) => {
+      render(
+        <Avatar textOnly={false} speaking speechMarkIndex={0} level={level} />,
+      );
+
+      const avatar = screen.getByLabelText("AI 면접관 발화 중");
+      const image = screen.getByRole("img", {
+        name: `${label} AI 면접관`,
+      });
+      expect(avatar.getAttribute("data-level")).toBe(level);
+      expect(
+        image.querySelector('[data-avatar-layer="base"]')?.getAttribute("href"),
+      ).toBe(`/interviewers/${level}_eyes_open_mouth_closed.webp`);
+      expect(
+        image
+          .querySelector('[data-avatar-layer="eyes-closed"]')
+          ?.getAttribute("mask"),
+      ).toContain("eye-mask");
+      expect(
+        image
+          .querySelector('[data-avatar-layer="mouth-mid"]')
+          ?.getAttribute("mask"),
+      ).toContain("mouth-mask");
+      expect(
+        image
+          .querySelector('[data-avatar-layer="mouth-open"]')
+          ?.getAttribute("mask"),
+      ).toContain("mouth-mask");
+    },
+  );
+
   it("animates the interviewer mouth during speech and blinks", () => {
     vi.useFakeTimers();
     try {

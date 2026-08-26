@@ -26,6 +26,10 @@ from interview_evidence.reporting.domain.report import (
     ReportItem,
     ReportKind,
     ReportStatus,
+    RequirementAssessment,
+    RequirementAssessmentStatus,
+    RequirementEvidence,
+    RequirementEvidenceRelation,
 )
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -90,6 +94,28 @@ def report() -> Report:
         # One scored and one unreached, so the breakdown carries both a contribution and an
         # exclusion and every key in both shapes is exercised.
         items=(item(1, scored=True, weight=70.0), item(2, scored=False, weight=30.0)),
+        requirement_assessments=(
+            RequirementAssessment(
+                requirement_assessment_id=UUID(int=0x9001),
+                job_requirement_id=UUID(int=0x9002),
+                requirement_type="required",
+                statement="Java 기반 서비스 개발 경험",
+                status=RequirementAssessmentStatus.MET,
+                rationale="이력서에서 직접 경험을 확인했습니다.",
+                confidence=0.8,
+                evidence=(
+                    RequirementEvidence(
+                        evidence_id=UUID(int=0x9003),
+                        source_kind="submission",
+                        source_type="resume",
+                        excerpt="Java 서비스를 개발했습니다.",
+                        locator={"page": 2},
+                        relation=RequirementEvidenceRelation.SUPPORTS,
+                        explanation="요건을 직접 뒷받침합니다.",
+                    ),
+                ),
+            ),
+        ),
     )
 
 
@@ -112,6 +138,10 @@ def test_every_report_response_key_is_declared_in_the_contract() -> None:
         for axis_view in item_view["axis_assessments"]:
             assert_keys_declared(axis_view, "AxisAssessmentView", available)
         assert_keys_declared(item_view["axis_breakdown"], "ScoreBreakdown", available)
+    for requirement_view in view["requirement_assessments"]:  # type: ignore[union-attr]
+        assert_keys_declared(requirement_view, "RequirementAssessmentView", available)
+        for evidence_view in requirement_view["evidence"]:
+            assert_keys_declared(evidence_view, "RequirementEvidenceView", available)
 
 
 def test_the_scoring_breakdown_matches_its_schema_including_the_joined_reasons() -> None:

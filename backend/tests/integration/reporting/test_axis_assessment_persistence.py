@@ -18,6 +18,10 @@ from interview_evidence.reporting.domain.report import (
     ReportItem,
     ReportKind,
     ReportStatus,
+    RequirementAssessment,
+    RequirementAssessmentStatus,
+    RequirementEvidence,
+    RequirementEvidenceRelation,
     Sufficiency,
 )
 from interview_evidence.reporting.repositories.postgres import (
@@ -44,7 +48,12 @@ def context() -> TenantContext:
     )
 
 
-def report_with(axes: tuple[AxisAssessment, ...], *, evidence_id: UUID) -> Report:
+def report_with(
+    axes: tuple[AxisAssessment, ...],
+    *,
+    evidence_id: UUID,
+    requirement_assessments: tuple[RequirementAssessment, ...] = (),
+) -> Report:
     report_id, item_id, criterion_id, version_id = uuid4(), uuid4(), uuid4(), uuid4()
     return Report(
         report_id=report_id,
@@ -93,6 +102,7 @@ def report_with(axes: tuple[AxisAssessment, ...], *, evidence_id: UUID) -> Repor
                 axis_assessments=axes,
             ),
         ),
+        requirement_assessments=requirement_assessments,
     )
 
 
@@ -133,6 +143,48 @@ def test_scores_rationales_and_citations_survive_the_round_trip() -> None:
     assert loaded.items[0].axis_assessments[1].score is None
     assert loaded.items[0].average_score == 78
     assert loaded.overall_score == 78
+
+
+def test_requirement_assessments_survive_the_round_trip_without_affecting_score() -> None:
+    evidence_id = uuid4()
+    requirement_assessment = RequirementAssessment(
+        requirement_assessment_id=uuid4(),
+        job_requirement_id=uuid4(),
+        requirement_type="required",
+        statement="Java 기반 서비스 개발 경험",
+        status=RequirementAssessmentStatus.MET,
+        rationale="이력서에서 직접 개발 경험을 확인했습니다.",
+        confidence=0.8,
+        evidence=(
+            RequirementEvidence(
+                evidence_id=uuid4(),
+                source_kind="submission",
+                source_type="resume",
+                excerpt="Java와 Spring Boot로 주문 서비스를 개발했습니다.",
+                locator={"page": 2},
+                relation=RequirementEvidenceRelation.SUPPORTS,
+                explanation="요건을 직접 뒷받침합니다.",
+            ),
+        ),
+    )
+    original = report_with(
+        (
+            AxisAssessment(
+                axis="correctness",
+                label="정확성",
+                score=78,
+                rationale="근거가 정확합니다.",
+                quoted_evidence_ids=(evidence_id,),
+            ),
+        ),
+        evidence_id=evidence_id,
+        requirement_assessments=(requirement_assessment,),
+    )
+
+    loaded = read_back(original)
+
+    assert loaded.requirement_assessments == (requirement_assessment,)
+    assert loaded.overall_score == original.overall_score == 78
 
 
 def test_a_report_written_before_scoring_existed_still_reads() -> None:

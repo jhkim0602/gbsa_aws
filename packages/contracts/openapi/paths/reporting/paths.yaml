@@ -69,6 +69,38 @@
               $ref: ../../root.yaml#/components/schemas/HumanReviewView
       default:
         $ref: ../../root.yaml#/components/responses/Error
+/reports/{report_id}/requirements/{requirement_assessment_id}/reviews:
+  post:
+    operationId: createHumanRequirementReview
+    x-owner-lane: D
+    tags:
+    - Reporting
+    security:
+    - CompanyBearer: []
+    parameters:
+    - $ref: ../../root.yaml#/components/parameters/ReportId
+    - name: requirement_assessment_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    - $ref: ../../root.yaml#/components/parameters/IdempotencyKey
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../../root.yaml#/components/schemas/HumanRequirementReviewCreate
+    responses:
+      '201':
+        description: Append-only human requirement review
+        content:
+          application/json:
+            schema:
+              $ref: ../../root.yaml#/components/schemas/HumanReviewView
+      default:
+        $ref: ../../root.yaml#/components/responses/Error
 /interview-sessions/{session_id}/review-artifacts:
   post:
     operationId: createReviewArtifact

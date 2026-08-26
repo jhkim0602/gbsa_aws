@@ -52,6 +52,12 @@ class HumanAssessmentReviewCreate(BaseModel):
     reason: str = Field(min_length=1, max_length=5000)
 
 
+class HumanRequirementReviewCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    requirement_status: Literal["met", "partially_met", "not_met", "unknown"]
+    reason: str = Field(min_length=1, max_length=5000)
+
+
 class ReviewArtifactCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     review_type: Literal["note"]
@@ -195,6 +201,11 @@ def _scoring_breakdown_view(report: Report) -> dict[str, object]:
 
 
 def _report_view(report: Report, reviews: tuple[HumanReview, ...]) -> dict[str, object]:
+    requirement_overrides = {
+        review.target_id: review
+        for review in sorted(reviews, key=lambda item: item.created_at)
+        if review.review_type is ReviewType.REQUIREMENT_OVERRIDE
+    }
     return {
         "report_id": report.report_id,
         "report_version": report.version,
@@ -254,6 +265,43 @@ def _report_view(report: Report, reviews: tuple[HumanReview, ...]) -> dict[str, 
                 ],
             }
             for item in report.items
+        ],
+        "requirement_assessments": [
+            {
+                "requirement_assessment_id": item.requirement_assessment_id,
+                "job_requirement_id": item.job_requirement_id,
+                "requirement_type": item.requirement_type,
+                "statement": item.statement,
+                "status": item.status.value,
+                "rationale": item.rationale,
+                "confidence": item.confidence,
+                "evidence": [
+                    {
+                        "evidence_id": evidence.evidence_id,
+                        "source_kind": evidence.source_kind,
+                        "source_type": evidence.source_type,
+                        "excerpt": evidence.excerpt,
+                        "locator": dict(evidence.locator),
+                        "relation": evidence.relation.value,
+                        "explanation": evidence.explanation,
+                    }
+                    for evidence in item.evidence
+                ],
+                "human_override": (
+                    {
+                        "status": requirement_overrides[item.requirement_assessment_id].value.get(
+                            "requirement_status"
+                        ),
+                        "reason": requirement_overrides[item.requirement_assessment_id].reason,
+                        "created_at": requirement_overrides[
+                            item.requirement_assessment_id
+                        ].created_at,
+                    }
+                    if item.requirement_assessment_id in requirement_overrides
+                    else None
+                ),
+            }
+            for item in report.requirement_assessments
         ],
         "human_reviews": [_review_view(review) for review in reviews],
     }
@@ -448,6 +496,43 @@ def create_company_router(
             resource_id=review.human_review_id,
             result="created",
             metadata={"report_id": str(report_id), "report_item_id": str(report_item_id)},
+        )
+        return _review_view(review)
+
+    @router.post(
+        "/reports/{report_id}/requirements/{requirement_assessment_id}/reviews",
+        status_code=201,
+        operation_id="createHumanRequirementReview",
+    )
+    def create_requirement_review(
+        report_id: UUID,
+        requirement_assessment_id: UUID,
+        body: HumanRequirementReviewCreate,
+        scope: Scope,
+        idempotency_key: IdempotencyKey,
+    ) -> dict[str, object]:
+        del idempotency_key
+        try:
+            review = reviews.override_requirement(
+                scope.context,
+                report_id=report_id,
+                requirement_assessment_id=requirement_assessment_id,
+                requirement_status=body.requirement_status,
+                reason=body.reason,
+                occurred_at=clock.now(),
+            )
+        except LookupError as error:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND) from error
+        audit.append(
+            scope.context,
+            action="report.requirement_review.create",
+            resource_type="human_review",
+            resource_id=review.human_review_id,
+            result="created",
+            metadata={
+                "report_id": str(report_id),
+                "requirement_assessment_id": str(requirement_assessment_id),
+            },
         )
         return _review_view(review)
 

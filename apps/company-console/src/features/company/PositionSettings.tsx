@@ -23,6 +23,8 @@ import {
 } from "../../app/styles/primitives";
 import {
   CriteriaStep,
+  createDefaultCriteria,
+  inferRequirementCriterionCode,
   initialHiringDraft,
   toCriteriaConfiguration,
   type HiringDraft,
@@ -696,29 +698,13 @@ function criterionDraft(
       ...positionForm(position),
     };
   }
-  const criterionRows = criteria.criteria.map((criterion, index) => ({
-    id: `criterion-${criteria.versionId}-${index}`,
-    code: criterion.code,
-    name: criterion.name,
-    description: criterion.description,
-    weight: criterion.weight,
-    required: criterion.required,
-    observableDimensions:
-      criterion.verificationGuide.observableDimensions.join("\n"),
-    strongAnswerSignals:
-      criterion.verificationGuide.strongAnswerSignals.join("\n"),
-    weakAnswerSignals: criterion.verificationGuide.weakAnswerSignals.join("\n"),
-    followUpDirections:
-      criterion.verificationGuide.followUpDirections.join("\n"),
-    maxFollowUps: criterion.verificationGuide.maxFollowUps,
-    timeBudgetSeconds: criterion.verificationGuide.timeBudgetSeconds,
-    abstainGuidance: criterion.abstainGuidance,
-    commonQuestions: criterion.commonQuestions.join("\n"),
-  }));
+  const criterionRows = createDefaultCriteria();
   const jobRequirements = criteria.jobRequirements.length
     ? criteria.jobRequirements.map((requirement, index) => ({
         id: `requirement-${criteria.versionId}-${index}`,
         ...requirement,
+        priority: Math.min(index + 1, 5),
+        criterionCode: inferRequirementCriterionCode(requirement.statement),
       }))
     : [
         {
@@ -726,7 +712,7 @@ function criterionDraft(
           requirementType: "required" as const,
           statement: "",
           priority: 1,
-          criterionCode: criterionRows[0]?.code ?? "CRITERION_1",
+          criterionCode: criterionRows[0].code,
         },
       ];
   return {

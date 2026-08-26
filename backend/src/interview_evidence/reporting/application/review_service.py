@@ -4,7 +4,10 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from interview_evidence.reporting.domain.report import AssessmentState
+from interview_evidence.reporting.domain.report import (
+    AssessmentState,
+    RequirementAssessmentStatus,
+)
 from interview_evidence.reporting.domain.review import (
     Decision,
     HumanReview,
@@ -175,6 +178,38 @@ class ReviewService:
             created_at=occurred_at,
         )
         return self._repository.save_review(context, review)
+
+    def override_requirement(
+        self,
+        context: TenantContext,
+        *,
+        report_id: UUID,
+        requirement_assessment_id: UUID,
+        requirement_status: str,
+        reason: str,
+        occurred_at: datetime,
+    ) -> HumanReview:
+        if context.actor_type is not ActorType.COMPANY_USER:
+            raise PermissionError("requirement review requires a company user")
+        report = self._repository.get_report(context, report_id)
+        if requirement_assessment_id not in {
+            item.requirement_assessment_id for item in report.requirement_assessments
+        }:
+            raise LookupError("requirement assessment not found")
+        validated_status = RequirementAssessmentStatus(requirement_status)
+        return self._repository.save_review(
+            context,
+            HumanReview.requirement_override(
+                human_review_id=new_uuid7(occurred_at),
+                company_id=context.company_id,
+                report_id=report_id,
+                company_user_id=context.actor_id,
+                requirement_assessment_id=requirement_assessment_id,
+                requirement_status=validated_status.value,
+                reason=reason,
+                created_at=occurred_at,
+            ),
+        )
 
     def record_final_decision(
         self,

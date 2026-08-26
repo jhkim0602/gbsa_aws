@@ -10,7 +10,6 @@ import {
   type FormVariant,
 } from "../components/FormPrimitives";
 import { RoleCategoryField } from "../role-selector/RoleCategoryField";
-import { InlineTechStackSelector } from "../tech-stack-combobox";
 import { MAX_GUARANTEED_INTERVIEW_CONCURRENCY } from "../interviewCapacityEstimate";
 import type {
   CriteriaHiringStep,
@@ -61,9 +60,7 @@ AI 중심 소프트웨어 기업으로의 전략적 전환을 단계별로 진�
 Junior Product Engineer (Backend 중심)
 
 작은 팀에서 Backend 개발을 중심으로 서버 API, 비즈니스 로직 및 데이터 처리 기능 구현과 개선에 참여하고,
-Frontend 영역까지 경험을 확장하는 역할
-
-(기술 환경은 공고 하단 SW 개발팀 주요 기술 스택 참고)`;
+Frontend 영역까지 경험을 확장하는 역할`;
 
 // `.hiring-panel .position-config-section > header` outranks `.form-section > header`'s
 // `display:none`, so these sections keep their headers — see FormPrimitives.
@@ -99,13 +96,9 @@ const EDITOR_DONE =
 const COMPLETION =
   "grid min-h-[470px] content-center justify-items-center px-7 py-[50px] text-center";
 
-type PositionPage = "basics" | "technology" | "description";
+type PositionPage = "basics" | "description";
 
-const positionPageOrder: PositionPage[] = [
-  "basics",
-  "technology",
-  "description",
-];
+const positionPageOrder: PositionPage[] = ["basics", "description"];
 
 export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
   const { draft, stage, submitting, update, onSubmit, onBack } = props;
@@ -124,7 +117,6 @@ export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
       draft.recruitmentEndAt &&
       periodValid,
     ),
-    technology: draft.techStack.length > 0,
     description: Boolean(
       draft.description.trim() && draft.descriptionCompleted,
     ),
@@ -282,22 +274,9 @@ export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
             </FormSection>
           ) : null}
 
-          {positionPage === "technology" ? (
-            <FormSection
-              eyebrow="02 · 기술 스택"
-              title="주요 기술 스택을 선택해 주세요"
-              description="검색하거나 카테고리를 선택해 이 포지션에서 사용할 기술을 추가합니다."
-            >
-              <InlineTechStackSelector
-                value={draft.techStack}
-                onChange={(value) => update("techStack", value)}
-              />
-            </FormSection>
-          ) : null}
-
           {positionPage === "description" ? (
             <FormSection
-              eyebrow="03 · 공고 본문"
+              eyebrow="02 · 공고 본문"
               title="포지션 상세"
               description="회사 소개, 포지션 배경과 주요 업무를 하나의 본문으로 구성합니다."
             >
@@ -519,7 +498,7 @@ export function CompletionState({
         </span>
         <span>
           <Check size={13} aria-hidden="true" />
-          자격요건별 가중치 반영
+          자격요건 충족도 별도 판정
         </span>
         <span>
           <Check size={13} aria-hidden="true" />

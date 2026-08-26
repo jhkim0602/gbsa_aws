@@ -6,19 +6,16 @@ import {
 } from "react";
 
 import { Plus, Trash2 } from "lucide-react";
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 
 import { ICON_BUTTON } from "../../../app/styles/primitives";
 import type { FormVariant } from "../components/FormPrimitives";
 import {
   assessmentAxisKeys,
   assessmentAxisLabels,
-  createCriterionDraft,
   createRequirementDraft,
+  inferRequirementCriterionCode,
   type AssessmentAxisKey,
   type AxisWeightDraft,
-  type CriterionDraft,
-  type CriterionImportance,
   type HiringDraft,
   type HiringDraftUpdater,
   type JobRequirementDraft,
@@ -34,7 +31,7 @@ const DESCRIPTION =
   "mt-1.5 max-w-[620px] text-[11px] leading-[1.65] text-muted";
 
 const CRITERIA_LAYOUT =
-  "grid grid-cols-[minmax(0,1fr)_220px] items-start gap-5 mw-680:grid-cols-1";
+  "grid grid-cols-[minmax(0,1fr)_260px] items-start gap-5 mw-680:grid-cols-1";
 const REQUIREMENT_LIST =
   "overflow-hidden rounded-lg border border-border bg-surface shadow-[0_1px_2px_#10182808]";
 const REQUIREMENT_LIST_HEADER =
@@ -46,7 +43,7 @@ const TYPE_COUNT_REQUIRED = "font-mono font-semibold text-brand";
 const TYPE_COUNT_PREFERRED = "font-mono font-semibold text-success";
 const REQUIREMENT_ROWS = "grid";
 const REQUIREMENT_ROW =
-  "grid min-h-12 grid-cols-[24px_68px_minmax(120px,1fr)_112px_32px] items-center gap-2" +
+  "grid min-h-12 grid-cols-[24px_68px_minmax(120px,1fr)_32px] items-center gap-2" +
   " border-b border-border-muted px-2 py-1.5 last:border-b-0 hover:bg-surface-muted/60" +
   " mw-520:min-h-20 mw-520:grid-cols-[20px_64px_minmax(0,1fr)_32px] mw-520:items-center";
 const REQUIREMENT_INDEX =
@@ -70,30 +67,8 @@ const STATEMENT =
   " outline-none placeholder:text-subtle" +
   " hover:border-border focus:border-brand focus:bg-white" +
   " focus:shadow-[0_0_0_3px_#5966ce1f]";
-const IMPORTANCE_CELL =
-  "grid min-w-0 items-center mw-520:col-[2/5] mw-520:row-start-2";
-const IMPORTANCE_SEGMENT =
-  "grid h-7 grid-cols-3 overflow-hidden rounded-md border border-border bg-white";
-const IMPORTANCE_OPTION =
-  "px-1 text-[8px] font-medium text-muted transition-colors not-first:border-l" +
-  " not-first:border-border hover:bg-brand-soft hover:text-brand focus-visible:z-1" +
-  " focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/20";
-const IMPORTANCE_OPTION_ACTIVE =
-  "bg-brand text-white hover:bg-brand hover:text-white";
-const DONUT_CARD =
-  "sticky top-4 grid gap-3 rounded-xl border border-border bg-surface p-4 shadow-[0_8px_24px_#1018280a]" +
-  " mw-680:static mw-680:grid-cols-[180px_minmax(0,1fr)] mw-520:grid-cols-1";
-const DONUT_HEADER = "grid gap-0.5 mw-680:col-[1/-1]";
-const DONUT_TITLE = "text-[10px] font-semibold text-ink";
-const DONUT_HINT = "text-[8px] leading-[1.45] text-muted";
-const DONUT_CHART = "relative h-[170px]";
-const DONUT_CENTER =
-  "pointer-events-none absolute inset-0 grid place-content-center text-center";
-const DONUT_LEGEND = "grid content-start gap-1";
-const DONUT_LEGEND_ITEM =
-  "grid grid-cols-[8px_minmax(0,1fr)_30px] items-center gap-1.5 text-[8px] text-muted";
-const DONUT_LEGEND_DOT = "size-2 rounded-[2px]";
-const DONUT_LEGEND_LABEL = "truncate";
+const CRITERIA_OVERVIEW =
+  "sticky top-4 grid gap-3 rounded-xl border border-border bg-surface p-4 shadow-[0_8px_24px_#1018280a] mw-680:static";
 // The scoring axes are their own block rather than a row inside a criterion: they apply to
 // every criterion at once, so putting them beside one would read as belonging to it.
 const AXIS_BLOCK = "grid gap-5 border-t border-border pt-7";
@@ -162,50 +137,19 @@ const requirementGroupMetadata = [
     label: "필수 자격",
     empty: "필수 자격요건을 추가해 주세요.",
     placeholder: "예: 대규모 트래픽 시스템 설계·운영 경험",
-    color: "#5966ce",
   },
   {
     type: "preferred",
     label: "우대 사항",
     empty: "우대 사항이 있다면 추가해 주세요.",
     placeholder: "예: 기술 문서를 작성하고 공유한 경험",
-    color: "#1e9e63",
   },
 ] as const satisfies ReadonlyArray<{
   type: RequirementType;
   label: string;
   empty: string;
   placeholder: string;
-  color: string;
 }>;
-
-const requiredChartColors = ["#5966ce", "#7480dc", "#929be7", "#adb4ef"];
-const preferredChartColors = ["#1e9e63", "#48b381", "#70c69e", "#98d8bb"];
-const importanceOptions = [
-  { value: "low", label: "낮음", points: 1 },
-  { value: "medium", label: "보통", points: 2 },
-  { value: "high", label: "높음", points: 4 },
-] as const satisfies ReadonlyArray<{
-  value: CriterionImportance;
-  label: string;
-  points: number;
-}>;
-const importancePoints: Record<CriterionImportance, number> = {
-  low: 1,
-  medium: 2,
-  high: 4,
-};
-
-type EvaluationItem = {
-  requirement: JobRequirementDraft;
-  criterion: CriterionDraft;
-  index: number;
-};
-
-type WeightChartItem = EvaluationItem & {
-  color: string;
-  label: string;
-};
 
 export function EvaluationDesigner({
   draft,
@@ -217,20 +161,10 @@ export function EvaluationDesigner({
 }) {
   const inputRefs = useRef(new Map<string, HTMLInputElement>());
   const pendingFocusId = useRef<string | null>(null);
-  const evaluationItems: EvaluationItem[] = draft.jobRequirements.flatMap(
-    (requirement, index) => {
-      const criterion =
-        draft.criteria.find(
-          (candidate) => candidate.code === requirement.criterionCode,
-        ) ?? draft.criteria[index];
-      return criterion ? [{ requirement, criterion, index }] : [];
-    },
-  );
-  const chartItems = toWeightChartItems(evaluationItems);
-  const requiredCount = evaluationItems.filter(
-    ({ requirement }) => requirement.requirementType === "required",
+  const requiredCount = draft.jobRequirements.filter(
+    (requirement) => requirement.requirementType === "required",
   ).length;
-  const preferredCount = evaluationItems.length - requiredCount;
+  const preferredCount = draft.jobRequirements.length - requiredCount;
 
   useEffect(() => {
     const id = pendingFocusId.current;
@@ -240,45 +174,32 @@ export function EvaluationDesigner({
   }, [draft.jobRequirements.length]);
 
   function updateRequirement(id: string, patch: Partial<JobRequirementDraft>) {
+    const normalizedPatch =
+      typeof patch.statement === "string"
+        ? {
+            ...patch,
+            criterionCode: inferRequirementCriterionCode(patch.statement),
+          }
+        : patch;
     update(
       "jobRequirements",
       draft.jobRequirements.map((requirement) =>
-        requirement.id === id ? { ...requirement, ...patch } : requirement,
+        requirement.id === id
+          ? { ...requirement, ...normalizedPatch }
+          : requirement,
       ),
     );
   }
 
   function setRequirementType(
     requirement: JobRequirementDraft,
-    criterion: CriterionDraft,
     requirementType: RequirementType,
   ) {
     if (requirement.requirementType === requirementType) return;
     updateRequirement(requirement.id, { requirementType });
-    update(
-      "criteria",
-      draft.criteria.map((item) =>
-        item.id === criterion.id
-          ? { ...item, required: requirementType === "required" }
-          : item,
-      ),
-    );
-  }
-
-  function updateImportance(id: string, importance: CriterionImportance) {
-    update(
-      "criteria",
-      normalizeImportanceWeights(
-        draft.criteria.map((criterion) =>
-          criterion.id === id ? { ...criterion, importance } : criterion,
-        ),
-      ),
-    );
   }
 
   function addEvaluationItem(requirementType: RequirementType) {
-    const criterionIndex = nextCriterionIndex(draft.criteria);
-    const criterion = createCriterionDraft(criterionIndex);
     const requirementIndex = nextDraftIndex(
       draft.jobRequirements.map((requirement) => requirement.id),
     );
@@ -289,40 +210,30 @@ export function EvaluationDesigner({
     const requirement = {
       ...createRequirementDraft(requirementIndex),
       requirementType,
-      criterionCode: criterion.code,
-      priority: insertionIndex + 1,
+      priority: Math.min(insertionIndex + 1, 5),
     };
-    const criteria = [...draft.criteria];
     const requirements = [...draft.jobRequirements];
-    criteria.splice(insertionIndex, 0, {
-      ...criterion,
-      required: requirementType === "required",
-    });
     requirements.splice(insertionIndex, 0, requirement);
     pendingFocusId.current = requirement.id;
-    update("criteria", normalizeImportanceWeights(criteria));
     update(
       "jobRequirements",
-      requirements.map((item, index) => ({ ...item, priority: index + 1 })),
+      requirements.map((item, index) => ({
+        ...item,
+        priority: Math.min(index + 1, 5),
+      })),
     );
   }
 
-  function removeEvaluationItem(
-    requirement: JobRequirementDraft,
-    criterion: CriterionDraft,
-  ) {
-    if (evaluationItems.length === 1) return;
+  function removeEvaluationItem(requirement: JobRequirementDraft) {
+    if (draft.jobRequirements.length === 1) return;
     update(
       "jobRequirements",
       draft.jobRequirements
         .filter((item) => item.id !== requirement.id)
-        .map((item, index) => ({ ...item, priority: index + 1 })),
-    );
-    update(
-      "criteria",
-      normalizeImportanceWeights(
-        draft.criteria.filter((item) => item.id !== criterion.id),
-      ),
+        .map((item, index) => ({
+          ...item,
+          priority: Math.min(index + 1, 5),
+        })),
     );
   }
 
@@ -332,11 +243,12 @@ export function EvaluationDesigner({
         <div className="min-w-0">
           <span className={EYEBROW}>면접 결과 평가</span>
           <h3 className={TITLE} id="evaluation-design-title">
-            자격요건과 평가 가중치
+            자격요건과 답변 평가 관점
           </h3>
           <p className={DESCRIPTION}>
-            필수·우대를 선택하고 상대적인 중요도만 정하세요. 실제 평가 가중치는
-            자동으로 환산되어 항상 합계 100%를 유지합니다.
+            필수·우대 요건은 충족 여부를 별도로 판정합니다. 자격요건 자체는 면접
+            점수에 가중치로 반영되지 않으며, 관련 제출 근거가 있을 때 질문
+            우선순위만 높입니다.
           </p>
         </div>
       </header>
@@ -362,159 +274,114 @@ export function EvaluationDesigner({
             className={REQUIREMENT_ROWS}
             role="list"
           >
-            {evaluationItems.map(
-              ({ requirement, criterion, index }, rowIndex) => {
-                const metadata = getRequirementMetadata(
-                  requirement.requirementType,
+            {draft.jobRequirements.map((requirement, index) => {
+              const metadata = getRequirementMetadata(
+                requirement.requirementType,
+              );
+              const nextSameType = draft.jobRequirements
+                .slice(index + 1)
+                .find(
+                  (item) =>
+                    item.requirementType === requirement.requirementType,
                 );
-                const nextSameType = evaluationItems
-                  .slice(rowIndex + 1)
-                  .find(
-                    (item) =>
-                      item.requirement.requirementType ===
-                      requirement.requirementType,
-                  );
-                const importance = resolveImportance(criterion, draft.criteria);
-                return (
-                  <article
-                    className={REQUIREMENT_ROW}
-                    key={requirement.id}
-                    role="listitem"
-                  >
-                    <span className={REQUIREMENT_INDEX}>
-                      <i
-                        aria-hidden="true"
-                        className={REQUIREMENT_DOT}
-                        style={{
-                          backgroundColor: chartItems[rowIndex]?.color,
-                        }}
-                      />
-                      {String(rowIndex + 1).padStart(2, "0")}
-                    </span>
-
-                    <div
-                      aria-label={`자격요건 ${index + 1} 구분`}
-                      className={TYPE_SEGMENT}
-                      role="group"
-                    >
-                      <button
-                        aria-pressed={
+              return (
+                <article
+                  className={REQUIREMENT_ROW}
+                  key={requirement.id}
+                  role="listitem"
+                >
+                  <span className={REQUIREMENT_INDEX}>
+                    <i
+                      aria-hidden="true"
+                      className={REQUIREMENT_DOT}
+                      style={{
+                        backgroundColor:
                           requirement.requirementType === "required"
-                        }
-                        className={
-                          requirement.requirementType === "required"
-                            ? TYPE_OPTION_REQUIRED_ACTIVE
-                            : TYPE_OPTION
-                        }
-                        type="button"
-                        onClick={() =>
-                          setRequirementType(requirement, criterion, "required")
-                        }
-                      >
-                        필수
-                      </button>
-                      <button
-                        aria-pressed={
-                          requirement.requirementType === "preferred"
-                        }
-                        className={
-                          requirement.requirementType === "preferred"
-                            ? TYPE_OPTION_PREFERRED_ACTIVE
-                            : TYPE_OPTION
-                        }
-                        type="button"
-                        onClick={() =>
-                          setRequirementType(
-                            requirement,
-                            criterion,
-                            "preferred",
-                          )
-                        }
-                      >
-                        우대
-                      </button>
-                    </div>
-
-                    <input
-                      required
-                      aria-label={`자격요건 ${index + 1}`}
-                      className={STATEMENT}
-                      placeholder={metadata.placeholder}
-                      ref={(element) => {
-                        if (element) {
-                          inputRefs.current.set(requirement.id, element);
-                        } else {
-                          inputRefs.current.delete(requirement.id);
-                        }
-                      }}
-                      type="text"
-                      value={requirement.statement}
-                      onChange={(event) =>
-                        updateRequirement(requirement.id, {
-                          statement: event.target.value,
-                        })
-                      }
-                      onKeyDown={(event) => {
-                        if (event.key !== "Enter") return;
-                        event.preventDefault();
-                        if (nextSameType) {
-                          inputRefs.current
-                            .get(nextSameType.requirement.id)
-                            ?.focus();
-                          return;
-                        }
-                        addEvaluationItem(requirement.requirementType);
+                            ? "#5966ce"
+                            : "#1e9e63",
                       }}
                     />
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
 
-                    <div className={IMPORTANCE_CELL}>
-                      <div
-                        aria-label={`자격요건 ${index + 1} 중요도`}
-                        className={IMPORTANCE_SEGMENT}
-                        role="group"
-                      >
-                        {importanceOptions.map((option) => (
-                          <button
-                            aria-pressed={importance === option.value}
-                            className={`${IMPORTANCE_OPTION} ${
-                              importance === option.value
-                                ? IMPORTANCE_OPTION_ACTIVE
-                                : ""
-                            }`}
-                            key={option.value}
-                            type="button"
-                            onClick={() =>
-                              updateImportance(criterion.id, option.value)
-                            }
-                          >
-                            {option.label}
-                          </button>
-                        ))}
-                      </div>
-                      <output
-                        aria-label={`자격요건 ${index + 1} 자동 가중치`}
-                        className="sr-only"
-                      >
-                        {criterion.weight}%
-                      </output>
-                    </div>
-
+                  <div
+                    aria-label={`자격요건 ${index + 1} 구분`}
+                    className={TYPE_SEGMENT}
+                    role="group"
+                  >
                     <button
-                      aria-label={`자격요건 ${index + 1} 삭제`}
-                      className={REQUIREMENT_DELETE}
-                      disabled={evaluationItems.length === 1}
-                      title="자격요건 삭제"
+                      aria-pressed={requirement.requirementType === "required"}
+                      className={
+                        requirement.requirementType === "required"
+                          ? TYPE_OPTION_REQUIRED_ACTIVE
+                          : TYPE_OPTION
+                      }
                       type="button"
                       onClick={() =>
-                        removeEvaluationItem(requirement, criterion)
+                        setRequirementType(requirement, "required")
                       }
                     >
-                      <Trash2 aria-hidden="true" size={14} />
+                      필수
                     </button>
-                  </article>
-                );
-              },
-            )}
+                    <button
+                      aria-pressed={requirement.requirementType === "preferred"}
+                      className={
+                        requirement.requirementType === "preferred"
+                          ? TYPE_OPTION_PREFERRED_ACTIVE
+                          : TYPE_OPTION
+                      }
+                      type="button"
+                      onClick={() =>
+                        setRequirementType(requirement, "preferred")
+                      }
+                    >
+                      우대
+                    </button>
+                  </div>
+
+                  <input
+                    required
+                    aria-label={`자격요건 ${index + 1}`}
+                    className={STATEMENT}
+                    placeholder={metadata.placeholder}
+                    ref={(element) => {
+                      if (element) {
+                        inputRefs.current.set(requirement.id, element);
+                      } else {
+                        inputRefs.current.delete(requirement.id);
+                      }
+                    }}
+                    type="text"
+                    value={requirement.statement}
+                    onChange={(event) =>
+                      updateRequirement(requirement.id, {
+                        statement: event.target.value,
+                      })
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      event.preventDefault();
+                      if (nextSameType) {
+                        inputRefs.current.get(nextSameType.id)?.focus();
+                        return;
+                      }
+                      addEvaluationItem(requirement.requirementType);
+                    }}
+                  />
+
+                  <button
+                    aria-label={`자격요건 ${index + 1} 삭제`}
+                    className={REQUIREMENT_DELETE}
+                    disabled={draft.jobRequirements.length === 1}
+                    title="자격요건 삭제"
+                    type="button"
+                    onClick={() => removeEvaluationItem(requirement)}
+                  >
+                    <Trash2 aria-hidden="true" size={14} />
+                  </button>
+                </article>
+              );
+            })}
           </div>
 
           <button
@@ -523,8 +390,7 @@ export function EvaluationDesigner({
             type="button"
             onClick={() =>
               addEvaluationItem(
-                evaluationItems.at(-1)?.requirement.requirementType ??
-                  "required",
+                draft.jobRequirements.at(-1)?.requirementType ?? "required",
               )
             }
           >
@@ -533,7 +399,7 @@ export function EvaluationDesigner({
           </button>
         </section>
 
-        <WeightOverview items={chartItems} />
+        <CriteriaOverview criteria={draft.criteria} />
       </div>
 
       <ScoringAxisWeights
@@ -544,110 +410,57 @@ export function EvaluationDesigner({
   );
 }
 
-function WeightOverview({ items }: { items: WeightChartItem[] }) {
-  const chartData = items.map((item) => ({
-    item,
-    name: item.label,
-    value: item.criterion.weight,
-  }));
-
+function CriteriaOverview({ criteria }: { criteria: HiringDraft["criteria"] }) {
   return (
-    <aside className={DONUT_CARD} aria-labelledby="weight-overview-title">
-      <header className={DONUT_HEADER}>
-        <h4 className={DONUT_TITLE} id="weight-overview-title">
-          자동 평가 비중
+    <aside
+      className={CRITERIA_OVERVIEW}
+      aria-labelledby="criteria-overview-title"
+    >
+      <header className="grid gap-1">
+        <h4
+          className="text-[10px] font-semibold text-ink"
+          id="criteria-overview-title"
+        >
+          면접 답변 평가 구성
         </h4>
-        <p className={DONUT_HINT}>
-          왼쪽에서 선택한 중요도를 원형 비중으로 자동 환산합니다.
+        <p className="text-[8px] leading-[1.5] text-muted">
+          자격요건 개수와 무관하게 모든 지원자를 같은 세 기준으로 평가합니다.
         </p>
       </header>
-
-      <div
-        className={DONUT_CHART}
-        role="img"
-        aria-label="자격요건별 자동 가중치 원그래프"
-      >
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              cx="50%"
-              cy="50%"
-              data={chartData}
-              dataKey="value"
-              innerRadius={48}
-              isAnimationActive={false}
-              nameKey="name"
-              outerRadius={72}
-              paddingAngle={items.length > 1 ? 2 : 0}
-              stroke="#ffffff"
-              strokeWidth={2}
-            >
-              {items.map((item) => (
-                <Cell fill={item.color} key={item.criterion.id} />
-              ))}
-            </Pie>
-            <Tooltip content={<WeightTooltip />} />
-          </PieChart>
-        </ResponsiveContainer>
-        <div className={DONUT_CENTER} aria-hidden="true">
-          <strong className="font-mono text-[15px] text-ink">
-            {items.length}
-          </strong>
-          <span className="text-[8px] text-muted">평가 항목</span>
-        </div>
-      </div>
-
-      <div className={DONUT_LEGEND}>
-        {items.map((item) => (
-          <span className={DONUT_LEGEND_ITEM} key={item.criterion.id}>
-            <i
-              aria-hidden="true"
-              className={DONUT_LEGEND_DOT}
-              style={{ backgroundColor: item.color }}
-            />
-            <span className={DONUT_LEGEND_LABEL}>{item.label}</span>
-            <b className="text-right font-mono text-ink">
-              {item.criterion.weight}%
+      <div className="grid gap-2">
+        {criteria.map((criterion, index) => (
+          <div
+            className="grid grid-cols-[20px_minmax(0,1fr)_34px] items-start gap-2 rounded-md border border-border-muted bg-surface-muted/60 px-2.5 py-2"
+            key={criterion.code}
+          >
+            <span className="font-mono text-[8px] font-semibold text-brand">
+              {String(index + 1).padStart(2, "0")}
+            </span>
+            <span className="grid gap-0.5">
+              <strong className="text-[9px] text-ink">{criterion.name}</strong>
+              <small className="text-[8px] leading-[1.45] text-muted">
+                {criterion.description}
+              </small>
+            </span>
+            <b className="text-right font-mono text-[8px] text-ink">
+              {criterion.weight}%
             </b>
-          </span>
+          </div>
         ))}
       </div>
-    </aside>
-  );
-}
-
-function WeightTooltip({
-  active,
-  payload,
-}: {
-  active?: boolean;
-  payload?: Array<{ payload?: { item?: WeightChartItem } }>;
-}) {
-  const item = payload?.[0]?.payload?.item;
-  if (!active || !item) return null;
-  return (
-    <div className="rounded-md border border-border bg-surface px-3 py-2 shadow-float">
-      <strong className="block max-w-60 text-[10px] leading-[1.45] text-ink">
-        {item.label}
-      </strong>
-      <p className="mt-1 text-[9px] text-muted">
-        {item.requirement.requirementType === "required"
-          ? "필수 자격"
-          : "우대 사항"}{" "}
-        · <b className="font-mono text-brand">{item.criterion.weight}%</b>
+      <p className="border-l-2 border-brand pl-2.5 text-[8px] leading-[1.5] text-ink-secondary">
+        필수·우대 충족도는 이 점수와 분리해 리포트에서 별도로 확인합니다.
       </p>
-    </div>
+    </aside>
   );
 }
 
 /**
  * The five axes every answer is scored on, and how much each counts here.
  *
- * Separate from the criteria above, and deliberately not editable per criterion: the axes
- * describe how an engineering answer is *read*, and what this company values is already
- * expressed by which 평가기준 exist and what they weigh against each other. A recruiter cannot
- * add or remove an axis, because each one carries the guidance the scoring prompt is built
- * from — see `shared/assessment_axes.py`.
+ * Separate from qualification fulfillment above: the axes describe how an interview answer
+ * is *read*. A recruiter cannot add or remove an axis, because each one carries the guidance
+ * the scoring prompt is built from — see `shared/assessment_axes.py`.
  *
  * The UI keeps five independent preference scores so adjusting one control does not move the
  * other four. Before updating the draft, those scores are normalized to the API's existing
@@ -1018,15 +831,6 @@ function axisStrengthLabel(score: number) {
   return "높게";
 }
 
-function nextCriterionIndex(criteria: CriterionDraft[]) {
-  return (
-    criteria.reduce((max, criterion) => {
-      const match = criterion.code.match(/^CRITERION_(\d+)$/);
-      return Math.max(max, match ? Number(match[1]) : 0);
-    }, 0) + 1
-  );
-}
-
 function nextDraftIndex(ids: string[]) {
   return (
     ids.reduce((max, id) => {
@@ -1058,63 +862,4 @@ function getRequirementMetadata(requirementType: RequirementType) {
   return requirementGroupMetadata.find(
     (metadata) => metadata.type === requirementType,
   )!;
-}
-
-function toWeightChartItems(items: EvaluationItem[]): WeightChartItem[] {
-  let requiredIndex = 0;
-  let preferredIndex = 0;
-  return items.map((item) => {
-    const required = item.requirement.requirementType === "required";
-    const groupIndex = required ? requiredIndex++ : preferredIndex++;
-    const colors = required ? requiredChartColors : preferredChartColors;
-    const fallbackLabel = `${required ? "필수 자격" : "우대 사항"} ${groupIndex + 1}`;
-    return {
-      ...item,
-      color: colors[groupIndex % colors.length],
-      label: item.requirement.statement.trim() || fallbackLabel,
-    };
-  });
-}
-
-function resolveImportance(
-  criterion: CriterionDraft,
-  criteria: CriterionDraft[],
-): CriterionImportance {
-  if (criterion.importance) return criterion.importance;
-  if (criteria.length <= 1) return "medium";
-  const evenShare = 100 / criteria.length;
-  if (criterion.weight < evenShare * 0.75) return "low";
-  if (criterion.weight > evenShare * 1.25) return "high";
-  return "medium";
-}
-
-function normalizeImportanceWeights(criteria: CriterionDraft[]) {
-  if (criteria.length === 0) return criteria;
-  const resolved = criteria.map((criterion) => ({
-    ...criterion,
-    importance: resolveImportance(criterion, criteria),
-  }));
-  const totalPoints = resolved.reduce(
-    (sum, criterion) => sum + importancePoints[criterion.importance],
-    0,
-  );
-  const exactWeights = resolved.map(
-    (criterion) => (importancePoints[criterion.importance] / totalPoints) * 100,
-  );
-  const weights = exactWeights.map(Math.floor);
-  let remainder = 100 - weights.reduce((sum, weight) => sum + weight, 0);
-  const remainderOrder = exactWeights
-    .map((weight, index) => ({ fraction: weight - Math.floor(weight), index }))
-    .sort(
-      (left, right) =>
-        right.fraction - left.fraction || left.index - right.index,
-    );
-  for (let cursor = 0; remainder > 0; cursor += 1) {
-    weights[remainderOrder[cursor % remainderOrder.length].index] += 1;
-    remainder -= 1;
-  }
-  return resolved.map((criterion, index) => ({
-    ...criterion,
-    weight: weights[index],
-  }));
 }

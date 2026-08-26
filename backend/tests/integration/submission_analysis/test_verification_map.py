@@ -30,6 +30,7 @@ INVITATION_ID = UUID("00000000-0000-7000-8000-000000000003")
 VERSION_ID = UUID("00000000-0000-7000-8000-000000000004")
 CRITERION_ID = UUID("00000000-0000-7000-8000-000000000005")
 SOURCE_ID = UUID("00000000-0000-7000-8000-000000000006")
+SECOND_CRITERION_ID = UUID("00000000-0000-7000-8000-000000000008")
 NOW = datetime(2026, 8, 15, 10, 0, tzinfo=UTC)
 
 
@@ -60,6 +61,8 @@ def test_ecs_deployment_without_incident_details_creates_missing_detail_target()
             symbols=("ECS",),
             locator={"page": 2},
             ownership_confidence=1.0,
+            embedding_model="test-static-embedding",
+            embedding_version="test-static-v1",
             invitation_id=INVITATION_ID,
             competency_model_version_id=VERSION_ID,
         )
@@ -150,6 +153,8 @@ def test_material_difference_creates_neutral_conflict_target() -> None:
                 symbols=("ECS",),
                 locator={"page": 3},
                 ownership_confidence=1.0,
+                embedding_model="test-static-embedding",
+                embedding_version="test-static-v1",
                 invitation_id=INVITATION_ID,
                 competency_model_version_id=VERSION_ID,
                 criterion_id=CRITERION_ID,
@@ -196,3 +201,101 @@ def test_material_difference_creates_neutral_conflict_target() -> None:
     assert len(conflicts) == 1
     assert "차이" in conflicts[0].verification_objective
     assert "허위" not in conflicts[0].verification_objective
+
+
+def test_requirement_only_boosts_priority_when_related_material_exists() -> None:
+    context = _context()
+    requirement = RequirementVerificationInput(
+        statement="Java 기반 서비스 개발 경험",
+        criterion_code="PROJECT_EXECUTION",
+        required=True,
+        priority=1,
+    )
+    criteria = (
+        CriterionVerificationInput(
+            criterion_id=CRITERION_ID,
+            code="TECHNICAL_COMPETENCY",
+            name="기술 역량",
+            description="기술 선택과 구현 방식을 확인한다.",
+            required=True,
+            weight=30,
+            observable_dimensions=("기술 선택 이유",),
+            follow_up_directions=("구현 방식",),
+            max_follow_ups=1,
+            time_budget_seconds=300,
+        ),
+        CriterionVerificationInput(
+            criterion_id=SECOND_CRITERION_ID,
+            code="PROJECT_EXECUTION",
+            name="프로젝트 실행 역량",
+            description="프로젝트 목표와 본인 역할을 확인한다.",
+            required=True,
+            weight=40,
+            observable_dimensions=("본인 역할",),
+            follow_up_directions=("직접 수행한 작업",),
+            max_follow_ups=1,
+            time_budget_seconds=300,
+        ),
+    )
+
+    empty_repository = InMemorySubmissionRepository()
+    empty_map = VerificationMapBuilder(
+        repository=empty_repository,
+        retriever=HybridRetriever(InMemorySearchIndex(), HybridRetrievalConfig()),
+        embedder=StaticTextEmbedder(_vector()),
+        clock=FrozenClock(NOW),
+    ).build(
+        context,
+        applicant_id=APPLICANT_ID,
+        invitation_id=INVITATION_ID,
+        competency_model_version_id=VERSION_ID,
+        criterion_version=1,
+        criteria=criteria,
+        requirements=(requirement,),
+        material_version="analysis-empty",
+    )
+    empty_targets = empty_repository.list_verification_targets(context, empty_map)
+    assert [target.criterion_id for target in empty_targets] == [
+        CRITERION_ID,
+        SECOND_CRITERION_ID,
+    ]
+    assert [target.priority for target in empty_targets] == [20, 21]
+
+    index = InMemorySearchIndex()
+    index.add(
+        SearchDocument(
+            document_id=str(SOURCE_ID),
+            company_id=COMPANY_ID,
+            applicant_id=APPLICANT_ID,
+            source_id=SOURCE_ID,
+            text="Java와 Spring Boot로 주문 서비스 API를 직접 개발했습니다.",
+            vector=_vector(),
+            symbols=("Java", "Spring"),
+            locator={"page": 1},
+            ownership_confidence=1.0,
+            embedding_model="test-static-embedding",
+            embedding_version="test-static-v1",
+            invitation_id=INVITATION_ID,
+            competency_model_version_id=VERSION_ID,
+            criterion_id=SECOND_CRITERION_ID,
+        )
+    )
+    matched_repository = InMemorySubmissionRepository()
+    matched_map = VerificationMapBuilder(
+        repository=matched_repository,
+        retriever=HybridRetriever(index, HybridRetrievalConfig()),
+        embedder=StaticTextEmbedder(_vector()),
+        clock=FrozenClock(NOW),
+    ).build(
+        context,
+        applicant_id=APPLICANT_ID,
+        invitation_id=INVITATION_ID,
+        competency_model_version_id=VERSION_ID,
+        criterion_version=2,
+        criteria=criteria,
+        requirements=(requirement,),
+        material_version="analysis-matched",
+    )
+    matched_targets = matched_repository.list_verification_targets(context, matched_map)
+    assert matched_targets[0].criterion_id == SECOND_CRITERION_ID
+    assert matched_targets[0].priority == 1

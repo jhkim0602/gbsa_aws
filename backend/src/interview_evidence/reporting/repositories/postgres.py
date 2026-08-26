@@ -42,6 +42,10 @@ from interview_evidence.reporting.domain.report import (
     ReportItem,
     ReportKind,
     ReportStatus,
+    RequirementAssessment,
+    RequirementAssessmentStatus,
+    RequirementEvidence,
+    RequirementEvidenceRelation,
     Sufficiency,
 )
 from interview_evidence.reporting.domain.review import HumanReview, ReviewType
@@ -174,6 +178,86 @@ def _restored_axes(stored: object) -> tuple[AxisAssessment, ...]:
     return tuple(restored)
 
 
+def _stored_requirement_assessments(
+    assessments: tuple[RequirementAssessment, ...],
+) -> list[dict[str, object]]:
+    return [
+        {
+            "requirement_assessment_id": str(item.requirement_assessment_id),
+            "job_requirement_id": str(item.job_requirement_id),
+            "requirement_type": item.requirement_type,
+            "statement": item.statement,
+            "status": item.status.value,
+            "rationale": item.rationale,
+            "confidence": item.confidence,
+            "evidence": [
+                {
+                    "evidence_id": str(evidence.evidence_id),
+                    "source_kind": evidence.source_kind,
+                    "source_type": evidence.source_type,
+                    "excerpt": evidence.excerpt,
+                    "locator": dict(evidence.locator),
+                    "relation": evidence.relation.value,
+                    "explanation": evidence.explanation,
+                }
+                for evidence in item.evidence
+            ],
+        }
+        for item in assessments
+    ]
+
+
+def _restored_requirement_assessments(
+    stored: object,
+) -> tuple[RequirementAssessment, ...]:
+    if not isinstance(stored, list):
+        return ()
+    restored: list[RequirementAssessment] = []
+    for entry in stored:
+        if not isinstance(entry, Mapping):
+            continue
+        raw_evidence = entry.get("evidence")
+        evidence: list[RequirementEvidence] = []
+        if isinstance(raw_evidence, list):
+            for raw in raw_evidence:
+                if not isinstance(raw, Mapping):
+                    continue
+                try:
+                    evidence.append(
+                        RequirementEvidence(
+                            evidence_id=UUID(str(raw["evidence_id"])),
+                            source_kind=str(raw["source_kind"]),
+                            source_type=str(raw["source_type"]),
+                            excerpt=str(raw["excerpt"]),
+                            locator=(
+                                dict(raw["locator"])
+                                if isinstance(raw.get("locator"), Mapping)
+                                else {}
+                            ),
+                            relation=RequirementEvidenceRelation(str(raw["relation"])),
+                            explanation=str(raw["explanation"]),
+                        )
+                    )
+                except (KeyError, TypeError, ValueError):
+                    continue
+        try:
+            restored.append(
+                RequirementAssessment(
+                    requirement_assessment_id=UUID(str(entry["requirement_assessment_id"])),
+                    job_requirement_id=UUID(str(entry["job_requirement_id"])),
+                    requirement_type=str(entry["requirement_type"]),
+                    statement=str(entry["statement"]),
+                    status=RequirementAssessmentStatus(str(entry["status"])),
+                    rationale=str(entry["rationale"]),
+                    confidence=float(entry["confidence"]),
+                    evidence=tuple(evidence),
+                )
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+    return tuple(restored)
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -263,6 +347,10 @@ class ReportRow(Base):
     #: adjusting its weights next month must not silently change a score a reviewer already
     #: acted on, and "why 74?" has to stay answerable from the report alone.
     scoring_inputs: Mapped[dict[str, object]] = mapped_column(JSON, server_default="{}")
+    requirement_assessments: Mapped[list[dict[str, object]]] = mapped_column(
+        JSON,
+        server_default="[]",
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
@@ -641,6 +729,9 @@ class SQLAlchemyReportingRepository:
                 # compares the two rather than trusting that they agree.
                 overall_score=report.overall_score,
                 scoring_inputs=_scoring_inputs(report),
+                requirement_assessments=_stored_requirement_assessments(
+                    report.requirement_assessments
+                ),
                 created_at=report.created_at,
             )
         )
@@ -772,6 +863,7 @@ class SQLAlchemyReportingRepository:
             summary=row.summary,
             created_at=_aware(row.created_at),
             items=tuple(items),
+            requirement_assessments=_restored_requirement_assessments(row.requirement_assessments),
         )
 
     def get_report(self, context: TenantContext, report_id: UUID) -> Report:

@@ -100,6 +100,9 @@ from interview_evidence.reporting.application.assessment_service import Criterio
 from interview_evidence.reporting.application.deletion_service import DeletionService
 from interview_evidence.reporting.application.evidence_service import EvidenceService
 from interview_evidence.reporting.application.public import ReportingPublic
+from interview_evidence.reporting.application.requirement_assessment import (
+    RequirementAssessor,
+)
 from interview_evidence.reporting.application.transcript_service import TranscriptService
 from interview_evidence.runtime.email import create_local_email_sender
 from interview_evidence.runtime.speech import create_speech_runtime_dependencies
@@ -544,6 +547,10 @@ def create_production_runtime(
                     model,
                     metrics=active_metrics,
                     require_scores=True,
+                ),
+                RequirementAssessor(
+                    model,
+                    require_assessment=True,
                 ),
             ),
             "privacy_deletion": lane_d.deletion_service,

@@ -41,6 +41,19 @@ class ReportStatus(StrEnum):
     FAILED = "failed"
 
 
+class RequirementAssessmentStatus(StrEnum):
+    MET = "met"
+    PARTIALLY_MET = "partially_met"
+    NOT_MET = "not_met"
+    UNKNOWN = "unknown"
+
+
+class RequirementEvidenceRelation(StrEnum):
+    SUPPORTS = "supports"
+    PARTIALLY_SUPPORTS = "partially_supports"
+    CONTRADICTS = "contradicts"
+
+
 class EvidenceRangeError(ValueError):
     """Raised when an Evidence interval is unavailable or assessment-ineligible."""
 
@@ -122,6 +135,49 @@ class AxisAssessment:
             raise ValueError("a scored axis must cite the Evidence it rests on")
         if not self.rationale.strip():
             raise ValueError("axis rationale is required")
+
+
+@dataclass(frozen=True, slots=True)
+class RequirementEvidence:
+    evidence_id: UUID
+    source_kind: str
+    source_type: str
+    excerpt: str
+    locator: Mapping[str, object]
+    relation: RequirementEvidenceRelation
+    explanation: str
+
+    def __post_init__(self) -> None:
+        if self.source_kind not in {"submission", "interview"}:
+            raise ValueError("requirement evidence source kind is invalid")
+        if not self.source_type.strip() or not self.excerpt.strip():
+            raise ValueError("requirement evidence source and excerpt are required")
+        if not self.explanation.strip():
+            raise ValueError("requirement evidence explanation is required")
+
+
+@dataclass(frozen=True, slots=True)
+class RequirementAssessment:
+    requirement_assessment_id: UUID
+    job_requirement_id: UUID
+    requirement_type: str
+    statement: str
+    status: RequirementAssessmentStatus
+    rationale: str
+    confidence: float
+    evidence: tuple[RequirementEvidence, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.requirement_type not in {"required", "preferred"}:
+            raise ValueError("requirement assessment type is invalid")
+        if not self.statement.strip() or not self.rationale.strip():
+            raise ValueError("requirement assessment statement and rationale are required")
+        if not 0 <= self.confidence <= 1:
+            raise ValueError("requirement assessment confidence must fall between 0 and 1")
+        if self.status is RequirementAssessmentStatus.UNKNOWN and self.evidence:
+            raise ValueError("unknown requirement assessments cannot cite decisive evidence")
+        if self.status is not RequirementAssessmentStatus.UNKNOWN and not self.evidence:
+            raise ValueError("decided requirement assessments require evidence")
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,6 +312,7 @@ class Report:
     summary: str
     created_at: datetime
     items: tuple[ReportItem, ...] = ()
+    requirement_assessments: tuple[RequirementAssessment, ...] = ()
 
     @property
     def scored_items(self) -> tuple[ReportItem, ...]:
@@ -329,3 +386,6 @@ class Report:
             raise ValueError("only immutable AI original reports are supported")
         if any(item.company_id != self.company_id for item in self.items):
             raise ValueError("ReportItem tenant must match Report")
+        requirement_ids = [item.job_requirement_id for item in self.requirement_assessments]
+        if len(requirement_ids) != len(set(requirement_ids)):
+            raise ValueError("requirement assessments must be unique per requirement")

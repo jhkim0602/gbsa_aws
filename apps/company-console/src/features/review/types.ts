@@ -4,6 +4,35 @@ export type AssessmentState =
   | "insufficient_evidence"
   | "needs_follow_up";
 
+export type RequirementAssessmentStatus =
+  "met" | "partially_met" | "not_met" | "unknown";
+
+export type RequirementEvidence = {
+  evidenceId: string;
+  sourceKind: "submission" | "interview";
+  sourceType: string;
+  excerpt: string;
+  locator: Record<string, unknown>;
+  relation: "supports" | "partially_supports" | "contradicts";
+  explanation: string;
+};
+
+export type RequirementAssessment = {
+  requirementAssessmentId: string;
+  jobRequirementId: string;
+  requirementType: "required" | "preferred";
+  statement: string;
+  status: RequirementAssessmentStatus;
+  rationale: string;
+  confidence: number;
+  evidence: RequirementEvidence[];
+  humanOverride: {
+    status: RequirementAssessmentStatus;
+    reason: string | null;
+    createdAt: string;
+  } | null;
+};
+
 export type InterviewStage = "technical" | "project_deep_dive" | "behavioral";
 
 export type InterviewStageSummary = {
@@ -130,6 +159,8 @@ export type ReviewReport = {
   /** How `overallScore` was reached, and what it leaves out. Null on pre-scoring reports. */
   scoringBreakdown: ScoreBreakdown | null;
   items: ReviewReportItem[];
+  /** Qualification fulfillment is descriptive and never enters interview scoring. */
+  requirementAssessments: RequirementAssessment[];
 };
 
 export type ReviewTimelineEntry = {
@@ -200,6 +231,11 @@ export type ReviewApi = {
   overrideAssessment(
     reportItemId: string,
     assessmentState: string,
+    reason: string,
+  ): Promise<void>;
+  overrideRequirement(
+    requirementAssessmentId: string,
+    requirementStatus: RequirementAssessmentStatus,
     reason: string,
   ): Promise<void>;
   addNote(targetId: string, value: string): Promise<void>;

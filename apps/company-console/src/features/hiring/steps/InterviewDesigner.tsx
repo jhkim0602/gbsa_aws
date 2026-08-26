@@ -62,7 +62,7 @@ const interviewerOptions: ReadonlyArray<{
     level: "entry",
     name: "안내형 면접관",
     role: "기초와 성장 가능성 중심",
-    voice: "차분하고 친절한 TTS",
+    voice: "한국어 남성 음성",
     voiceId: "Seoyeon",
     tone: "friendly",
     image: "/interviewers/entry_eyes_open_mouth_closed.webp",
@@ -71,7 +71,7 @@ const interviewerOptions: ReadonlyArray<{
     level: "junior",
     name: "실무형 면접관",
     role: "본인 기여와 판단 근거 중심",
-    voice: "명료하고 균형 잡힌 TTS",
+    voice: "한국어 남성 음성",
     voiceId: "Seoyeon",
     tone: "analytical",
     image: "/interviewers/junior_eyes_open_mouth_closed.webp",
@@ -80,7 +80,7 @@ const interviewerOptions: ReadonlyArray<{
     level: "senior",
     name: "심층형 면접관",
     role: "설계·트레이드오프 중심",
-    voice: "낮고 신뢰감 있는 TTS",
+    voice: "한국어 남성 음성",
     voiceId: "Seoyeon",
     tone: "concise",
     image: "/interviewers/senior_eyes_open_mouth_closed.webp",
@@ -420,8 +420,8 @@ export function InterviewDesigner({
             면접관과 난이도
           </h3>
           <p className={SECTION_TEXT}>
-            난이도에 따라 질문 깊이와 꼬리질문 횟수가 달라집니다. 선택한 음성
-            프리셋도 면접 설정에 함께 저장됩니다.
+            난이도에 따라 질문 깊이와 확인 관점만 달라집니다. 꼬리질문은
+            난이도와 무관하게 답변 근거가 부족할 때 진행됩니다.
           </p>
         </header>
         <select
@@ -479,7 +479,7 @@ export function InterviewDesigner({
                   </small>
                   <span className="mt-2 flex items-center gap-1.5 border-t border-white/20 pt-2.5 text-[8px] text-white/65">
                     <Mic2 aria-hidden="true" size={12} />
-                    {option.voice} · {option.voiceId}
+                    {option.voice}
                   </span>
                 </span>
               </button>

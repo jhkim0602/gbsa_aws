@@ -12,6 +12,7 @@ import type {
   ReviewRecruitingState,
   ReviewReport,
   ReviewTimeline,
+  RequirementAssessmentStatus,
 } from "./types";
 
 // `.page-header` + `.review-page-header`: the latter's `flex-end` wins over `center`. The
@@ -92,6 +93,18 @@ export function ReviewWorkspace({
     return api.overrideAssessment(reportItemId, assessmentState, reason);
   }
 
+  function overrideRequirement(
+    requirementAssessmentId: string,
+    requirementStatus: RequirementAssessmentStatus,
+    reason: string,
+  ): Promise<void> {
+    return api.overrideRequirement(
+      requirementAssessmentId,
+      requirementStatus,
+      reason,
+    );
+  }
+
   return (
     <div className="min-w-0">
       <header className={PAGE_HEADER}>
@@ -144,6 +157,7 @@ export function ReviewWorkspace({
             stageSummary={stageSummary}
             evidenceContext={evidenceContext}
             onOverride={overrideAssessment}
+            onOverrideRequirement={overrideRequirement}
             onSelectEvidence={setSelectedStartMs}
           />
         </div>

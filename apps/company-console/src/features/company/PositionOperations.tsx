@@ -28,6 +28,7 @@ import {
 
 import {
   interviewLevelLabels,
+  interviewerVoiceLabel,
   invitationStatusMeta,
   PositionInvitations,
   type InvitationEmailTemplateApi,
@@ -904,17 +905,17 @@ function PositionInformation({
             </section>
 
             <section className={CRITERIA_SECTION}>
-              <h3 className={CRITERIA_SECTION_TITLE}>
-                평가 기준과 결과 가중치
-              </h3>
+              <h3 className={CRITERIA_SECTION_TITLE}>면접 답변 평가 기준</h3>
+              <p className="text-[10px] leading-[1.55] text-muted">
+                아래 기준은 면접 답변의 품질을 평가합니다. 필수·우대 자격요건
+                충족도는 리포트에서 별도로 판정하며 이 점수에 포함하지 않습니다.
+              </p>
               <div className={CRITERION_LIST}>
                 {criteria.criteria.map((criterion) => (
                   <article className={CRITERION} key={criterion.code}>
                     <header className={CRITERION_HEADER}>
                       <div>
-                        <span className={CRITERION_BADGE}>
-                          {criterion.required ? "필수" : "선택"}
-                        </span>
+                        <span className={CRITERION_BADGE}>고정 기준</span>
                         <strong className={CRITERION_TITLE}>
                           {criterion.name}
                         </strong>
@@ -988,7 +989,7 @@ function PositionInformation({
               <Info className={POLICY_ICON} size={17} aria-hidden="true" />
               <small className={POLICY_LABEL}>음성 프리셋</small>
               <strong className={POLICY_VALUE}>
-                {criteria.personaDefinition?.voiceId ?? "기본 음성"}
+                {interviewerVoiceLabel(criteria.personaDefinition?.voiceId)}
               </strong>
             </span>
             <span className={POLICY}>

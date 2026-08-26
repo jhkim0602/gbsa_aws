@@ -10,6 +10,7 @@ from interview_evidence.shared.ids import Clock, new_uuid7
 from interview_evidence.shared.tenant import TenantContext
 from interview_evidence.submission_analysis.application.retrieval import (
     HybridRetriever,
+    RetrievalResult,
 )
 from interview_evidence.submission_analysis.domain.retrieval import (
     CandidateClaim,
@@ -54,7 +55,7 @@ class VerificationMapBuilder:
         embedder: TextEmbedder,
         clock: Clock,
         retrieval_version: str = "aurora-hybrid-v1",
-        generation_version: str = "verification-map-rules-v1",
+        generation_version: str = "verification-map-rules-v2-requirement-evidence-boost",
     ) -> None:
         self._repository = repository
         self._retriever = retriever
@@ -81,17 +82,16 @@ class VerificationMapBuilder:
         for requirement in requirements:
             requirements_by_code.setdefault(requirement.criterion_code, []).append(requirement)
 
-        for criterion in criteria:
+        for criterion_index, criterion in enumerate(criteria):
             linked_requirements = requirements_by_code.get(criterion.code, [])
             query = " ".join(
                 (
                     criterion.name,
                     criterion.description,
-                    *(item.statement for item in linked_requirements),
                     *criterion.observable_dimensions,
                 )
             )
-            results = self._retriever.retrieve(
+            base_results = self._retriever.retrieve(
                 context,
                 applicant_id=applicant_id,
                 invitation_id=invitation_id,
@@ -107,6 +107,34 @@ class VerificationMapBuilder:
                 embedding_version=self._embedder.embedding_version,
                 limit=5,
             )
+            considered_requirements = _bounded_requirements(linked_requirements)
+            requirement_results: tuple[RetrievalResult, ...] = ()
+            matched_requirements: tuple[RequirementVerificationInput, ...] = ()
+            if considered_requirements:
+                requirement_query = " ".join(
+                    requirement.statement for requirement in considered_requirements
+                )
+                requirement_results = self._retriever.retrieve(
+                    context,
+                    applicant_id=applicant_id,
+                    invitation_id=invitation_id,
+                    competency_model_version_id=competency_model_version_id,
+                    query=requirement_query,
+                    query_vector=self._embedder.embed(
+                        context,
+                        requirement_query,
+                        dimensions=1024,
+                    ),
+                    criterion_id=criterion.criterion_id,
+                    embedding_model=self._embedder.model_id,
+                    embedding_version=self._embedder.embedding_version,
+                    limit=3,
+                )
+                matched_requirements = _matched_requirements(
+                    considered_requirements,
+                    requirement_results,
+                )
+            results = _merge_results(base_results, requirement_results, limit=5)
             claims = tuple(
                 CandidateClaim(
                     candidate_claim_id=new_uuid7(occurred_at),
@@ -174,10 +202,7 @@ class VerificationMapBuilder:
             else:
                 target_type = VerificationTargetType.CLAIM_FOUND
                 objective = f"자료에 언급된 {criterion.name} 경험의 상황과 본인 행동을 확인합니다."
-            linked_priority = min(
-                (item.priority for item in linked_requirements),
-                default=5,
-            )
+            matched_priority = _matched_requirement_priority(matched_requirements)
             targets.append(
                 VerificationTarget(
                     verification_target_id=new_uuid7(occurred_at),
@@ -189,7 +214,9 @@ class VerificationMapBuilder:
                     target_type=target_type,
                     objective=objective,
                     missing_dimensions=missing,
-                    priority=(linked_priority if criterion.required else linked_priority + 10),
+                    priority=(
+                        matched_priority if matched_priority is not None else 20 + criterion_index
+                    ),
                     max_follow_ups=criterion.max_follow_ups,
                     source_reference_candidates=tuple(result.source_id for result in results),
                 )
@@ -239,3 +266,93 @@ def _has_material_difference(left: str, right: str) -> bool:
     left_negated = any(marker in left_normalized for marker in negation_markers)
     right_negated = any(marker in right_normalized for marker in negation_markers)
     return left_negated != right_negated
+
+
+def _bounded_requirements(
+    requirements: list[RequirementVerificationInput],
+    *,
+    max_query_characters: int = 3000,
+) -> tuple[RequirementVerificationInput, ...]:
+    selected: list[RequirementVerificationInput] = []
+    used = 0
+    for requirement in sorted(
+        requirements,
+        key=lambda item: (not item.required, item.priority, item.statement),
+    ):
+        statement = " ".join(requirement.statement.split())
+        if not statement:
+            continue
+        remaining = max_query_characters - used
+        if remaining <= 0:
+            break
+        if len(statement) > remaining and selected:
+            break
+        selected.append(requirement)
+        used += min(len(statement), remaining) + 1
+    return tuple(selected)
+
+
+def _matched_requirements(
+    requirements: tuple[RequirementVerificationInput, ...],
+    results: tuple[RetrievalResult, ...],
+) -> tuple[RequirementVerificationInput, ...]:
+    related_results = tuple(result for result in results if _result_is_related(result))
+    if not related_results:
+        return ()
+    lexical_matches = tuple(
+        requirement
+        for requirement in requirements
+        if any(
+            _statement_matches_excerpt(requirement.statement, result.excerpt)
+            for result in related_results
+        )
+    )
+    if lexical_matches:
+        return lexical_matches
+    return requirements[:1]
+
+
+def _result_is_related(result: RetrievalResult) -> bool:
+    semantic = result.score_components.get("vector", 0.0)
+    lexical = result.score_components.get("lexical", 0.0)
+    return result.score >= 0.35 and (semantic >= 0.35 or lexical > 0)
+
+
+def _statement_matches_excerpt(statement: str, excerpt: str) -> bool:
+    normalized_excerpt = excerpt.casefold()
+    tokens = {
+        token.strip(".,()[]{}:;·/\\")
+        for token in statement.casefold().split()
+        if len(token.strip(".,()[]{}:;·/\\")) >= 2
+    }
+    return bool(tokens) and any(token in normalized_excerpt for token in tokens)
+
+
+def _matched_requirement_priority(
+    requirements: tuple[RequirementVerificationInput, ...],
+) -> int | None:
+    if not requirements:
+        return None
+    required_priorities = [item.priority for item in requirements if item.required]
+    if required_priorities:
+        return min(required_priorities)
+    return 5 + min(item.priority for item in requirements)
+
+
+def _merge_results(
+    *groups: tuple[RetrievalResult, ...],
+    limit: int,
+) -> tuple[RetrievalResult, ...]:
+    by_document: dict[str, RetrievalResult] = {}
+    for result in (result for group in groups for result in group):
+        document_id = result.document_id
+        current = by_document.get(document_id)
+        if current is None or result.score > current.score:
+            by_document[document_id] = result
+    return tuple(
+        sorted(
+            by_document.values(),
+            key=lambda result: result.score,
+            reverse=True,
+        )[:limit]
+    )

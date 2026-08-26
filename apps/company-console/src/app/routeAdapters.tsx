@@ -801,6 +801,33 @@ function toReviewReport(report: ReportResponse): ReviewReport {
       report.communication_scored_criteria_count ?? 0,
     unscoredCriteriaCount: report.unscored_criteria_count ?? 0,
     scoringBreakdown: toScoreBreakdown(report.scoring_breakdown),
+    requirementAssessments: (report.requirement_assessments ?? []).map(
+      (item) => ({
+        requirementAssessmentId: item.requirement_assessment_id,
+        jobRequirementId: item.job_requirement_id,
+        requirementType: item.requirement_type,
+        statement: item.statement,
+        status: item.status,
+        rationale: item.rationale,
+        confidence: item.confidence,
+        evidence: item.evidence.map((evidence) => ({
+          evidenceId: evidence.evidence_id,
+          sourceKind: evidence.source_kind,
+          sourceType: evidence.source_type,
+          excerpt: evidence.excerpt,
+          locator: evidence.locator,
+          relation: evidence.relation,
+          explanation: evidence.explanation,
+        })),
+        humanOverride: item.human_override
+          ? {
+              status: item.human_override.status,
+              reason: item.human_override.reason ?? null,
+              createdAt: item.human_override.created_at,
+            }
+          : null,
+      }),
+    ),
     items: report.items.map((item) => ({
       reportItemId: item.report_item_id,
       criterionId: item.criterion_id,
@@ -1121,6 +1148,26 @@ export function ReviewRoute() {
           headers: { "Idempotency-Key": idempotencyKey("override") },
           body: JSON.stringify({
             assessment_state: assessmentState,
+            reason,
+          }),
+        },
+      );
+    },
+    async overrideRequirement(
+      requirementAssessmentId,
+      requirementStatus,
+      reason,
+    ) {
+      if (!report) return;
+      await companyRequest(
+        `/v1/reports/${report.report_id}/requirements/${requirementAssessmentId}/reviews`,
+        {
+          method: "POST",
+          headers: {
+            "Idempotency-Key": idempotencyKey("requirement-override"),
+          },
+          body: JSON.stringify({
+            requirement_status: requirementStatus,
             reason,
           }),
         },

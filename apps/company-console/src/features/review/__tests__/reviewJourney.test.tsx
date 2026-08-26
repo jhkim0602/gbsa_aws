@@ -301,7 +301,13 @@ describe("Lane D review journey", () => {
       within(reportTabList)
         .getAllByRole("tab")
         .map((tab) => tab.textContent),
-    ).toEqual(["종합평가", "기준별 평가", "면접 타임라인", "추가 확인"]);
+    ).toEqual([
+      "종합평가",
+      "기준별 평가",
+      "면접 타임라인",
+      "자격요건 충족도",
+      "추가 확인",
+    ]);
     expect(reportTabList.className).not.toContain("overflow-x-auto");
 
     fireEvent.click(screen.getByRole("tab", { name: "면접 타임라인" }));
