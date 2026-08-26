@@ -974,6 +974,12 @@ components:
         expires_at:
           type: string
           format: date-time
+        delivery_method:
+          type: string
+          enum:
+          - email
+          - manual_link
+          default: email
     InvitationView:
       type: object
       additionalProperties: false
@@ -1199,6 +1205,7 @@ components:
       - accepted_count
       - rejected_count
       - invitations
+      - access_links
       properties:
         accepted_count:
           type: integer
@@ -1210,6 +1217,35 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/InvitationView'
+        access_links:
+          type: array
+          items:
+            $ref: '#/components/schemas/InvitationAccessLink'
+    InvitationAccessLink:
+      type: object
+      additionalProperties: false
+      required:
+      - invitation_id
+      - applicant_email
+      - access_url
+      - expires_at
+      properties:
+        invitation_id:
+          type: string
+          format: uuid
+        applicant_email:
+          type: string
+          format: email
+        applicant_display_name:
+          type:
+          - string
+          - 'null'
+        access_url:
+          type: string
+          format: uri
+        expires_at:
+          type: string
+          format: date-time
     InvitationEmailTemplateInput:
       type: object
       additionalProperties: false

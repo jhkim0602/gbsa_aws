@@ -188,7 +188,12 @@ const positionInvitationApi: PositionInvitationApi = {
     } while (cursor);
     return items.map(toCompanyInvitation);
   },
-  async createInvitations(positionId, applicants, expiresInDays) {
+  async createInvitations(
+    positionId,
+    applicants,
+    expiresInDays,
+    deliveryMethod = "email",
+  ) {
     const result = await companyRequest<
       components["schemas"]["InvitationBatchResult"]
     >(`/v1/positions/${positionId}/invitations`, {
@@ -202,11 +207,19 @@ const positionInvitationApi: PositionInvitationApi = {
         expires_at: new Date(
           Date.now() + expiresInDays * 86_400_000,
         ).toISOString(),
+        delivery_method: deliveryMethod,
       }),
     });
     return {
       acceptedCount: result.accepted_count,
       rejectedCount: result.rejected_count,
+      accessLinks: result.access_links.map((link) => ({
+        invitationId: link.invitation_id,
+        applicantEmail: link.applicant_email,
+        applicantDisplayName: link.applicant_display_name,
+        accessUrl: link.access_url,
+        expiresAt: link.expires_at,
+      })),
       invitations: result.invitations.map((invitation) => ({
         invitationId: invitation.invitation_id,
         positionId: invitation.position_id,

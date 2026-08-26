@@ -513,7 +513,12 @@ export const mockPositionInvitationApi: PositionInvitationApi = {
       positionId,
     )) as readonly PositionInvitation[];
   },
-  async createInvitations(positionId, applicants, expiresInDays) {
+  async createInvitations(
+    positionId,
+    applicants,
+    expiresInDays,
+    deliveryMethod = "email",
+  ) {
     const fixture = await loadFixture();
     const created = applicants.map((applicant, index) =>
       createMockInvitation(
@@ -528,6 +533,16 @@ export const mockPositionInvitationApi: PositionInvitationApi = {
       acceptedCount: created.length,
       rejectedCount: 0,
       invitations: created,
+      accessLinks:
+        deliveryMethod === "manual_link"
+          ? created.map((invitation) => ({
+              invitationId: invitation.invitationId,
+              applicantEmail: invitation.applicantEmail,
+              applicantDisplayName: invitation.applicantDisplayName,
+              accessUrl: `http://localhost:5174/access/mock-${invitation.invitationId}`,
+              expiresAt: invitation.expiresAt,
+            }))
+          : [],
     };
   },
 };

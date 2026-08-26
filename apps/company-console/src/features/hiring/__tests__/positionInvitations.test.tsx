@@ -203,6 +203,70 @@ describe("PositionInvitations", () => {
     );
   });
 
+  it("creates a copyable access link without sending email", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const api: PositionInvitationApi = {
+      listInvitations: vi
+        .fn()
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]),
+      createInvitations: vi.fn().mockResolvedValue({
+        acceptedCount: 1,
+        rejectedCount: 0,
+        invitations: [],
+        accessLinks: [
+          {
+            invitationId: "invitation-manual",
+            applicantEmail: "manual@example.com",
+            applicantDisplayName: "수동초대",
+            accessUrl: "https://applicant.example/access/manual-token",
+            expiresAt: "2026-08-29T09:00:00Z",
+          },
+        ],
+      }),
+    };
+    render(
+      <MemoryRouter>
+        <PositionInvitations positionId="position-1" api={api} />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: "지원자 관리" });
+    fireEvent.change(screen.getByLabelText("지원자 1 이름"), {
+      target: { value: "수동초대" },
+    });
+    fireEvent.change(screen.getByLabelText("지원자 1 이메일"), {
+      target: { value: "manual@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "초대 링크 만들기" }));
+
+    await waitFor(() =>
+      expect(api.createInvitations).toHaveBeenCalledWith(
+        "position-1",
+        [{ displayName: "수동초대", email: "manual@example.com" }],
+        7,
+        "manual_link",
+      ),
+    );
+    expect(
+      await screen.findByText("1개의 초대 링크를 만들었습니다."),
+    ).toBeTruthy();
+    expect(
+      screen.getByDisplayValue("https://applicant.example/access/manual-token"),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "복사" }));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        "https://applicant.example/access/manual-token",
+      ),
+    );
+  });
+
   it("imports CSV and JSON recipients into the validation table", async () => {
     const api: PositionInvitationApi = {
       listInvitations: vi.fn().mockResolvedValue(invitations),

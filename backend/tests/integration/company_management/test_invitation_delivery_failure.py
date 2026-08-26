@@ -234,6 +234,9 @@ async def test_a_refused_recipient_keeps_every_invitation_in_the_batch() -> None
     # delivered reported as a complete success and nobody knew to resend.
     assert body["accepted_count"] == 1
     assert body["rejected_count"] == 1
+    assert len(body["access_links"]) == 1
+    assert body["access_links"][0]["applicant_email"] == REFUSED
+    assert body["access_links"][0]["access_url"].startswith("https://applicant.example/access/")
 
     # The good address really was sent to, so this is the mail-left-but-row-vanished case
     # and not a batch that failed before sending anything.
@@ -295,4 +298,56 @@ async def test_a_fully_delivered_batch_reports_no_rejections() -> None:
     body = response.json()
     assert body["accepted_count"] == 2
     assert body["rejected_count"] == 0
+    assert body["access_links"] == []
     assert len(email_sender.messages) == 2
+
+
+@pytest.mark.asyncio
+async def test_manual_links_create_valid_invitations_without_sending_email() -> None:
+    repository = _seeded_repository()
+    email_sender = RefusingEmailSender()
+    audit = InMemoryAuditAppender()
+    runtime = create_lane_a_runtime(
+        principal_provider=FakePrincipalProvider(
+            company_principals={
+                "company-token": CompanyPrincipal(
+                    company_id=COMPANY_ID,
+                    company_user_id=COMPANY_USER_ID,
+                    identity_subject="oidc|company-user",
+                )
+            }
+        ),
+        repository=repository,
+        audit=audit,
+        clock=FrozenClock(NOW),
+        email_sender=email_sender,
+        applicant_access_base_url="https://applicant.example/access",
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=runtime.app),
+        base_url="https://testserver",
+    ) as client:
+        response = await client.post(
+            f"/v1/positions/{POSITION_ID}/invitations",
+            headers={
+                "Authorization": "Bearer company-token",
+                "Idempotency-Key": "manual-invitation-links",
+            },
+            json={
+                "applicants": [{"email": REFUSED, "display_name": "수동초대"}],
+                "expires_at": (NOW + timedelta(days=7)).isoformat(),
+                "delivery_method": "manual_link",
+            },
+        )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["accepted_count"] == 1
+    assert body["rejected_count"] == 0
+    assert len(body["invitations"]) == 1
+    assert len(body["access_links"]) == 1
+    assert body["access_links"][0]["applicant_email"] == REFUSED
+    assert body["access_links"][0]["access_url"].startswith("https://applicant.example/access/")
+    assert email_sender.messages == []
+    assert any(event.action == "invitation.manual_links_created" for event in audit.events)

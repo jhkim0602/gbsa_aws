@@ -2,8 +2,11 @@ import {
   ArrowDownWideNarrow,
   ArrowLeft,
   CheckCircle2,
+  Check,
   CircleAlert,
+  Copy,
   FileUp,
+  Link2,
   PanelRightClose,
   PanelRightOpen,
   Pencil,
@@ -106,6 +109,14 @@ export type InvitationApplicant = Readonly<{
   email: string;
 }>;
 
+export type InvitationAccessLink = Readonly<{
+  invitationId: string;
+  applicantEmail: string;
+  applicantDisplayName?: string | null;
+  accessUrl: string;
+  expiresAt: string;
+}>;
+
 type InvitationDraftRow = Readonly<{
   id: string;
   displayName: string;
@@ -127,10 +138,12 @@ export type PositionInvitationApi = Readonly<{
     positionId: string,
     applicants: readonly InvitationApplicant[],
     expiresInDays: number,
+    deliveryMethod?: "email" | "manual_link",
   ): Promise<{
     acceptedCount: number;
     rejectedCount: number;
     invitations: readonly PositionInvitation[];
+    accessLinks?: readonly InvitationAccessLink[];
   }>;
 }>;
 
@@ -377,6 +390,13 @@ const VALIDATION_CHIP_TONE = {
 const ACTIONS =
   "flex items-center justify-end gap-3 mw-680:flex-col mw-680:items-stretch";
 const ACTIONS_ASIDE = "flex flex-col items-stretch justify-end gap-3";
+const ISSUED_LINKS =
+  "mb-4 rounded-lg border border-brand/25 bg-brand-soft p-4 text-[11px]";
+const ISSUED_LINK_ROW =
+  "mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2";
+const ISSUED_LINK_INPUT =
+  "mt-1 h-9 w-full rounded-md border border-border bg-surface px-3 font-mono" +
+  " text-[10px] text-ink";
 const DRAWER_SCRIM = "fixed inset-0 z-40 border-0 bg-[#0f172a52]";
 const DRAWER =
   "fixed inset-y-0 right-0 z-41 grid w-[min(1080px,96vw)]" +
@@ -425,6 +445,10 @@ export function PositionInvitations({
   const [issuing, setIssuing] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [issuedLinks, setIssuedLinks] = useState<
+    readonly InvitationAccessLink[]
+  >([]);
+  const [copiedInvitationId, setCopiedInvitationId] = useState("");
   const [invitePanelOpen, setInvitePanelOpen] = useState(true);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [emailTemplate, setEmailTemplate] =
@@ -546,16 +570,26 @@ export function PositionInvitations({
     });
   }, [filter, invitations, query]);
 
-  async function createInvitations(applicants: readonly InvitationApplicant[]) {
+  async function createInvitations(
+    applicants: readonly InvitationApplicant[],
+    deliveryMethod: "email" | "manual_link" = "email",
+  ) {
     setIssuing(true);
     setError("");
     setNotice("");
+    setIssuedLinks([]);
+    setCopiedInvitationId("");
     try {
-      const result = await api.createInvitations(
-        positionId,
-        applicants,
-        resolveInvitationValidityDays(interviewAt),
-      );
+      const expiresInDays = resolveInvitationValidityDays(interviewAt);
+      const result =
+        deliveryMethod === "manual_link"
+          ? await api.createInvitations(
+              positionId,
+              applicants,
+              expiresInDays,
+              deliveryMethod,
+            )
+          : await api.createInvitations(positionId, applicants, expiresInDays);
       // `rejectedCount` has always been in the response and was never rendered, so a batch
       // where most of the mail failed reported as a plain success -- and with the draft rows
       // cleared there was no longer any way to see who had been left out. `0명의 초대를
@@ -565,13 +599,19 @@ export function PositionInvitations({
       // Refresh first: `loadInvitations` clears the error line, so anything reported about this
       // batch has to be written after it or it disappears before the reviewer sees it.
       await loadInvitations();
-      if (result.acceptedCount > 0) {
+      const accessLinks = result.accessLinks ?? [];
+      setIssuedLinks(accessLinks);
+      if (deliveryMethod === "manual_link") {
+        setNotice(`${accessLinks.length}개의 초대 링크를 만들었습니다.`);
+      } else if (result.acceptedCount > 0) {
         setNotice(`${result.acceptedCount}명에게 초대 메일을 발송했습니다.`);
       }
       if (result.rejectedCount > 0) {
         setError(
           `${result.rejectedCount}명은 초대가 만들어졌지만 메일이 발송되지 않았습니다.` +
-            " 아래 목록에서 다시 초대해 주세요.",
+            (accessLinks.length
+              ? " 아래 초대 링크를 복사해 직접 전달해 주세요."
+              : " 아래 목록에서 다시 초대해 주세요."),
         );
       }
     } catch {
@@ -580,6 +620,18 @@ export function PositionInvitations({
       );
     } finally {
       setIssuing(false);
+    }
+  }
+
+  async function copyInvitationLink(link: InvitationAccessLink) {
+    try {
+      await navigator.clipboard.writeText(link.accessUrl);
+      setCopiedInvitationId(link.invitationId);
+      window.setTimeout(() => setCopiedInvitationId(""), 2000);
+    } catch {
+      setError(
+        "초대 링크를 복사하지 못했습니다. 링크를 직접 선택해 복사해 주세요.",
+      );
     }
   }
 
@@ -691,6 +743,50 @@ export function PositionInvitations({
           <p className={formAlertClass("panel")} role="alert">
             {error}
           </p>
+        ) : null}
+        {issuedLinks.length ? (
+          <section className={ISSUED_LINKS} aria-label="발급된 초대 링크">
+            <strong className="text-[12px] text-ink">
+              메일 없이 전달할 초대 링크
+            </strong>
+            <p className="mt-1 leading-[1.5] text-muted">
+              링크를 가진 사람은 지원자로 접속할 수 있습니다. 안전한 채널로
+              전달하고, 이 화면을 벗어나기 전에 복사해 주세요.
+            </p>
+            {issuedLinks.map((link) => {
+              const displayName =
+                link.applicantDisplayName || link.applicantEmail.split("@")[0];
+              const copied = copiedInvitationId === link.invitationId;
+              return (
+                <div className={ISSUED_LINK_ROW} key={link.invitationId}>
+                  <label className="min-w-0">
+                    <span className="font-semibold text-ink">
+                      {displayName} · {link.applicantEmail}
+                    </span>
+                    <input
+                      className={ISSUED_LINK_INPUT}
+                      aria-label={`${displayName} 초대 링크`}
+                      readOnly
+                      value={link.accessUrl}
+                      onFocus={(event) => event.currentTarget.select()}
+                    />
+                  </label>
+                  <button
+                    className={BUTTON_QUIET}
+                    type="button"
+                    onClick={() => void copyInvitationLink(link)}
+                  >
+                    {copied ? (
+                      <Check size={14} aria-hidden="true" />
+                    ) : (
+                      <Copy size={14} aria-hidden="true" />
+                    )}
+                    {copied ? "복사됨" : "복사"}
+                  </button>
+                </div>
+              );
+            })}
+          </section>
         ) : null}
 
         <div
@@ -1045,25 +1141,45 @@ export function PositionInvitations({
                       초대 링크는 포지션의 면접 예정 시각을 기준으로 자동
                       관리됩니다.
                     </span>
-                    <button
-                      className={`${BUTTON_PRIMARY} ${
-                        workspace ? "w-full" : "mw-680:w-full"
-                      }`}
-                      type="button"
-                      disabled={!validationSummary.valid || issuing}
-                      onClick={() =>
-                        void createInvitations(
-                          validatedDrafts.flatMap((row) =>
-                            row.applicant ? [row.applicant] : [],
-                          ),
-                        )
-                      }
-                    >
-                      <Send size={15} aria-hidden="true" />
-                      {issuing
-                        ? "초대 발송 중"
-                        : `${validationSummary.valid}명에게 초대 보내기`}
-                    </button>
+                    <div className="flex flex-wrap justify-end gap-2 mw-680:grid">
+                      <button
+                        className={`${BUTTON_QUIET} ${
+                          workspace ? "w-full" : "mw-680:w-full"
+                        }`}
+                        type="button"
+                        disabled={!validationSummary.valid || issuing}
+                        onClick={() =>
+                          void createInvitations(
+                            validatedDrafts.flatMap((row) =>
+                              row.applicant ? [row.applicant] : [],
+                            ),
+                            "manual_link",
+                          )
+                        }
+                      >
+                        <Link2 size={15} aria-hidden="true" />
+                        초대 링크 만들기
+                      </button>
+                      <button
+                        className={`${BUTTON_PRIMARY} ${
+                          workspace ? "w-full" : "mw-680:w-full"
+                        }`}
+                        type="button"
+                        disabled={!validationSummary.valid || issuing}
+                        onClick={() =>
+                          void createInvitations(
+                            validatedDrafts.flatMap((row) =>
+                              row.applicant ? [row.applicant] : [],
+                            ),
+                          )
+                        }
+                      >
+                        <Send size={15} aria-hidden="true" />
+                        {issuing
+                          ? "초대 처리 중"
+                          : `${validationSummary.valid}명에게 초대 보내기`}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </section>

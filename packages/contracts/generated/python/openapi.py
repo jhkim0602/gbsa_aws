@@ -287,6 +287,7 @@ class InvitationBatchCreate(BaseModel):
     )
     applicants: list[Applicant] = Field(..., max_length=1000, min_length=1)
     expires_at: AwareDatetime
+    delivery_method: Literal["email", "manual_link"] = "email"
 
 
 class Status4(StrEnum):
@@ -331,6 +332,17 @@ class InvitationPage(BaseModel):
     next_cursor: str | None = None
 
 
+class InvitationAccessLink(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    invitation_id: UUID
+    applicant_email: EmailStr
+    applicant_display_name: str | None = None
+    access_url: AnyUrl
+    expires_at: AwareDatetime
+
+
 class InvitationBatchResult(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -338,6 +350,7 @@ class InvitationBatchResult(BaseModel):
     accepted_count: conint(ge=0)
     rejected_count: conint(ge=0)
     invitations: list[InvitationView]
+    access_links: list[InvitationAccessLink]
 
 
 class InvitationEmailTemplateInput(BaseModel):

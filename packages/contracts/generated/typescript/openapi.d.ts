@@ -1043,11 +1043,25 @@ export interface components {
                 /** Format: email */
                 readonly email: string;
             }[];
+            /** @default email */
+            readonly delivery_method?: "email" | "manual_link";
             /** Format: date-time */
             readonly expires_at: string;
         };
+        readonly InvitationAccessLink: {
+            /** Format: email */
+            readonly applicant_email: string;
+            readonly applicant_display_name?: string | null;
+            /** Format: uri */
+            readonly access_url: string;
+            /** Format: date-time */
+            readonly expires_at: string;
+            /** Format: uuid */
+            readonly invitation_id: string;
+        };
         readonly InvitationBatchResult: {
             readonly accepted_count: number;
+            readonly access_links: readonly components["schemas"]["InvitationAccessLink"][];
             readonly invitations: readonly components["schemas"]["InvitationView"][];
             readonly rejected_count: number;
         };

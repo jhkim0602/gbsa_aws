@@ -262,6 +262,7 @@ class InvitationBatchCreate(BaseModel):
 
     applicants: tuple[ApplicantInvitationRequest, ...] = Field(min_length=1, max_length=1000)
     expires_at: datetime
+    delivery_method: Literal["email", "manual_link"] = "email"
 
 
 class InvitationView(BaseModel):
@@ -420,12 +421,23 @@ class InvitationPage(BaseModel):
     next_cursor: str | None = None
 
 
+class InvitationAccessLinkView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    invitation_id: UUID
+    applicant_email: str
+    applicant_display_name: str | None = None
+    access_url: str
+    expires_at: datetime
+
+
 class InvitationBatchResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     accepted_count: int
     rejected_count: int
     invitations: list[InvitationView]
+    access_links: list[InvitationAccessLinkView]
 
 
 class InvitationEmailTemplateInput(BaseModel):
@@ -1102,10 +1114,15 @@ def create_company_router(
             resource_type="position",
             resource_id=position_id,
             result="success",
-            metadata={"accepted_count": len(issuances), "rejected_count": 0},
+            metadata={
+                "accepted_count": len(issuances),
+                "rejected_count": 0,
+                "delivery_method": body.delivery_method,
+            },
         )
         undeliverable: set[UUID] = set()
-        if invitation_email is not None:
+        link_issuances = list(issuances) if body.delivery_method == "manual_link" else []
+        if body.delivery_method == "email" and invitation_email is not None:
             position = company_service.get_position(scope.context, position_id)
             template = template_service.resolve_for_sending(scope.context, position_id)
             company_name = template_service.company_name(scope.context)
@@ -1147,6 +1164,7 @@ def create_company_router(
                     # was not reached, and resending is a second call to this endpoint --
                     # whereas a dropped invitation cannot be recovered from anywhere.
                     undeliverable.add(issuance.invitation.invitation_id)
+                    link_issuances.append(issuance)
                     audit.append(
                         scope.context,
                         action="invitation.email_failed",
@@ -1158,6 +1176,15 @@ def create_company_router(
                         # exactly what must not be copied into an audit row.
                         metadata={},
                     )
+        if body.delivery_method == "manual_link":
+            audit.append(
+                scope.context,
+                action="invitation.manual_links_created",
+                resource_type="position",
+                resource_id=position_id,
+                result="success",
+                metadata={"link_count": len(link_issuances)},
+            )
         return InvitationBatchResult(
             # What the reviewer is told. `accepted_count` counts invitations that exist and
             # can be used; `rejected_count` counts those whose mail did not go out, which is
@@ -1173,6 +1200,19 @@ def create_company_router(
                     context=scope.context,
                 )
                 for issuance in issuances
+            ],
+            access_links=[
+                InvitationAccessLinkView(
+                    invitation_id=issuance.invitation.invitation_id,
+                    applicant_email=issuance.invitation.applicant_email,
+                    applicant_display_name=issuance.invitation.applicant_display_name,
+                    access_url=_invitation_access_url(
+                        applicant_access_base_url,
+                        issuance.token.raw_token,
+                    ),
+                    expires_at=issuance.invitation.expires_at,
+                )
+                for issuance in link_issuances
             ],
         )
 
