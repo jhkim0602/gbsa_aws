@@ -502,6 +502,74 @@ describe("PositionInvitations", () => {
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(screen.queryByText(/초대 메일을 발송했습니다/)).toBeNull();
   });
+
+  it("blocks invitations while the position is not active", async () => {
+    const api: PositionInvitationApi = {
+      listInvitations: vi.fn().mockResolvedValue([]),
+      createInvitations: vi.fn(),
+    };
+
+    render(
+      <MemoryRouter>
+        <PositionInvitations
+          positionId="position-1"
+          positionStatus="draft"
+          api={api}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      await screen.findByText(/현재 포지션이 모집 중이 아닙니다/),
+    ).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("지원자 1 이름"), {
+      target: { value: "박지원" },
+    });
+    fireEvent.change(screen.getByLabelText("지원자 1 이메일"), {
+      target: { value: "park@example.com" },
+    });
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "1명에게 초대 보내기",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(api.createInvitations).not.toHaveBeenCalled();
+  });
+
+  it("explains when the server rejects invitations for position state", async () => {
+    const requestError = Object.assign(new Error("request failed"), {
+      detail: "position is not accepting new applications",
+    });
+    const api: PositionInvitationApi = {
+      listInvitations: vi.fn().mockResolvedValue([]),
+      createInvitations: vi.fn().mockRejectedValue(requestError),
+    };
+
+    render(
+      <MemoryRouter>
+        <PositionInvitations positionId="position-1" api={api} />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("heading", { name: "지원자 관리" });
+    fireEvent.change(screen.getByLabelText("지원자 1 이름"), {
+      target: { value: "박지원" },
+    });
+    fireEvent.change(screen.getByLabelText("지원자 1 이메일"), {
+      target: { value: "park@example.com" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "1명에게 초대 보내기" }),
+    );
+
+    expect(
+      await screen.findByText(
+        "현재 포지션이 모집 중이 아니어서 초대할 수 없습니다. 포지션 상태와 모집 기간을 확인해 주세요.",
+      ),
+    ).toBeTruthy();
+  });
 });
 
 describe("parseInvitationImport", () => {

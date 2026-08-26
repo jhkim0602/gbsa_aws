@@ -112,6 +112,7 @@ export function HiringWorkspace({
   const [draft, setDraft] = useState<HiringDraft>(readStoredDraft);
   const [ids, setIds] = useState<HiringResourceIds>({
     positionId: "",
+    positionRowVersion: 0,
     versionId: "",
   });
   const [submitting, setSubmitting] = useState(false);
@@ -233,38 +234,49 @@ export function HiringWorkspace({
                 }
                 void execute(async () => {
                   let positionId = ids.positionId;
+                  let positionRowVersion = ids.positionRowVersion;
+                  const positionInput = {
+                    title: draft.title,
+                    description: draft.description,
+                    roleType: draft.roleType,
+                    headcount: draft.headcount,
+                    interviewCapacity: draft.interviewCapacity,
+                    interviewAt: draft.interviewAt || undefined,
+                    recruitmentStartAt: draft.recruitmentStartAt || undefined,
+                    recruitmentEndAt: draft.recruitmentEndAt || undefined,
+                    submissionRequirements: draft.submissionRequirements.map(
+                      (requirement) => ({
+                        materialType: requirement.materialType,
+                        required: requirement.required,
+                        enabled: requirement.required,
+                      }),
+                    ),
+                  };
                   if (!positionId) {
-                    const created = await api.createPosition({
-                      title: draft.title,
-                      description: draft.description,
-                      roleType: draft.roleType,
-                      headcount: draft.headcount,
-                      interviewCapacity: draft.interviewCapacity,
-                      interviewAt: draft.interviewAt || undefined,
-                      recruitmentStartAt: draft.recruitmentStartAt || undefined,
-                      recruitmentEndAt: draft.recruitmentEndAt || undefined,
-                      submissionRequirements: draft.submissionRequirements.map(
-                        (requirement) => ({
-                          materialType: requirement.materialType,
-                          required: requirement.required,
-                          enabled: requirement.required,
-                        }),
-                      ),
-                    });
+                    const created = await api.createPosition(positionInput);
                     positionId = created.positionId;
+                    positionRowVersion = created.rowVersion;
                     setIds((current) => ({
                       ...current,
                       positionId,
+                      positionRowVersion,
                     }));
                   }
-                  const published = await api.publishCriteria(
+                  if (!ids.versionId) {
+                    const published = await api.publishCriteria(
+                      positionId,
+                      toCriteriaConfiguration(draft),
+                    );
+                    setIds((current) => ({
+                      ...current,
+                      versionId: published.versionId,
+                    }));
+                  }
+                  await api.activatePosition(
                     positionId,
-                    toCriteriaConfiguration(draft),
+                    positionRowVersion,
+                    positionInput,
                   );
-                  setIds((current) => ({
-                    ...current,
-                    versionId: published.versionId,
-                  }));
                   if (typeof window !== "undefined") {
                     try {
                       window.localStorage.removeItem(hiringDraftStorageKey);

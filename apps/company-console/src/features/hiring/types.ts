@@ -147,26 +147,35 @@ export type CriteriaConfiguration = Readonly<{
   };
 }>;
 
+export type PositionDraftInput = Readonly<{
+  title: string;
+  description: string;
+  roleType?: string;
+  headcount?: number;
+  interviewCapacity?: number;
+  interviewAt?: string;
+  recruitmentStartAt?: string;
+  recruitmentEndAt?: string;
+  submissionRequirements: ReadonlyArray<{
+    materialType: SubmissionMaterialId;
+    required: boolean;
+    enabled: boolean;
+  }>;
+}>;
+
 export type HiringWorkspaceApi = Readonly<{
-  createPosition(input: {
-    title: string;
-    description: string;
-    roleType?: string;
-    headcount?: number;
-    interviewCapacity?: number;
-    interviewAt?: string;
-    recruitmentStartAt?: string;
-    recruitmentEndAt?: string;
-    submissionRequirements: ReadonlyArray<{
-      materialType: SubmissionMaterialId;
-      required: boolean;
-      enabled: boolean;
-    }>;
-  }): Promise<{ positionId: string }>;
+  createPosition(
+    input: PositionDraftInput,
+  ): Promise<{ positionId: string; rowVersion: number }>;
   publishCriteria(
     positionId: string,
     input: CriteriaConfiguration,
   ): Promise<{ versionId: string }>;
+  activatePosition(
+    positionId: string,
+    rowVersion: number,
+    input: PositionDraftInput,
+  ): Promise<void>;
 }>;
 
 export type PositionHiringStep = "position" | "application";
@@ -204,6 +213,7 @@ export type HiringDraftUpdater = <K extends keyof HiringDraft>(
 
 export type HiringResourceIds = {
   positionId: string;
+  positionRowVersion: number;
   versionId: string;
 };
 

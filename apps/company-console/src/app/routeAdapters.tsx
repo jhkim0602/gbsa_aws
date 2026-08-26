@@ -79,6 +79,31 @@ const AUTOMATED_INTERVIEW_ENABLED =
   import.meta.env.DEV ||
   import.meta.env.VITE_AUTOMATED_INTERVIEW_ENABLED === "true";
 
+function toPositionRequest(
+  input: Parameters<HiringWorkspaceApi["createPosition"]>[0],
+) {
+  return {
+    title: input.title,
+    description: input.description,
+    role_type: input.roleType,
+    headcount: input.headcount,
+    interview_capacity: input.interviewCapacity,
+    interview_at: input.interviewAt
+      ? new Date(input.interviewAt).toISOString()
+      : undefined,
+    recruitment_start_at: input.recruitmentStartAt,
+    recruitment_end_at: input.recruitmentEndAt,
+    submission_requirements: input.submissionRequirements.map(
+      (requirement) => ({
+        material_type: requirement.materialType,
+        required: requirement.required,
+        enabled: requirement.enabled,
+        instructions: null,
+      }),
+    ),
+  };
+}
+
 const hiringApi: HiringWorkspaceApi = {
   async createPosition(input) {
     const result = await companyRequest<components["schemas"]["Position"]>(
@@ -86,29 +111,13 @@ const hiringApi: HiringWorkspaceApi = {
       {
         method: "POST",
         headers: { "Idempotency-Key": idempotencyKey("position") },
-        body: JSON.stringify({
-          title: input.title,
-          description: input.description,
-          role_type: input.roleType,
-          headcount: input.headcount,
-          interview_capacity: input.interviewCapacity,
-          interview_at: input.interviewAt
-            ? new Date(input.interviewAt).toISOString()
-            : undefined,
-          recruitment_start_at: input.recruitmentStartAt,
-          recruitment_end_at: input.recruitmentEndAt,
-          submission_requirements: input.submissionRequirements.map(
-            (requirement) => ({
-              material_type: requirement.materialType,
-              required: requirement.required,
-              enabled: requirement.enabled,
-              instructions: null,
-            }),
-          ),
-        }),
+        body: JSON.stringify(toPositionRequest(input)),
       },
     );
-    return { positionId: result.position_id };
+    return {
+      positionId: result.position_id,
+      rowVersion: result.row_version,
+    };
   },
   async publishCriteria(positionId, input) {
     const draft = await companyRequest<
@@ -170,6 +179,19 @@ const hiringApi: HiringWorkspaceApi = {
       },
     );
     return { versionId: published.competency_model_version_id };
+  },
+  async activatePosition(positionId, rowVersion, input) {
+    await companyRequest<components["schemas"]["Position"]>(
+      `/v1/positions/${positionId}`,
+      {
+        method: "PATCH",
+        headers: { "If-Match-Version": String(rowVersion) },
+        body: JSON.stringify({
+          ...toPositionRequest(input),
+          status: "active",
+        }),
+      },
+    );
   },
 };
 

@@ -39,4 +39,5 @@ export type {
   HiringWorkspaceApi,
   InterviewLevel,
   InterviewerTone,
+  PositionDraftInput,
 } from "./types";

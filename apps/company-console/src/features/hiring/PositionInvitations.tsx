@@ -415,9 +415,21 @@ const PROGRESS_FILL = "block h-full rounded-[inherit] bg-brand";
 const PROGRESS_TEXT = "font-mono text-[9px]";
 const ROW_COMPLETE = "text-[9px] text-subtle";
 
+function invitationCreationErrorMessage(error: unknown) {
+  const detail =
+    typeof error === "object" && error !== null && "detail" in error
+      ? String(error.detail)
+      : "";
+  if (detail.includes("position is not accepting new applications")) {
+    return "현재 포지션이 모집 중이 아니어서 초대할 수 없습니다. 포지션 상태와 모집 기간을 확인해 주세요.";
+  }
+  return "초대 발송을 완료하지 못했습니다. 이메일 형식과 채용 관리 상태를 확인해 주세요.";
+}
+
 export function PositionInvitations({
   positionId,
   positionName,
+  positionStatus = "active",
   interviewAt,
   api,
   templateApi,
@@ -426,6 +438,7 @@ export function PositionInvitations({
 }: {
   positionId: string;
   positionName?: string;
+  positionStatus?: string;
   interviewAt?: string | null;
   api: PositionInvitationApi;
   /** Omitted where the invitation email is not editable, e.g. read-only rosters. */
@@ -454,6 +467,7 @@ export function PositionInvitations({
   const [emailTemplate, setEmailTemplate] =
     useState<InvitationEmailTemplateState | null>(null);
   const workspace = view === "workspace";
+  const canInvite = positionStatus === "active";
   const validatedDrafts = useMemo(
     () =>
       validateInvitationDrafts(
@@ -574,6 +588,12 @@ export function PositionInvitations({
     applicants: readonly InvitationApplicant[],
     deliveryMethod: "email" | "manual_link" = "email",
   ) {
+    if (!canInvite) {
+      setError(
+        "현재 포지션이 모집 중이 아니어서 초대할 수 없습니다. 포지션 상태와 모집 기간을 확인해 주세요.",
+      );
+      return;
+    }
     setIssuing(true);
     setError("");
     setNotice("");
@@ -614,10 +634,8 @@ export function PositionInvitations({
               : " 아래 목록에서 다시 초대해 주세요."),
         );
       }
-    } catch {
-      setError(
-        "초대 발송을 완료하지 못했습니다. 이메일 형식과 채용 관리 상태를 확인해 주세요.",
-      );
+    } catch (creationError) {
+      setError(invitationCreationErrorMessage(creationError));
     } finally {
       setIssuing(false);
     }
@@ -731,6 +749,12 @@ export function PositionInvitations({
       ) : null}
 
       <div className={view === "invite" ? "p-5 mw-720:p-3" : CONTENT}>
+        {!canInvite ? (
+          <p className={`${formAlertClass("panel")} mb-4`} role="alert">
+            현재 포지션이 모집 중이 아닙니다. 포지션을 활성화하고 모집 기간을
+            확인한 뒤 지원자를 초대해 주세요.
+          </p>
+        ) : null}
         {notice ? (
           <p
             className={`${formAlertClass("panel", "success")} mb-4`}
@@ -866,7 +890,7 @@ export function PositionInvitations({
               ) : filteredInvitations.length ? (
                 <InvitationTable
                   invitations={filteredInvitations}
-                  issuing={issuing}
+                  issuing={issuing || !canInvite}
                   onReissue={(applicant) => void createInvitations([applicant])}
                 />
               ) : (
@@ -1147,7 +1171,9 @@ export function PositionInvitations({
                           workspace ? "w-full" : "mw-680:w-full"
                         }`}
                         type="button"
-                        disabled={!validationSummary.valid || issuing}
+                        disabled={
+                          !canInvite || !validationSummary.valid || issuing
+                        }
                         onClick={() =>
                           void createInvitations(
                             validatedDrafts.flatMap((row) =>
@@ -1165,7 +1191,9 @@ export function PositionInvitations({
                           workspace ? "w-full" : "mw-680:w-full"
                         }`}
                         type="button"
-                        disabled={!validationSummary.valid || issuing}
+                        disabled={
+                          !canInvite || !validationSummary.valid || issuing
+                        }
                         onClick={() =>
                           void createInvitations(
                             validatedDrafts.flatMap((row) =>

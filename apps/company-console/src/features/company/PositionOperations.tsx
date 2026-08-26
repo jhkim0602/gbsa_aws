@@ -455,6 +455,7 @@ export function PositionOperations({
               invitations={positionInvitations}
               criteria={currentCriteria}
               insights={weightedInsights}
+              canInvite={position.status === "active"}
               onOpenTab={openTab}
               onOpenInvitations={() => setInvitationModalOpen(true)}
             />
@@ -470,6 +471,7 @@ export function PositionOperations({
             <ApplicantRoster
               invitations={positionInvitations}
               insights={weightedInsights}
+              canInvite={position.status === "active"}
               onInvite={() => setInvitationModalOpen(true)}
             />
           </section>
@@ -554,6 +556,7 @@ export function PositionOperations({
               view="invite"
               positionId={positionId}
               positionName={position.title}
+              positionStatus={position.status}
               interviewAt={position.interviewAt}
               api={invitationApi}
               templateApi={templateApi}
@@ -568,10 +571,12 @@ export function PositionOperations({
 function ApplicantRoster({
   invitations,
   insights,
+  canInvite,
   onInvite,
 }: {
   invitations: readonly CompanyInvitation[];
   insights: readonly CompanyApplicantInsight[];
+  canInvite: boolean;
   onInvite(): void;
 }) {
   const [query, setQuery] = useState("");
@@ -619,7 +624,15 @@ function ApplicantRoster({
               onChange={(event) => setQuery(event.target.value)}
             />
           </label>
-          <button className={BUTTON_SECONDARY} type="button" onClick={onInvite}>
+          <button
+            className={BUTTON_SECONDARY}
+            type="button"
+            disabled={!canInvite}
+            title={
+              canInvite ? undefined : "모집 중인 포지션만 초대할 수 있습니다."
+            }
+            onClick={onInvite}
+          >
             <Send size={14} aria-hidden="true" /> 지원자 초대
           </button>
         </div>

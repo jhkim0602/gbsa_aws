@@ -29,6 +29,7 @@ export function PositionDashboard({
   invitations,
   criteria,
   insights,
+  canInvite = true,
   onOpenTab,
   onOpenInvitations,
 }: {
@@ -36,6 +37,7 @@ export function PositionDashboard({
   invitations: readonly CompanyInvitation[];
   criteria: CompanyCriterionVersion | null;
   insights: readonly CompanyApplicantInsight[];
+  canInvite?: boolean;
   onOpenTab(tab: PositionTab): void;
   onOpenInvitations(): void;
 }) {
@@ -71,6 +73,10 @@ export function PositionDashboard({
             <button
               className={`${BUTTON_SECONDARY} mw-720:flex-1`}
               type="button"
+              disabled={!canInvite}
+              title={
+                canInvite ? undefined : "모집 중인 포지션만 초대할 수 있습니다."
+              }
               onClick={onOpenInvitations}
             >
               <Send size={14} aria-hidden="true" /> 지원자 초대

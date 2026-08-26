@@ -5,8 +5,11 @@ import { HiringWorkspace, type HiringWorkspaceApi } from "../index";
 
 function createApi(): HiringWorkspaceApi {
   return {
-    createPosition: vi.fn().mockResolvedValue({ positionId: "position-1" }),
+    createPosition: vi
+      .fn()
+      .mockResolvedValue({ positionId: "position-1", rowVersion: 1 }),
     publishCriteria: vi.fn().mockResolvedValue({ versionId: "version-1" }),
+    activatePosition: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -325,9 +328,21 @@ describe("HiringWorkspace", () => {
         voiceId: "Seoyeon",
       },
     });
+    expect(api.activatePosition).toHaveBeenCalledWith(
+      "position-1",
+      1,
+      expect.objectContaining({
+        title: "백엔드 플랫폼 엔지니어",
+        recruitmentStartAt: "2026-09-01",
+        recruitmentEndAt: "2026-09-30",
+      }),
+    );
     expect(
       vi.mocked(api.createPosition).mock.invocationCallOrder[0],
     ).toBeLessThan(vi.mocked(api.publishCriteria).mock.invocationCallOrder[0]);
+    expect(
+      vi.mocked(api.publishCriteria).mock.invocationCallOrder[0],
+    ).toBeLessThan(vi.mocked(api.activatePosition).mock.invocationCallOrder[0]);
   });
 
   it("adds qualifications without creating score criteria", async () => {
