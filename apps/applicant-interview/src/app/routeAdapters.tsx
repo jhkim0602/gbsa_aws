@@ -27,6 +27,10 @@ import {
   type RecordingUploadApi,
 } from "../features/interview/InterviewSession";
 import type { AutomatedInterviewMode } from "../features/interview/automation";
+import {
+  installDeveloperAnswerGuideCommands,
+  isDeveloperAnswerGuideEnabled,
+} from "../features/interview/developerAnswerGuide";
 import type { StoredMediaChunk } from "../features/interview/media";
 import {
   SubmissionWorkspace,
@@ -485,6 +489,9 @@ export function InterviewRoute() {
   const automationMode = AUTOMATED_INTERVIEW_ENABLED
     ? parseAutomationMode(search.get("auto"))
     : undefined;
+  const [developerAnswerGuide, setDeveloperAnswerGuide] = useState(
+    () => AUTOMATED_INTERVIEW_ENABLED && isDeveloperAnswerGuideEnabled(),
+  );
   const [resolvedStrategyId, setResolvedStrategyId] =
     useState(strategyIdFromSearch);
   const [strategyLoading, setStrategyLoading] = useState(
@@ -508,6 +515,11 @@ export function InterviewRoute() {
   // started session drops the id and the socket never sends `session.start`.
   const locallyStartedRef = useRef(false);
   const strategyId = strategyIdFromSearch || resolvedStrategyId;
+
+  useEffect(() => {
+    if (!AUTOMATED_INTERVIEW_ENABLED) return;
+    return installDeveloperAnswerGuideCommands(setDeveloperAnswerGuide);
+  }, []);
 
   useEffect(() => {
     if (roomPreview) return;
@@ -737,6 +749,7 @@ export function InterviewRoute() {
       recordingApi={createRecordingUploadApi(session.sessionId)}
       interviewerLevel={interviewerLevel}
       automationMode={automationMode}
+      developerAnswerGuide={developerAnswerGuide}
       onComplete={() => {
         navigate("/interview/complete", { replace: true });
       }}

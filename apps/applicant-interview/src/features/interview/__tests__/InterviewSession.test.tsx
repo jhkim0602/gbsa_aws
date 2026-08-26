@@ -26,6 +26,91 @@ function generatedAnswer(
 }
 
 describe("InterviewSession", () => {
+  it("prints an answer guide without submitting it", async () => {
+    const questionTurnId = "00000000-0000-7000-8000-000000000492";
+    const answer = generatedAnswer(
+      questionTurnId,
+      "질문에 맞춰 생성한 개발자용 추천 답변입니다.",
+    );
+    const protocol = {
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      startAnswer: vi.fn(),
+      completeAnswer: vi.fn(),
+      sendAudioFrame: vi.fn(),
+      repeatQuestion: vi.fn(),
+      requestAutomatedAnswer: vi.fn().mockResolvedValue(answer),
+      submitAutomatedAnswer: vi.fn(),
+    };
+    let onQuestion:
+      | ((question: {
+          questionTurnId: string;
+          text: string;
+          textOnly: boolean;
+        }) => void)
+      | undefined;
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const group = vi
+      .spyOn(console, "groupCollapsed")
+      .mockImplementation(() => undefined);
+    const groupEnd = vi
+      .spyOn(console, "groupEnd")
+      .mockImplementation(() => undefined);
+    try {
+      render(
+        <InterviewSession
+          sessionId="00000000-0000-7000-8000-000000000491"
+          websocketUrl="ws://localhost/session"
+          recordingApi={{ upload: vi.fn() }}
+          dependencies={{
+            socketFactory: vi.fn(),
+            mediaDevices: { getUserMedia: vi.fn() },
+            createProtocolClient: vi.fn((input) => {
+              onQuestion = input.onQuestion;
+              input.store.getState().setConnectionState("connected");
+              input.store.getState().applyServerState({
+                state: "awaiting_answer",
+                serverSequence: 1,
+                lastFinalTurnId: null,
+                lastVerifiedRecordingChunkSequence: 0,
+                degradedModes: [],
+              });
+              return protocol;
+            }),
+          }}
+          developerAnswerGuide
+        />,
+      );
+
+      act(() => {
+        onQuestion?.({
+          questionTurnId,
+          text: "프로젝트에서 선택한 기술과 이유를 설명해 주세요.",
+          textOnly: true,
+        });
+      });
+
+      await waitFor(() =>
+        expect(protocol.requestAutomatedAnswer).toHaveBeenCalledWith({
+          questionTurnId,
+          includeAudio: false,
+          answerProfile: "standard",
+        }),
+      );
+      await waitFor(() =>
+        expect(info).toHaveBeenCalledWith("추천 답변:", answer.text),
+      );
+      expect(protocol.submitAutomatedAnswer).not.toHaveBeenCalled();
+      expect(protocol.startAnswer).not.toHaveBeenCalled();
+      expect(group).toHaveBeenCalledWith("[WhyYou 개발 답변 가이드]");
+      expect(groupEnd).toHaveBeenCalledOnce();
+    } finally {
+      info.mockRestore();
+      group.mockRestore();
+      groupEnd.mockRestore();
+    }
+  });
+
   it("connects server state to media capture and answer completion", async () => {
     const protocol = {
       connect: vi.fn(),

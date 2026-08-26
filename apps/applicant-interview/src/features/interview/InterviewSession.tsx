@@ -104,6 +104,7 @@ export function InterviewSession({
   interviewerLevel,
   dependencies,
   automationMode,
+  developerAnswerGuide = false,
   onComplete,
 }: {
   sessionId: string;
@@ -113,6 +114,7 @@ export function InterviewSession({
   interviewerLevel?: InterviewerLevel;
   dependencies?: Partial<InterviewSessionDependencies>;
   automationMode?: AutomatedInterviewMode;
+  developerAnswerGuide?: boolean;
   onComplete?: () => void;
 }) {
   const store = useMemo(() => createInterviewSessionStore(), []);
@@ -154,6 +156,7 @@ export function InterviewSession({
   const generatedAnswersRef = useRef(
     new Map<string, GeneratedAutomatedAnswer>(),
   );
+  const guidedQuestionIdsRef = useRef(new Set<string>());
   const automationRetryCountRef = useRef(0);
   const automationRetryTimerRef = useRef<number | null>(null);
   const automationReconnectAttemptRef = useRef(0);
@@ -417,6 +420,56 @@ export function InterviewSession({
   }, [
     automationMode,
     automationRunVersion,
+    questionPlaybackComplete,
+    questionTurnId,
+    snapshot.connectionState,
+    snapshot.state,
+  ]);
+
+  useEffect(() => {
+    if (
+      !developerAnswerGuide ||
+      automationMode ||
+      snapshot.connectionState !== "connected" ||
+      snapshot.state !== "awaiting_answer" ||
+      !questionTurnId ||
+      !questionPlaybackComplete ||
+      guidedQuestionIdsRef.current.has(questionTurnId)
+    ) {
+      return;
+    }
+    const client = clientRef.current;
+    if (!client) return;
+    guidedQuestionIdsRef.current.add(questionTurnId);
+    const currentQuestion = question;
+    void client
+      .requestAutomatedAnswer({
+        questionTurnId,
+        includeAudio: false,
+        answerProfile: "standard",
+      })
+      .then((generated) => {
+        console.groupCollapsed("[WhyYou 개발 답변 가이드]");
+        console.info("면접관 질문:", currentQuestion);
+        console.info("추천 답변:", generated.text);
+        console.info(
+          "제출 자료 근거:",
+          generated.grounded
+            ? `${generated.sourceReferenceCount}개`
+            : "확인 가능한 근거 없음",
+        );
+        console.groupEnd();
+      })
+      .catch((error: unknown) => {
+        console.warn(
+          "[WhyYou 개발 답변 가이드] 답변을 준비하지 못했습니다.",
+          error,
+        );
+      });
+  }, [
+    automationMode,
+    developerAnswerGuide,
+    question,
     questionPlaybackComplete,
     questionTurnId,
     snapshot.connectionState,
