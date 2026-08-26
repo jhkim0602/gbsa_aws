@@ -67,8 +67,9 @@ const GHOST_BUTTON_CLASS =
 const FLOW_STEPS: readonly FlowStep[] = [
   {
     number: "01",
-    title: "포지션·평가 기준 설계",
-    description: "직무 요건과 핵심 역량, 기준별 가중치를 먼저 정의합니다.",
+    title: "포지션 맞춤 평가 기준 설계",
+    description:
+      "직무 요건과 필요 역량에 따른 평가 가중치를 커스텀할 수 있습니다.",
     image: "/landing/flow-01-criteria.png",
     imageAlt: "포지션 평가 기준을 설계하는 일러스트",
   },
@@ -82,25 +83,25 @@ const FLOW_STEPS: readonly FlowStep[] = [
   },
   {
     number: "03",
-    title: "근거 기반 질문 생성",
+    title: "RAG 기반 맞춤형 꼬리질문 생성",
     description:
-      "지원 자료의 실제 경험과 평가 기준을 연결해 질문을 준비합니다.",
+      "제출된 자료와 평가 기준을 교차 검증해 지원자별 맞춤 심층 질문을 준비합니다.",
     image: "/landing/flow-03-question.png",
     imageAlt: "지원 자료를 분석해 질문을 만드는 일러스트",
   },
   {
     number: "04",
-    title: "맥락을 잇는 AI 면접",
+    title: "답변 맥락을 이해하는 AI 심층 면접",
     description:
-      "답변 내용에 따라 후속 질문을 이어가며 구체적인 근거를 확인합니다.",
+      "지원자의 답변 내용에 맞춰 실시간 후속 질문을 던져 정교한 역량을 검증합니다.",
     image: "/landing/flow-04-interview.png",
     imageAlt: "답변 맥락을 이어가는 AI 면접 일러스트",
   },
   {
     number: "05",
-    title: "리포트·담당자 판단",
+    title: "근거 연동 리포트 · 최종 의사결정",
     description:
-      "답변 구간과 분석 근거를 검토한 뒤 사람이 최종 판단을 기록합니다.",
+      "평가 리포트에서 답변 원본 타임라인을 바로 확인하며 확신 있는 채용을 결정합니다. 지원자를 판단 기준에 따라 바로 분류합니다.",
     image: "/landing/flow-05-report.png",
     imageAlt: "리포트를 검토하고 최종 판단하는 일러스트",
   },
@@ -111,7 +112,7 @@ const ARCHITECTURE_LANES: readonly ArchitectureLane[] = [
     eyebrow: "INTERVIEW RAG",
     title: "지원자별 면접 검색",
     description:
-      "제출 자료와 Git 분석 결과를 지원자·초대·평가 기준 범위로 검색해 질문과 후속 질문에 연결합니다.",
+      "제출 자료와 Git 분석 결과를 독립된 범위에서 검색하여 맞춤형 질문 및 후속 질문을 실시간 생성합니다.",
     detail: "retrieval_documents · applicant scoped",
     icon: FileSearch,
   },
@@ -119,15 +120,15 @@ const ARCHITECTURE_LANES: readonly ArchitectureLane[] = [
     eyebrow: "RECRUITER RAG",
     title: "최종 리포트 전용 검색",
     description:
-      "완료된 리포트를 별도 검색 문서로 투영하고, 기업·포지션 범위 안에서 벡터와 키워드를 함께 검색합니다.",
+      "완료된 평가 리포트를 기업·포지션 보안 스코프 내에서 벡터 검색하여 채용 담당자의 질의에 정확히 답합니다.",
     detail: "assistant_retrieval_documents · tenant scoped",
     icon: Database,
   },
   {
     eyebrow: "AWS RUNTIME",
-    title: "실시간과 비동기 처리 분리",
+    title: "실시간·비동기 처리 분리",
     description:
-      "원본은 S3에 보관하고 ECS API·Worker와 SQS가 분석을 나눕니다. 실시간 면접 컨텍스트는 TTL이 있는 DynamoDB로 분리합니다.",
+      "실시간 면접 세션은 저지연 환경으로 처리하고, 무거운 AI 분석은 비동기로 분리해 안정적인 운영 환경을 제공합니다. 원본은 S3에 보관하고 실시간 면접 컨텍스트는 TTL이 있는 DynamoDB로 분리합니다.",
     detail: "S3 · ECS Fargate · SQS · DynamoDB",
     icon: ServerCog,
   },
@@ -172,38 +173,54 @@ const ASSISTANT_SCREENS: readonly ProductTourSlide[] = [
 const SHOWCASES: readonly Showcase[] = [
   {
     number: "01 / OPERATIONS",
-    title: "채용 전체를 한 화면에서",
+    title: "채용 진행 현황을 한 화면에서",
     description:
-      "포지션별 지원자 수, 진행 중인 면접, 검토 대기 상태와 채용 일정을 실시간으로 파악합니다.",
-    points: ["포지션 핵심 지표", "채용 일정 캘린더", "지원자 실시간 로그"],
+      "포지션별 지원자 수, 진행 중인 면접, 검토 대기 항목까지 실시간 데이터로 관리합니다.",
+    points: [
+      "포지션 핵심 지표",
+      "채용 일정 캘린더",
+      "실시간 지원자 인터랙션 로그",
+    ],
     src: "/landing/console-dashboard.png",
     alt: "채용 운영 대시보드 실제 화면",
   },
   {
     number: "02 / DESIGN",
-    title: "평가 기준이 먼저인 면접 설계",
+    title: "원하는 인재상에 딱 맞춘 정교한 면접 설계",
     description:
-      "포지션 정보, 제출 자료, 평가 기준, 면접 운영을 단계별로 구성해 모든 질문의 출발점을 명확히 합니다.",
-    points: ["4단계 채용 설정", "역량·가중치 정의", "면접관 페르소나 선택"],
+      "포지션 정보와 제출 자료, 평가 가중치를 단계별로 설정하여 질문의 출발점을 명확히 바로잡습니다.",
+    points: [
+      "4단계 간편 채용 프로세스",
+      "직무별 역량 가중치 부여",
+      "맞춤형 면접관 페르소나 설정",
+    ],
     src: HIRING_SETUP_SCREENS[0].src,
     alt: HIRING_SETUP_SCREENS[0].alt,
     slides: HIRING_SETUP_SCREENS,
   },
   {
     number: "03 / INSIGHT",
-    title: "비교 가능한 지원자 인사이트",
+    title: "객관적 데이터로 한눈에 비교하는 지원자 인사이트",
     description:
-      "포지션의 평가 기준별 평균과 답변 근거 충족도를 함께 보며 검토가 필요한 지점을 빠르게 찾습니다.",
-    points: ["평가 기준별 분석", "지원자 비교", "면접·검토 상태 추적"],
+      "평가 기준별 평균 점수와 답변 근거 충족도를 비교하여, 집중 검토가 필요한 인재를 빠르게 발굴합니다.",
+    points: [
+      "항목별 상세 역량 분석",
+      "지원자 간 정밀 비교 시트",
+      "검토 필요 지점 자동 하이라이트",
+    ],
     src: "/landing/position-operations.png",
     alt: "포지션 인사이트 실제 화면",
   },
   {
     number: "04 / ASSISTANT",
-    title: "근거를 찾아 답하는 AI 어시스턴트",
+    title: "채용의 모든 궁금증을 풀어주는 AI 어시스턴트",
     description:
-      "지원자와 포지션 데이터를 탐색하고, 연결된 최종 리포트의 근거를 바탕으로 채용 질문에 답합니다.",
-    points: ["포지션 범위 검색", "리포트 근거 연결", "후보자 비교·요약"],
+      '"이 포지션에 가장 적합한 후보자는?" 지원자와 포지션 데이터를 탐색하고, 연결된 최종 리포트의 근거를 바탕으로 채용 질문에 답합니다.',
+    points: [
+      "전체 포지션 교차 검색",
+      "리포트 원본 근거 연결",
+      "후보자 비교·요약",
+    ],
     src: ASSISTANT_SCREENS[0].src,
     alt: ASSISTANT_SCREENS[0].alt,
     slides: ASSISTANT_SCREENS,
@@ -214,23 +231,23 @@ const SHOWCASES: readonly Showcase[] = [
 
 const PROBLEMS = [
   {
-    title: "자료만으로는 보이지 않는 역량",
+    title: "Github·포트폴리오 기반의 입체적 역량 파악",
     description:
-      "이력서의 한 문장을 실제 경험과 판단 과정까지 이어서 확인해야 합니다.",
+      "이력서와 코드, 포트폴리오를 RAG로 분석하여, 지원자의 실제 경험과 판단 과정 그리고 문제 해결 능력까지 AI가 핵심 꼬리질문을 생성해 지원자를 깊이 있게 파악합니다.",
     image: "/landing/flow-03-question.png",
     imageAlt: "지원 자료에서 면접 근거를 찾는 일러스트",
   },
   {
-    title: "반복되는 사전 면접 리소스",
+    title: "반복되는 사전 면접 리소스는 자동화로 대체",
     description:
-      "같은 질문을 되풀이하는 대신 모든 지원자에게 일관된 검증 기회를 제공합니다.",
+      "일관된 기준의 AI 스크리닝으로 담당자의 반복 질문 시간을 획기적으로 줄이고 고품질 검증 기회를 제공하여 채용 담당자는 인재 판단이라는 본질적 업무에만 집중합니다.",
     image: "/landing/flow-04-interview.png",
     imageAlt: "일관된 AI 면접을 진행하는 일러스트",
   },
   {
-    title: "결과만 남고 사라지는 근거",
+    title: "언제든 검증 가능한 100% 투명한 판단 근거",
     description:
-      "점수와 요약을 원본 답변 구간에 연결해 언제든 판단 근거를 다시 확인합니다.",
+      "점수와 요약 문구에 멈추지 않고, 클릭 한 번으로 지원자의 실제 답변 영상 시점으로 즉시 이동해 명확한 채용 근거를 확보합니다.",
     image: "/landing/flow-05-report.png",
     imageAlt: "답변 근거가 연결된 면접 리포트 일러스트",
   },
@@ -270,19 +287,22 @@ const INTERVIEWERS = [
     role: "기초와 성장 가능성 중심",
     detail: "친절하게 경험의 배경부터 질문합니다.",
     image: "/interviewers/entry_eyes_open_mouth_closed.webp",
-    evidence: "팀 프로젝트에서 처음 맡은 역할과 가장 크게 배운 점",
+    evidence:
+      "🔗 GitHub Repository : team-mall-backend / src/main/java/OrderService.java (Line 84-112)",
     question:
-      "처음 맡아본 업무에서 어려웠던 점은 무엇이었고, 어떻게 해결해 나갔나요?",
+      "제출하신 OrderService.java 84번 라인을 보면 N+1 문제 해결을 위해 @EntityGraph를 적용하셨습니다. Fetch Join 대신 Entity Graph를 선택하신 이유와, 실제 실행 쿼리 횟수가 어떻게 줄어들었는지 설명해 주세요.",
   },
   {
     level: "주니어",
     name: "실무형 면접관",
-    role: "본인 기여와 판단 근거 중심",
-    detail: "실제 실행과 선택의 이유를 균형 있게 묻습니다.",
+    role: "[기여도 검증] [기술 선택 이유] [트러블슈팅 로직]",
+    detail:
+      '"프로젝트 코드와 아키텍처 선택의 이유, 실질적 기여도를 검증합니다."',
     image: "/interviewers/junior_eyes_open_mouth_closed.webp",
-    evidence: "ECS 운영 중 트래픽 급증으로 발생한 장애 대응",
+    evidence:
+      "📄 포트폴리오_서준혁.pdf : 3페이지 [주요 성과] - ECS 트래픽 급증 대응 🔗 GitHub Pull Request : #42 (Hotfix: Connection Pool Exhaustion in Fargate)",
     question:
-      "당시 본인이 직접 내린 판단은 무엇이었고, 결과를 어떤 지표로 확인했나요?",
+      "제출하신 포트폴리오 3페이지의 PR #42 내역을 보면 ECS Fargate 스케일아웃 시 DB 커넥션 고갈 문제를 다루셨습니다. 당시 HikariCP 풀 크기 설정 값은 얼마였으며, 병목을 해결한 구체적 지표는 무엇이었나요?",
   },
   {
     level: "시니어",
@@ -290,9 +310,10 @@ const INTERVIEWERS = [
     role: "설계·트레이드오프 중심",
     detail: "대안과 장기적 영향을 깊이 확인합니다.",
     image: "/interviewers/senior_eyes_open_mouth_closed.webp",
-    evidence: "고가용성 구조 전환과 비용 효율 사이의 설계 결정",
+    evidence:
+      "📝 경력기술서_최종.docx : Section 2. 핵심 프로젝트 - Aurora PostgreSQL v2 전환",
     question:
-      "선택하지 않은 대안과 비교했을 때, 이 설계의 가장 큰 트레이드오프는 무엇이었나요?",
+      "경력기술서 2번 항목에 작성해주신 Aurora Serverless v2 전환 과정에서, Multi-AZ 구성 시 발생한 데이터 복제 지연(Replication Lag)과 인프라 비용 상승 사이에서 본인이 내린 핵심 트레이드오프 기준은 무엇이었나요?",
   },
 ] as const;
 
@@ -812,15 +833,16 @@ export function LandingPage() {
                 className="my-[22px] max-w-[620px] text-[clamp(46px,5.1vw,72px)] leading-[1.07] font-bold tracking-[-0.058em] text-[#030b24] max-sm:text-[42px]"
                 id="landing-hero-title"
               >
-                면접의 이유를,
+                채용의 확신은 ‘느낌’이 아니라
                 <br />
                 <span className="bg-[linear-gradient(105deg,#315dff,#7472f4)] bg-clip-text text-transparent">
-                  근거로 확인하세요.
+                  ‘확실한 근거’에서 나옵니다.
                 </span>
               </h1>
               <p className="max-w-[550px] text-base leading-[1.85] text-[#5f6981]">
-                WhyYou는 지원 자료와 실제 답변을 연결해 직무 맞춤 질문을 만들고,
-                AI 면접의 모든 대화를 검토 가능한 근거로 정리합니다.
+                Wh?you는 이력서 한 줄부터 깃허브 코드까지 지원 자료와 실제
+                답변을 연결해 직무 맞춤 질문을 만들고, RAG로 다각도 분석하여 AI
+                면접의 모든 대화를 검토 가능한 근거로 정리합니다.
               </p>
               <div className="mt-[34px] flex gap-2.5 max-sm:flex-col">
                 <Link className={LIGHT_BUTTON_CLASS} to="/auth/login">
@@ -906,8 +928,8 @@ export function LandingPage() {
               eyebrow="ONE CONNECTED FLOW"
               title="채용 기준에서 최종 검토까지, 하나의 흐름으로"
             >
-              면접이 시작되기 전의 설계부터 면접 이후의 사람 판단까지 자연스럽게
-              연결됩니다.
+              준비, 스크리닝, 면접, 평가까지 파편화되었던 채용 절차가 Wh?You
+              하나로 완벽히 연결됩니다.
             </SectionHeading>
             <FlowCarousel />
             <div className="mt-5 flex justify-center gap-8 text-[11px] font-semibold text-[#687189] max-sm:grid max-sm:grid-cols-2 max-sm:gap-4">
@@ -962,14 +984,14 @@ export function LandingPage() {
                 답변의 맥락에 따라 깊어집니다.
               </h2>
               <p className={BODY_COPY_CLASS}>
-                미리 정한 평가 기준을 유지하면서도 지원자의 답변에 등장한 경험과
-                선택을 따라 후속 질문을 이어갑니다.
+                기업의 평가 기준을 유지하면서도, 지원자의 답변 속 핵심을
+                집요하게 파고듭니다.
               </p>
               <EvidenceList
                 points={[
-                  "지원 자료와 직무 요건을 함께 반영",
-                  "답변 맥락에 따른 후속 질문",
-                  "질문·답변·영상 시점 자동 연결",
+                  "지원자 제출 자료(코드·포트폴리오)와 직무 요건 정교 반영",
+                  "단순 텍스트 매칭이 아닌 답변 맥락에 맞춘 실시간 꼬리질문",
+                  "리포트 클릭 한 번으로 질문-답변-영상 시점 즉시 이동",
                 ]}
               />
             </div>
@@ -985,10 +1007,10 @@ export function LandingPage() {
           <div className={CONTAINER_CLASS}>
             <SectionHeading
               eyebrow="REAL PRODUCT, REAL WORKFLOW"
-              title="채용 운영을 위해 필요한 화면을, 실제 제품 안에"
+              title="복잡한 채용 운영, 이제 하나의 콘솔에서 완벽하게 제어하세요"
             >
-              WhyYou 기업 콘솔의 실제 화면으로 포지션 설계부터 분석까지 확인해
-              보세요.
+              포지션 설계부터 진행 현황, AI 분석 리포트까지 채용의 모든 단계를
+              직관적인 대시보드로 제공합니다.
             </SectionHeading>
             <div className="grid gap-28 max-md:gap-20">
               {SHOWCASES.map((showcase, index) => (
@@ -1124,7 +1146,7 @@ export function LandingPage() {
               className="mt-4 mb-4 text-[clamp(34px,4.6vw,56px)] font-bold tracking-[-0.05em]"
               id="final-cta-title"
             >
-              지원자의 가능성에 더 확실한 이유를.
+              지원자의 숨은 가능성에 더 ‘확실한 근거’를.
             </h2>
             <span className="text-[15px] text-[#b9c1db]">
               직무 기준부터 답변 근거까지 연결된 AI 면접을 시작해 보세요.

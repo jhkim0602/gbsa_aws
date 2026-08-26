@@ -6,7 +6,7 @@ import { CompanyRoutes } from "../App";
 
 describe("company feature routes", () => {
   it.each([
-    ["/", "면접의 이유를, 근거로 확인하세요."],
+    ["/", "채용의 확신은 ‘느낌’이 아니라 ‘확실한 근거’에서 나옵니다."],
     ["/auth/login", "기업 로그인"],
     ["/auth/signup", "기업 계정 만들기"],
     ["/company", "채용 운영 대시보드"],
