@@ -667,7 +667,6 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
         object_storage=aws.object_storage,
         media_storage=aws.media_storage,
         email_sender=aws.email_sender,
-        recent_context=aws.recent_context,
         search_index=aws.search_index,
         database=database,
         metrics=aws.metrics,
