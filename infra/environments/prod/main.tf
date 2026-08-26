@@ -171,7 +171,6 @@ module "compute" {
   data_resource_arns = concat(
     values(module.data.bucket_arns),
     [for arn in values(module.data.bucket_arns) : "${arn}/*"],
-    [module.data.dynamodb_table_arn],
     values(module.async_workflow.queue_arns),
   )
   access_log_bucket = module.observability.access_log_bucket
@@ -197,7 +196,6 @@ module "compute" {
     BEDROCK_MODEL_ID                = var.interview_model_id
     COGNITO_USER_POOL_ID            = module.identity.user_pool_id
     DOCUMENT_OCR_PROVIDER           = "gcp_document_ai"
-    DYNAMODB_TABLE_NAME             = module.data.dynamodb_table_name
     KMS_KEY_ARN                     = module.data.kms_key_arn
     MEDIA_BUCKET                    = module.data.bucket_ids["media"]
     RETRIEVAL_BACKEND               = "aurora"

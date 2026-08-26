@@ -192,7 +192,6 @@ module "compute" {
   kms_key_arns              = [local.data.kms_key_arn]
   data_resource_arns = concat(
     local.bucket_resources,
-    [local.data.dynamodb_table_arn],
     values(local.workflow.queue_arns),
   )
   # Created in the data-ai root, which applies first. The bucket must exist before the balancer
@@ -234,7 +233,6 @@ module "compute" {
     DEMO_COMPANY_IDENTITY_SUBJECT   = local.demo_company.identity_subject
     DEMO_COMPANY_USER_ID            = local.demo_company.company_user_id
     DOCUMENT_OCR_PROVIDER           = "gcp_document_ai"
-    DYNAMODB_TABLE_NAME             = local.data.dynamodb_table_name
     EVENT_BUS_ARN                   = local.workflow.event_bus_arn
     KMS_KEY_ARN                     = local.data.kms_key_arn
     MEDIA_BUCKET                    = local.data.bucket_ids["media"]

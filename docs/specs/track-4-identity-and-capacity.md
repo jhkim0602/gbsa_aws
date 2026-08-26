@@ -282,7 +282,6 @@ resource "aws_appautoscaling_scheduled_action" "api_business_hours_down" { ... m
 | Bedrock 리전 쿼터 | 계정/리전별 TPM·RPM | 답변마다 Claude 1회 + Titan 1회. **쿼터 증액은 신청·승인이 걸리므로 가장 긴 리드타임** |
 | GCP STT 쿼터 | 프로젝트별 스트리밍 동시 수 | Track 1의 C-2가 스트리밍으로 가면 여기가 새 상한이 된다 |
 | NAT Gateway | dev는 `nat_gateway_per_az = false` → **NAT 1개 공유** | 모든 GCP·Bedrock 아웃바운드가 한 NAT를 지난다. dev에서 부하 테스트하면 여기가 먼저 막혀 잘못된 결론을 준다 |
-| DynamoDB (멱등성·최근 컨텍스트) | 온디맨드면 문제 없음 | 프로비저닝이면 확인 필요 |
 | SQS | 실질 무제한 | 상한이 아니다 |
 
 **부하 테스트는 prod와 같은 NAT 구성에서 해야 한다.** dev의 단일 NAT에서 얻은 숫자로 prod 표를 만들면 과소 산정된다.

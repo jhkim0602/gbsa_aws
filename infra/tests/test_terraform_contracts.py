@@ -28,7 +28,6 @@ MODULE_RESOURCES = {
         "aws_rds_cluster",
         "aws_rds_cluster_instance",
         "aws_db_instance",
-        "aws_dynamodb_table",
         "aws_s3_bucket",
         "aws_kms_key",
         "aws_secretsmanager_secret",
@@ -203,7 +202,6 @@ def test_compute_and_data_define_durable_private_runtime_boundaries() -> None:
     # `sse_algorithm     = "aws:kms"` until the algorithm became conditional per bucket --
     # see `test_the_spa_origins_are_not_encrypted_with_the_customer_key` for why.
     assert 'contains(local.spa_bucket_names, each.key) ? "AES256" : "aws:kms"' in data
-    assert "point_in_time_recovery" in data
     assert "manage_master_user_password" in data
     assert "deletion_protection             = var.deletion_protection" in data
 

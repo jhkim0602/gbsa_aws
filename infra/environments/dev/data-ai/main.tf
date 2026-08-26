@@ -115,8 +115,6 @@ output "data" {
     aurora_endpoint              = module.data.database_endpoint
     aurora_master_secret_arn     = module.data.database_master_secret_arn
     application_secret_arn       = module.data.application_secret_arn
-    dynamodb_table_arn           = module.data.dynamodb_table_arn
-    dynamodb_table_name          = module.data.dynamodb_table_name
   }
   sensitive = true
 }

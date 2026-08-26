@@ -222,39 +222,6 @@ resource "aws_s3_bucket_lifecycle_configuration" "data" {
   }
 }
 
-resource "aws_dynamodb_table" "interview_context" {
-  name         = "${var.name}-interview-context"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "PK"
-  range_key    = "SK"
-
-  attribute {
-    name = "PK"
-    type = "S"
-  }
-
-  attribute {
-    name = "SK"
-    type = "S"
-  }
-
-  ttl {
-    attribute_name = "expires_at"
-    enabled        = true
-  }
-
-  point_in_time_recovery {
-    enabled = true
-  }
-
-  server_side_encryption {
-    enabled     = true
-    kms_key_arn = aws_kms_key.data.arn
-  }
-
-  tags = local.tags
-}
-
 resource "aws_db_subnet_group" "this" {
   name       = "${var.name}-aurora"
   subnet_ids = var.private_subnet_ids
@@ -396,12 +363,4 @@ output "database_master_secret_arn" {
 
 output "application_secret_arn" {
   value = try(aws_secretsmanager_secret.application[0].arn, null)
-}
-
-output "dynamodb_table_arn" {
-  value = aws_dynamodb_table.interview_context.arn
-}
-
-output "dynamodb_table_name" {
-  value = aws_dynamodb_table.interview_context.name
 }

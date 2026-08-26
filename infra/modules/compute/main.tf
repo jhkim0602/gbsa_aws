@@ -440,20 +440,6 @@ resource "aws_iam_role_policy" "task" {
         Sid    = "DataAccess"
         Effect = "Allow"
         Action = [
-          "dynamodb:BatchGetItem",
-          "dynamodb:BatchWriteItem",
-          "dynamodb:DeleteItem",
-          # The readiness probe, not a data path: `DynamoRecentContext.healthcheck` calls
-          # DescribeTable and treats any exception as `unavailable`. Without this action the
-          # probe raised AccessDenied on every poll, so `/health/ready` answered 503 forever,
-          # the ALB marked both targets unhealthy and the deployment circuit breaker opened --
-          # while the API itself was serving requests correctly the whole time. Nothing in the
-          # request path failed, which is why the symptom looked like a broken deploy.
-          "dynamodb:DescribeTable",
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-          "dynamodb:Query",
-          "dynamodb:UpdateItem",
           "s3:AbortMultipartUpload",
           "s3:DeleteObject",
           "s3:GetObject",
