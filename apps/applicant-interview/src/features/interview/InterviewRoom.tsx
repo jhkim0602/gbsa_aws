@@ -223,6 +223,8 @@ function CandidatePanel({
 export function InterviewRoom({
   question,
   transcript = "",
+  committedTranscript = "",
+  interimTranscript = "",
   interviewerSpeaking = false,
   questionInProgress = interviewerSpeaking,
   candidateCameraState = "unavailable",
@@ -239,6 +241,8 @@ export function InterviewRoom({
 }: {
   question: string;
   transcript?: string;
+  committedTranscript?: string;
+  interimTranscript?: string;
   interviewerSpeaking?: boolean;
   questionInProgress?: boolean;
   candidateCameraState?: CandidateCameraState;
@@ -431,7 +435,9 @@ export function InterviewRoom({
               </h1>
             </section>
 
-            {captionsVisible && transcript && !questionInProgress ? (
+            {captionsVisible &&
+            applicantCaptionActive &&
+            !questionInProgress ? (
               <section
                 className={APPLICANT_CAPTION}
                 aria-live="polite"
@@ -440,9 +446,28 @@ export function InterviewRoom({
                 <p className="mb-1.5 text-xs font-bold text-brand-strong">
                   지원자 답변
                 </p>
-                <div>
+                <div className="min-h-12">
                   <p className="whitespace-pre-wrap break-words text-left text-sm font-medium leading-6 text-slate-800">
-                    {transcript}
+                    {committedTranscript || interimTranscript ? (
+                      <>
+                        <span data-transcript-part="committed">
+                          {committedTranscript}
+                        </span>
+                        {committedTranscript && interimTranscript ? " " : null}
+                        <span
+                          className="text-slate-600"
+                          data-transcript-part="interim"
+                        >
+                          {interimTranscript}
+                        </span>
+                      </>
+                    ) : transcript ? (
+                      transcript
+                    ) : (
+                      <span className="text-slate-400">
+                        답변을 듣고 있습니다.
+                      </span>
+                    )}
                   </p>
                 </div>
               </section>

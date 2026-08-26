@@ -61,6 +61,11 @@ export type GeneratedAutomatedAnswer = Readonly<{
   sampleRateHz?: number;
 }>;
 
+export type TranscriptSegments = Readonly<{
+  committedText: string;
+  interimText: string;
+}>;
+
 type PendingAutomatedAnswer = {
   resolve(answer: GeneratedAutomatedAnswer): void;
   reject(error: Error): void;
@@ -89,7 +94,11 @@ export class InterviewProtocolClient {
       store: StoreApi<InterviewSessionStore>;
       onQuestion(question: Question): void;
       onSessionClosing?(closing: SessionClosing): void;
-      onTranscript?(text: string, isFinal: boolean): void;
+      onTranscript?(
+        text: string,
+        isFinal: boolean,
+        segments?: TranscriptSegments,
+      ): void;
       onQuestionAudioStart?(format: QuestionAudioFormat): void;
       onQuestionAudioChunk?(chunk: ArrayBuffer): void;
       onQuestionAudioEnd?(): void;
@@ -370,10 +379,17 @@ export class InterviewProtocolClient {
     ) {
       const text = readString(envelope.payload.text);
       if (text !== null) {
-        this.options.onTranscript?.(
-          text,
-          envelope.message_type === "transcript.final",
-        );
+        const committedText = readString(envelope.payload.committed_text);
+        const interimText = readString(envelope.payload.interim_text);
+        const isFinal = envelope.message_type === "transcript.final";
+        if (committedText !== null && interimText !== null) {
+          this.options.onTranscript?.(text, isFinal, {
+            committedText,
+            interimText,
+          });
+        } else {
+          this.options.onTranscript?.(text, isFinal);
+        }
       }
       return;
     }

@@ -62,6 +62,14 @@ class FakeRecognitionSession(SpeechRecognitionSession):
         self.audio.append(chunk)
         await self.events.put(
             TranscriptEvent(
+                text="아",
+                is_final=False,
+                confidence=0.2,
+                stability=0.3,
+            )
+        )
+        await self.events.put(
+            TranscriptEvent(
                 text="안녕",
                 is_final=False,
                 confidence=0.4,
@@ -160,6 +168,14 @@ async def test_streaming_connection_accumulates_final_segments() -> None:
         "안녕",
         "안녕하세요",
         "안녕하세요 반갑습니다",
+    ]
+    assert [
+        (message.payload["committed_text"], message.payload["interim_text"])
+        for message in published
+    ] == [
+        ("", "안녕"),
+        ("안녕하세요", ""),
+        ("안녕하세요 반갑습니다", ""),
     ]
 
 

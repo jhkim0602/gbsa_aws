@@ -56,29 +56,32 @@ describe("InterviewSession", () => {
     const groupEnd = vi
       .spyOn(console, "groupEnd")
       .mockImplementation(() => undefined);
+    const recordingApi = { upload: vi.fn() };
+    const dependencies: Partial<InterviewSessionDependencies> = {
+      socketFactory: vi.fn(),
+      mediaDevices: { getUserMedia: vi.fn() },
+      createProtocolClient: vi.fn((input) => {
+        onQuestion = input.onQuestion;
+        input.store.getState().setConnectionState("connected");
+        input.store.getState().applyServerState({
+          state: "awaiting_answer",
+          serverSequence: 1,
+          lastFinalTurnId: null,
+          lastVerifiedRecordingChunkSequence: 0,
+          degradedModes: [],
+        });
+        return protocol;
+      }),
+    };
     try {
-      render(
+      const { rerender } = render(
         <InterviewSession
           sessionId="00000000-0000-7000-8000-000000000491"
           websocketUrl="ws://localhost/session"
-          recordingApi={{ upload: vi.fn() }}
-          dependencies={{
-            socketFactory: vi.fn(),
-            mediaDevices: { getUserMedia: vi.fn() },
-            createProtocolClient: vi.fn((input) => {
-              onQuestion = input.onQuestion;
-              input.store.getState().setConnectionState("connected");
-              input.store.getState().applyServerState({
-                state: "awaiting_answer",
-                serverSequence: 1,
-                lastFinalTurnId: null,
-                lastVerifiedRecordingChunkSequence: 0,
-                degradedModes: [],
-              });
-              return protocol;
-            }),
-          }}
+          recordingApi={recordingApi}
+          dependencies={dependencies}
           developerAnswerGuide
+          developerAnswerGuideRequestVersion={0}
         />,
       );
 
@@ -104,6 +107,20 @@ describe("InterviewSession", () => {
       expect(protocol.startAnswer).not.toHaveBeenCalled();
       expect(group).toHaveBeenCalledWith("[WhyYou 개발 답변 가이드]");
       expect(groupEnd).toHaveBeenCalledOnce();
+
+      rerender(
+        <InterviewSession
+          sessionId="00000000-0000-7000-8000-000000000491"
+          websocketUrl="ws://localhost/session"
+          recordingApi={recordingApi}
+          dependencies={dependencies}
+          developerAnswerGuide
+          developerAnswerGuideRequestVersion={1}
+        />,
+      );
+      await waitFor(() =>
+        expect(protocol.requestAutomatedAnswer).toHaveBeenCalledTimes(2),
+      );
     } finally {
       info.mockRestore();
       group.mockRestore();

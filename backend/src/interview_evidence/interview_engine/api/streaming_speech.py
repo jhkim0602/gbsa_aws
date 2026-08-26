@@ -21,6 +21,8 @@ from interview_evidence.shared.speech.ports import (
 )
 from interview_evidence.shared.tenant import TenantContext
 
+MIN_PARTIAL_CAPTION_STABILITY = 0.65
+
 
 @dataclass(frozen=True, slots=True)
 class WebSocketSpeechRuntime:
@@ -283,12 +285,21 @@ class StreamingSpeechConnection:
                 if event.is_final:
                     active.final_segments.append(event.text)
                     active.confidence = event.confidence
-                    display_text = " ".join(active.final_segments).strip()
+                    committed_text = " ".join(active.final_segments).strip()
+                    interim_text = ""
                 else:
-                    prefix = " ".join(active.final_segments).strip()
-                    display_text = f"{prefix} {event.text}".strip()
+                    committed_text = " ".join(active.final_segments).strip()
+                    interim_text = event.text.strip()
                     if not active.final_segments:
                         active.confidence = event.confidence
+                display_text = f"{committed_text} {interim_text}".strip()
+                previous_text = active.latest_text
+                if (
+                    not display_text
+                    or display_text == previous_text
+                    or (not event.is_final and event.stability < MIN_PARTIAL_CAPTION_STABILITY)
+                ):
+                    continue
                 active.latest_text = display_text
                 await self._publish(
                     _message(
@@ -298,6 +309,8 @@ class StreamingSpeechConnection:
                             "answer_turn_id": str(active.answer_turn_id),
                             "chunk_sequence": active.last_chunk_sequence,
                             "text": display_text,
+                            "committed_text": committed_text,
+                            "interim_text": interim_text,
                             "display_only": True,
                             "stability": event.stability,
                         },

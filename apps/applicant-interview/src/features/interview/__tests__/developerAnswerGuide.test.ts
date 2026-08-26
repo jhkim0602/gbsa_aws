@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  getDeveloperAnswerGuideRequestVersion,
   isDeveloperAnswerGuideEnabled,
   subscribeDeveloperAnswerGuide,
 } from "../developerAnswerGuide";
@@ -19,11 +20,17 @@ describe("developer answer guide commands", () => {
     expect(window.WhyYouDebug?.answerGuideStatus()).toBe(false);
     expect(window.WhyYouDebug?.enableAnswerGuide()).toBe(true);
     expect(isDeveloperAnswerGuideEnabled()).toBe(true);
-    expect(onChange).toHaveBeenLastCalledWith(true);
+    const firstRequestVersion = getDeveloperAnswerGuideRequestVersion();
+    expect(onChange).toHaveBeenLastCalledWith(true, firstRequestVersion);
+
+    expect(window.WhyYouDebug?.enableAnswerGuide()).toBe(true);
+    const secondRequestVersion = getDeveloperAnswerGuideRequestVersion();
+    expect(secondRequestVersion).toBe(firstRequestVersion + 1);
+    expect(onChange).toHaveBeenLastCalledWith(true, secondRequestVersion);
 
     expect(window.WhyYouDebug?.disableAnswerGuide()).toBe(true);
     expect(isDeveloperAnswerGuideEnabled()).toBe(false);
-    expect(onChange).toHaveBeenLastCalledWith(false);
+    expect(onChange).toHaveBeenLastCalledWith(false, secondRequestVersion);
 
     unsubscribe();
   });

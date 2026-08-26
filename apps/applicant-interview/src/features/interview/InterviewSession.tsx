@@ -33,6 +33,7 @@ import {
   type GeneratedAutomatedAnswer,
   type InterviewProtocolError,
   type SocketLike,
+  type TranscriptSegments,
 } from "./protocolClient";
 import { createInterviewSessionStore } from "./sessionStore";
 import { EMPTY_LIVE_TRANSCRIPT, updateLiveTranscript } from "./liveTranscript";
@@ -88,7 +89,11 @@ export type InterviewSessionDependencies = Readonly<{
       textOnly: boolean;
     }): void;
     onSessionClosing?(closing: { text: string; audioStream: boolean }): void;
-    onTranscript?(text: string, isFinal: boolean): void;
+    onTranscript?(
+      text: string,
+      isFinal: boolean,
+      segments?: TranscriptSegments,
+    ): void;
     onQuestionAudioStart?(format: { sampleRateHz: number }): void;
     onQuestionAudioChunk?(chunk: ArrayBuffer): void;
     onQuestionAudioEnd?(): void;
@@ -106,6 +111,7 @@ export function InterviewSession({
   dependencies,
   automationMode,
   developerAnswerGuide = false,
+  developerAnswerGuideRequestVersion = 0,
   onComplete,
 }: {
   sessionId: string;
@@ -116,6 +122,7 @@ export function InterviewSession({
   dependencies?: Partial<InterviewSessionDependencies>;
   automationMode?: AutomatedInterviewMode;
   developerAnswerGuide?: boolean;
+  developerAnswerGuideRequestVersion?: number;
   onComplete?: () => void;
 }) {
   const store = useMemo(() => createInterviewSessionStore(), []);
@@ -164,6 +171,10 @@ export function InterviewSession({
     new Map<string, GeneratedAutomatedAnswer>(),
   );
   const guidedQuestionIdsRef = useRef(new Set<string>());
+  const answerGuideRequestsInFlightRef = useRef(new Set<string>());
+  const lastAnswerGuideRequestVersionRef = useRef(
+    developerAnswerGuideRequestVersion,
+  );
   const automationRetryCountRef = useRef(0);
   const automationRetryTimerRef = useRef<number | null>(null);
   const automationReconnectAttemptRef = useRef(0);
@@ -283,9 +294,9 @@ export function InterviewSession({
         setInterviewerSpeaking(false);
         setQuestionPlaybackComplete(!closing.audioStream);
       },
-      onTranscript(text, isFinal) {
+      onTranscript(text, isFinal, segments) {
         setLiveTranscript((current) =>
-          updateLiveTranscript(current, text, isFinal),
+          updateLiveTranscript(current, text, isFinal, segments),
         );
       },
       onQuestionAudioStart(format) {
@@ -484,6 +495,9 @@ export function InterviewSession({
   ]);
 
   useEffect(() => {
+    const commandRequestedAgain =
+      developerAnswerGuideRequestVersion !==
+      lastAnswerGuideRequestVersionRef.current;
     if (
       !developerAnswerGuide ||
       automationMode ||
@@ -491,13 +505,17 @@ export function InterviewSession({
       snapshot.state !== "awaiting_answer" ||
       !questionTurnId ||
       !questionPlaybackComplete ||
-      guidedQuestionIdsRef.current.has(questionTurnId)
+      answerGuideRequestsInFlightRef.current.has(questionTurnId) ||
+      (!commandRequestedAgain &&
+        guidedQuestionIdsRef.current.has(questionTurnId))
     ) {
       return;
     }
     const client = clientRef.current;
     if (!client) return;
-    guidedQuestionIdsRef.current.add(questionTurnId);
+    lastAnswerGuideRequestVersionRef.current =
+      developerAnswerGuideRequestVersion;
+    answerGuideRequestsInFlightRef.current.add(questionTurnId);
     const currentQuestion = question;
     void client
       .requestAutomatedAnswer({
@@ -506,6 +524,7 @@ export function InterviewSession({
         answerProfile: "standard",
       })
       .then((generated) => {
+        guidedQuestionIdsRef.current.add(questionTurnId);
         console.groupCollapsed("[WhyYou 개발 답변 가이드]");
         console.info("면접관 질문:", currentQuestion);
         console.info("추천 답변:", generated.text);
@@ -522,10 +541,14 @@ export function InterviewSession({
           "[WhyYou 개발 답변 가이드] 답변을 준비하지 못했습니다.",
           error,
         );
+      })
+      .finally(() => {
+        answerGuideRequestsInFlightRef.current.delete(questionTurnId);
       });
   }, [
     automationMode,
     developerAnswerGuide,
+    developerAnswerGuideRequestVersion,
     question,
     questionPlaybackComplete,
     questionTurnId,
@@ -665,7 +688,7 @@ export function InterviewSession({
       }));
     generatedAnswersRef.current.set(questionTurnId, generated);
     const answer = generated.text;
-    setLiveTranscript({ committed: "", display: answer });
+    setLiveTranscript({ committed: answer, interim: "", display: answer });
     const evidenceStatus = generated.grounded
       ? `제출 자료 근거 ${generated.sourceReferenceCount}개`
       : "확인 가능한 제출 자료 없음";
@@ -802,6 +825,8 @@ export function InterviewSession({
       <InterviewRoom
         question={question}
         transcript={transcript}
+        committedTranscript={liveTranscript.committed}
+        interimTranscript={liveTranscript.interim}
         interviewerSpeaking={interviewerSpeaking}
         questionInProgress={!questionPlaybackComplete}
         candidateCameraState={candidateCameraState}

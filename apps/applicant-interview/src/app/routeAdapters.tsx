@@ -28,6 +28,7 @@ import {
 } from "../features/interview/InterviewSession";
 import type { AutomatedInterviewMode } from "../features/interview/automation";
 import {
+  getDeveloperAnswerGuideRequestVersion,
   isDeveloperAnswerGuideEnabled,
   subscribeDeveloperAnswerGuide,
 } from "../features/interview/developerAnswerGuide";
@@ -489,9 +490,10 @@ export function InterviewRoute() {
   const automationMode = AUTOMATED_INTERVIEW_ENABLED
     ? parseAutomationMode(search.get("auto"))
     : undefined;
-  const [developerAnswerGuide, setDeveloperAnswerGuide] = useState(
-    () => AUTOMATED_INTERVIEW_ENABLED && isDeveloperAnswerGuideEnabled(),
-  );
+  const [developerAnswerGuide, setDeveloperAnswerGuide] = useState(() => ({
+    enabled: AUTOMATED_INTERVIEW_ENABLED && isDeveloperAnswerGuideEnabled(),
+    requestVersion: getDeveloperAnswerGuideRequestVersion(),
+  }));
   const [resolvedStrategyId, setResolvedStrategyId] =
     useState(strategyIdFromSearch);
   const [strategyLoading, setStrategyLoading] = useState(
@@ -518,7 +520,9 @@ export function InterviewRoute() {
 
   useEffect(() => {
     if (!AUTOMATED_INTERVIEW_ENABLED) return;
-    return subscribeDeveloperAnswerGuide(setDeveloperAnswerGuide);
+    return subscribeDeveloperAnswerGuide((enabled, requestVersion) => {
+      setDeveloperAnswerGuide({ enabled, requestVersion });
+    });
   }, []);
 
   useEffect(() => {
@@ -749,7 +753,8 @@ export function InterviewRoute() {
       recordingApi={createRecordingUploadApi(session.sessionId)}
       interviewerLevel={interviewerLevel}
       automationMode={automationMode}
-      developerAnswerGuide={developerAnswerGuide}
+      developerAnswerGuide={developerAnswerGuide.enabled}
+      developerAnswerGuideRequestVersion={developerAnswerGuide.requestVersion}
       onComplete={() => {
         navigate("/interview/complete", { replace: true });
       }}

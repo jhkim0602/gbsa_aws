@@ -13,6 +13,7 @@ describe("updateLiveTranscript", () => {
 
     expect(second).toEqual({
       committed: "첫 번째 문장입니다. 두 번째 문장입니다.",
+      interim: "",
       display: "첫 번째 문장입니다. 두 번째 문장입니다.",
     });
   });
@@ -35,6 +36,25 @@ describe("updateLiveTranscript", () => {
       "첫 번째 문장입니다. 두 번째 문장입니다.",
     );
     expect(revisedPartial.committed).toBe("첫 번째 문장입니다.");
+    expect(revisedPartial.interim).toBe("두 번째 문장입니다.");
+  });
+
+  it("keeps committed and interim streaming segments separate", () => {
+    const transcript = updateLiveTranscript(
+      EMPTY_LIVE_TRANSCRIPT,
+      "확정된 문장 이어지는 단어",
+      false,
+      {
+        committedText: "확정된 문장",
+        interimText: "이어지는 단어",
+      },
+    );
+
+    expect(transcript).toEqual({
+      committed: "확정된 문장",
+      interim: "이어지는 단어",
+      display: "확정된 문장 이어지는 단어",
+    });
   });
 
   it("accepts a provider transcript that already contains prior text", () => {

@@ -539,7 +539,11 @@ describe("interview protocol client", () => {
       idempotency_key: "server-transcript-0001",
       correlation_id: "00000000-0000-7000-8000-000000000422",
       sent_at: "2026-08-20T10:00:00Z",
-      payload: { text: "실시간 자막" },
+      payload: {
+        text: "확정 자막 실시간 자막",
+        committed_text: "확정 자막",
+        interim_text: "실시간 자막",
+      },
     });
     socket.serverMessage({
       protocol_version: "1.0",
@@ -570,7 +574,10 @@ describe("interview protocol client", () => {
     });
 
     expect(socket.binaryType).toBe("arraybuffer");
-    expect(onTranscript).toHaveBeenCalledWith("실시간 자막", false);
+    expect(onTranscript).toHaveBeenCalledWith("확정 자막 실시간 자막", false, {
+      committedText: "확정 자막",
+      interimText: "실시간 자막",
+    });
     expect(onQuestionAudioStart).toHaveBeenCalledWith({
       questionTurnId: "00000000-0000-7000-8000-000000000424",
       encoding: "pcm_s16le",

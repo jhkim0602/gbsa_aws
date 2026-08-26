@@ -6,7 +6,13 @@ type WhyYouDebugCommands = {
   answerGuideStatus: () => boolean;
 };
 
-const changeListeners = new Set<(enabled: boolean) => void>();
+type DeveloperAnswerGuideListener = (
+  enabled: boolean,
+  requestVersion: number,
+) => void;
+
+const changeListeners = new Set<DeveloperAnswerGuideListener>();
+let requestVersion = 0;
 
 declare global {
   interface Window {
@@ -36,7 +42,7 @@ function saveDeveloperAnswerGuideEnabled(enabled: boolean) {
 }
 
 function notifyDeveloperAnswerGuideChange(enabled: boolean) {
-  for (const listener of changeListeners) listener(enabled);
+  for (const listener of changeListeners) listener(enabled, requestVersion);
 }
 
 function registerDeveloperAnswerGuideCommands() {
@@ -45,6 +51,7 @@ function registerDeveloperAnswerGuideCommands() {
     enableAnswerGuide: () => {
       const enabled = saveDeveloperAnswerGuideEnabled(true);
       if (enabled) {
+        requestVersion += 1;
         notifyDeveloperAnswerGuideChange(true);
         console.info(
           "[WhyYou] 답변 가이드를 활성화했습니다. 추천 답변은 이 콘솔에 표시됩니다.",
@@ -71,12 +78,16 @@ function registerDeveloperAnswerGuideCommands() {
 }
 
 export function subscribeDeveloperAnswerGuide(
-  onChange: (enabled: boolean) => void,
+  onChange: DeveloperAnswerGuideListener,
 ) {
   changeListeners.add(onChange);
   return () => {
     changeListeners.delete(onChange);
   };
+}
+
+export function getDeveloperAnswerGuideRequestVersion() {
+  return requestVersion;
 }
 
 if (
