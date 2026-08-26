@@ -68,13 +68,6 @@ class InterviewDeletionTargets:
                 resource_type="interview_session",
                 resource_id=str(session.interview_session_id),
             ),
-            InterviewDeletionTarget(
-                company_id=context.company_id,
-                owner_lane="C",
-                store="dynamodb",
-                resource_type="interview_hot_view",
-                resource_id=f"SESSION#{session.interview_session_id}",
-            ),
         ]
         targets.extend(
             InterviewDeletionTarget(

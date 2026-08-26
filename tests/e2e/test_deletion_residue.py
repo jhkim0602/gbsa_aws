@@ -73,7 +73,8 @@ def test_full_store_deletion_retries_until_every_target_is_verified_absent() -> 
     )
 
     stores = {target.store for target in manifest.targets}
-    assert {"aurora", "dynamodb", "s3", "retrieval"} <= stores
+    assert {"aurora", "s3", "retrieval"} <= stores
+    assert "dynamodb" not in stores
     retrying = deletion.execute(
         result.company_context,
         request_id=request.deletion_request_id,

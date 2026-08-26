@@ -128,8 +128,8 @@ const ARCHITECTURE_LANES: readonly ArchitectureLane[] = [
     eyebrow: "AWS RUNTIME",
     title: "실시간·비동기 처리 분리",
     description:
-      "실시간 면접 세션은 저지연 환경으로 처리하고, 무거운 AI 분석은 비동기로 분리해 안정적인 운영 환경을 제공합니다. 원본은 S3에 보관하고 실시간 면접 컨텍스트는 TTL이 있는 DynamoDB로 분리합니다.",
-    detail: "S3 · ECS Fargate · SQS · DynamoDB",
+      "실시간 면접 세션과 복구 체크포인트는 PostgreSQL에 일관되게 저장하고, 무거운 AI 분석은 비동기로 분리해 안정적인 운영 환경을 제공합니다.",
+    detail: "PostgreSQL · S3 · ECS Fargate · SQS",
     icon: ServerCog,
   },
 ];
@@ -1108,7 +1108,7 @@ export function LandingPage() {
                   "ECS Fargate API / Worker",
                   "SQS",
                   "Aurora Serverless v2 + pgvector",
-                  "DynamoDB TTL",
+                  "PostgreSQL 체크포인트",
                   "Bedrock + Titan Embeddings",
                 ].map((technology, index, technologies) => (
                   <div className="contents" key={technology}>

@@ -164,7 +164,7 @@ def test_deletion_enumerates_all_lane_c_durable_and_derived_targets() -> None:
     assert ("aurora", "recording_chunk") in identities
     assert ("aurora", "verification_progress") in identities
     assert ("aurora", "question_rationale") in identities
-    assert ("dynamodb", "interview_hot_view") in identities
+    assert not any(store == "dynamodb" for store, _ in identities)
     assert ("s3", "recording_chunk_object") in identities
     assert all(target.owner_lane == "C" for target in targets)
     assert all(target.verification_required for target in targets)

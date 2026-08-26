@@ -42,7 +42,7 @@ function Test-LocalConfiguration {
     Import-DotEnv
     $required = @(
         "APP_ENVIRONMENT", "DATABASE_URL", "MIGRATION_DATABASE_URL", "AWS_REGION",
-        "AWS_ENDPOINT_URL", "DYNAMODB_ENDPOINT_URL", "BEDROCK_MODEL_ID",
+        "AWS_ENDPOINT_URL", "BEDROCK_MODEL_ID",
         "GCP_DOCUMENT_AI_PROJECT_ID", "GCP_DOCUMENT_AI_PROCESSOR_ID"
     )
     $missing = @($required | Where-Object { [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_, "Process")) })
@@ -72,7 +72,7 @@ switch ($Action) {
     }
     "up" {
         Import-DotEnv
-        & docker compose up -d --wait
+        & docker compose up -d --wait --remove-orphans
         if ($LASTEXITCODE -ne 0) { throw "docker compose up failed" }
         Invoke-Uv python -m interview_evidence.runtime.local_infra
         Invoke-Uv alembic -c backend/alembic.ini upgrade heads

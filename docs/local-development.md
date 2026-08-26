@@ -1,6 +1,6 @@
 # Local development
 
-Postgres, DynamoDB and LocalStack run in containers. The API and the worker run on your host,
+Postgres and LocalStack run in containers. The API and the worker run on your host,
 through the same wiring the deployed environment uses (`create_production_runtime`) — there is no
 separate local application runtime to keep in step with production.
 
@@ -15,7 +15,7 @@ Docker, Node 22, and [uv](https://docs.astral.sh/uv/) are required.
 ```bash
 make dev-install          # npm ci + uv sync (editable)
 cp .env.example .env      # then fill in the AWS and GCP sections
-make up                   # containers, then buckets/queues/table, then migrations
+make up                   # containers, then buckets/queues, then migrations
 ```
 
 Then three terminals:
@@ -68,8 +68,8 @@ current shell, run `Set-ExecutionPolicy -Scope Process Bypass` once in that shel
 ## What is not local
 
 `runtime/aws.py:_client_factory` redirects exactly four services — S3, SQS, SES and Secrets
-Manager (via `AWS_ENDPOINT_URL`) — plus DynamoDB, which has its own setting. Anything else ignores
-both and goes to the account your credentials name:
+Manager (via `AWS_ENDPOINT_URL`). Anything else ignores it and goes to the account your
+credentials name:
 
 | Service | Locally | Consequence |
 |---|---|---|

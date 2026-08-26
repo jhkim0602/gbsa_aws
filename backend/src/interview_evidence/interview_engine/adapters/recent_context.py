@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from typing import Protocol, cast
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from interview_evidence.shared.tenant import TenantContext, require_tenant_context
+
+if TYPE_CHECKING:
+    from interview_evidence.interview_engine.repositories.postgres import InterviewRepository
 
 
 class HotViewUnavailable(RuntimeError):
@@ -38,125 +41,71 @@ class RecentContextPort(Protocol):
     def delete(self, context: TenantContext, session_id: UUID) -> None: ...
 
 
-class DynamoClient(Protocol):
-    def put_item(
-        self,
-        *,
-        TableName: str,
-        Item: dict[str, dict[str, str]],
-        ConditionExpression: str | None = None,
-    ) -> dict[str, object]: ...
-
-    def get_item(
-        self,
-        *,
-        TableName: str,
-        Key: dict[str, dict[str, str]],
-        ConsistentRead: bool,
-    ) -> dict[str, object]: ...
-
-    def delete_item(
-        self,
-        *,
-        TableName: str,
-        Key: dict[str, dict[str, str]],
-    ) -> dict[str, object]: ...
-
-    def describe_table(self, *, TableName: str) -> dict[str, object]: ...
-
-
-class DynamoRecentContext:
-    def __init__(self, client: DynamoClient, *, table_name: str) -> None:
-        self._client = client
-        self._table_name = table_name
+class PostgresRecentContext:
+    def __init__(self, repository: InterviewRepository) -> None:
+        self._repository = repository
 
     def get(self, context: TenantContext, session_id: UUID) -> RecentContextSnapshot | None:
-        tenant = require_tenant_context(context)
+        require_tenant_context(context)
         try:
-            response = self._client.get_item(
-                TableName=self._table_name,
-                Key=self._key(session_id),
-                ConsistentRead=True,
-            )
-        except Exception as error:
-            raise HotViewUnavailable("recent context read unavailable") from error
-        raw_item = response.get("Item")
-        if raw_item is None:
+            session = self._repository.get_session(context, session_id)
+            checkpoint = self._repository.latest_checkpoint(context, session_id)
+        except LookupError:
             return None
-        item = cast(dict[str, dict[str, str]], raw_item)
-        if item["company_id"]["S"] != str(tenant.company_id):
+        if checkpoint is None:
             return None
         return RecentContextSnapshot(
-            company_id=UUID(item["company_id"]["S"]),
-            interview_session_id=UUID(item["interview_session_id"]["S"]),
-            session_sequence=int(item["session_sequence"]["N"]),
-            checkpoint_id=UUID(item["checkpoint_id"]["S"]),
-            last_final_turn_id=self._optional_uuid(item, "last_final_turn_id"),
-            pending_turn_id=self._optional_uuid(item, "pending_turn_id"),
-            last_media_chunk_sequence=int(item["last_media_chunk_sequence"]["N"]),
-            schema_version=int(item["schema_version"]["N"]),
-            last_reconciled_event_id=self._optional_uuid(item, "last_reconciled_event_id"),
-            expires_at=datetime.fromtimestamp(int(item["ttl"]["N"]), tz=UTC),
+            company_id=session.company_id,
+            interview_session_id=session_id,
+            session_sequence=checkpoint.session_sequence,
+            checkpoint_id=checkpoint.checkpoint_id,
+            last_final_turn_id=checkpoint.last_final_turn_id,
+            pending_turn_id=checkpoint.pending_turn_id,
+            last_media_chunk_sequence=checkpoint.last_media_chunk_sequence,
+            expires_at=checkpoint.created_at + timedelta(days=7),
         )
 
     def put(self, context: TenantContext, snapshot: RecentContextSnapshot) -> RecentContextSnapshot:
-        tenant = require_tenant_context(context)
-        tenant.assert_company(snapshot.company_id)
-        item = {
-            **self._key(snapshot.interview_session_id),
-            "company_id": {"S": str(snapshot.company_id)},
-            "interview_session_id": {"S": str(snapshot.interview_session_id)},
-            "session_sequence": {"N": str(snapshot.session_sequence)},
-            "checkpoint_id": {"S": str(snapshot.checkpoint_id)},
-            "last_media_chunk_sequence": {"N": str(snapshot.last_media_chunk_sequence)},
-            "schema_version": {"N": str(snapshot.schema_version)},
-            "ttl": {"N": str(int(snapshot.expires_at.timestamp()))},
-        }
-        if snapshot.last_final_turn_id is not None:
-            item["last_final_turn_id"] = {"S": str(snapshot.last_final_turn_id)}
-        if snapshot.pending_turn_id is not None:
-            item["pending_turn_id"] = {"S": str(snapshot.pending_turn_id)}
-        if snapshot.last_reconciled_event_id is not None:
-            item["last_reconciled_event_id"] = {"S": str(snapshot.last_reconciled_event_id)}
-        try:
-            self._client.put_item(TableName=self._table_name, Item=item)
-        except Exception as error:
-            raise HotViewUnavailable("recent context write unavailable") from error
+        require_tenant_context(context).assert_company(snapshot.company_id)
+        checkpoint = self._repository.latest_checkpoint(
+            context,
+            snapshot.interview_session_id,
+        )
+        if checkpoint is None or checkpoint.checkpoint_id != snapshot.checkpoint_id:
+            raise HotViewUnavailable("durable recent context checkpoint is unavailable")
         return snapshot
 
     def delete(self, context: TenantContext, session_id: UUID) -> None:
         require_tenant_context(context)
-        try:
-            self._client.delete_item(
-                TableName=self._table_name,
-                Key=self._key(session_id),
-            )
-        except Exception as error:
-            raise HotViewUnavailable("recent context delete unavailable") from error
+        del session_id
 
     def healthcheck(self) -> None:
-        try:
-            response = self._client.describe_table(TableName=self._table_name)
-        except Exception as error:
-            raise HotViewUnavailable("recent context unavailable") from error
-        table = response.get("Table")
-        if not isinstance(table, dict):
-            raise HotViewUnavailable("recent context status is unavailable")
-        status = table.get("TableStatus")
-        if status not in {"ACTIVE", "UPDATING"}:
-            raise HotViewUnavailable("recent context is not active")
+        return None
 
-    @staticmethod
-    def _key(session_id: UUID) -> dict[str, dict[str, str]]:
-        return {
-            "PK": {"S": f"SESSION#{session_id}"},
-            "SK": {"S": "META"},
-        }
 
-    @staticmethod
-    def _optional_uuid(
-        item: dict[str, dict[str, str]],
-        key: str,
-    ) -> UUID | None:
-        value = item.get(key)
-        return None if value is None else UUID(value["S"])
+class InMemoryRecentContext:
+    def __init__(self) -> None:
+        self._snapshots: dict[tuple[UUID, UUID], RecentContextSnapshot] = {}
+        self.fail_reads = False
+        self.fail_writes = False
+
+    def get(self, context: TenantContext, session_id: UUID) -> RecentContextSnapshot | None:
+        if self.fail_reads:
+            raise HotViewUnavailable("recent context read unavailable")
+        tenant = require_tenant_context(context)
+        return self._snapshots.get((tenant.company_id, session_id))
+
+    def put(self, context: TenantContext, snapshot: RecentContextSnapshot) -> RecentContextSnapshot:
+        if self.fail_writes:
+            raise HotViewUnavailable("recent context write unavailable")
+        tenant = require_tenant_context(context)
+        tenant.assert_company(snapshot.company_id)
+        self._snapshots[(tenant.company_id, snapshot.interview_session_id)] = snapshot
+        return snapshot
+
+    def delete(self, context: TenantContext, session_id: UUID) -> None:
+        tenant = require_tenant_context(context)
+        self._snapshots.pop((tenant.company_id, session_id), None)
+
+    def healthcheck(self) -> None:
+        return None

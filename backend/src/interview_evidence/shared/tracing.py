@@ -109,7 +109,7 @@ def _install_provider(service_name: str, values: Mapping[str, str]) -> None:
     # balancer's id never joins up with it.
     set_global_textmap(AwsXRayPropagator())
 
-    # Bedrock, S3, SQS and DynamoDB calls become child spans, which is the whole point: the
+    # Bedrock, S3 and SQS calls become child spans, which is the whole point: the
     # question a trace answers here is which dependency a slow interview turn was waiting on.
     # Botocore's instrumentation records operation names and request ids, not payloads.
     #
@@ -141,7 +141,7 @@ def configure_tracing(
 def configure_worker_tracing(environment: Mapping[str, str] | None = None) -> bool:
     """The same tracer without the HTTP server half, for the worker process.
 
-    The worker runs the same collector sidecar and makes the same Bedrock, S3, SQS and DynamoDB
+    The worker runs the same collector sidecar and makes the same Bedrock, S3 and SQS
     calls, so leaving it uninstrumented would show an interview's analysis stage as a gap in the
     trace between the API enqueuing a job and a report appearing. It serves no HTTP, so there is
     no server span and no query string to strip.

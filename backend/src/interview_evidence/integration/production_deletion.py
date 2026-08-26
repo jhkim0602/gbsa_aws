@@ -42,12 +42,6 @@ class SearchTargetVerifier(Protocol):
     ) -> bool: ...
 
 
-class HotViewTargetVerifier(Protocol):
-    def delete(self, context: TenantContext, session_id: UUID) -> None: ...
-
-    def get(self, context: TenantContext, session_id: UUID) -> object | None: ...
-
-
 def _record_deletion(
     metrics: MetricRecorder,
     *,
@@ -123,12 +117,10 @@ class ProductionInterviewTargetDeleter:
         *,
         repository: RelationalTargetVerifier,
         object_storage: ObjectTargetVerifier,
-        hot_view: HotViewTargetVerifier,
         metrics: MetricRecorder | None = None,
     ) -> None:
         self._repository = repository
         self._object_storage = object_storage
-        self._hot_view = hot_view
         self._metrics = metrics or NullMetricRecorder()
 
     def delete_and_verify(
@@ -146,10 +138,6 @@ class ProductionInterviewTargetDeleter:
                 context,
                 target.resource_id,
             )
-        elif target.store == "dynamodb":
-            session_id = UUID(target.resource_id.removeprefix("SESSION#"))
-            self._hot_view.delete(context, session_id)
-            verified = self._hot_view.get(context, session_id) is None
         elif target.store == "aurora":
             verified = self._repository.delete_and_verify_target(
                 context,

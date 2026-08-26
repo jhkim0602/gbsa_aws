@@ -223,7 +223,7 @@ def test_lane_c_reconnect_and_degraded_quickstart() -> None:
         context,
         session_id=session.interview_session_id,
     )
-    assert any(target.store == "dynamodb" for target in targets)
+    assert not any(target.store == "dynamodb" for target in targets)
     assert any(
         event.event_type == "interview.checkpoint_changed" for event in runtime.outbox.pending()
     )

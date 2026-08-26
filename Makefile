@@ -22,10 +22,10 @@ dev-install:
 	npm ci
 	UV_CACHE_DIR=$(UV_CACHE_DIR) uv sync --frozen
 
-# Postgres, DynamoDB and LocalStack, then the buckets, queues and table inside them, then the
+# Postgres and LocalStack, then the buckets and queues inside them, then the
 # schema. Idempotent -- safe to re-run whenever a container has been reset.
 up:
-	docker compose up -d --wait
+	docker compose up -d --wait --remove-orphans
 	$(MAKE) local-infra
 	$(MAKE) migrate
 
@@ -33,7 +33,7 @@ down:
 	docker compose down
 
 # Creates the two S3 buckets (with the CORS rules the browser upload needs), the five SQS
-# queues and the DynamoDB table. Nothing seeds application data: there is no demo company or
+# queues. Nothing seeds application data: there is no demo company or
 # position, so a fresh database starts empty and the first company comes from a real signup.
 local-infra:
 	$(RUN_WITH_ENV) UV_CACHE_DIR=$(UV_CACHE_DIR) uv run --no-sync python -m interview_evidence.runtime.local_infra

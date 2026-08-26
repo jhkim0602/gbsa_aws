@@ -2812,7 +2812,6 @@ components:
           type: string
           enum:
           - aurora
-          - dynamodb
           - s3
           - opensearch
           - retrieval

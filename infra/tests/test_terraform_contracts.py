@@ -230,7 +230,7 @@ def test_the_task_role_can_run_every_readiness_probe() -> None:
     is indistinguishable from a dependency being down -- and `/health/ready` then answers 503
     forever. The ALB marks the targets unhealthy, the deployment circuit breaker opens and the
     deploy reports failure, all while the API serves requests correctly: nothing in the request
-    path touches these calls. That is exactly what happened with `dynamodb:DescribeTable`.
+    path touches these calls. A missing grant would make a healthy dependency appear down.
 
     The probe calls are read out of the adapters rather than listed here, so an adapter that
     starts probing with a new call fails this test instead of failing readiness in the deployed
@@ -240,7 +240,6 @@ def test_the_task_role_can_run_every_readiness_probe() -> None:
     # `client.<call>(` inside a `healthcheck` body, per adapter that has one.
     probes: dict[str, str] = {}
     for source_path, action_prefix in (
-        (backend / "interview_engine" / "adapters" / "recent_context.py", "dynamodb"),
         (backend / "shared" / "aws_clients" / "production.py", None),
     ):
         source = read(source_path)
@@ -253,11 +252,9 @@ def test_the_task_role_can_run_every_readiness_probe() -> None:
     # `_attributes` is the SQS probe's helper, so its call is found in that method, not in
     # `healthcheck` -- named here because the grant matters just as much.
     required = {
-        "describe_table": "dynamodb:DescribeTable",
         "head_bucket": "s3:ListBucket",
         "get_queue_attributes": "sqs:GetQueueAttributes",
     }
-    assert "describe_table" in probes, probes
     assert "head_bucket" in probes, probes
 
     compute = read(ROOT / "modules" / "compute" / "main.tf")
@@ -289,7 +286,6 @@ def test_application_roots_pass_complete_production_adapter_configuration() -> N
         "SOURCE_BUCKET",
         "MEDIA_BUCKET",
         "KMS_KEY_ARN",
-        "DYNAMODB_TABLE_NAME",
         "RETRIEVAL_BACKEND",
         "BEDROCK_EMBEDDING_MODEL_ID",
         "BEDROCK_MODEL_ID",
@@ -331,9 +327,9 @@ def test_application_roots_allow_only_applicant_browser_upload_origins() -> None
     prod = read(ROOT / "environments" / "prod" / "main.tf")
 
     for source in (dev, prod):
-        cors = source.split(
-            'resource "aws_s3_bucket_cors_configuration" "browser_uploads"'
-        )[1].split("output ", 1)[0]
+        cors = source.split('resource "aws_s3_bucket_cors_configuration" "browser_uploads"')[
+            1
+        ].split("output ", 1)[0]
         assert 'for_each = toset(["source", "media"])' in cors
         assert 'allowed_methods = ["GET", "HEAD", "PUT"]' in cors
         assert 'allowed_headers = ["*"]' in cors

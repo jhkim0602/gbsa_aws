@@ -38,7 +38,6 @@ from interview_evidence.integration.interview_reporting import (
 )
 from interview_evidence.integration.privacy_deletion import PrivacyDeletionBoundary
 from interview_evidence.integration.production_deletion import (
-    HotViewTargetVerifier,
     ObjectTargetVerifier,
     ProductionInterviewTargetDeleter,
     ProductionSubmissionTargetDeleter,
@@ -52,7 +51,10 @@ from interview_evidence.integration.reporting_company import (
 from interview_evidence.integration.submission_interview import (
     SubmissionInterviewBoundary,
 )
-from interview_evidence.interview_engine.adapters.recent_context import RecentContextPort
+from interview_evidence.interview_engine.adapters.recent_context import (
+    PostgresRecentContext,
+    RecentContextPort,
+)
 from interview_evidence.interview_engine.api import (
     create_lane_c_runtime,
 )
@@ -202,7 +204,6 @@ def create_production_runtime(
         principal_provider is None
         or object_storage is None
         or email_sender is None
-        or recent_context is None
         or model is None
         or embedder is None
         or speech_to_text is None
@@ -219,7 +220,6 @@ def create_production_runtime(
         object_storage = object_storage or aws.object_storage
         media_storage = media_storage or aws.media_storage
         email_sender = email_sender or aws.email_sender
-        recent_context = recent_context or aws.recent_context
         search_index = search_index or aws.search_index
         model = model or aws.model
         embedder = embedder or aws.embedder
@@ -247,6 +247,8 @@ def create_production_runtime(
     outbox = SQLOutbox(session)
     resource_idempotency = SQLCommandIdempotencyStore(session)
     interview_idempotency = SqlAlchemyIdempotencyStore(session)
+    interview_repository = create_interview_repository(session)
+    recent_context = recent_context or PostgresRecentContext(interview_repository)
     applicant_sessions = ApplicantSessionAdapter(
         clock=clock,
         store=SQLApplicantSessionStore(session),
@@ -313,7 +315,7 @@ def create_production_runtime(
     lane_c = create_lane_c_runtime(
         principal_provider=principals,
         authorization=submission_interview,
-        repository=create_interview_repository(session),
+        repository=interview_repository,
         object_storage=media_storage,
         audit=audit,
         clock=clock,
@@ -343,7 +345,6 @@ def create_production_runtime(
         target_deleter=ProductionInterviewTargetDeleter(
             repository=cast(RelationalTargetVerifier, lane_c.repository),
             object_storage=cast(ObjectTargetVerifier, media_storage),
-            hot_view=cast(HotViewTargetVerifier, recent_context),
             metrics=active_metrics,
         ),
     )

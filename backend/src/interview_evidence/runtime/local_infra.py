@@ -71,29 +71,6 @@ def initialize_local_infrastructure(
             environment=values,
         )
 
-    dynamodb = boto3.client(
-        "dynamodb",
-        region_name=region,
-        endpoint_url=_required(values, "DYNAMODB_ENDPOINT_URL"),
-        config=Config(connect_timeout=3, read_timeout=3, retries={"max_attempts": 1}),
-    )
-    table_name = _required(values, "DYNAMODB_TABLE_NAME")
-    try:
-        dynamodb.describe_table(TableName=table_name)
-    except Exception:
-        dynamodb.create_table(
-            TableName=table_name,
-            AttributeDefinitions=[
-                {"AttributeName": "PK", "AttributeType": "S"},
-                {"AttributeName": "SK", "AttributeType": "S"},
-            ],
-            KeySchema=[
-                {"AttributeName": "PK", "KeyType": "HASH"},
-                {"AttributeName": "SK", "KeyType": "RANGE"},
-            ],
-            BillingMode="PAY_PER_REQUEST",
-        )
-
 
 def _ensure_workflow_queue(
     client: LocalSqsClient,

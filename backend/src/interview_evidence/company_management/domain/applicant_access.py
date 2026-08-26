@@ -79,7 +79,7 @@ DEFAULT_CONSENT_POLICY = ConsentPolicy(
     ),
     retention_days=180,
     deletion_method=(
-        "기업의 삭제 요청 또는 보관기간 만료 시 Aurora, S3, DynamoDB, "
+        "기업의 삭제 요청 또는 보관기간 만료 시 PostgreSQL, S3, "
         "검색 인덱스의 원본과 파생 데이터를 확인하며 삭제합니다."
     ),
     required_purposes=frozenset(ProcessingPurpose),

@@ -34,7 +34,6 @@ def _environment() -> dict[str, str]:
         "SOURCE_BUCKET": "source-bucket",
         "MEDIA_BUCKET": "media-bucket",
         "KMS_KEY_ARN": "kms-key",
-        "DYNAMODB_TABLE_NAME": "interview-context",
         "RETRIEVAL_BACKEND": "aurora",
         "BEDROCK_MODEL_ID": "model-id",
         "BEDROCK_GUARDRAIL_ID": "guardrail-id",
@@ -64,7 +63,6 @@ def test_aws_runtime_factory_builds_all_production_dependencies() -> None:
     assert dependencies.application_auto_scaling is not None
     assert dependencies.object_storage is not None
     assert dependencies.media_storage is not None
-    assert dependencies.recent_context is not None
     assert dependencies.search_index is None
     assert dependencies.embedder.model_id == "amazon.titan-embed-text-v2:0"
 

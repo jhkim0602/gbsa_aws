@@ -947,7 +947,6 @@ class OwnerLane(StrEnum):
 
 class Store(StrEnum):
     aurora = "aurora"
-    dynamodb = "dynamodb"
     s3 = "s3"
     opensearch = "opensearch"
 

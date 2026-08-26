@@ -899,7 +899,7 @@ export interface components {
             /** @enum {string} */
             readonly status: "pending" | "deleting" | "retrying" | "failed" | "verified_absent";
             /** @enum {string} */
-            readonly store: "aurora" | "dynamodb" | "s3" | "opensearch" | "retrieval";
+            readonly store: "aurora" | "s3" | "opensearch" | "retrieval";
             /** Format: uuid */
             readonly target_id: string;
             readonly target_type: string;

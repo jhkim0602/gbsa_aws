@@ -10,11 +10,6 @@ from botocore.config import Config  # type: ignore[import-untyped]
 from sqlalchemy import URL
 
 from interview_evidence.capacity_management.scaling import ApplicationAutoScalingClient
-from interview_evidence.interview_engine.adapters.recent_context import (
-    DynamoClient,
-    DynamoRecentContext,
-    RecentContextPort,
-)
 from interview_evidence.runtime.generative_ai import create_generative_ai_dependencies
 from interview_evidence.runtime.queue_topology import (
     WORKFLOW_QUEUE_NAMES,
@@ -84,7 +79,6 @@ class AwsRuntimeDependencies:
     object_storage: ObjectStorage
     media_storage: ObjectStorage
     email_sender: EmailSender
-    recent_context: RecentContextPort
     search_index: SearchIndex | None
     queues: Mapping[str, ConsumableQueue]
     model: AIModel
@@ -150,10 +144,6 @@ def create_aws_runtime_dependencies(
         cast(SesClient, factory("sesv2")),
         from_address=_required(environment, "SES_FROM_ADDRESS"),
         configuration_set_name=environment.get("SES_CONFIGURATION_SET"),
-    )
-    recent_context = DynamoRecentContext(
-        cast(DynamoClient, factory("dynamodb")),
-        table_name=_required(environment, "DYNAMODB_TABLE_NAME"),
     )
     retrieval_backend = (
         environment.get(
@@ -224,7 +214,6 @@ def create_aws_runtime_dependencies(
         object_storage=object_storage,
         media_storage=media_storage,
         email_sender=email_sender,
-        recent_context=recent_context,
         search_index=search_index,
         queues=queues,
         model=generative_ai.model,
@@ -336,8 +325,6 @@ def _client_factory(environment: Mapping[str, str]) -> ClientFactory:
             "sqs",
         }:
             endpoint_url = environment.get("AWS_ENDPOINT_URL")
-        if service_name == "dynamodb":
-            endpoint_url = environment.get("DYNAMODB_ENDPOINT_URL", endpoint_url)
         return _boto_client(
             service_name,
             region=region,

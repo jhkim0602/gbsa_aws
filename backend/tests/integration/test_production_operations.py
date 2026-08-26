@@ -76,20 +76,6 @@ class RepositoryVerifier:
         return resource_type == "submission" and resource_id == ACTOR_ID
 
 
-class HotViewVerifier:
-    def __init__(self) -> None:
-        self.deleted: list[UUID] = []
-
-    def delete(self, context: TenantContext, session_id: UUID) -> None:
-        context.assert_company(COMPANY_ID)
-        self.deleted.append(session_id)
-
-    def get(self, context: TenantContext, session_id: UUID) -> None:
-        context.assert_company(COMPANY_ID)
-        assert session_id in self.deleted
-        return None
-
-
 def test_production_deleters_require_verified_absence_and_record_metrics() -> None:
     metrics = InMemoryMetricRecorder()
     object_store = ObjectVerifier(verified=False)
@@ -126,24 +112,23 @@ def test_production_deleters_require_verified_absence_and_record_metrics() -> No
     interview = ProductionInterviewTargetDeleter(
         repository=RepositoryVerifier(),
         object_storage=ObjectVerifier(verified=True),
-        hot_view=HotViewVerifier(),
         metrics=metrics,
     )
-    dynamo_receipt = interview.delete_and_verify(
+    aurora_receipt = interview.delete_and_verify(
         _context(),
         InterviewDeletionTarget(
             company_id=COMPANY_ID,
             owner_lane="C",
-            store="dynamodb",
-            resource_type="interview_hot_view",
-            resource_id=f"SESSION#{SESSION_ID}",
+            store="aurora",
+            resource_type="submission",
+            resource_id=str(ACTOR_ID),
         ),
-        CommandMeta.create("delete-interview-hot-view", clock=FrozenClock(NOW)),
+        CommandMeta.create("delete-interview-session", clock=FrozenClock(NOW)),
     )
 
     assert s3_receipt.verified_absent is False
     assert search_receipt.verified_absent is True
-    assert dynamo_receipt.verified_absent is True
+    assert aurora_receipt.verified_absent is True
     assert [(item.name, item.dimensions["outcome"]) for item in metrics.records] == [
         ("privacy_deletion_target", "retrying"),
         ("privacy_deletion_target", "verified_absent"),
