@@ -35,6 +35,7 @@ import {
   type SocketLike,
 } from "./protocolClient";
 import { createInterviewSessionStore } from "./sessionStore";
+import { EMPTY_LIVE_TRANSCRIPT, updateLiveTranscript } from "./liveTranscript";
 
 export interface RecordingUploadApi {
   upload(chunk: StoredMediaChunk): Promise<void>;
@@ -125,7 +126,8 @@ export function InterviewSession({
   );
   const [question, setQuestion] = useState("질문을 준비하고 있습니다.");
   const [questionTurnId, setQuestionTurnId] = useState<string | null>(null);
-  const [transcript, setTranscript] = useState("");
+  const [liveTranscript, setLiveTranscript] = useState(EMPTY_LIVE_TRANSCRIPT);
+  const transcript = liveTranscript.display;
   const [interviewerSpeaking, setInterviewerSpeaking] = useState(false);
   const [questionPlaybackComplete, setQuestionPlaybackComplete] =
     useState(false);
@@ -262,7 +264,7 @@ export function InterviewSession({
             automatedAnswerIndexRef.current += 1;
           }
           currentQuestionTurnIdRef.current = nextQuestion.questionTurnId;
-          setTranscript("");
+          setLiveTranscript(EMPTY_LIVE_TRANSCRIPT);
           automationRetryCountRef.current = 0;
           if (automationRetryTimerRef.current !== null) {
             window.clearTimeout(automationRetryTimerRef.current);
@@ -277,12 +279,14 @@ export function InterviewSession({
       onSessionClosing(closing) {
         setQuestion(closing.text);
         setQuestionTurnId(null);
-        setTranscript("");
+        setLiveTranscript(EMPTY_LIVE_TRANSCRIPT);
         setInterviewerSpeaking(false);
         setQuestionPlaybackComplete(!closing.audioStream);
       },
-      onTranscript(text) {
-        setTranscript(text);
+      onTranscript(text, isFinal) {
+        setLiveTranscript((current) =>
+          updateLiveTranscript(current, text, isFinal),
+        );
       },
       onQuestionAudioStart(format) {
         setQuestionPlaybackComplete(false);
@@ -581,7 +585,7 @@ export function InterviewSession({
     answerTurnIdRef.current = crypto.randomUUID();
     audioSequenceRef.current = 0;
     audioSendChainRef.current = Promise.resolve();
-    setTranscript("");
+    setLiveTranscript(EMPTY_LIVE_TRANSCRIPT);
     clientRef.current?.startAnswer({
       answerTurnId: answerTurnIdRef.current,
       sampleRateHz: 16000,
@@ -661,7 +665,7 @@ export function InterviewSession({
       }));
     generatedAnswersRef.current.set(questionTurnId, generated);
     const answer = generated.text;
-    setTranscript(answer);
+    setLiveTranscript({ committed: "", display: answer });
     const evidenceStatus = generated.grounded
       ? `제출 자료 근거 ${generated.sourceReferenceCount}개`
       : "확인 가능한 제출 자료 없음";
