@@ -133,7 +133,7 @@ class PostgresHybridSearchIndex:
                 RetrievalDocumentRow.company_id == tenant.company_id,
                 RetrievalDocumentRow.applicant_id == applicant_id,
                 RetrievalDocumentRow.invitation_id == invitation_id,
-                RetrievalDocumentRow.document_type == "submission_chunk",
+                RetrievalDocumentRow.source_type.in_(("submission_chunk", "candidate_code_unit")),
                 RetrievalDocumentRow.deleted_at.is_(None),
             )
             .order_by(RetrievalDocumentRow.source_id)

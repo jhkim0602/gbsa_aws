@@ -214,6 +214,7 @@ def test_debug_documents_return_extracted_text_for_the_current_invitation() -> N
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     chunk_id = UUID("00000000-0000-7000-8000-000000000030")
+    code_id = UUID("00000000-0000-7000-8000-000000000031")
     with Session(engine) as session:
         index = PostgresHybridSearchIndex(session)
         index.add(
@@ -236,6 +237,37 @@ def test_debug_documents_return_extracted_text_for_the_current_invitation() -> N
                 material_type="resume",
             )
         )
+        index.add(
+            SearchDocument(
+                document_id=str(code_id),
+                company_id=COMPANY_ID,
+                applicant_id=APPLICANT_ID,
+                source_id=code_id,
+                text=(
+                    "process_order\n커밋: 주문 처리 개선\n파일: src/order.py\n"
+                    "def process_order():\n    return True"
+                ),
+                vector=_vector(1.0, 0.0),
+                symbols=("process_order",),
+                locator={
+                    "path": "src/order.py",
+                    "symbol": "process_order",
+                    "start_line": 10,
+                    "end_line": 12,
+                    "commit_sha": "abcdef1234567890",
+                    "commit_message": "주문 처리 개선",
+                },
+                ownership_confidence=1.0,
+                invitation_id=INVITATION_ID,
+                competency_model_version_id=VERSION_ID,
+                document_type="code_unit",
+                source_type="candidate_code_unit",
+                embedding_model="gemini-embedding-001",
+                embedding_version="gemini-v1",
+                path="src/order.py",
+                symbol="process_order",
+            )
+        )
 
         documents = index.list_debug_documents(
             _context(),
@@ -243,7 +275,10 @@ def test_debug_documents_return_extracted_text_for_the_current_invitation() -> N
             invitation_id=INVITATION_ID,
         )
 
-    assert len(documents) == 1
+    assert len(documents) == 2
     assert documents[0].text == "지원자가 제출한 이력서에서 추출된 문단"
     assert documents[0].material_type == "resume"
     assert documents[0].locator == {"page_number": 2, "section": "경력"}
+    assert documents[1].source_type == "candidate_code_unit"
+    assert documents[1].text.endswith("def process_order():\n    return True")
+    assert documents[1].locator["path"] == "src/order.py"

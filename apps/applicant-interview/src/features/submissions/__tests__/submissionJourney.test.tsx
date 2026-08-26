@@ -329,9 +329,23 @@ describe("SubmissionWorkspace", () => {
       extracted_documents: [
         {
           source_id: "source-1",
+          source_type: "submission_chunk",
           material_type: "resume",
           locator: { page_number: 1, section: "경력" },
           text: "백엔드 서비스 개발 및 운영 경험",
+        },
+        {
+          source_id: "source-2",
+          source_type: "candidate_code_unit",
+          locator: {
+            path: "src/order.ts",
+            symbol: "processOrder",
+            start_line: 12,
+            end_line: 18,
+            commit_sha: "abcdef1234567890",
+            commit_message: "주문 처리 개선",
+          },
+          text: "processOrder\n커밋: 주문 처리 개선\n파일: src/order.ts\nexport function processOrder() {}",
         },
       ],
       strategy: {
@@ -386,6 +400,15 @@ describe("SubmissionWorkspace", () => {
     expect(screen.getByText("다른 해결 방법도 검토했나요?")).toBeTruthy();
     expect(
       screen.getAllByText("백엔드 서비스 개발 및 운영 경험").length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText("추출 근거 전체 보기 · 2개 근거")).toBeTruthy();
+    fireEvent.click(screen.getByText("추출 근거 전체 보기 · 2개 근거"));
+    expect(
+      screen.getByText("src/order.ts · processOrder · 12-18줄 · 커밋 abcdef1"),
+    ).toBeTruthy();
+    expect(screen.getByText("커밋 메시지: 주문 처리 개선")).toBeTruthy();
+    expect(
+      screen.getAllByText(/export function processOrder/).length,
     ).toBeGreaterThan(0);
     expect(screen.getByText("원본 JSON 보기")).toBeTruthy();
     expect(screen.getByText("ready · 70개 문단")).toBeTruthy();

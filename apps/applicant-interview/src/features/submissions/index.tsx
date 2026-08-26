@@ -64,12 +64,17 @@ type StatusTone = "neutral" | "info" | "success" | "warning" | "danger";
 
 type AnalysisDebugDocument = Readonly<{
   source_id?: string;
+  source_type?: string;
   material_type?: string;
   locator?: Readonly<{
     page_number?: number;
     section?: string;
+    path?: string;
+    symbol?: string;
     start_line?: number;
     end_line?: number;
+    commit_sha?: string;
+    commit_message?: string;
   }>;
   text?: string;
   embedding_model?: string;
@@ -749,7 +754,7 @@ function AnalysisDebugPanel({
 
           <details className="rounded-lg border border-border bg-surface p-5">
             <summary className="cursor-pointer text-sm font-bold text-ink">
-              추출 문서 전체 보기 · {documents.length}개 문단
+              추출 근거 전체 보기 · {documents.length}개 근거
             </summary>
             <div className="mt-4 max-h-[560px] space-y-2 overflow-auto pr-1">
               {documents.map((document, index) => (
@@ -760,9 +765,20 @@ function AnalysisDebugPanel({
                   <p className="m-0 text-[11px] font-semibold text-brand-strong">
                     {formatDocumentLocation(document)}
                   </p>
-                  <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-ink">
-                    {document.text ?? "추출된 텍스트 없음"}
-                  </p>
+                  {document.locator?.commit_message ? (
+                    <p className="mt-1 text-[11px] leading-5 text-muted">
+                      커밋 메시지: {document.locator.commit_message}
+                    </p>
+                  ) : null}
+                  {isGitCodeDocument(document) ? (
+                    <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-ink p-3 font-mono text-[11px] leading-5 text-white">
+                      {document.text ?? "추출된 코드 없음"}
+                    </pre>
+                  ) : (
+                    <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-ink">
+                      {document.text ?? "추출된 텍스트 없음"}
+                    </p>
+                  )}
                 </article>
               ))}
             </div>
@@ -793,6 +809,21 @@ function DebugMetric({ label, value }: { label: string; value: string }) {
 
 function formatDocumentLocation(document?: AnalysisDebugDocument) {
   if (!document) return "근거 문단 위치 확인 불가";
+  if (isGitCodeDocument(document)) {
+    const lineRange = formatLineRange(
+      document.locator?.start_line,
+      document.locator?.end_line,
+    );
+    const commitSha = document.locator?.commit_sha?.slice(0, 7);
+    return [
+      document.locator?.path ?? "파일 경로 확인 불가",
+      document.locator?.symbol ?? null,
+      lineRange,
+      commitSha ? `커밋 ${commitSha}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
   const location = [
     document.locator?.page_number
       ? `${document.locator.page_number}페이지`
@@ -801,6 +832,18 @@ function formatDocumentLocation(document?: AnalysisDebugDocument) {
     document.material_type ?? null,
   ].filter(Boolean);
   return location.join(" · ") || "문서 위치 정보 없음";
+}
+
+function isGitCodeDocument(document?: AnalysisDebugDocument) {
+  return document?.source_type === "candidate_code_unit";
+}
+
+function formatLineRange(startLine?: number, endLine?: number) {
+  if (typeof startLine !== "number") return null;
+  if (typeof endLine !== "number" || endLine === startLine) {
+    return `${startLine}줄`;
+  }
+  return `${startLine}-${endLine}줄`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
