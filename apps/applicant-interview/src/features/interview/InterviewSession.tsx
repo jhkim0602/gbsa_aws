@@ -140,6 +140,7 @@ export function InterviewSession({
     useState(false);
   const [automationStatus, setAutomationStatus] = useState("");
   const [automationRunVersion, setAutomationRunVersion] = useState(0);
+  const [generatedAnswerVersion, setGeneratedAnswerVersion] = useState(0);
   const [automationReconnectVersion, setAutomationReconnectVersion] =
     useState(0);
   const [candidateMediaStream, setCandidateMediaStream] =
@@ -502,7 +503,8 @@ export function InterviewSession({
       !developerAnswerGuide ||
       automationMode ||
       snapshot.connectionState !== "connected" ||
-      snapshot.state !== "awaiting_answer" ||
+      (snapshot.state !== "awaiting_answer" &&
+        snapshot.state !== "in_progress") ||
       !questionTurnId ||
       !questionPlaybackComplete ||
       answerGuideRequestsInFlightRef.current.has(questionTurnId) ||
@@ -525,16 +527,7 @@ export function InterviewSession({
       })
       .then((generated) => {
         guidedQuestionIdsRef.current.add(questionTurnId);
-        console.groupCollapsed("[WhyYou 개발 답변 가이드]");
-        console.info("면접관 질문:", currentQuestion);
-        console.info("추천 답변:", generated.text);
-        console.info(
-          "제출 자료 근거:",
-          generated.grounded
-            ? `${generated.sourceReferenceCount}개`
-            : "확인 가능한 근거 없음",
-        );
-        console.groupEnd();
+        logDeveloperAnswerGuide(currentQuestion, generated);
       })
       .catch((error: unknown) => {
         console.warn(
@@ -554,6 +547,40 @@ export function InterviewSession({
     questionTurnId,
     snapshot.connectionState,
     snapshot.state,
+  ]);
+
+  useEffect(() => {
+    if (
+      !developerAnswerGuide ||
+      !automationMode ||
+      !questionTurnId ||
+      !questionPlaybackComplete
+    ) {
+      return;
+    }
+    const generated = generatedAnswersRef.current.get(questionTurnId);
+    if (!generated) return;
+    const commandRequestedAgain =
+      developerAnswerGuideRequestVersion !==
+      lastAnswerGuideRequestVersionRef.current;
+    if (
+      !commandRequestedAgain &&
+      guidedQuestionIdsRef.current.has(questionTurnId)
+    ) {
+      return;
+    }
+    lastAnswerGuideRequestVersionRef.current =
+      developerAnswerGuideRequestVersion;
+    guidedQuestionIdsRef.current.add(questionTurnId);
+    logDeveloperAnswerGuide(question, generated);
+  }, [
+    automationMode,
+    developerAnswerGuide,
+    developerAnswerGuideRequestVersion,
+    generatedAnswerVersion,
+    question,
+    questionPlaybackComplete,
+    questionTurnId,
   ]);
 
   async function uploadChunk(chunk: StoredMediaChunk): Promise<void> {
@@ -687,6 +714,7 @@ export function InterviewSession({
         answerProfile: automatedAnswerProfile(automationMode),
       }));
     generatedAnswersRef.current.set(questionTurnId, generated);
+    setGeneratedAnswerVersion((version) => version + 1);
     const answer = generated.text;
     setLiveTranscript({ committed: answer, interim: "", display: answer });
     const evidenceStatus = generated.grounded
@@ -842,6 +870,22 @@ export function InterviewSession({
       />
     </>
   );
+}
+
+function logDeveloperAnswerGuide(
+  question: string,
+  generated: GeneratedAutomatedAnswer,
+) {
+  console.groupCollapsed("[WhyYou 개발 답변 가이드]");
+  console.info("면접관 질문:", question);
+  console.info("추천 답변:", generated.text);
+  console.info(
+    "제출 자료 근거:",
+    generated.grounded
+      ? `${generated.sourceReferenceCount}개`
+      : "확인 가능한 근거 없음",
+  );
+  console.groupEnd();
 }
 
 async function stopMedia(

@@ -54,7 +54,7 @@ function registerDeveloperAnswerGuideCommands() {
         requestVersion += 1;
         notifyDeveloperAnswerGuideChange(true);
         console.info(
-          "[WhyYou] 답변 가이드를 활성화했습니다. 추천 답변은 이 콘솔에 표시됩니다.",
+          "[WhyYou] 답변 가이드를 활성화했습니다. 현재 또는 다음 질문의 추천 답변을 이 콘솔에 표시합니다.",
         );
       }
       return enabled;

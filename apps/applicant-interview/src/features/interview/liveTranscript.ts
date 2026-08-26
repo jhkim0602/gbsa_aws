@@ -18,7 +18,8 @@ export function updateLiveTranscript(
 ): LiveTranscript {
   if (segments) {
     const committed = normalizeTranscript(segments.committedText);
-    const interim = normalizeTranscript(segments.interimText);
+    const incomingInterim = normalizeTranscript(segments.interimText);
+    const interim = preserveGrowingInterim(current, committed, incomingInterim);
     return {
       committed,
       interim,
@@ -46,6 +47,21 @@ export function updateLiveTranscript(
     interim,
     display: mergeTranscript(current.committed, interim),
   };
+}
+
+function preserveGrowingInterim(
+  current: LiveTranscript,
+  committed: string,
+  incomingInterim: string,
+): string {
+  if (
+    committed === current.committed &&
+    current.interim.startsWith(incomingInterim) &&
+    incomingInterim.length < current.interim.length
+  ) {
+    return current.interim;
+  }
+  return incomingInterim;
 }
 
 function withoutCommittedPrefix(committed: string, incoming: string): string {

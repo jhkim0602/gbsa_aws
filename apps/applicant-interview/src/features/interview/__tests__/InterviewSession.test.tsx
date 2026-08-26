@@ -26,7 +26,7 @@ function generatedAnswer(
 }
 
 describe("InterviewSession", () => {
-  it("prints an answer guide without submitting it", async () => {
+  it("prints an answer guide while an applicant answer is recording", async () => {
     const questionTurnId = "00000000-0000-7000-8000-000000000492";
     const answer = generatedAnswer(
       questionTurnId,
@@ -64,7 +64,7 @@ describe("InterviewSession", () => {
         onQuestion = input.onQuestion;
         input.store.getState().setConnectionState("connected");
         input.store.getState().applyServerState({
-          state: "awaiting_answer",
+          state: "in_progress",
           serverSequence: 1,
           lastFinalTurnId: null,
           lastVerifiedRecordingChunkSequence: 0,
@@ -445,6 +445,13 @@ describe("InterviewSession", () => {
 
   it("runs the fast local interview without camera or microphone access", async () => {
     vi.useFakeTimers();
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const group = vi
+      .spyOn(console, "groupCollapsed")
+      .mockImplementation(() => undefined);
+    const groupEnd = vi
+      .spyOn(console, "groupEnd")
+      .mockImplementation(() => undefined);
     try {
       const protocol = {
         connect: vi.fn(),
@@ -509,6 +516,7 @@ describe("InterviewSession", () => {
           recordingApi={{ upload: vi.fn() }}
           dependencies={dependencies}
           automationMode="fast"
+          developerAnswerGuide
         />,
       );
 
@@ -533,7 +541,16 @@ describe("InterviewSession", () => {
         lastRecordingChunkSequence: 0,
       });
       expect(dispose).toHaveBeenCalledOnce();
+      expect(info).toHaveBeenCalledWith(
+        "추천 답변:",
+        "제출 자료에 근거해 생성한 자동 면접 답변입니다.",
+      );
+      expect(group).toHaveBeenCalledWith("[WhyYou 개발 답변 가이드]");
+      expect(groupEnd).toHaveBeenCalledOnce();
     } finally {
+      info.mockRestore();
+      group.mockRestore();
+      groupEnd.mockRestore();
       vi.useRealTimers();
     }
   });

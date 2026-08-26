@@ -57,6 +57,29 @@ describe("updateLiveTranscript", () => {
     });
   });
 
+  it("does not shrink a growing interim phrase", () => {
+    const first = updateLiveTranscript(
+      EMPTY_LIVE_TRANSCRIPT,
+      "첫 문장이 이어지고 있습니다",
+      false,
+      {
+        committedText: "",
+        interimText: "첫 문장이 이어지고 있습니다",
+      },
+    );
+    const shorterRevision = updateLiveTranscript(
+      first,
+      "첫 문장이 이어지고",
+      false,
+      {
+        committedText: "",
+        interimText: "첫 문장이 이어지고",
+      },
+    );
+
+    expect(shorterRevision).toEqual(first);
+  });
+
   it("accepts a provider transcript that already contains prior text", () => {
     const committed = updateLiveTranscript(
       EMPTY_LIVE_TRANSCRIPT,

@@ -21,8 +21,6 @@ from interview_evidence.shared.speech.ports import (
 )
 from interview_evidence.shared.tenant import TenantContext
 
-MIN_PARTIAL_CAPTION_STABILITY = 0.65
-
 
 @dataclass(frozen=True, slots=True)
 class WebSocketSpeechRuntime:
@@ -294,11 +292,7 @@ class StreamingSpeechConnection:
                         active.confidence = event.confidence
                 display_text = f"{committed_text} {interim_text}".strip()
                 previous_text = active.latest_text
-                if (
-                    not display_text
-                    or display_text == previous_text
-                    or (not event.is_final and event.stability < MIN_PARTIAL_CAPTION_STABILITY)
-                ):
+                if not display_text or display_text == previous_text:
                     continue
                 active.latest_text = display_text
                 await self._publish(
