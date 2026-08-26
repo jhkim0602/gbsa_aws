@@ -1,6 +1,5 @@
 from uuid import UUID
 
-import pytest
 from interview_evidence.shared.aws_clients.ports import DeterministicAIModel
 from interview_evidence.shared.tenant import ActorType, TenantContext
 from interview_evidence.submission_analysis.application.strategy_prompt import (
@@ -10,7 +9,6 @@ from interview_evidence.submission_analysis.application.strategy_service import 
     FIXED_INTERVIEW_DURATION_SECONDS,
     MAX_STRATEGY_PROMPT_SOURCES,
     MIN_GIT_STRATEGY_PROMPT_SOURCES,
-    StrategyGenerationError,
     StrategyService,
 )
 from interview_evidence.submission_analysis.domain.source import SourceReferenceCandidate
@@ -20,6 +18,7 @@ APPLICANT_ID = UUID("00000000-0000-7000-8000-000000000002")
 INVITATION_ID = UUID("00000000-0000-7000-8000-000000000003")
 CRITERION_VERSION_ID = UUID("00000000-0000-7000-8000-000000000004")
 CRITERION_ID = UUID("00000000-0000-7000-8000-000000000005")
+SECOND_CRITERION_ID = UUID("00000000-0000-7000-8000-000000000007")
 
 
 def context() -> TenantContext:
@@ -76,16 +75,21 @@ def test_strategy_keeps_fixed_criterion_axis_and_source_provenance() -> None:
     assert strategy.status == "ready"
 
 
-def test_strategy_rejects_unknown_criterion() -> None:
+def test_strategy_repairs_unknown_and_malformed_criteria() -> None:
     model = DeterministicAIModel(
         {
             "common_topics": [],
             "verification_points": [
                 {
                     "criterion_id": str(UUID("00000000-0000-7000-8000-000000000099")),
-                    "prompt": "잘못된 기준",
+                    "prompt": "첫 번째 기준을 확인한다.",
                     "source_ids": [str(UUID("00000000-0000-7000-8000-000000000098"))],
-                }
+                },
+                {
+                    "criterion_id": "not-a-criterion-id",
+                    "prompt": "두 번째 기준을 확인한다.",
+                    "source_ids": [str(source_reference().source_id)],
+                },
             ],
             "follow_up_directions": {},
             "time_budget": {"total_seconds": 1800},
@@ -94,16 +98,20 @@ def test_strategy_rejects_unknown_criterion() -> None:
     )
     service = StrategyService(model, model_config_version="strategy-v1")
 
-    with pytest.raises(StrategyGenerationError):
-        service.generate(
-            context(),
-            invitation_id=INVITATION_ID,
-            applicant_id=APPLICANT_ID,
-            competency_model_version_id=CRITERION_VERSION_ID,
-            criterion_ids=(CRITERION_ID,),
-            source_candidates=(source_reference(),),
-            strategy_version=1,
-        )
+    strategy = service.generate(
+        context(),
+        invitation_id=INVITATION_ID,
+        applicant_id=APPLICANT_ID,
+        competency_model_version_id=CRITERION_VERSION_ID,
+        criterion_ids=(CRITERION_ID, SECOND_CRITERION_ID),
+        source_candidates=(source_reference(),),
+        strategy_version=1,
+    )
+
+    assert tuple(point.criterion_id for point in strategy.verification_points) == (
+        CRITERION_ID,
+        SECOND_CRITERION_ID,
+    )
 
 
 def test_strategy_repairs_unknown_source_references() -> None:

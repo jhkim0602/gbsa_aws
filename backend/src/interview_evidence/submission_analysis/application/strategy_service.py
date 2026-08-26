@@ -87,12 +87,15 @@ class StrategyService:
                 _verification_point_from_model(
                     item,
                     allowed_criteria=allowed_criteria,
+                    fallback_criterion_id=(
+                        criterion_ids[index % len(criterion_ids)] if criterion_ids else None
+                    ),
                     allowed_sources=allowed_sources,
                     fallback_source_id=(
                         prompt_candidates[0].source_id if prompt_candidates else None
                     ),
                 )
-                for item in result["verification_points"]
+                for index, item in enumerate(result["verification_points"])
             )
             common_topics = tuple(str(item) for item in result["common_topics"])
             follow_up_directions = dict(result["follow_up_directions"])
@@ -187,14 +190,21 @@ def _verification_point_from_model(
     value: object,
     *,
     allowed_criteria: set[UUID],
+    fallback_criterion_id: UUID | None,
     allowed_sources: set[UUID],
     fallback_source_id: UUID | None,
 ) -> VerificationPoint:
     if not isinstance(value, Mapping):
         raise TypeError("verification point must be an object")
-    criterion_id = UUID(str(value["criterion_id"]))
-    if criterion_id not in allowed_criteria:
-        raise StrategyGenerationError("strategy referenced an unknown criterion")
+    try:
+        parsed_criterion_id: UUID | None = UUID(str(value["criterion_id"]))
+    except (KeyError, TypeError, ValueError):
+        parsed_criterion_id = None
+    criterion_id = (
+        parsed_criterion_id if parsed_criterion_id in allowed_criteria else fallback_criterion_id
+    )
+    if criterion_id is None:
+        raise StrategyGenerationError("strategy has no available criterion")
     raw_source_ids = value.get("source_ids", ())
     if isinstance(raw_source_ids, str):
         source_values: Sequence[object] = (raw_source_ids,)
