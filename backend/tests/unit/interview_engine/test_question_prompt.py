@@ -98,6 +98,7 @@ def test_system_prompt_uses_grounded_conversational_bridges_and_natural_axis_cov
     assert "기술 구현, 장애 해결, 성능 개선만 묻는 질문은 만들지 않습니다" in system
     assert "answer_evidence_gaps" in system
     assert "stage_alignment_retry" in system
+    assert "required_assessment_axis가 fundamentals이면" in system
 
 
 def test_task_payload_round_trips_through_the_message() -> None:

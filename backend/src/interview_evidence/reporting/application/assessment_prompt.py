@@ -281,7 +281,9 @@ class AssessmentVerdict(BaseModel):
         return self.model_copy(
             update={
                 "axis_scores": tuple(
-                    score
+                    score.model_copy(update={"quoted_evidence_ids": ()})
+                    if score.score is None
+                    else score
                     if score.quoted_evidence_ids
                     and available_evidence_ids.issuperset(score.quoted_evidence_ids)
                     else score.model_copy(

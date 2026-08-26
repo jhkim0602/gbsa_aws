@@ -281,6 +281,11 @@ class InterviewService:
             if question_type == "follow_up" and answered_stage is interview_stage
             else ()
         )
+        required_assessment_axis = (
+            "fundamentals"
+            if interview_stage is InterviewStage.TECHNICAL and question_type == "stage_opening"
+            else None
+        )
         built_context = self._context_builder.build(
             recent_turns=tuple(
                 ContextTurn(
@@ -296,6 +301,7 @@ class InterviewService:
             interview_stage=interview_stage.value,
             interview_stage_focus=INTERVIEW_STAGE_FOCUS[interview_stage],
             next_question_type=question_type,
+            required_assessment_axis=required_assessment_axis,
             retrieved_source_ids=tuple(hit.source_id for hit in retrieval.hits),
             retrieved_sources=tuple(
                 RetrievedSourceContext(
@@ -343,6 +349,7 @@ class InterviewService:
                     interview_stage.value,
                     previous_questions=previous_questions,
                     default=fallback_question,
+                    required_assessment_axis=required_assessment_axis,
                 ),
                 target_criterion_id=target_criterion_id,
                 source_reference_ids=(),
@@ -379,8 +386,9 @@ class InterviewService:
             fallback_criterion_id=target_criterion_id,
             interview_stage=interview_stage.value,
             question_type=question_type,
+            required_assessment_axis=required_assessment_axis,
         )
-        if "stage_mismatch" in policy_result.reason_codes:
+        if {"stage_mismatch", "assessment_axis_mismatch"}.intersection(policy_result.reason_codes):
             retry_payload = built_context.model_payload()
             retry_payload["stage_alignment_retry"] = {
                 "interview_stage": interview_stage.value,
@@ -416,6 +424,7 @@ class InterviewService:
                     fallback_criterion_id=target_criterion_id,
                     interview_stage=interview_stage.value,
                     question_type=question_type,
+                    required_assessment_axis=required_assessment_axis,
                 )
         question = policy_result.question
         if not policy_result.accepted:

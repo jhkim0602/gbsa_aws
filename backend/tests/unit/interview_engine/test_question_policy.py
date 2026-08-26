@@ -205,3 +205,37 @@ def test_behavioral_follow_up_can_rely_on_the_previous_question_context() -> Non
     )
 
     assert result.accepted is True
+
+
+def test_policy_requires_a_grounded_fundamentals_question_when_requested() -> None:
+    result = QuestionPolicy().evaluate(
+        draft("사용한 기술과 구현 경험을 설명해 주세요."),
+        allowed_criterion_ids=frozenset({CRITERION_A}),
+        prohibited_topics=(),
+        previous_questions=(),
+        fallback_question="기술 경험을 설명해 주세요.",
+        fallback_criterion_id=CRITERION_A,
+        interview_stage="technical",
+        question_type="stage_opening",
+        required_assessment_axis="fundamentals",
+    )
+
+    assert result.accepted is False
+    assert "assessment_axis_mismatch" in result.reason_codes
+    assert "동작 원리" in result.question.text
+
+
+def test_policy_accepts_a_material_grounded_fundamentals_question() -> None:
+    result = QuestionPolicy().evaluate(
+        draft("WebSocket 재연결에서 응답 순서를 어떤 원리로 보장했는지 설명해 주세요."),
+        allowed_criterion_ids=frozenset({CRITERION_A}),
+        prohibited_topics=(),
+        previous_questions=(),
+        fallback_question="기술 경험을 설명해 주세요.",
+        fallback_criterion_id=CRITERION_A,
+        interview_stage="technical",
+        question_type="stage_opening",
+        required_assessment_axis="fundamentals",
+    )
+
+    assert result.accepted is True

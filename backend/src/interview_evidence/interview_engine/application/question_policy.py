@@ -59,6 +59,13 @@ _STAGE_SIGNAL_GROUPS = {
             "시스템",
             "배포",
             "원인",
+            "원리",
+            "네트워크",
+            "프로토콜",
+            "동시성",
+            "트랜잭션",
+            "중복",
+            "순서",
         ),
     ),
     "project_deep_dive": (
@@ -88,6 +95,30 @@ _STAGE_FALLBACK_QUESTIONS = {
         "다른 사람과 역할을 맞춰야 했던 상황이 있었다면 소통한 과정을 말씀해 주세요.",
     ),
 }
+
+_FUNDAMENTALS_FALLBACK_QUESTIONS = (
+    "제출 자료에 언급한 기술 하나를 골라, 그 기술의 동작 원리가 구현 방식에 어떻게 "
+    "반영됐는지 설명해 주세요.",
+    "앞서 언급한 기술에서 데이터의 중복이나 순서를 어떤 원리로 처리했는지 설명해 주세요.",
+)
+
+_FUNDAMENTALS_SIGNALS = (
+    "원리",
+    "동작",
+    "자료구조",
+    "알고리즘",
+    "네트워크",
+    "프로토콜",
+    "동시성",
+    "트랜잭션",
+    "일관성",
+    "중복",
+    "순서",
+    "복잡도",
+    "메모리",
+    "스레드",
+    "인덱스",
+)
 
 
 def _prompt_body(text: str) -> str:
@@ -202,8 +233,13 @@ def stage_fallback_question(
     *,
     previous_questions: tuple[str, ...] = (),
     default: str = "",
+    required_assessment_axis: str | None = None,
 ) -> str:
-    stage_candidates = _STAGE_FALLBACK_QUESTIONS.get(interview_stage, ())
+    stage_candidates = (
+        _FUNDAMENTALS_FALLBACK_QUESTIONS
+        if required_assessment_axis == "fundamentals"
+        else _STAGE_FALLBACK_QUESTIONS.get(interview_stage, ())
+    )
     candidates = tuple(
         normalize_interview_prompt(candidate)
         for candidate in (*stage_candidates, default, *_FALLBACK_QUESTIONS)
@@ -235,6 +271,7 @@ class QuestionPolicy:
         fallback_criterion_id: UUID,
         interview_stage: str | None = None,
         question_type: str = "core",
+        required_assessment_axis: str | None = None,
     ) -> QuestionPolicyResult:
         reasons: list[str] = []
         candidate = candidate.model_copy(
@@ -266,6 +303,10 @@ class QuestionPolicy:
             question_type=question_type,
         ):
             reasons.append("stage_mismatch")
+        if required_assessment_axis == "fundamentals" and not any(
+            signal in candidate.text.casefold() for signal in _FUNDAMENTALS_SIGNALS
+        ):
+            reasons.append("assessment_axis_mismatch")
 
         if not reasons:
             return QuestionPolicyResult(accepted=True, question=candidate)
@@ -277,6 +318,7 @@ class QuestionPolicy:
                         interview_stage,
                         previous_questions=previous_questions,
                         default=fallback_question,
+                        required_assessment_axis=required_assessment_axis,
                     )
                     if interview_stage is not None
                     else _non_repeating_fallback(fallback_question, previous_questions)

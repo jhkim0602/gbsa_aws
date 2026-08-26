@@ -35,6 +35,7 @@ class BuiltInterviewContext(BaseModel):
     interview_stage: str = ""
     interview_stage_focus: str = ""
     next_question_type: str = "adaptive"
+    required_assessment_axis: str | None = None
     retrieved_source_ids: tuple[UUID, ...]
     retrieved_sources: tuple[RetrievedSourceContext, ...] = ()
     criterion_text: str = ""
@@ -63,6 +64,7 @@ class BuiltInterviewContext(BaseModel):
             "interview_stage": self.interview_stage,
             "interview_stage_focus": self.interview_stage_focus,
             "next_question_type": self.next_question_type,
+            "required_assessment_axis": self.required_assessment_axis,
             "retrieved_source_ids": [str(source_id) for source_id in self.retrieved_source_ids],
             "criterion_text": self.criterion_text,
             "verification_objective": self.verification_objective,
@@ -105,6 +107,7 @@ class ContextBuilder:
         interview_stage: str = "",
         interview_stage_focus: str = "",
         next_question_type: str = "adaptive",
+        required_assessment_axis: str | None = None,
         retrieved_sources: tuple[RetrievedSourceContext, ...] = (),
         criterion_text: str = "",
         verification_objective: str = "",
@@ -120,6 +123,7 @@ class ContextBuilder:
                 interview_stage,
                 interview_stage_focus,
                 next_question_type,
+                required_assessment_axis or "",
                 *(str(value) for value in remaining_criterion_ids),
                 *(str(value) for value in retrieved_source_ids),
                 criterion_text,
@@ -154,6 +158,7 @@ class ContextBuilder:
             interview_stage=interview_stage,
             interview_stage_focus=interview_stage_focus,
             next_question_type=next_question_type,
+            required_assessment_axis=required_assessment_axis,
             retrieved_source_ids=retrieved_source_ids,
             retrieved_sources=retrieved_sources,
             criterion_text=criterion_text,

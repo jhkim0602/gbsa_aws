@@ -190,6 +190,8 @@ def test_an_axis_with_nothing_to_cite_scores_null_not_zero() -> None:
     assert assessment is not None
     scores = {axis.axis: axis for axis in assessment.axis_assessments}
     assert scores["fundamentals"].score is None
+    assert scores["fundamentals"].rationale == "CS 기본기를 확인할 질문이 없었습니다."
+    assert scores["fundamentals"].quoted_evidence_ids == ()
 
 
 def test_the_average_ignores_unjudged_axes_instead_of_counting_them_as_zero() -> None:
