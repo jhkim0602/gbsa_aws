@@ -6,6 +6,29 @@ import { EquipmentCheck, type EquipmentCheckApi } from "../EquipmentCheck";
 import { InterviewRoom } from "../InterviewRoom";
 
 describe("applicant interview journey", () => {
+  it("shows the applicant camera stream inside the interview room", () => {
+    const stream = {} as MediaStream;
+    render(
+      <InterviewRoom
+        question="지원 동기를 설명해 주세요."
+        candidateCameraState="ready"
+        candidateMediaStream={stream}
+        state="awaiting_answer"
+        connectionState="connected"
+        textOnly={false}
+        onStartAnswer={vi.fn()}
+        onCompleteAnswer={vi.fn()}
+        onReconnect={vi.fn()}
+      />,
+    );
+
+    const video = screen.getByLabelText(
+      "지원자 카메라 영상",
+    ) as HTMLVideoElement;
+    expect(video.srcObject).toBe(stream);
+    expect(screen.queryByText("카메라를 사용할 수 없습니다")).toBeNull();
+  });
+
   it("checks browser devices before allowing the interview to start", async () => {
     const api: EquipmentCheckApi = {
       check: vi.fn().mockResolvedValue({

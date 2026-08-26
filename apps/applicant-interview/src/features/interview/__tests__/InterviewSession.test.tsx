@@ -123,8 +123,10 @@ describe("InterviewSession", () => {
       submitAutomatedAnswer: vi.fn(),
     };
     const stopTrack = vi.fn();
+    const videoTrack = { stop: stopTrack };
     const stream = {
-      getTracks: () => [{ stop: stopTrack }],
+      getTracks: () => [videoTrack],
+      getVideoTracks: () => [videoTrack],
     } as unknown as MediaStream;
     const mediaBuffer = {
       put: vi.fn(),
@@ -172,7 +174,7 @@ describe("InterviewSession", () => {
     };
 
     const onComplete = vi.fn();
-    render(
+    const { unmount } = render(
       <InterviewSession
         sessionId="00000000-0000-7000-8000-000000000501"
         equipmentCheckId="00000000-0000-7000-8000-000000000511"
@@ -184,6 +186,7 @@ describe("InterviewSession", () => {
     );
 
     expect(protocol.connect).toHaveBeenCalledOnce();
+    expect(await screen.findByLabelText("지원자 카메라 영상")).toBeTruthy();
     onQuestion?.({
       questionTurnId: "00000000-0000-7000-8000-000000000502",
       text: "장애 복구 순서를 설명해 주세요.",
@@ -207,7 +210,7 @@ describe("InterviewSession", () => {
     fireEvent.click(screen.getByRole("button", { name: "답변 완료" }));
     await waitFor(() => expect(protocol.completeAnswer).toHaveBeenCalledOnce());
     expect(recorder.stop).toHaveBeenCalledOnce();
-    expect(stopTrack).toHaveBeenCalledOnce();
+    expect(stopTrack).not.toHaveBeenCalled();
 
     act(() => {
       sessionStore?.getState().applyServerState({
@@ -219,6 +222,8 @@ describe("InterviewSession", () => {
       });
     });
     await waitFor(() => expect(onComplete).toHaveBeenCalledOnce());
+    unmount();
+    await waitFor(() => expect(stopTrack).toHaveBeenCalledOnce());
   });
 
   it("waits for the closing voice before opening the completion screen", async () => {

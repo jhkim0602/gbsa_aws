@@ -10,7 +10,7 @@ import {
   SplitSquareHorizontal,
   VideoOff,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Avatar, INTERVIEWER_LEVELS, type InterviewerLevel } from "./Avatar";
 import { InterviewComplete } from "./InterviewComplete";
@@ -87,6 +87,9 @@ const FOOTER_SUBMIT =
   " font-bold text-white shadow-sm transition hover:bg-red-600" +
   " disabled:cursor-not-allowed disabled:opacity-40";
 
+export type CandidateCameraState =
+  "connecting" | "ready" | "unavailable" | "disabled";
+
 function formatElapsedTime(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60)
     .toString()
@@ -96,26 +99,47 @@ function formatElapsedTime(totalSeconds: number) {
 }
 
 function CandidatePanel({
+  cameraState,
+  mediaStream,
   menuOpen,
   pictureInPicture,
   recording,
   onMenuToggle,
   onPictureInPictureToggle,
 }: {
+  cameraState: CandidateCameraState;
+  mediaStream: MediaStream | null;
   menuOpen: boolean;
   pictureInPicture: boolean;
   recording: boolean;
   onMenuToggle(): void;
   onPictureInPictureToggle(): void;
 }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.srcObject = mediaStream;
+    return () => {
+      if (video.srcObject === mediaStream) video.srcObject = null;
+    };
+  }, [mediaStream]);
+
   return (
     <section className={CANDIDATE_PANEL} aria-label="지원자 화면">
       <div className={STAGE_LABEL}>
         <span
-          className={`h-2 w-2 rounded-full ${recording ? "bg-red-500" : "bg-slate-400"}`}
+          className={`h-2 w-2 rounded-full ${
+            recording
+              ? "bg-red-500"
+              : cameraState === "ready"
+                ? "bg-emerald-500"
+                : "bg-slate-400"
+          }`}
           aria-hidden="true"
         />
-        지원자
+        {recording ? "지원자 · 녹화 중" : "지원자"}
       </div>
 
       <div className="absolute right-3 top-3 z-30">
@@ -159,20 +183,39 @@ function CandidatePanel({
         ) : null}
       </div>
 
-      <div className="grid h-full min-h-[320px] place-items-center px-6 text-center text-slate-500">
-        <div>
-          <CameraOff
-            className="mx-auto mb-3 size-10 stroke-[1.6]"
-            aria-hidden="true"
-          />
-          <p className="text-sm font-medium">
-            {recording ? "답변을 녹음하고 있습니다" : "카메라 꺼짐"}
-          </p>
-          <p className="mt-1 text-xs text-slate-400">
-            {recording ? "답변 완료를 눌러 제출하세요." : "음성으로 진행 중"}
-          </p>
+      {mediaStream && cameraState === "ready" ? (
+        <video
+          ref={videoRef}
+          className="h-full min-h-[320px] w-full scale-x-[-1] object-cover"
+          aria-label="지원자 카메라 영상"
+          autoPlay
+          muted
+          playsInline
+        />
+      ) : (
+        <div className="grid h-full min-h-[320px] place-items-center px-6 text-center text-slate-500">
+          <div>
+            <CameraOff
+              className="mx-auto mb-3 size-10 stroke-[1.6]"
+              aria-hidden="true"
+            />
+            <p className="text-sm font-medium">
+              {cameraState === "connecting"
+                ? "카메라를 연결하고 있습니다"
+                : cameraState === "disabled"
+                  ? "자동 면접에서는 카메라를 사용하지 않습니다"
+                  : "카메라를 사용할 수 없습니다"}
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              {cameraState === "connecting"
+                ? "잠시만 기다려 주세요."
+                : cameraState === "disabled"
+                  ? "생성된 답변으로 테스트를 진행합니다."
+                  : "브라우저 카메라 권한을 확인해 주세요."}
+            </p>
+          </div>
         </div>
-      </div>
+      )}
     </section>
   );
 }
@@ -182,6 +225,8 @@ export function InterviewRoom({
   transcript = "",
   interviewerSpeaking = false,
   questionInProgress = interviewerSpeaking,
+  candidateCameraState = "unavailable",
+  candidateMediaStream = null,
   state,
   connectionState,
   textOnly,
@@ -196,6 +241,8 @@ export function InterviewRoom({
   transcript?: string;
   interviewerSpeaking?: boolean;
   questionInProgress?: boolean;
+  candidateCameraState?: CandidateCameraState;
+  candidateMediaStream?: MediaStream | null;
   state: InterviewState;
   connectionState: ConnectionState;
   textOnly: boolean;
@@ -324,6 +371,8 @@ export function InterviewRoom({
           ) : null}
 
           <CandidatePanel
+            cameraState={candidateCameraState}
+            mediaStream={candidateMediaStream}
             menuOpen={menuOpen}
             pictureInPicture={pictureInPicture}
             recording={recording}

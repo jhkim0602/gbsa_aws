@@ -17,7 +17,7 @@ import {
   type AutomatedInterviewMode,
   type AutomatedMedia,
 } from "./automation";
-import { InterviewRoom } from "./InterviewRoom";
+import { InterviewRoom, type CandidateCameraState } from "./InterviewRoom";
 import {
   ChunkedRecorder,
   IndexedDbMediaBuffer,
@@ -133,12 +133,17 @@ export function InterviewSession({
   const [automationRunVersion, setAutomationRunVersion] = useState(0);
   const [automationReconnectVersion, setAutomationReconnectVersion] =
     useState(0);
+  const [candidateMediaStream, setCandidateMediaStream] =
+    useState<MediaStream | null>(null);
+  const [candidateCameraState, setCandidateCameraState] =
+    useState<CandidateCameraState>(automationMode ? "disabled" : "connecting");
   const mediaBuffer = useMemo(
     () => dependencies?.mediaBuffer ?? new IndexedDbMediaBuffer(),
     [dependencies?.mediaBuffer],
   );
   const clientRef = useRef<ProtocolClient | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const candidateMediaStreamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<Recorder | null>(null);
   const audioCaptureRef = useRef<AudioCapture | null>(null);
   const answerTurnIdRef = useRef<string | null>(null);
@@ -202,6 +207,48 @@ export function InterviewSession({
     }),
     [dependencies, mediaBuffer, websocketUrl],
   );
+
+  useEffect(() => {
+    if (automationMode) {
+      setCandidateCameraState("disabled");
+      return;
+    }
+    let active = true;
+    setCandidateCameraState("connecting");
+    void (async () => {
+      try {
+        const stream = await resolved.mediaDevices.getUserMedia({
+          audio: true,
+          video: true,
+        });
+        if (!stream) throw new Error("media stream is unavailable");
+        if (!active) {
+          for (const track of stream.getTracks()) track.stop();
+          return;
+        }
+        if (stream.getVideoTracks().length === 0) {
+          for (const track of stream.getTracks()) track.stop();
+          setCandidateCameraState("unavailable");
+          return;
+        }
+        if (candidateMediaStreamRef.current) {
+          for (const track of stream.getTracks()) track.stop();
+          return;
+        }
+        candidateMediaStreamRef.current = stream;
+        setCandidateMediaStream(stream);
+        setCandidateCameraState("ready");
+      } catch {
+        if (active) setCandidateCameraState("unavailable");
+      }
+    })();
+    return () => {
+      active = false;
+      const stream = candidateMediaStreamRef.current;
+      candidateMediaStreamRef.current = null;
+      for (const track of stream?.getTracks() ?? []) track.stop();
+    };
+  }, [automationMode, resolved.mediaDevices]);
 
   useEffect(() => {
     const client = resolved.createProtocolClient({
@@ -302,7 +349,13 @@ export function InterviewSession({
     client.connect();
     return () => {
       client.disconnect();
-      stopMedia(audioCaptureRef, recorderRef, streamRef, answerTurnIdRef);
+      stopMedia(
+        audioCaptureRef,
+        recorderRef,
+        streamRef,
+        answerTurnIdRef,
+        candidateMediaStreamRef,
+      );
       automatedMediaRef.current?.dispose();
       if (automationRetryTimerRef.current !== null) {
         window.clearTimeout(automationRetryTimerRef.current);
@@ -504,10 +557,26 @@ export function InterviewSession({
 
   async function startAnswer(): Promise<void> {
     if (streamRef.current || !questionPlaybackComplete) return;
-    const stream = await resolved.mediaDevices.getUserMedia({
-      audio: true,
-      video: true,
-    });
+    let stream = candidateMediaStreamRef.current;
+    if (!stream) {
+      const requestedStream = await resolved.mediaDevices.getUserMedia({
+        audio: true,
+        video: true,
+      });
+      if (candidateMediaStreamRef.current) {
+        for (const track of requestedStream.getTracks()) track.stop();
+        stream = candidateMediaStreamRef.current;
+      } else {
+        stream = requestedStream;
+      }
+    }
+    if (candidateMediaStreamRef.current !== stream) {
+      candidateMediaStreamRef.current = stream;
+      setCandidateMediaStream(stream);
+      setCandidateCameraState(
+        stream.getVideoTracks().length > 0 ? "ready" : "unavailable",
+      );
+    }
     streamRef.current = stream;
     answerTurnIdRef.current = crypto.randomUUID();
     audioSequenceRef.current = 0;
@@ -562,7 +631,9 @@ export function InterviewSession({
     audioBatcherRef.current?.flush();
     audioBatcherRef.current = null;
     await audioSendChainRef.current;
-    for (const track of streamRef.current?.getTracks() ?? []) track.stop();
+    if (streamRef.current !== candidateMediaStreamRef.current) {
+      for (const track of streamRef.current?.getTracks() ?? []) track.stop();
+    }
     streamRef.current = null;
     answerTurnIdRef.current = null;
     clientRef.current?.completeAnswer({
@@ -729,6 +800,8 @@ export function InterviewSession({
         transcript={transcript}
         interviewerSpeaking={interviewerSpeaking}
         questionInProgress={!questionPlaybackComplete}
+        candidateCameraState={candidateCameraState}
+        candidateMediaStream={candidateMediaStream}
         state={snapshot.state}
         connectionState={snapshot.connectionState}
         textOnly={snapshot.degradedModes.includes("text_only")}
@@ -747,12 +820,15 @@ async function stopMedia(
   recorderRef: MutableRefObject<Recorder | null>,
   streamRef: MutableRefObject<MediaStream | null>,
   answerTurnIdRef: MutableRefObject<string | null>,
+  preservedStreamRef?: MutableRefObject<MediaStream | null>,
 ): Promise<void> {
   await recorderRef.current?.stop();
   recorderRef.current = null;
   await audioCaptureRef.current?.stop();
   audioCaptureRef.current = null;
-  for (const track of streamRef.current?.getTracks() ?? []) track.stop();
+  if (streamRef.current !== preservedStreamRef?.current) {
+    for (const track of streamRef.current?.getTracks() ?? []) track.stop();
+  }
   streamRef.current = null;
   answerTurnIdRef.current = null;
 }
