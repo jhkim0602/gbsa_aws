@@ -28,8 +28,8 @@ import {
 } from "../features/interview/InterviewSession";
 import type { AutomatedInterviewMode } from "../features/interview/automation";
 import {
-  installDeveloperAnswerGuideCommands,
   isDeveloperAnswerGuideEnabled,
+  subscribeDeveloperAnswerGuide,
 } from "../features/interview/developerAnswerGuide";
 import type { StoredMediaChunk } from "../features/interview/media";
 import {
@@ -518,7 +518,7 @@ export function InterviewRoute() {
 
   useEffect(() => {
     if (!AUTOMATED_INTERVIEW_ENABLED) return;
-    return installDeveloperAnswerGuideCommands(setDeveloperAnswerGuide);
+    return subscribeDeveloperAnswerGuide(setDeveloperAnswerGuide);
   }, []);
 
   useEffect(() => {
