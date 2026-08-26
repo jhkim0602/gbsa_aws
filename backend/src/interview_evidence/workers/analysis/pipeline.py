@@ -57,8 +57,7 @@ from interview_evidence.submission_analysis.repositories.postgres import (
     SubmissionRepository,
 )
 from interview_evidence.workers.analysis.code_units import (
-    ExpandedCodeUnit,
-    expand_python_code_units,
+    expand_commit_code_units,
 )
 from interview_evidence.workers.analysis.document_chunker import (
     ChunkingConfig,
@@ -523,7 +522,7 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
         for commit_sha, (commit, commit_analysis) in commit_by_sha.items():
             commit_files = {**head_files, **files_by_commit.get(commit_sha, {})}
             for path, ranges in commit.changed_line_ranges.items():
-                if not path.endswith(".py") or path not in commit_files:
+                if path not in commit_files:
                     continue
                 source = commit_files[path]
                 related = {
@@ -531,13 +530,22 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     for candidate_path, related_source in related_corpus.items()
                     if candidate_path != path
                 }
-                for expanded in self._python_code_units(
+                for expanded in expand_commit_code_units(
                     path=path,
                     source=source,
                     changed_line_ranges=ranges,
                     related_files=related,
                 ):
                     excerpt = self._code_unit_excerpt(source, expanded.line_range)
+                    document_text = "\n".join(
+                        value
+                        for value in (
+                            f"커밋: {commit.message}" if commit.message else "",
+                            f"파일: {expanded.path}",
+                            excerpt,
+                        )
+                        if value
+                    )
                     code_unit_id = new_uuid7(occurred_at)
                     document_id = str(code_unit_id)
                     unit = CandidateCodeUnit(
@@ -573,11 +581,13 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                         "end_line": unit.current_line_range[1],
                         "commit_sha": commit_sha,
                     }
+                    if commit.message:
+                        locator["commit_message"] = commit.message
                     content_hash = hashlib.sha256(excerpt.encode("utf-8")).hexdigest()
                     pending_code_documents.append(
                         _PendingCodeDocument(
                             unit=unit,
-                            text=excerpt,
+                            text=document_text,
                             locator=locator,
                             ownership_confidence=commit_analysis.ownership_confidence,
                             commit_sha=commit_sha,
@@ -676,14 +686,27 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                 company_id=context.company_id,
                 submission_id=submission.submission_id,
                 analysis_version=job.analysis_version,
-                extractor_version="bounded-ranked-public-git-v2",
-                chunk_config_version="ranked-code-units-v2",
+                extractor_version="bounded-ranked-public-git-v3",
+                chunk_config_version="ranked-commit-code-units-v3",
                 claims=(
                     {
                         "type": "public_git_snapshot",
+                        "analysis_basis": "candidate_commit_changes",
                         "commit_count": len(commits),
                         "code_unit_count": len(code_units),
                         "discovered_code_unit_count": discovered_code_unit_count,
+                        "changed_file_count": len(
+                            {
+                                document.unit.path
+                                for document in pending_code_documents
+                            }
+                        ),
+                        "language_count": len(
+                            {
+                                document.unit.language
+                                for document in pending_code_documents
+                            }
+                        ),
                         "project_area_count": len(
                             {
                                 document.locator["project_area"]
@@ -714,31 +737,6 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
             analyzing.transition(SubmissionStatus.READY),
         )
         return AnalysisResult(status=JobStatus.READY, analysis_id=analysis.analysis_id)
-
-    @staticmethod
-    def _python_code_units(
-        *,
-        path: str,
-        source: str,
-        changed_line_ranges: tuple[tuple[int, int], ...],
-        related_files: dict[str, str],
-    ) -> tuple[ExpandedCodeUnit, ...]:
-        """Expand one changed file, tolerating a file that does not parse.
-
-        Analyzing many commits instead of one makes it likely that a real repository
-        contains at least one ``.py`` file the local interpreter cannot parse -- Python 2
-        syntax, a template, a deliberately broken fixture. That file yields no evidence,
-        but it must not cost the recruiter every other commit in the repository.
-        """
-        try:
-            return expand_python_code_units(
-                path=path,
-                source=source,
-                changed_line_ranges=changed_line_ranges,
-                related_files=related_files,
-            )
-        except SyntaxError:
-            return ()
 
     @staticmethod
     def _code_unit_excerpt(source: str, line_range: tuple[int, int]) -> str:

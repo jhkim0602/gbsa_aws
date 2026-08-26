@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
+from pathlib import PurePosixPath
 from random import Random
 from typing import Final, Protocol, cast
 from urllib.error import HTTPError
@@ -22,31 +23,39 @@ EMPTY_TREE_SHA: Final = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 #: GitHub's maximum commits per listing call.
 _LISTING_PAGE_SIZE: Final = 100
 
-#: File suffixes that carry authored source code. Screening on these is what makes
-#: sampling worth doing: the analysis builds its evidence out of code units, so a commit
-#: that only touched a changelog costs a call and yields nothing to ask about. Measured
-#: over a real 300-commit history, screening here raised the share of budgeted commits
-#: that produced evidence from three in ten to ten in ten.
-SOURCE_SUFFIXES: Final = (
-    ".c",
-    ".cc",
-    ".cpp",
-    ".cs",
-    ".go",
-    ".h",
-    ".hpp",
-    ".java",
-    ".js",
-    ".jsx",
-    ".kt",
-    ".php",
-    ".py",
-    ".rb",
-    ".rs",
-    ".scala",
-    ".swift",
-    ".ts",
-    ".tsx",
+_EXCLUDED_PATH_SEGMENTS: Final = frozenset(
+    {
+        ".git",
+        ".next",
+        ".terraform",
+        ".venv",
+        "__pycache__",
+        "build",
+        "coverage",
+        "dist",
+        "generated",
+        "node_modules",
+        "target",
+        "vendor",
+    }
+)
+_EXCLUDED_FILE_NAMES: Final = frozenset(
+    {
+        "cargo.lock",
+        "composer.lock",
+        "credentials",
+        "gemfile.lock",
+        "go.sum",
+        "id_ed25519",
+        "id_rsa",
+        "npm-shrinkwrap.json",
+        "package-lock.json",
+        "pnpm-lock.yaml",
+        "poetry.lock",
+        "secrets.json",
+        "uv.lock",
+        "yarn.lock",
+    }
 )
 
 #: Commit subjects that describe housekeeping rather than authored work. Nobody can be
@@ -80,9 +89,6 @@ class GitFetchLimits:
     #: for the details -- so paging wide costs little and is what lets the sample span a
     #: whole history instead of the most recent week.
     max_listing_pages: int = 5
-    #: Candidate commits screened per commit actually analyzed. Screening reuses the
-    #: detail call the analysis needs anyway, so only the rejected candidates cost extra.
-    screening_multiple: int = 3
     #: Concurrent HTTPS calls. The fetch is entirely network-bound, so this is the
     #: difference between an analysis a recruiter waits out and one they abandon. Kept
     #: modest so one analysis does not look like abuse to GitHub.
@@ -107,6 +113,7 @@ class RepositoryCommit:
     author_email: str
     changed_line_ranges: dict[str, tuple[tuple[int, int], ...]]
     author_login: str | None = None
+    message: str = ""
 
     @property
     def changed_paths(self) -> tuple[str, ...]:
@@ -199,7 +206,7 @@ class GitHubPublicTransport:
             api_root, default_branch, limits, author=None, first_page=branch_page
         )
         order = _sampling_order(listed, limits, _sample_seed(repository_url, identity))
-        selected = self._screened_details(api_root, order, limits)
+        selected = self._selected_details(api_root, order, limits)
         # Back into listing order: the sampling order exists only to decide which
         # commits are read, and evidence for one repository has to read the same way
         # every time it is produced.
@@ -214,6 +221,7 @@ class GitHubPublicTransport:
                 author_email=author_email,
                 changed_line_ranges=ranges_by_sha[sha],
                 author_login=author_login,
+                message=_commit_message(detail),
             )
             for sha, detail, (author_name, author_email, author_login) in (
                 (sha, detail, _commit_author(detail)) for sha, detail in selected
@@ -233,48 +241,24 @@ class GitHubPublicTransport:
             commits=commits,
         )
 
-    def _screened_details(
+    def _selected_details(
         self,
         api_root: str,
         order: tuple[str, ...],
         limits: GitFetchLimits,
     ) -> list[tuple[str, dict[str, object]]]:
-        """Commit details for the sampled commits that carry authored source.
-
-        The screen is free in the common case: reading a commit's diff needs the detail
-        call anyway, and that same response lists the changed files, so a commit that
-        turns out to touch only a changelog is recognised without spending a blob call
-        on it. Only rejected candidates cost anything extra, which is why the search is
-        bounded to ``screening_multiple`` times the budget.
-
-        Candidates are screened in parallel waves as wide as the remaining budget, so a
-        history whose commits mostly touch code costs a single round of concurrent calls
-        while one padded with documentation edits keeps looking.
-        """
+        """Read the sampled commits without assuming their programming language."""
         budget = max(1, limits.max_analyzed_commits)
-        ceiling = min(len(order), budget * max(1, limits.screening_multiple))
-        selected: list[tuple[str, dict[str, object]]] = []
-        screened: list[tuple[str, dict[str, object]]] = []
+        selected_shas = order[:budget]
         with ThreadPoolExecutor(max_workers=max(1, limits.max_workers)) as pool:
-            while len(screened) < ceiling and len(selected) < budget:
-                wave = order[len(screened) : len(screened) + budget - len(selected)][
-                    : ceiling - len(screened)
-                ]
-                details = pool.map(
-                    lambda sha: self._json_dict(
-                        f"{api_root}/commits/{sha}",
-                        limits.timeout_seconds,
-                    ),
-                    wave,
-                )
-                for sha, detail in zip(wave, details, strict=True):
-                    screened.append((sha, detail))
-                    if _touches_source(detail):
-                        selected.append((sha, detail))
-        # A repository written in a language this screen does not know about, or one
-        # holding only prose, would otherwise analyse to nothing. Falling back to what
-        # was screened keeps the old unscreened behaviour for those.
-        return selected or screened[:budget]
+            details = pool.map(
+                lambda sha: self._json_dict(
+                    f"{api_root}/commits/{sha}",
+                    limits.timeout_seconds,
+                ),
+                selected_shas,
+            )
+            return list(zip(selected_shas, details, strict=True))
 
     def _blob_fetch(
         self,
@@ -457,23 +441,6 @@ class GitHubPublicTransport:
 
 
 class BoundedGitFetcher:
-    EXCLUDED_SEGMENTS = {
-        ".git",
-        "node_modules",
-        "vendor",
-        "dist",
-        "build",
-        ".next",
-        "__pycache__",
-    }
-    SECRET_NAMES = {
-        ".env",
-        "id_rsa",
-        "id_ed25519",
-        "credentials",
-        "secrets.json",
-    }
-
     def __init__(self, transport: GitTransport, limits: GitFetchLimits) -> None:
         self._transport = transport
         self._limits = limits
@@ -494,10 +461,7 @@ class BoundedGitFetcher:
         included: list[RepositoryFile] = []
         total_bytes = 0
         for file in snapshot.files:
-            segments = set(file.path.split("/"))
-            if segments & self.EXCLUDED_SEGMENTS:
-                continue
-            if file.path.rsplit("/", 1)[-1].casefold() in self.SECRET_NAMES:
+            if _excluded_path(file.path):
                 continue
             if len(file.content) > self._limits.max_file_bytes:
                 continue
@@ -516,13 +480,30 @@ class BoundedGitFetcher:
                 raise GitFetchError("repository_file_limit_exceeded")
             if total_bytes > self._limits.max_total_bytes:
                 raise GitFetchError("repository_byte_limit_exceeded")
+        included_by_commit = {(file.commit_sha, file.path) for file in included}
+        head_paths = {file.path for file in included if not file.commit_sha}
+        commits = tuple(
+            replace(
+                commit,
+                changed_line_ranges={
+                    path: ranges
+                    for path, ranges in commit.changed_line_ranges.items()
+                    if (commit.commit_sha, path) in included_by_commit or path in head_paths
+                },
+            )
+            for commit in snapshot.commits
+            if any(
+                (commit.commit_sha, path) in included_by_commit or path in head_paths
+                for path in commit.changed_line_ranges
+            )
+        )
         return RepositorySnapshot(
             repository_url=snapshot.repository_url,
             default_branch=snapshot.default_branch,
             pinned_head_sha=snapshot.pinned_head_sha,
             files=tuple(included),
             commit_count=snapshot.commit_count,
-            commits=snapshot.commits,
+            commits=commits,
         )
 
 
@@ -615,22 +596,6 @@ def _authored_month(item: dict[str, object]) -> str:
     return date[:7] if isinstance(date, str) else ""
 
 
-def _touches_source(detail: dict[str, object]) -> bool:
-    """Whether a commit changed a file the analysis can build code units from."""
-    raw_files = detail.get("files")
-    if not isinstance(raw_files, list):
-        return False
-    for item in raw_files:
-        if not isinstance(item, dict):
-            continue
-        path = cast(dict[str, object], item).get("filename")
-        if not isinstance(path, str) or item.get("status") == "removed":
-            continue
-        if path.endswith(SOURCE_SUFFIXES):
-            return True
-    return False
-
-
 def _required_string(value: dict[str, object], key: str) -> str:
     result = value.get(key)
     if not isinstance(result, str) or not result:
@@ -665,6 +630,16 @@ def _commit_author(detail: dict[str, object]) -> tuple[str, str, str | None]:
     )
 
 
+def _commit_message(detail: dict[str, object]) -> str:
+    commit = detail.get("commit")
+    if not isinstance(commit, dict):
+        return ""
+    message = commit.get("message")
+    if not isinstance(message, str):
+        return ""
+    return message.strip()[:500]
+
+
 def _changed_blobs(detail: dict[str, object]) -> list[tuple[str, str, object]]:
     raw_files = detail.get("files")
     if not isinstance(raw_files, list):
@@ -681,8 +656,18 @@ def _changed_blobs(detail: dict[str, object]) -> list[tuple[str, str, object]]:
         # deletion is not authored code to build a question from.
         if item.get("status") == "removed":
             continue
+        if _excluded_path(path):
+            continue
         blobs.append((path, raw_url, item.get("patch")))
     return blobs
+
+
+def _excluded_path(path: str) -> bool:
+    parts = PurePosixPath(path).parts
+    if {part.casefold() for part in parts[:-1]} & _EXCLUDED_PATH_SEGMENTS:
+        return True
+    name = parts[-1].casefold() if parts else ""
+    return name.startswith(".env") or name in _EXCLUDED_FILE_NAMES
 
 
 def _changed_ranges(patch: object) -> tuple[tuple[int, int], ...]:

@@ -25,6 +25,7 @@ from interview_evidence.workers.analysis.git_fetch import (
     GitFetchError,
     GitFetchLimits,
     GitHubPublicTransport,
+    RepositoryCommit,
     RepositoryFile,
     RepositorySnapshot,
 )
@@ -63,13 +64,17 @@ def _detail(
     files: list[dict[str, Any]] | None = None,
     email: str = APPLICANT_EMAIL,
     login: str | None = "candidate-dev",
+    message: str = "feat: 결제 재시도 추가",
 ) -> dict[str, Any]:
     parent_shas = parents if parents is not None else [_sha("f")]
     return {
         "sha": sha,
         "author": {"login": login} if login is not None else None,
         "parents": [{"sha": parent} for parent in parent_shas],
-        "commit": {"author": {"name": "홍길동", "email": email}},
+        "commit": {
+            "author": {"name": "홍길동", "email": email},
+            "message": message,
+        },
         "files": files
         if files is not None
         else [
@@ -193,6 +198,7 @@ def test_more_than_one_commit_is_analyzed_up_to_the_budget() -> None:
     # analysis can say the history was larger than the budget.
     assert snapshot.commit_count == len(shas)
     assert snapshot.pinned_head_sha == shas[0]
+    assert all(commit.message == "feat: 결제 재시도 추가" for commit in snapshot.commits)
 
 
 def test_the_whole_history_is_analyzed_when_it_fits_the_budget() -> None:
@@ -310,13 +316,8 @@ def test_merges_and_version_bumps_are_not_spent_on() -> None:
     assert analyzed.isdisjoint(shas[:12])
 
 
-def test_a_commit_touching_no_source_is_screened_out_before_its_blobs_are_read() -> None:
-    """The screen rides on a call the analysis already needs, so it is nearly free.
-
-    Reading a commit's diff costs one detail call whatever happens, and that response
-    lists the changed files -- so a commit that only edited a changelog is recognised
-    without spending a blob call per file on it.
-    """
+def test_commit_selection_does_not_depend_on_a_known_source_suffix() -> None:
+    """A changed text file remains analyzable even when its suffix is unfamiliar."""
     prose = frozenset(_sha(chr(ord("a") + index)) for index in range(20))
     transport, shas = _sampling_fixture(documentation=prose)
 
@@ -327,11 +328,9 @@ def test_a_commit_touching_no_source_is_screened_out_before_its_blobs_are_read()
     )
 
     analyzed = {commit.commit_sha for commit in snapshot.commits}
-    # The search is bounded to screening_multiple x the budget, so a history this padded
-    # yields fewer than the budget rather than screening the whole pool to fill it.
-    assert analyzed
-    assert analyzed <= set(shas[20:])
-    assert all("CHANGES.rst" not in url for url in transport.blob_urls)
+    assert len(analyzed) == 4
+    assert analyzed <= set(shas)
+    assert any("CHANGES.rst" in url for url in transport.blob_urls)
 
 
 def test_a_repository_of_only_prose_is_still_analyzed() -> None:
@@ -655,6 +654,56 @@ def test_a_file_that_is_not_utf8_is_dropped_instead_of_failing_the_analysis() ->
     snapshot = fetcher.fetch(REPOSITORY_URL)
 
     assert [file.path for file in snapshot.files] == ["src/ok.py"]
+
+
+def test_generated_and_lock_files_are_removed_from_commit_evidence() -> None:
+    commit_sha = _sha("b")
+    fetcher = BoundedGitFetcher(
+        _StaticSnapshotTransport(
+            RepositorySnapshot(
+                repository_url=REPOSITORY_URL,
+                default_branch="main",
+                pinned_head_sha=commit_sha,
+                files=(
+                    RepositoryFile(
+                        path="src/payment.custom",
+                        content=b"retryPayment = true\n",
+                        commit_sha=commit_sha,
+                    ),
+                    RepositoryFile(
+                        path="package-lock.json",
+                        content=b"{}\n",
+                        commit_sha=commit_sha,
+                    ),
+                    RepositoryFile(
+                        path="dist/bundle.custom",
+                        content=b"generated\n",
+                        commit_sha=commit_sha,
+                    ),
+                ),
+                commit_count=1,
+                commits=(
+                    RepositoryCommit(
+                        parent_sha=_sha("a"),
+                        commit_sha=commit_sha,
+                        author_name="홍길동",
+                        author_email=APPLICANT_EMAIL,
+                        changed_line_ranges={
+                            "src/payment.custom": ((1, 1),),
+                            "package-lock.json": ((1, 1),),
+                            "dist/bundle.custom": ((1, 1),),
+                        },
+                    ),
+                ),
+            )
+        ),
+        GitFetchLimits(),
+    )
+
+    snapshot = fetcher.fetch(REPOSITORY_URL)
+
+    assert [file.path for file in snapshot.files] == ["src/payment.custom"]
+    assert snapshot.commits[0].changed_paths == ("src/payment.custom",)
 
 
 def test_a_history_longer_than_the_commit_limit_is_refused() -> None:

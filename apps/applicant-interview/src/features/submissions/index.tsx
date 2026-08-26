@@ -91,6 +91,8 @@ type AnalysisDebugData = Readonly<{
       commit_count?: number;
       code_unit_count?: number;
       discovered_code_unit_count?: number;
+      changed_file_count?: number;
+      language_count?: number;
     }>[];
   }>[];
   extracted_documents?: readonly AnalysisDebugDocument[];
@@ -709,7 +711,13 @@ function AnalysisDebugPanel({
                     ? `${chunkCount}개 문단`
                     : typeof gitSnapshot?.code_unit_count === "number"
                       ? [
-                          `${gitSnapshot.code_unit_count}개 코드 근거`,
+                          `${gitSnapshot.code_unit_count}개 커밋 변경 근거`,
+                          typeof gitSnapshot.changed_file_count === "number"
+                            ? `${gitSnapshot.changed_file_count}개 파일`
+                            : null,
+                          typeof gitSnapshot.language_count === "number"
+                            ? `${gitSnapshot.language_count}개 언어`
+                            : null,
                           typeof gitSnapshot.discovered_code_unit_count ===
                           "number"
                             ? `${gitSnapshot.discovered_code_unit_count}개 후보`

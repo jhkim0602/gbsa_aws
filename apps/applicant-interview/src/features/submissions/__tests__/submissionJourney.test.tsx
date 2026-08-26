@@ -390,7 +390,7 @@ describe("SubmissionWorkspace", () => {
     expect(screen.getByText("원본 JSON 보기")).toBeTruthy();
     expect(screen.getByText("ready · 70개 문단")).toBeTruthy();
     expect(
-      screen.getByText("ready · 41개 코드 근거 · 382개 후보 · 5개 커밋"),
+      screen.getByText("ready · 41개 커밋 변경 근거 · 382개 후보 · 5개 커밋"),
     ).toBeTruthy();
     expect(getAnalysisDebug).toHaveBeenCalledOnce();
   });

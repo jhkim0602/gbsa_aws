@@ -272,7 +272,7 @@ def test_embedding_provider_failure_uses_analysis_retry_contract() -> None:
     assert repository.list_chunks(_context(), APPLICANT_ID) == ()
 
 
-def test_public_git_event_persists_code_units_and_exact_symbol_index() -> None:
+def test_public_git_event_persists_non_python_commit_evidence() -> None:
     repository = InMemorySubmissionRepository()
     repository.save_submission(
         _context(),
@@ -309,12 +309,16 @@ def test_public_git_event_persists_code_units_and_exact_symbol_index() -> None:
                     pinned_head_sha="b" * 40,
                     files=(
                         RepositoryFile(
-                            path="src/payment.py",
-                            content=b"def retry_payment():\n    return True\n",
+                            path="src/payment.ts",
+                            content=(
+                                b"export function retryPayment(orderId: string): boolean {\n"
+                                b"  return orderId.length > 0;\n"
+                                b"}\n"
+                            ),
                         ),
                         RepositoryFile(
-                            path="tests/test_payment.py",
-                            content=b"def test_retry_payment():\n    retry_payment()\n",
+                            path="tests/payment.test.ts",
+                            content=b"expect(retryPayment('order-1')).toBe(true);\n",
                         ),
                     ),
                     commit_count=1,
@@ -324,7 +328,8 @@ def test_public_git_event_persists_code_units_and_exact_symbol_index() -> None:
                             commit_sha="b" * 40,
                             author_name="홍길동",
                             author_email="unverified@example.com",
-                            changed_line_ranges={"src/payment.py": ((1, 2),)},
+                            changed_line_ranges={"src/payment.ts": ((1, 3),)},
+                            message="feat: add payment retry validation",
                         ),
                     ),
                 )
@@ -359,19 +364,30 @@ def test_public_git_event_persists_code_units_and_exact_symbol_index() -> None:
         _context(),
         frozenset({commits[0].git_commit_analysis_id}),
     )
-    assert units[0].symbol == "retry_payment"
+    assert units[0].language == "typescript"
+    assert units[0].symbol == "retryPayment"
     matches = search.candidates(
         _context(),
         applicant_id=APPLICANT_ID,
         query="retry payment",
         query_vector=embedder.embed(_context(), "retry payment"),
-        exact_symbol="retry_payment",
+        exact_symbol="retryPayment",
     )
     assert matches[0].exact_symbol_score == 1.0
     assert matches[0].document.ownership_confidence < 0.5
     assert matches[0].document.locator["project_area"] == "src"
     assert matches[0].document.locator["selection_score"] > 0
     assert "related_tests" in matches[0].document.locator["selection_reasons"]
+    assert (
+        matches[0].document.locator["commit_message"]
+        == "feat: add payment retry validation"
+    )
+    analysis = repository.list_analyses(_context(), frozenset({SUBMISSION_ID}))[0]
+    snapshot_claim = next(
+        claim for claim in analysis.claims if claim["type"] == "public_git_snapshot"
+    )
+    assert snapshot_claim["analysis_basis"] == "candidate_commit_changes"
+    assert snapshot_claim["language_count"] == 1
 
 
 def test_public_git_limits_code_units_before_embedding() -> None:
@@ -684,8 +700,8 @@ def test_each_analyzed_commit_contributes_its_own_code_unit_evidence() -> None:
     assert symbols_by_sha[older_sha] == {"charge_card"}
     assert len(embedder.batch_calls) == 1
     assert set(embedder.batch_calls[0]) == {
-        "def retry_payment():\n    return True",
-        "def charge_card():\n    return False",
+        "파일: src/payment.py\ndef retry_payment():\n    return True",
+        "파일: src/payment.py\ndef charge_card():\n    return False",
     }
 
 
@@ -795,12 +811,8 @@ def test_the_applicant_identity_reaches_the_transport_before_the_fetch() -> None
     ]
 
 
-def test_a_file_that_does_not_parse_does_not_lose_the_rest_of_the_repository() -> None:
-    """Real repositories contain Python this interpreter cannot parse.
-
-    Analyzing many commits instead of one makes hitting such a file likely. It yields no
-    evidence, but the readable commits must still produce theirs.
-    """
+def test_a_file_that_does_not_parse_falls_back_to_commit_change_evidence() -> None:
+    """Parser support enriches evidence but never decides whether it exists."""
     repository = InMemorySubmissionRepository()
     repository.save_submission(
         _context(),
@@ -889,7 +901,7 @@ def test_a_file_that_does_not_parse_does_not_lose_the_rest_of_the_repository() -
         _context(),
         frozenset({commits[0].git_commit_analysis_id}),
     )
-    assert {unit.symbol for unit in units} == {"retry_payment"}
+    assert {unit.symbol for unit in units} == {"legacy.py:1-1", "retry_payment"}
 
 
 class FailingGitTransport:

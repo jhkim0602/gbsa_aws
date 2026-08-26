@@ -4,7 +4,10 @@ from interview_evidence.submission_analysis.domain.git_analysis import (
     OwnershipClass,
     classify_commit_ownership,
 )
-from interview_evidence.workers.analysis.code_units import expand_python_code_units
+from interview_evidence.workers.analysis.code_units import (
+    expand_commit_code_units,
+    expand_python_code_units,
+)
 
 
 def test_commit_identity_is_a_candidate_signal_not_proof() -> None:
@@ -94,3 +97,46 @@ def test_calculate_total():
     assert units[0].symbol == "calculate_total"
     assert units[0].candidate_owned_regions == ((1, 2),)
     assert units[0].related_test_paths == ("tests/test_payment.py",)
+
+
+def test_non_python_commit_changes_expand_without_an_extension_allowlist() -> None:
+    source = """
+export function retryPayment(orderId: string): boolean {
+  return orderId.length > 0;
+}
+""".strip()
+
+    units = expand_commit_code_units(
+        path="src/payment.custom-language",
+        source=source,
+        changed_line_ranges=((1, 3),),
+        related_files={"tests/payment.spec": "retryPayment('order-1')"},
+    )
+
+    assert len(units) == 1
+    assert units[0].language == "text"
+    assert units[0].symbol == "retryPayment"
+    assert units[0].candidate_owned_regions == ((1, 3),)
+    assert units[0].related_test_paths == ("tests/payment.spec",)
+
+
+def test_changed_function_body_uses_the_enclosing_symbol() -> None:
+    source = """
+export function retryPayment(orderId: string): boolean {
+  const normalized = orderId.trim();
+  return normalized.length > 0;
+}
+
+export function unrelated(): boolean {
+  return false;
+}
+""".strip()
+
+    units = expand_commit_code_units(
+        path="src/payment.ts",
+        source=source,
+        changed_line_ranges=((3, 3),),
+        related_files={},
+    )
+
+    assert units[0].symbol == "retryPayment"
