@@ -166,7 +166,6 @@ async def test_streaming_connection_accumulates_final_segments() -> None:
     assert provider.config.sample_rate_hz == 16000
     assert [message.payload["text"] for message in published] == [
         "아",
-        "안녕",
         "안녕하세요",
         "안녕하세요 반갑습니다",
     ]
@@ -175,7 +174,6 @@ async def test_streaming_connection_accumulates_final_segments() -> None:
         for message in published
     ] == [
         ("", "아"),
-        ("", "안녕"),
         ("안녕하세요", ""),
         ("안녕하세요 반갑습니다", ""),
     ]

@@ -21,6 +21,8 @@ from interview_evidence.shared.speech.ports import (
 )
 from interview_evidence.shared.tenant import TenantContext
 
+MIN_PARTIAL_CAPTION_INTERVAL_SECONDS = 0.3
+
 
 @dataclass(frozen=True, slots=True)
 class WebSocketSpeechRuntime:
@@ -47,6 +49,8 @@ class _ActiveRecognition:
     task: asyncio.Task[None] | None = None
     final_segments: list[str] = field(default_factory=list)
     latest_text: str = ""
+    last_published_text: str = ""
+    last_partial_published_at: float | None = None
     confidence: float = 0.0
     last_chunk_sequence: int = 0
     error: SpeechProviderError | None = None
@@ -291,10 +295,21 @@ class StreamingSpeechConnection:
                     if not active.final_segments:
                         active.confidence = event.confidence
                 display_text = f"{committed_text} {interim_text}".strip()
-                previous_text = active.latest_text
-                if not display_text or display_text == previous_text:
+                if not display_text:
                     continue
                 active.latest_text = display_text
+                if not event.is_final:
+                    if display_text == active.last_published_text:
+                        continue
+                    now = asyncio.get_running_loop().time()
+                    if (
+                        active.last_partial_published_at is not None
+                        and now - active.last_partial_published_at
+                        < MIN_PARTIAL_CAPTION_INTERVAL_SECONDS
+                    ):
+                        continue
+                    active.last_partial_published_at = now
+                active.last_published_text = display_text
                 await self._publish(
                     _message(
                         active.envelope,

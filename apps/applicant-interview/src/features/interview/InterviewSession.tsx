@@ -716,7 +716,11 @@ export function InterviewSession({
     generatedAnswersRef.current.set(questionTurnId, generated);
     setGeneratedAnswerVersion((version) => version + 1);
     const answer = generated.text;
-    setLiveTranscript({ committed: answer, interim: "", display: answer });
+    setLiveTranscript(
+      automationMode === "speech"
+        ? EMPTY_LIVE_TRANSCRIPT
+        : { committed: answer, interim: "", display: answer },
+    );
     const evidenceStatus = generated.grounded
       ? `제출 자료 근거 ${generated.sourceReferenceCount}개`
       : "확인 가능한 제출 자료 없음";

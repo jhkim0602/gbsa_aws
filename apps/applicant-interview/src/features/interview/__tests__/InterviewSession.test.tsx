@@ -686,6 +686,9 @@ describe("InterviewSession", () => {
 
       expect(recorder.start).toHaveBeenCalledWith(stream);
       expect(protocol.startAnswer).toHaveBeenCalledOnce();
+      expect(
+        screen.queryByText("제출 자료에 근거해 생성한 자동 면접 답변입니다."),
+      ).toBeNull();
     } finally {
       vi.useRealTimers();
     }
