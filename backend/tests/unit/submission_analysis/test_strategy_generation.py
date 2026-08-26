@@ -176,6 +176,35 @@ def test_strategy_repairs_malformed_source_references() -> None:
     assert strategy.time_budget["total_seconds"] == FIXED_INTERVIEW_DURATION_SECONDS
 
 
+def test_strategy_defaults_omitted_supplemental_fields() -> None:
+    model = DeterministicAIModel(
+        {
+            "verification_points": [
+                {
+                    "criterion_id": str(CRITERION_ID),
+                    "prompt": "프로젝트에서 직접 수행한 부분을 확인한다.",
+                    "source_ids": [str(source_reference().source_id)],
+                }
+            ]
+        }
+    )
+
+    strategy = StrategyService(model, model_config_version="strategy-v1").generate(
+        context(),
+        invitation_id=INVITATION_ID,
+        applicant_id=APPLICANT_ID,
+        competency_model_version_id=CRITERION_VERSION_ID,
+        criterion_ids=(CRITERION_ID,),
+        source_candidates=(source_reference(),),
+        strategy_version=1,
+    )
+
+    assert strategy.common_topics == ()
+    assert strategy.follow_up_directions == {}
+    assert strategy.time_budget == {"total_seconds": FIXED_INTERVIEW_DURATION_SECONDS}
+    assert strategy.required_evidence_plan == {str(CRITERION_ID): 1}
+
+
 def test_strategy_limits_and_deduplicates_prompt_sources_but_keeps_full_provenance() -> None:
     model = DeterministicAIModel(
         {

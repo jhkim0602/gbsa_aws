@@ -97,10 +97,15 @@ class StrategyService:
                 )
                 for index, item in enumerate(result["verification_points"])
             )
-            common_topics = tuple(str(item) for item in result["common_topics"])
-            follow_up_directions = dict(result["follow_up_directions"])
-            time_budget = _normalized_time_budget(result["time_budget"])
-            required_evidence_plan = dict(result["required_evidence_plan"])
+            common_topics = tuple(str(item) for item in result.get("common_topics", ()))
+            follow_up_directions = _normalized_follow_up_directions(
+                result.get("follow_up_directions")
+            )
+            time_budget = _normalized_time_budget(result.get("time_budget"))
+            required_evidence_plan = _normalized_required_evidence_plan(
+                result.get("required_evidence_plan"),
+                criterion_ids=criterion_ids,
+            )
         except (KeyError, TypeError, ValueError) as error:
             raise StrategyGenerationError("invalid structured strategy output") from error
         verification_points: list[VerificationPoint] = []
@@ -240,4 +245,41 @@ def _normalized_time_budget(value: object) -> dict[str, int]:
             except (TypeError, ValueError):
                 continue
     normalized["total_seconds"] = FIXED_INTERVIEW_DURATION_SECONDS
+    return normalized
+
+
+def _normalized_follow_up_directions(value: object) -> dict[str, list[str]]:
+    normalized: dict[str, list[str]] = {}
+    if not isinstance(value, Mapping):
+        return normalized
+    for raw_key, raw_directions in value.items():
+        if isinstance(raw_directions, str):
+            directions: Sequence[object] = (raw_directions,)
+        elif isinstance(raw_directions, Sequence):
+            directions = raw_directions
+        else:
+            continue
+        normalized[str(raw_key)] = [
+            str(direction) for direction in directions if str(direction).strip()
+        ]
+    return normalized
+
+
+def _normalized_required_evidence_plan(
+    value: object,
+    *,
+    criterion_ids: tuple[UUID, ...],
+) -> dict[str, int]:
+    normalized = {str(criterion_id): 1 for criterion_id in criterion_ids}
+    if not isinstance(value, Mapping):
+        return normalized
+    allowed_criteria = set(criterion_ids)
+    for raw_key, raw_value in value.items():
+        try:
+            criterion_id = UUID(str(raw_key))
+            evidence_count = int(raw_value)
+        except (TypeError, ValueError):
+            continue
+        if criterion_id in allowed_criteria and evidence_count > 0:
+            normalized[str(criterion_id)] = evidence_count
     return normalized
