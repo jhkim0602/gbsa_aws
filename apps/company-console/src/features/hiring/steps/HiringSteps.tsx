@@ -1,4 +1,4 @@
-import { Check, CheckCircle2, FileText } from "lucide-react";
+import { Check, CheckCircle2 } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
 
 import { BUTTON_PRIMARY, formAlertClass } from "../../../app/styles/primitives";
@@ -18,7 +18,7 @@ import {
   DialogTitle,
 } from "../tech-stack-combobox/dialog";
 import { MAX_GUARANTEED_INTERVIEW_CONCURRENCY } from "../interviewCapacityEstimate";
-import { InvitationEmailEditor } from "../InvitationEmailEditor";
+import { InlineInvitationEmailEditor } from "../InlineInvitationEmailEditor";
 import type { InvitationEmailTemplateApi } from "../invitationEmailTemplate";
 import type {
   CriteriaHiringStep,
@@ -38,46 +38,12 @@ type StepProps = {
   onBack?: () => void;
 };
 
-export const POSITION_DESCRIPTION_MAX_LENGTH = 400;
-
-const positionDescriptionExample = `우리 팀은 기업 고객이 사용하는 AI 기반 업무 자동화 서비스를 만들고 있습니다.
-이번 포지션은 서버 API, 비즈니스 로직과 데이터 처리 기능을 구현하고 안정적으로 운영합니다.
-기획자와 프론트엔드 개발자와 협업하며 제품 개선 전 과정에 참여합니다.
-사용자가 믿고 사용할 수 있는 서비스를 함께 만들 분을 찾습니다.`;
-
 // `.hiring-panel .position-config-section > header` outranks `.form-section > header`'s
 // `display:none`, so these sections keep their headers — see FormPrimitives.
 const POSITION_BASICS_GRID =
   "grid items-end gap-6" +
   " grid-cols-[minmax(260px,1.5fr)_minmax(150px,0.75fr)_minmax(150px,0.75fr)]" +
   " mw-780:grid-cols-[minmax(0,1fr)]";
-
-const DESCRIPTION_EDITOR =
-  "overflow-hidden rounded-md border border-border bg-surface" +
-  " focus-within:border-brand focus-within:shadow-[0_0_0_3px_#5966ce1a]";
-
-// `border: 0` and `border-radius: 0` come free from Preflight, and `font-family: inherit`
-// from its `textarea { font: inherit }`.
-const DESCRIPTION_TEXTAREA =
-  "block min-h-[132px] w-full resize-y bg-surface px-5 py-4 text-[13px] leading-[1.8]" +
-  " whitespace-pre-wrap text-ink outline-0 placeholder:text-subtle" +
-  " mw-620:min-h-[148px] mw-620:px-[14px] mw-620:py-[14px] mw-620:text-[12px]";
-
-const INVITATION_TEMPLATE_SECTION =
-  "mt-7 overflow-hidden rounded-md border border-border bg-surface";
-
-const EDITOR_ACTION =
-  "inline-flex min-h-[30px] items-center gap-1.5 rounded-sm border border-border" +
-  " bg-surface px-2.5 text-[10px] font-semibold text-ink-secondary" +
-  " hover:border-brand hover:bg-brand-soft hover:text-brand";
-
-// `:hover:not(:disabled)` only sets border and text, so a completed button keeps its green
-// fill on hover; `.is-complete` is declared after the hover rule at lower specificity, so
-// the hover border/text still win over it.
-const EDITOR_DONE =
-  "inline-flex min-h-7 items-center gap-[5px] rounded-sm border px-[9px] text-[9px]" +
-  " font-semibold hover:not-disabled:border-brand hover:not-disabled:text-brand" +
-  " disabled:cursor-not-allowed disabled:opacity-45";
 
 const COMPLETION =
   "grid min-h-[470px] content-center justify-items-center px-7 py-[50px] text-center";
@@ -314,8 +280,8 @@ export function PositionStep(
           {positionPage === "description" ? (
             <FormSection
               eyebrow="02 · 공고 본문"
-              title="포지션 상세"
-              description="지원자가 빠르게 이해할 수 있도록 포지션을 3~4줄로 요약합니다."
+              title="포지션 상세와 초대 메일"
+              description="실제 메일 화면에서 내용을 클릭해 바로 수정합니다."
             >
               <aside className="grid gap-1.5 rounded-lg border border-brand/20 bg-brand-soft px-4 py-3 text-[11px] leading-5 text-ink-secondary">
                 <strong className="text-ink">이 내용은 어디에 쓰이나요?</strong>
@@ -326,36 +292,26 @@ export function PositionStep(
                   진행합니다.
                 </p>
               </aside>
-              <PositionDescriptionEditor
-                value={draft.description}
-                completed={draft.descriptionCompleted}
-                onChange={(value) => {
+              <InlineInvitationEmailEditor
+                api={invitationTemplateApi}
+                descriptionCompleted={draft.descriptionCompleted}
+                initialTemplate={draft.invitationEmailTemplate}
+                positionDescription={draft.description}
+                positionTitle={draft.title}
+                recruitmentEndAt={draft.recruitmentEndAt}
+                onPositionDescriptionChange={(value) => {
                   update("description", value);
                   if (draft.descriptionCompleted) {
                     update("descriptionCompleted", false);
                   }
                 }}
-                onCompletedChange={(completed) =>
+                onDescriptionCompleted={(completed) =>
                   update("descriptionCompleted", completed)
                 }
+                onTemplateSaved={(template) =>
+                  update("invitationEmailTemplate", template)
+                }
               />
-              {invitationTemplateApi ? (
-                <section className={INVITATION_TEMPLATE_SECTION}>
-                  <header className="grid gap-1 border-b border-border-muted bg-surface-muted px-4 py-3">
-                    <strong className="text-[12px] text-ink">
-                      초대 메일 템플릿
-                    </strong>
-                    <p className="text-[10px] leading-5 text-muted">
-                      포지션 게시 후 지원자를 초대할 때 사용하는 전사 공통
-                      메일을 여기서 미리 설정합니다.
-                    </p>
-                  </header>
-                  <InvitationEmailEditor
-                    api={invitationTemplateApi}
-                    scope={{ kind: "company" }}
-                  />
-                </section>
-              ) : null}
             </FormSection>
           ) : null}
         </>
@@ -372,94 +328,6 @@ export function PositionStep(
         onBack={canGoBack ? handleBack : undefined}
       />
     </form>
-  );
-}
-
-function PositionDescriptionEditor({
-  value,
-  completed,
-  onChange,
-  onCompletedChange,
-}: {
-  value: string;
-  completed: boolean;
-  onChange: (value: string) => void;
-  onCompletedChange: (completed: boolean) => void;
-}) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  function insertExample() {
-    const textarea = textareaRef.current;
-    const nextValue = positionDescriptionExample.slice(
-      0,
-      POSITION_DESCRIPTION_MAX_LENGTH,
-    );
-    const nextCursor = nextValue.length;
-
-    onChange(nextValue);
-    const restoreSelection = () => {
-      textarea?.focus();
-      textarea?.setSelectionRange(nextCursor, nextCursor);
-    };
-    if (typeof requestAnimationFrame === "function") {
-      requestAnimationFrame(restoreSelection);
-    } else {
-      restoreSelection();
-    }
-  }
-
-  return (
-    <div className={DESCRIPTION_EDITOR}>
-      <header className="flex min-h-12 items-center justify-between gap-4 border-b border-border bg-surface-muted px-[14px]">
-        <div className="flex items-center gap-[9px]">
-          <strong className="text-[11px] font-[650]">포지션 상세</strong>
-          <span className="text-[9px] text-success">지원자 공개</span>
-        </div>
-        <button
-          aria-label="포지션 상세 예시 적용"
-          className={EDITOR_ACTION}
-          type="button"
-          onClick={insertExample}
-        >
-          <FileText aria-hidden="true" size={15} />
-          예시 적용
-        </button>
-      </header>
-      <textarea
-        ref={textareaRef}
-        aria-label="포지션 설명"
-        className={DESCRIPTION_TEXTAREA}
-        required
-        maxLength={POSITION_DESCRIPTION_MAX_LENGTH}
-        value={value}
-        placeholder={
-          "회사와 팀, 주요 업무, 협업 방식, 찾는 동료를 3~4줄로 간략하게 설명해 주세요."
-        }
-        onChange={(event) => {
-          onChange(event.target.value);
-        }}
-      />
-      <footer className="flex min-h-10 items-center justify-between border-t border-border-muted bg-surface-muted px-[14px] text-[9px] text-subtle">
-        <output className="font-mono" aria-live="polite">
-          {value.length} / {POSITION_DESCRIPTION_MAX_LENGTH}
-        </output>
-        <button
-          aria-label="포지션 상세 작성 완료"
-          aria-pressed={completed}
-          className={`${EDITOR_DONE} ${
-            completed
-              ? "border-[#1e9e634d] bg-success-soft text-success"
-              : "border-border bg-surface text-muted"
-          }`}
-          disabled={!value.trim()}
-          type="button"
-          onClick={() => onCompletedChange(true)}
-        >
-          <Check aria-hidden="true" size={12} />
-          작성 완료
-        </button>
-      </footer>
-    </div>
   );
 }
 

@@ -12,7 +12,6 @@ import { HiringProgress, workflowSteps } from "./components/HiringProgress";
 import {
   CompletionState,
   CriteriaStep,
-  POSITION_DESCRIPTION_MAX_LENGTH,
   PositionStep,
 } from "./steps/HiringSteps";
 import type { InvitationEmailTemplateApi } from "./invitationEmailTemplate";
@@ -27,6 +26,7 @@ import {
   type HiringStep,
   type HiringWorkspaceApi,
   type PositionHiringStep,
+  POSITION_DESCRIPTION_MAX_LENGTH,
 } from "./types";
 
 const stepCopy = {
@@ -286,6 +286,12 @@ export function HiringWorkspace({
                       positionId,
                       positionRowVersion,
                     }));
+                  }
+                  if (draft.invitationEmailTemplate && invitationTemplateApi) {
+                    await invitationTemplateApi.savePositionTemplate(
+                      positionId,
+                      draft.invitationEmailTemplate,
+                    );
                   }
                   if (!ids.versionId) {
                     const published = await api.publishCriteria(

@@ -1,4 +1,7 @@
+from collections.abc import Mapping
 from datetime import UTC, datetime
+from hashlib import sha256
+from typing import Any
 from uuid import UUID
 
 from interview_evidence.company_management.workers.invitation_email import (
@@ -6,13 +9,46 @@ from interview_evidence.company_management.workers.invitation_email import (
     InvitationEmailHandler,
     format_deadline,
 )
-from interview_evidence.shared.aws_clients.ports import InMemoryEmailSender
-from interview_evidence.shared.email_templates import DEFAULT_INVITATION_EMAIL_TEMPLATE
+from interview_evidence.shared.aws_clients.ports import EmailMessage
+from interview_evidence.shared.email_templates import (
+    DEFAULT_INVITATION_EMAIL_TEMPLATE,
+    RenderedEmail,
+)
 from interview_evidence.shared.tenant import ActorType, TenantContext
 
 APPLICANT_NAME = "김하늘"
 SECRET_URL = "https://applicant.example/access?token=secret-invitation-token"
 RECIPIENT_ADDRESS = "applicant@example.com"
+
+
+class RecordingEmailSender:
+    def __init__(self) -> None:
+        self.messages: list[EmailMessage] = []
+
+    def send_template(
+        self,
+        context: TenantContext,
+        template_id: str,
+        recipient_ref: UUID,
+        recipient_address: str,
+        template_data: Mapping[str, Any],
+        rendered: RenderedEmail,
+    ) -> UUID:
+        message_id = UUID("00000000-0000-7000-8000-000000000099")
+        self.messages.append(
+            EmailMessage(
+                message_id=message_id,
+                company_id=context.company_id,
+                template_id=template_id,
+                recipient_ref=recipient_ref,
+                recipient_address_sha256=sha256(
+                    recipient_address.strip().casefold().encode("utf-8")
+                ).hexdigest(),
+                template_data=template_data,
+                rendered=rendered,
+            )
+        )
+        return message_id
 
 
 def _command(**overrides: object) -> InvitationEmailCommand:
@@ -23,6 +59,7 @@ def _command(**overrides: object) -> InvitationEmailCommand:
         "position_title": "백엔드 엔지니어",
         "deadline_text": "2026년 8월 24일 23:59",
         "template": DEFAULT_INVITATION_EMAIL_TEMPLATE,
+        "position_description": "안정적인 API를 만들고 운영하는 백엔드 포지션입니다.",
         "recipient_address": RECIPIENT_ADDRESS,
         "invitation_url": SECRET_URL,
         "applicant_display_name": APPLICANT_NAME,
@@ -44,7 +81,7 @@ def _context() -> TenantContext:
 def test_invitation_email_command_redacts_the_raw_token_from_representations() -> None:
     context = _context()
     command = _command()
-    sender = InMemoryEmailSender()
+    sender = RecordingEmailSender()
 
     assert "secret-invitation-token" not in repr(command)
     assert RECIPIENT_ADDRESS not in repr(command)
@@ -56,7 +93,7 @@ def test_invitation_email_command_redacts_the_raw_token_from_representations() -
 
 
 def test_handler_renders_the_company_template_into_the_delivered_message() -> None:
-    sender = InMemoryEmailSender()
+    sender = RecordingEmailSender()
     InvitationEmailHandler(sender).handle(_context(), _command())
 
     rendered = sender.messages[0].rendered
@@ -65,12 +102,13 @@ def test_handler_renders_the_company_template_into_the_delivered_message() -> No
     assert f"{APPLICANT_NAME}님" in rendered.html_body
     assert SECRET_URL in rendered.html_body
     assert "면접 시작하기" in rendered.text_body
-    assert "약 30분" in rendered.text_body
-    assert "약 25분" not in rendered.text_body
+    assert "포지션 상세" in rendered.text_body
+    assert "안정적인 API를 만들고 운영하는 백엔드 포지션입니다." in rendered.text_body
+    assert "약 30분" not in rendered.text_body
 
 
 def test_disabling_the_name_toggle_keeps_the_applicant_name_out_of_the_body() -> None:
-    sender = InMemoryEmailSender()
+    sender = RecordingEmailSender()
     template = DEFAULT_INVITATION_EMAIL_TEMPLATE.model_copy(update={"use_applicant_name": False})
     InvitationEmailHandler(sender).handle(_context(), _command(template=template))
 

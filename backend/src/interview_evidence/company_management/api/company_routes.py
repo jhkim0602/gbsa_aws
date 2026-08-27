@@ -1137,6 +1137,7 @@ def create_company_router(
                             position_title=position.title,
                             deadline_text=format_deadline(issuance.invitation.expires_at),
                             template=template,
+                            position_description=position.description,
                             recipient_address=issuance.invitation.applicant_email,
                             invitation_url=_invitation_access_url(
                                 applicant_access_base_url,

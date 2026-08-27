@@ -1,3 +1,5 @@
+import type { InvitationEmailTemplate } from "./invitationEmailTemplate";
+
 export type RequirementType = "required" | "preferred";
 
 export const evaluationCriterionCodes = {
@@ -187,6 +189,7 @@ export type HiringDraft = {
   title: string;
   description: string;
   descriptionCompleted: boolean;
+  invitationEmailTemplate: InvitationEmailTemplate | null;
   roleType: string;
   headcount: number;
   interviewCapacity: number;
@@ -204,6 +207,8 @@ export type HiringDraft = {
   interviewerTone: InterviewerTone;
   interviewerVoiceId: string;
 };
+
+export const POSITION_DESCRIPTION_MAX_LENGTH = 400;
 
 export type HiringDraftUpdater = <K extends keyof HiringDraft>(
   key: K,
@@ -337,6 +342,7 @@ export const initialHiringDraft: HiringDraft = {
   title: "",
   description: "",
   descriptionCompleted: false,
+  invitationEmailTemplate: null,
   roleType: "개발",
   headcount: 1,
   interviewCapacity: 1,
