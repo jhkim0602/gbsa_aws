@@ -8,7 +8,13 @@ import {
   UserRound,
   Video,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 
 import { buildCaptionTrack } from "./captions";
 import { formatLocator, sourceTypeLabel } from "./questionSources";
@@ -136,6 +142,7 @@ export function TimelineView({
   playbackUrl,
   selectedStartMs,
   onSeek,
+  mediaElementRef,
   showTimeline = true,
   showMedia = true,
   expanded = false,
@@ -146,13 +153,15 @@ export function TimelineView({
   playbackUrl?: string;
   selectedStartMs?: number | null;
   onSeek(startMs: number): void;
+  mediaElementRef?: RefObject<HTMLVideoElement>;
   showTimeline?: boolean;
   showMedia?: boolean;
   expanded?: boolean;
   idPrefix?: string;
 }) {
   const [query, setQuery] = useState("");
-  const mediaRef = useRef<HTMLVideoElement>(null);
+  const localMediaRef = useRef<HTMLVideoElement>(null);
+  const mediaRef = mediaElementRef ?? localMediaRef;
   const visible = useMemo(
     () =>
       entries.filter((entry) =>
@@ -163,7 +172,14 @@ export function TimelineView({
 
   useEffect(() => {
     if (selectedStartMs == null || !mediaRef.current) return;
-    void seekToEvidence(mediaRef.current, selectedStartMs);
+    const targetSeconds = selectedStartMs / 1000;
+    if (
+      !mediaRef.current.paused &&
+      Math.abs(mediaRef.current.currentTime - targetSeconds) < 1
+    ) {
+      return;
+    }
+    void seekToEvidence(mediaRef.current, selectedStartMs).catch(() => undefined);
   }, [playbackUrl, selectedStartMs, showMedia]);
 
   // The cue text comes from the transcript already in memory; a blob URL keeps it
@@ -186,7 +202,7 @@ export function TimelineView({
   function selectTime(startMs: number) {
     onSeek(startMs);
     if (mediaRef.current) {
-      void seekToEvidence(mediaRef.current, startMs);
+      void seekToEvidence(mediaRef.current, startMs).catch(() => undefined);
     }
   }
 

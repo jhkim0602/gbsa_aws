@@ -1,10 +1,10 @@
 import { Bot, FileSearch, LockKeyhole, PlayCircle, Quote } from "lucide-react";
-import { type KeyboardEvent, useState } from "react";
+import { type KeyboardEvent, useRef, useState } from "react";
 
 import { BUTTON_SECONDARY } from "../../app/styles/primitives";
 import { formatLocator, sourceTypeLabel } from "./questionSources";
 import { reviewErrorMessage } from "./reviewErrors";
-import { TimelineView } from "./TimelineView";
+import { seekToEvidence, TimelineView } from "./TimelineView";
 import type {
   AssessmentState,
   AxisAssessment,
@@ -184,6 +184,7 @@ export function ReportView({
   ): Promise<void>;
 }) {
   const [activeTab, setActiveTab] = useState<ReportTab>("overview");
+  const videoMediaRef = useRef<HTMLVideoElement>(null);
   const requirementAssessments = report.requirementAssessments ?? [];
   const availableTabs = timeline
     ? reportTabs
@@ -217,6 +218,9 @@ export function ReportView({
   }
 
   function showEvidenceInVideo(startMs: number) {
+    if (timeline && videoMediaRef.current) {
+      void seekToEvidence(videoMediaRef.current, startMs).catch(() => undefined);
+    }
     onSelectEvidence(startMs);
     if (!timeline) return;
     setActiveTab("video");
@@ -282,13 +286,14 @@ export function ReportView({
         ))}
       </div>
 
-      {activeTab === "video" && timeline ? (
+      {timeline ? (
         <div
           id="report-panel-video"
           className="bg-surface p-[14px] outline-none mw-680:p-3 print:hidden"
           role="tabpanel"
           aria-labelledby="report-tab-video"
           tabIndex={0}
+          hidden={activeTab !== "video"}
         >
           <TimelineView
             entries={timeline.entries}
@@ -296,12 +301,15 @@ export function ReportView({
             playbackUrl={timeline.playback.url}
             selectedStartMs={selectedStartMs}
             onSeek={onSelectEvidence}
+            mediaElementRef={videoMediaRef}
             showTimeline={false}
             expanded
             idPrefix="report-video"
           />
         </div>
-      ) : activeTab === "timeline" && timeline ? (
+      ) : null}
+
+      {activeTab === "timeline" && timeline ? (
         <div
           id="report-panel-timeline"
           className="bg-surface p-[14px] outline-none mw-680:p-3 print:hidden"
@@ -320,7 +328,7 @@ export function ReportView({
             idPrefix="report-timeline"
           />
         </div>
-      ) : (
+      ) : activeTab !== "video" ? (
         <>
           {/* The canvas the sheet sits on, so the page reads as paper rather than as a panel.
           The column is sized explicitly: `justify-content: center` makes a grid column hug
@@ -387,7 +395,7 @@ export function ReportView({
             </article>
           </div>
         </>
-      )}
+      ) : null}
     </section>
   );
 }

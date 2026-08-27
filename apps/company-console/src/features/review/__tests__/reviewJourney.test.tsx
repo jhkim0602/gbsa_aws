@@ -277,6 +277,15 @@ describe("Lane D review journey", () => {
       />,
     );
 
+    const preparedVideoPanel = document.querySelector("#report-panel-video");
+    const preparedVideo = preparedVideoPanel?.querySelector("video");
+    expect(preparedVideoPanel?.hasAttribute("hidden")).toBe(true);
+    expect(preparedVideo).toBeTruthy();
+    Object.defineProperty(preparedVideo!, "readyState", {
+      configurable: true,
+      value: 1,
+    });
+
     fireEvent.click(screen.getByRole("tab", { name: "기준별 평가" }));
     fireEvent.click(screen.getByRole("button", { name: "Evidence 재생" }));
 
@@ -284,7 +293,7 @@ describe("Lane D review journey", () => {
       name: "면접 영상",
     });
     const video = selectedVideoPanel.querySelector("video");
-    fireEvent.loadedMetadata(video!);
+    expect(video).toBe(preparedVideo);
     await waitFor(() => expect(video?.currentTime).toBe(62));
     expect(play).toHaveBeenCalled();
     expect(screen.getByText("세션 12345678")).toBeTruthy();
