@@ -564,11 +564,11 @@ class LiveInterviewHandler:
             and plan.is_warm_up_question(previous_question.text)
             and plan.verification_targets
         ):
-            question_target = plan.initial_target()
+            question_target = plan.initial_target_for_stage(plan.initial_stage)
             if question_target is not None:
                 existing_progress = progress_by_target.get(question_target.verification_target_id)
         elif plan.verification_targets:
-            question_target = plan.initial_target()
+            question_target = plan.initial_target_for_stage(plan.initial_stage)
 
         stage_decision = plan.next_stage_question(
             current_stage=current_stage,
@@ -605,6 +605,7 @@ class LiveInterviewHandler:
                         }
                     ),
                     prefer_new_target=True,
+                    interview_stage=stage_decision.stage,
                 )
 
         if stage_decision.completes_interview:

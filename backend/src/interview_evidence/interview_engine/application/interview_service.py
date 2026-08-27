@@ -260,13 +260,16 @@ class InterviewService:
         }
         requires_git_question = interview_stage is InterviewStage.PROJECT_DEEP_DIVE and not any(
             reference.source_reference_id in project_reference_ids
-            and reference.source_type == "candidate_code_unit"
+            and reference.source_type in {"candidate_code_unit", "repository_overview"}
             for reference in self._repository.list_session_source_references(
                 context,
                 session_id,
             )
         )
         git_hit = next(
+            (hit for hit in retrieval.hits if hit.source_type == "repository_overview"),
+            None,
+        ) or next(
             (hit for hit in retrieval.hits if hit.source_type == "candidate_code_unit"),
             None,
         )
@@ -388,11 +391,16 @@ class InterviewService:
             question_type=question_type,
             required_assessment_axis=required_assessment_axis,
         )
-        if {"stage_mismatch", "assessment_axis_mismatch"}.intersection(policy_result.reason_codes):
+        if {
+            "stage_mismatch",
+            "assessment_axis_mismatch",
+            "code_level_question",
+        }.intersection(policy_result.reason_codes):
             retry_payload = built_context.model_payload()
             retry_payload["stage_alignment_retry"] = {
                 "interview_stage": interview_stage.value,
                 "rejected_question": draft.text,
+                "reason_codes": list(policy_result.reason_codes),
             }
             try:
                 retried = self._generator.generate(
@@ -453,11 +461,7 @@ class InterviewService:
                 interview_session_id=session_id,
                 question_turn_id=question_turn.turn_id,
                 source_id=source_id,
-                source_type=(
-                    "candidate_code_unit"
-                    if "path" in retrieved_by_id[source_id].locator
-                    else "submission_chunk"
-                ),
+                source_type=retrieved_by_id[source_id].source_type,
                 locator=retrieved_by_id[source_id].locator,
                 excerpt=retrieved_by_id[source_id].excerpt[:2000],
                 relevance_score=retrieved_by_id[source_id].score,
@@ -762,12 +766,10 @@ def _git_project_question(
     model_config_version: str,
     retrieval_config_version: str,
 ) -> QuestionDraft:
-    subject = str(hit.locator.get("symbol") or hit.locator.get("path") or "코드 구현")
-    subject = subject.rsplit("/", 1)[-1][:80]
     return QuestionDraft(
         text=(
-            f"GitHub 프로젝트의 {subject} 구현을 기준으로, 본인이 직접 맡은 부분과 "
-            "이 방식을 선택한 이유를 말씀해 주시겠습니까?"
+            "이번에는 GitHub 프로젝트를 바탕으로 여쭤보겠습니다. 이 프로젝트의 주요 구성 요소와 "
+            "각각의 책임을 어떻게 나누었고, 그 구조를 선택한 이유를 설명해 주세요."
         ),
         target_criterion_id=target_criterion_id,
         source_reference_ids=(hit.source_id,),

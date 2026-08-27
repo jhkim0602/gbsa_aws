@@ -67,6 +67,35 @@ _HOUSEKEEPING_SUBJECT: Final = re.compile(
     re.IGNORECASE,
 )
 
+_REPOSITORY_OVERVIEW_FILE_NAMES: Final = frozenset(
+    {
+        "architecture.md",
+        "cargo.toml",
+        "compose.yaml",
+        "compose.yml",
+        "docker-compose.yaml",
+        "docker-compose.yml",
+        "dockerfile",
+        "go.mod",
+        "package.json",
+        "pom.xml",
+        "pyproject.toml",
+        "readme",
+        "readme.md",
+        "readme.rst",
+        "requirements.txt",
+        "settings.gradle",
+        "settings.gradle.kts",
+    }
+)
+_REPOSITORY_OVERVIEW_PATH_TERMS: Final = (
+    "architecture",
+    "deployment",
+    "infrastructure",
+    "openapi",
+    "schema",
+)
+
 
 class GitFetchError(RuntimeError):
     """Sanitized bounded-repository fetch failure."""
@@ -89,6 +118,11 @@ class GitFetchLimits:
     #: for the details -- so paging wide costs little and is what lets the sample span a
     #: whole history instead of the most recent week.
     max_listing_pages: int = 5
+    #: Repository-wide context is read from the pinned head separately from authored
+    #: commit evidence. Only high-signal files are downloaded; the tree itself is kept
+    #: as bounded path metadata for architecture questions.
+    max_overview_files: int = 18
+    max_tree_paths: int = 3_000
     #: Concurrent HTTPS calls. The fetch is entirely network-bound, so this is the
     #: difference between an analysis a recruiter waits out and one they abandon. Kept
     #: modest so one analysis does not look like abuse to GitHub.
@@ -128,6 +162,7 @@ class RepositorySnapshot:
     files: tuple[RepositoryFile, ...]
     commit_count: int
     commits: tuple[RepositoryCommit, ...] = ()
+    tree_paths: tuple[str, ...] = ()
 
 
 class GitTransport(Protocol):
@@ -213,6 +248,13 @@ class GitHubPublicTransport:
         rank = {_required_string(item, "sha"): index for index, item in enumerate(listed)}
         selected.sort(key=lambda pair: rank.get(pair[0], len(rank)))
         files, ranges_by_sha = self._blob_fetch(selected, limits)
+        overview_files, tree_paths = self._repository_overview(
+            api_root,
+            owner=owner,
+            repository=repository,
+            pinned_head_sha=pinned_head_sha,
+            limits=limits,
+        )
         commits = tuple(
             RepositoryCommit(
                 parent_sha=_first_parent_sha(detail),
@@ -236,10 +278,78 @@ class GitHubPublicTransport:
             repository_url=repository_url,
             default_branch=default_branch,
             pinned_head_sha=pinned_head_sha,
-            files=files,
+            files=(*files, *overview_files),
             commit_count=len(listed),
             commits=commits,
+            tree_paths=tree_paths,
         )
+
+    def _repository_overview(
+        self,
+        api_root: str,
+        *,
+        owner: str,
+        repository: str,
+        pinned_head_sha: str,
+        limits: GitFetchLimits,
+    ) -> tuple[tuple[RepositoryFile, ...], tuple[str, ...]]:
+        """Read a bounded head tree and its highest-signal architecture files.
+
+        Overview context is useful even when the candidate never changed README or a
+        deployment manifest in the sampled commits. A failure here must not discard
+        valid authored evidence, so older GitHub installations and oversized trees
+        degrade to commit-only analysis.
+        """
+        try:
+            payload = self._json_dict(
+                f"{api_root}/git/trees/{pinned_head_sha}?recursive=1",
+                limits.timeout_seconds,
+            )
+        except GitFetchError:
+            return (), ()
+        raw_tree = payload.get("tree")
+        if not isinstance(raw_tree, list):
+            return (), ()
+        paths = tuple(
+            sorted(
+                {
+                    str(item["path"])
+                    for item in raw_tree
+                    if isinstance(item, dict)
+                    and item.get("type") == "blob"
+                    and isinstance(item.get("path"), str)
+                    and not _excluded_path(str(item["path"]))
+                }
+            )[: max(1, limits.max_tree_paths)]
+        )
+        selected_paths = tuple(
+            path
+            for path in sorted(
+                paths,
+                key=lambda value: (-_repository_overview_score(value), value.casefold()),
+            )
+            if _repository_overview_score(path) > 0
+        )[: max(1, limits.max_overview_files)]
+        raw_root = (
+            "https://raw.githubusercontent.com/"
+            f"{quote(owner)}/{quote(repository)}/{pinned_head_sha}/"
+        )
+        with ThreadPoolExecutor(max_workers=max(1, limits.max_workers)) as pool:
+            contents = list(
+                pool.map(
+                    lambda path: self._optional_bytes(
+                        f"{raw_root}{quote(path, safe='/')}",
+                        limits.timeout_seconds,
+                    ),
+                    selected_paths,
+                )
+            )
+        files = tuple(
+            RepositoryFile(path=path, content=content)
+            for path, content in zip(selected_paths, contents, strict=True)
+            if content is not None and len(content) <= limits.max_file_bytes
+        )
+        return files, paths
 
     def _selected_details(
         self,
@@ -504,6 +614,7 @@ class BoundedGitFetcher:
             files=tuple(included),
             commit_count=snapshot.commit_count,
             commits=commits,
+            tree_paths=snapshot.tree_paths[: max(1, self._limits.max_tree_paths)],
         )
 
 
@@ -668,6 +779,26 @@ def _excluded_path(path: str) -> bool:
         return True
     name = parts[-1].casefold() if parts else ""
     return name.startswith(".env") or name in _EXCLUDED_FILE_NAMES
+
+
+def _repository_overview_score(path: str) -> int:
+    normalized = path.casefold()
+    parts = PurePosixPath(normalized).parts
+    if not parts:
+        return 0
+    name = parts[-1]
+    depth_penalty = min(len(parts) - 1, 8) * 5
+    if name.startswith("readme"):
+        return 1_000 - depth_penalty
+    if name == "architecture.md" or any(term in normalized for term in ("/architecture/",)):
+        return 950 - depth_penalty
+    if name in _REPOSITORY_OVERVIEW_FILE_NAMES:
+        return 900 - depth_penalty
+    if any(term in normalized for term in _REPOSITORY_OVERVIEW_PATH_TERMS):
+        return 800 - depth_penalty
+    if parts[0] in {".github", "deploy", "deployment", "infra", "infrastructure"}:
+        return 700 - depth_penalty
+    return 0
 
 
 def _changed_ranges(patch: object) -> tuple[tuple[int, int], ...]:

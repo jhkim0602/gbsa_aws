@@ -239,3 +239,28 @@ def test_policy_accepts_a_material_grounded_fundamentals_question() -> None:
     )
 
     assert result.accepted is True
+
+
+def test_project_stage_replaces_code_level_questions_with_architecture_questions() -> None:
+    candidates = (
+        "GitHub 프로젝트의 PaymentService 메서드 내부 로직과 반환값을 설명해 주세요.",
+        "프로젝트의 src/payment/service.py 코드 내부에서 호출 순서를 설명해 주세요.",
+        "프로젝트의 retry_payment() 구현 방식을 설명해 주세요.",
+    )
+
+    for candidate in candidates:
+        result = QuestionPolicy().evaluate(
+            draft(candidate),
+            allowed_criterion_ids=frozenset({CRITERION_A}),
+            prohibited_topics=(),
+            previous_questions=(),
+            fallback_question="프로젝트 경험을 설명해 주세요.",
+            fallback_criterion_id=CRITERION_A,
+            interview_stage="project_deep_dive",
+        )
+
+        assert result.accepted is False
+        assert "code_level_question" in result.reason_codes
+        assert "주요 구성 요소" in result.question.text
+        assert "함수" not in result.question.text
+        assert "메서드" not in result.question.text

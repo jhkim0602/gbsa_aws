@@ -273,6 +273,7 @@ def test_embedding_provider_failure_uses_analysis_retry_contract() -> None:
 
 
 def test_public_git_event_persists_non_python_commit_evidence() -> None:
+    readme_content = b"# Candidate project\nAPI, worker, and database architecture\n"
     repository = InMemorySubmissionRepository()
     repository.save_submission(
         _context(),
@@ -309,6 +310,10 @@ def test_public_git_event_persists_non_python_commit_evidence() -> None:
                     pinned_head_sha="b" * 40,
                     files=(
                         RepositoryFile(
+                            path="README.md",
+                            content=readme_content,
+                        ),
+                        RepositoryFile(
                             path="src/payment.ts",
                             content=(
                                 b"export function retryPayment(orderId: string): boolean {\n"
@@ -322,6 +327,11 @@ def test_public_git_event_persists_non_python_commit_evidence() -> None:
                         ),
                     ),
                     commit_count=1,
+                    tree_paths=(
+                        "README.md",
+                        "src/payment.ts",
+                        "tests/payment.test.ts",
+                    ),
                     commits=(
                         RepositoryCommit(
                             parent_sha="a" * 40,
@@ -378,16 +388,113 @@ def test_public_git_event_persists_non_python_commit_evidence() -> None:
     assert matches[0].document.locator["project_area"] == "src"
     assert matches[0].document.locator["selection_score"] > 0
     assert "related_tests" in matches[0].document.locator["selection_reasons"]
-    assert (
-        matches[0].document.locator["commit_message"]
-        == "feat: add payment retry validation"
+    assert matches[0].document.locator["commit_message"] == "feat: add payment retry validation"
+    overview_matches = search.candidates(
+        _context(),
+        applicant_id=APPLICANT_ID,
+        query="architecture worker database",
+        query_vector=embedder.embed(_context(), "architecture worker database"),
+        exact_symbol=None,
+        source_types=frozenset({"repository_overview"}),
+    )
+    assert overview_matches
+    assert {match.document.source_type for match in overview_matches} == {"repository_overview"}
+    analysis = repository.list_analyses(_context(), frozenset({SUBMISSION_ID}))[0]
+    snapshot_claim = next(
+        claim for claim in analysis.claims if claim["type"] == "public_git_snapshot"
+    )
+    assert snapshot_claim["analysis_basis"] == "candidate_commit_changes_and_head_overview"
+    assert snapshot_claim["repository_overview_count"] == 2
+    assert snapshot_claim["language_count"] == 1
+
+
+def test_public_git_repository_overview_is_ready_without_code_units() -> None:
+    repository = InMemorySubmissionRepository()
+    repository.save_submission(
+        _context(),
+        Submission(
+            submission_id=SUBMISSION_ID,
+            company_id=COMPANY_ID,
+            invitation_id=INVITATION_ID,
+            applicant_id=APPLICANT_ID,
+            source_type=SourceType.PUBLIC_GIT,
+            source_uri="https://github.com/example/candidate-project",
+            candidate_identity_inputs={"claimed_names": ("홍길동",)},
+            created_at=NOW,
+        ),
+    )
+    search = InMemorySearchIndex()
+    embedder = StaticTextEmbedder(tuple(1.0 if index == 0 else 0.0 for index in range(1024)))
+    pipeline = SubmissionAnalysisPipeline(
+        repository=repository,
+        extractor=DocumentExtractionAdapter(
+            DeterministicTextract(()),
+            extractor_version="textract-v1",
+        ),
+        search_index=search,
+        text_embedder=embedder,
+        strategy_model=SourceAwareModel(),
+        axis_provider=StaticAxisProvider(),
+        outbox=InMemoryOutbox(),
+        clock=FrozenClock(NOW),
+        git_fetcher=BoundedGitFetcher(
+            StaticGitTransport(
+                RepositorySnapshot(
+                    repository_url="https://github.com/example/candidate-project",
+                    default_branch="main",
+                    pinned_head_sha="b" * 40,
+                    files=(
+                        RepositoryFile(
+                            path="README.md",
+                            content=b"# Candidate project\nService architecture and deployment\n",
+                        ),
+                    ),
+                    commit_count=1,
+                    tree_paths=("README.md", "src/", "src/service.ts"),
+                    commits=(
+                        RepositoryCommit(
+                            parent_sha="a" * 40,
+                            commit_sha="b" * 40,
+                            author_name="홍길동",
+                            author_email="applicant@example.com",
+                            changed_line_ranges={"README.md": ((99, 99),)},
+                            message="docs: describe service architecture",
+                        ),
+                    ),
+                )
+            ),
+            GitFetchLimits(),
+        ),
+    )
+
+    result = pipeline.process(
+        _context(),
+        AnalysisJob(
+            submission_id=SUBMISSION_ID,
+            invitation_id=INVITATION_ID,
+            applicant_id=APPLICANT_ID,
+            analysis_version=1,
+            source_type=SourceType.PUBLIC_GIT,
+            source_object_id=SUBMISSION_ID,
+            idempotency_key="analysis-git-overview-only-0001",
+        ),
+    )
+
+    assert result.status is JobStatus.READY
+    assert search.candidates(
+        _context(),
+        applicant_id=APPLICANT_ID,
+        query="service architecture deployment",
+        query_vector=embedder.embed(_context(), "service architecture deployment"),
+        exact_symbol=None,
+        source_types=frozenset({"repository_overview"}),
     )
     analysis = repository.list_analyses(_context(), frozenset({SUBMISSION_ID}))[0]
     snapshot_claim = next(
         claim for claim in analysis.claims if claim["type"] == "public_git_snapshot"
     )
-    assert snapshot_claim["analysis_basis"] == "candidate_commit_changes"
-    assert snapshot_claim["language_count"] == 1
+    assert snapshot_claim["code_unit_count"] == 0
+    assert snapshot_claim["repository_overview_count"] == 2
 
 
 def test_public_git_limits_code_units_before_embedding() -> None:

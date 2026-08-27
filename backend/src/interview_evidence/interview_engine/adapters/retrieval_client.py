@@ -11,10 +11,20 @@ from interview_evidence.shared.aws_clients.ports import TextEmbedder
 from interview_evidence.shared.tenant import TenantContext
 
 _STAGE_SOURCE_BOOSTS: Final = {
-    InterviewStage.TECHNICAL: {"candidate_code_unit": 0.15},
-    InterviewStage.PROJECT_DEEP_DIVE: {"candidate_code_unit": 0.4},
-    InterviewStage.BEHAVIORAL: {"candidate_code_unit": -0.25},
+    InterviewStage.TECHNICAL: {
+        "candidate_code_unit": 0.15,
+        "repository_overview": 0.1,
+    },
+    InterviewStage.PROJECT_DEEP_DIVE: {
+        "candidate_code_unit": 0.4,
+        "repository_overview": 0.55,
+    },
+    InterviewStage.BEHAVIORAL: {
+        "candidate_code_unit": -0.25,
+        "repository_overview": -0.35,
+    },
 }
+_PROJECT_GIT_SOURCE_TYPES: Final = frozenset({"candidate_code_unit", "repository_overview"})
 _STAGE_MATERIAL_BOOSTS: Final = {
     InterviewStage.TECHNICAL: {
         "resume": 0.24,
@@ -168,7 +178,7 @@ class RetrievalClient:
                 )
             results = list(base_results)
             if interview_stage is InterviewStage.PROJECT_DEEP_DIVE and not any(
-                _record_source_type(result) == "candidate_code_unit" for result in results
+                _record_source_type(result) in _PROJECT_GIT_SOURCE_TYPES for result in results
             ):
                 if self._embedder is None:
                     git_results = self._provider.retrieve_context(
@@ -182,7 +192,7 @@ class RetrievalClient:
                         config_version=config_version,
                         limit=self._limit,
                         exact_symbol=exact_symbol,
-                        source_types=frozenset({"candidate_code_unit"}),
+                        source_types=_PROJECT_GIT_SOURCE_TYPES,
                     )
                 else:
                     git_results = self._provider.retrieve_context(
@@ -196,7 +206,7 @@ class RetrievalClient:
                         config_version=config_version,
                         limit=self._limit,
                         exact_symbol=exact_symbol,
-                        source_types=frozenset({"candidate_code_unit"}),
+                        source_types=_PROJECT_GIT_SOURCE_TYPES,
                         embedding_model=self._embedder.model_id,
                         embedding_version=self._embedder.embedding_version,
                     )
@@ -208,7 +218,7 @@ class RetrievalClient:
                 results = [
                     result
                     for result in results
-                    if _record_source_type(result) != "candidate_code_unit"
+                    if _record_source_type(result) not in _PROJECT_GIT_SOURCE_TYPES
                     or _has_collaboration_signal(result)
                 ]
         except Exception:
@@ -279,13 +289,18 @@ def _ensure_project_git(
 ) -> tuple[RetrievalRecord, ...]:
     selected = ranked[:limit]
     if stage is not InterviewStage.PROJECT_DEEP_DIVE or any(
-        _record_source_type(result) == "candidate_code_unit" for result in selected
+        _record_source_type(result) == "repository_overview" for result in selected
     ):
         return tuple(selected)
     git_result = next(
-        (result for result in ranked if _record_source_type(result) == "candidate_code_unit"),
+        (result for result in ranked if _record_source_type(result) == "repository_overview"),
         None,
     )
+    if git_result is None:
+        git_result = next(
+            (result for result in ranked if _record_source_type(result) == "candidate_code_unit"),
+            None,
+        )
     if git_result is None:
         return tuple(selected)
     if selected:
@@ -303,7 +318,9 @@ def _ensure_project_git(
 
 def _record_source_type(record: RetrievalRecord) -> str:
     source_type = str(getattr(record, "source_type", ""))
-    if source_type == "candidate_code_unit" or "path" in record.locator:
+    if source_type in _PROJECT_GIT_SOURCE_TYPES:
+        return source_type
+    if "path" in record.locator:
         return "candidate_code_unit"
     return source_type or "submission_chunk"
 

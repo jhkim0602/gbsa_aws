@@ -99,6 +99,9 @@ def test_system_prompt_uses_grounded_conversational_bridges_and_natural_axis_cov
     assert "answer_evidence_gaps" in system
     assert "stage_alignment_retry" in system
     assert "required_assessment_axis가 fundamentals이면" in system
+    assert "주요 구성 요소와 책임 경계" in system
+    assert "특정 파일명·함수명·메서드명·클래스명" in system
+    assert "코드는 구조를 추론하는 근거로만 사용합니다" in system
 
 
 def test_task_payload_round_trips_through_the_message() -> None:

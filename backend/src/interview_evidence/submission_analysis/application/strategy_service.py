@@ -30,6 +30,7 @@ class StrategyGenerationError(ValueError):
 
 MAX_STRATEGY_PROMPT_SOURCES = 24
 MIN_GIT_STRATEGY_PROMPT_SOURCES = 4
+MIN_REPOSITORY_OVERVIEW_PROMPT_SOURCES = 2
 FIXED_INTERVIEW_DURATION_SECONDS = 30 * 60
 
 
@@ -181,7 +182,10 @@ def _select_prompt_candidates(
     git_candidates = tuple(
         candidate for candidate in ordered if candidate.source_type == "candidate_code_unit"
     )[:MIN_GIT_STRATEGY_PROMPT_SOURCES]
-    for candidate in (*git_candidates, *ordered):
+    overview_candidates = tuple(
+        candidate for candidate in ordered if candidate.source_type == "repository_overview"
+    )[:MIN_REPOSITORY_OVERVIEW_PROMPT_SOURCES]
+    for candidate in (*overview_candidates, *git_candidates, *ordered):
         if candidate.content_hash in seen_hashes:
             continue
         selected.append(candidate)

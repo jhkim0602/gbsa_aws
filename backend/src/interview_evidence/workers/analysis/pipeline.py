@@ -38,6 +38,7 @@ from interview_evidence.submission_analysis.domain.git_analysis import (
     GitRepositoryAnalysis,
 )
 from interview_evidence.submission_analysis.domain.source import (
+    SourceLocation,
     SourceReferenceCandidate,
     SubmissionChunk,
 )
@@ -83,6 +84,10 @@ from interview_evidence.workers.analysis.handlers import (
     JobStatus,
     NonRetryableAnalysisError,
     RetryableAnalysisError,
+)
+from interview_evidence.workers.analysis.repository_overview import (
+    RepositoryOverviewDocument,
+    build_repository_overview_documents,
 )
 
 MAX_EMBEDDING_INPUT_CHARACTERS = 7_000
@@ -154,6 +159,15 @@ class _PendingCodeDocument:
     locator: dict[str, object]
     ownership_confidence: float
     commit_sha: str
+    content_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class _PendingRepositoryOverview:
+    document: RepositoryOverviewDocument
+    chunk: SubmissionChunk
+    text: str
+    locator: dict[str, object]
     content_hash: str
 
 
@@ -454,6 +468,8 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                     "analyzed_commits": len(snapshot.commits),
                     "max_code_units": MAX_GIT_CODE_UNITS,
                     "max_embedding_characters": MAX_GIT_EMBEDDING_CHARACTERS,
+                    "tree_paths": len(snapshot.tree_paths),
+                    "overview_files": sum(1 for file in snapshot.files if not file.commit_sha),
                 },
                 status=GitAnalysisStatus.RUNNING,
             ),
@@ -594,7 +610,8 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                             content_hash=content_hash,
                         )
                     )
-        if not code_units:
+        overview_documents = build_repository_overview_documents(snapshot)
+        if not code_units and not overview_documents:
             return self._record_partial_git(context, analyzing, job)
         discovered_code_unit_count = len(code_units)
         selection = select_git_evidence(
@@ -643,10 +660,63 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
             )
         code_units = selected_units
         pending_code_documents = selected_documents
+        analysis_id = new_uuid7(occurred_at)
+        overview_source_hash = hashlib.sha256(
+            f"{snapshot.repository_url}:{snapshot.pinned_head_sha}".encode()
+        ).hexdigest()
+        pending_overviews: list[_PendingRepositoryOverview] = []
+        for overview_document in overview_documents:
+            content_hash = hashlib.sha256(overview_document.text.encode("utf-8")).hexdigest()
+            source_location = SourceLocation(
+                path=overview_document.path,
+                section=f"repository_overview:{overview_document.section}",
+                start_line=1 if overview_document.end_line is not None else None,
+                end_line=overview_document.end_line,
+                commit_sha=snapshot.pinned_head_sha,
+            )
+            chunk = SubmissionChunk(
+                chunk_id=new_uuid7(occurred_at),
+                company_id=context.company_id,
+                applicant_id=submission.applicant_id,
+                submission_id=submission.submission_id,
+                analysis_id=analysis_id,
+                source_location=source_location,
+                text_object_key=(
+                    f"companies/{context.company_id}/invitations/"
+                    f"{submission.invitation_id}/submissions/{submission.submission_id}/"
+                    f"github/{repository_analysis.repository_analysis_id}/overview/{content_hash}"
+                ),
+                source_hash=overview_source_hash,
+                chunk_hash=content_hash,
+                embedding_model=self._text_embedder.model_id,
+                embedding_version=self._text_embedder.embedding_version,
+                index_document_id=str(new_uuid7(occurred_at)),
+            )
+            locator = source_location.model_dump(mode="json", exclude_none=True)
+            pending_overviews.append(
+                _PendingRepositoryOverview(
+                    document=overview_document,
+                    chunk=chunk,
+                    text=overview_document.text,
+                    locator=locator,
+                    content_hash=content_hash,
+                )
+            )
+            candidates.append(
+                SourceReferenceCandidate(
+                    source_id=chunk.chunk_id,
+                    source_type="repository_overview",
+                    locator=locator,
+                    content_hash=content_hash,
+                    relevance_score=1.2,
+                    ownership_confidence=1.0,
+                )
+            )
         try:
             vectors = self.embed_many(
                 context,
-                tuple(document.text for document in pending_code_documents),
+                tuple(code_document.text for code_document in pending_code_documents)
+                + tuple(overview.text for overview in pending_overviews),
             )
         except EmbeddingProviderError:
             self._repository.save_git_repository_analysis(
@@ -654,58 +724,36 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                 repository_analysis.model_copy(update={"status": GitAnalysisStatus.FAILED}),
             )
             raise
-        for document, vector in zip(pending_code_documents, vectors, strict=True):
-            self._search_index.add(
-                SearchDocument(
-                    document_id=str(document.unit.code_unit_id),
-                    company_id=context.company_id,
-                    applicant_id=submission.applicant_id,
-                    source_id=document.unit.code_unit_id,
-                    text=f"{document.unit.symbol}\n{document.text}",
-                    vector=vector,
-                    symbols=(document.unit.symbol,),
-                    locator=document.locator,
-                    ownership_confidence=document.ownership_confidence,
-                    invitation_id=submission.invitation_id,
-                    competency_model_version_id=axis.competency_model_version_id,
-                    document_type="code_unit",
-                    source_type="candidate_code_unit",
-                    source_version=document.commit_sha,
-                    content_hash=document.content_hash,
-                    embedding_model=self._text_embedder.model_id,
-                    embedding_version=self._text_embedder.embedding_version,
-                    path=document.unit.path,
-                    symbol=document.unit.symbol,
-                )
-            )
+        code_vectors = vectors[: len(pending_code_documents)]
+        overview_vectors = vectors[len(pending_code_documents) :]
         self._repository.save_code_units(context, tuple(code_units))
         analysis = self._repository.save_analysis(
             context,
             SubmissionAnalysis(
-                analysis_id=new_uuid7(occurred_at),
+                analysis_id=analysis_id,
                 company_id=context.company_id,
                 submission_id=submission.submission_id,
                 analysis_version=job.analysis_version,
-                extractor_version="bounded-ranked-public-git-v3",
-                chunk_config_version="ranked-commit-code-units-v3",
+                extractor_version="bounded-ranked-public-git-v4",
+                chunk_config_version="ranked-commit-and-repository-overview-v4",
                 claims=(
                     {
                         "type": "public_git_snapshot",
-                        "analysis_basis": "candidate_commit_changes",
+                        "analysis_basis": (
+                            "candidate_commit_changes_and_head_overview"
+                            if pending_overviews
+                            else "candidate_commit_changes"
+                        ),
                         "commit_count": len(commits),
                         "code_unit_count": len(code_units),
                         "discovered_code_unit_count": discovered_code_unit_count,
+                        "repository_overview_count": len(pending_overviews),
+                        "tree_path_count": len(snapshot.tree_paths),
                         "changed_file_count": len(
-                            {
-                                document.unit.path
-                                for document in pending_code_documents
-                            }
+                            {document.unit.path for document in pending_code_documents}
                         ),
                         "language_count": len(
-                            {
-                                document.unit.language
-                                for document in pending_code_documents
-                            }
+                            {document.unit.language for document in pending_code_documents}
                         ),
                         "project_area_count": len(
                             {
@@ -723,11 +771,64 @@ class SubmissionAnalysisPipeline(AnalysisProcessor):
                         "ownership_confidence": candidate.ownership_confidence,
                     }
                     for candidate in candidates
+                    if candidate.source_type == "candidate_code_unit"
                 ),
                 status=AnalysisStatus.READY,
                 created_at=occurred_at,
             ),
         )
+        self._repository.save_chunks(
+            context,
+            tuple(overview.chunk for overview in pending_overviews),
+        )
+        for code_document, vector in zip(pending_code_documents, code_vectors, strict=True):
+            self._search_index.add(
+                SearchDocument(
+                    document_id=str(code_document.unit.code_unit_id),
+                    company_id=context.company_id,
+                    applicant_id=submission.applicant_id,
+                    source_id=code_document.unit.code_unit_id,
+                    text=f"{code_document.unit.symbol}\n{code_document.text}",
+                    vector=vector,
+                    symbols=(code_document.unit.symbol,),
+                    locator=code_document.locator,
+                    ownership_confidence=code_document.ownership_confidence,
+                    invitation_id=submission.invitation_id,
+                    competency_model_version_id=axis.competency_model_version_id,
+                    document_type="code_unit",
+                    source_type="candidate_code_unit",
+                    source_version=code_document.commit_sha,
+                    content_hash=code_document.content_hash,
+                    embedding_model=self._text_embedder.model_id,
+                    embedding_version=self._text_embedder.embedding_version,
+                    path=code_document.unit.path,
+                    symbol=code_document.unit.symbol,
+                )
+            )
+        for overview, vector in zip(pending_overviews, overview_vectors, strict=True):
+            self._search_index.add(
+                SearchDocument(
+                    document_id=overview.chunk.index_document_id,
+                    company_id=context.company_id,
+                    applicant_id=submission.applicant_id,
+                    source_id=overview.chunk.chunk_id,
+                    text=overview.text,
+                    vector=vector,
+                    symbols=(),
+                    locator=overview.locator,
+                    ownership_confidence=1.0,
+                    invitation_id=submission.invitation_id,
+                    competency_model_version_id=axis.competency_model_version_id,
+                    document_type="repository_overview",
+                    source_type="repository_overview",
+                    source_version=snapshot.pinned_head_sha,
+                    content_hash=overview.content_hash,
+                    embedding_model=self._text_embedder.model_id,
+                    embedding_version=self._text_embedder.embedding_version,
+                    path=overview.document.path,
+                    material_type="projects",
+                )
+            )
         self._repository.save_git_repository_analysis(
             context,
             repository_analysis.model_copy(update={"status": GitAnalysisStatus.READY}),

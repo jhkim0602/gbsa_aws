@@ -253,9 +253,14 @@ class SubmissionAnalysisPublic:
                 ownership_confidence=commit.ownership_confidence,
             )
         else:
+            source_type = (
+                "repository_overview"
+                if (chunk.source_location.section or "").startswith("repository_overview:")
+                else "submission_chunk"
+            )
             return ResolvedSourceReference(
                 source_id=chunk.chunk_id,
-                source_type="submission_chunk",
+                source_type=source_type,
                 locator=chunk.source_location.model_dump(mode="json", exclude_none=True),
                 content_hash=chunk.chunk_hash,
                 ownership_confidence=1,

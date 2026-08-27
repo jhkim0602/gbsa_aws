@@ -66,8 +66,11 @@ _SYSTEM_PROMPT: Final = """\
 9. interview_stage와 interview_stage_focus를 따라 현재 단계의 목적에 맞는 질문을 만듭니다.
    - technical: 기술 선택, 구현 방식, 원리, 대안, 트레이드오프, 검증 중 하나를 직접 확인합니다.
      협업 방식만 묻는 질문은 만들지 않습니다.
-   - project_deep_dive: 하나의 실제 프로젝트를 기준으로 목표, 본인 역할, 설계·구현 범위,
-     결과나 회고를 연결합니다. 기술 개념만 분리해 다시 묻지 않습니다.
+   - project_deep_dive: 하나의 실제 프로젝트를 기준으로 목표, 주요 구성 요소와 책임 경계,
+     요청·데이터 흐름, 설계 결정과 트레이드오프, 운영·확장 방식, 본인 기여를 연결합니다.
+     retrieved_sources가 Git 코드 조각이어도 코드는 구조를 추론하는 근거로만 사용합니다.
+     특정 파일명·함수명·메서드명·클래스명, 매개변수, 반환값, 내부 분기나 코드 문법을 직접
+     기억하거나 설명하게 하는 질문은 만들지 않습니다.
    - behavioral: 반드시 함께 일한 사람과의 소통, 역할 조율, 의견 차이, 피드백, 책임 중 하나를
      확인합니다. 기술 구현, 장애 해결, 성능 개선만 묻는 질문은 만들지 않습니다.
 10. next_question_type에 맞춰 질문 역할을 구분합니다.
@@ -90,9 +93,9 @@ _SYSTEM_PROMPT: Final = """\
 13. stage_evidence_available이 false이면 자료에 협업이나 역할 조율 경험이 있다고 단정하지 않습니다.
     behavioral 단계에서는 "함께 조율해야 했던 상황이 있었다면"처럼 사실을 열어 둔 질문으로
     확인하고, 없다는 답변도 허용합니다.
-14. context에 stage_alignment_retry가 있으면 rejected_question이 현재 단계와 맞지 않아 거절된
-    질문이거나 필수 평가 관점을 확인하지 못한 질문입니다. 같은 내용을 고쳐 쓰지 말고 현재 단계와
-    required_assessment_axis 규칙에 맞는 새 질문을 만듭니다.
+14. context에 stage_alignment_retry가 있으면 rejected_question이 현재 단계와 맞지 않거나,
+    필수 평가 관점을 확인하지 못했거나, 프로젝트 단계에서 지나치게 코드 수준이라 거절된 질문입니다.
+    같은 내용을 고쳐 쓰지 말고 reason_codes와 현재 단계 규칙에 맞는 새 질문을 만듭니다.
 15. required_assessment_axis가 fundamentals이면 retrieved_sources나 최근 답변에 실제로 등장한 기술
     하나를 골라 동작 원리, 데이터 처리 보장, 자료구조, 네트워크, 동시성, 트랜잭션 중 직접 연결되는
     기반 원리 하나를 확인합니다. 기술 이름만 설명하게 하거나 직무와 무관한 암기 문제를 만들지
@@ -183,7 +186,7 @@ class QuestionPromptTemplate(BaseModel):
 
 def _template_for(level: InterviewLevel) -> QuestionPromptTemplate:
     return QuestionPromptTemplate(
-        prompt_version=f"question-prompt-v5-{level.value}",
+        prompt_version=f"question-prompt-v6-{level.value}",
         interview_level=level,
         persona=_PERSONA,
         system_prompt=_SYSTEM_PROMPT,

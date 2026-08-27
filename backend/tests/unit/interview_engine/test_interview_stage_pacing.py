@@ -1,3 +1,4 @@
+from dataclasses import replace
 from uuid import UUID
 
 from interview_evidence.interview_engine.application.interview_plan import (
@@ -10,6 +11,10 @@ from interview_evidence.interview_engine.application.interview_plan import (
 
 CRITERION_ID = UUID("00000000-0000-7000-8000-000000000001")
 TARGET_ID = UUID("00000000-0000-7000-8000-000000000002")
+PROJECT_CRITERION_ID = UUID("00000000-0000-7000-8000-000000000003")
+PROJECT_TARGET_ID = UUID("00000000-0000-7000-8000-000000000004")
+BEHAVIORAL_CRITERION_ID = UUID("00000000-0000-7000-8000-000000000005")
+BEHAVIORAL_TARGET_ID = UUID("00000000-0000-7000-8000-000000000006")
 
 
 def _target() -> VerificationTargetPlan:
@@ -238,3 +243,44 @@ def test_target_exhaustion_does_not_end_the_interview() -> None:
     )
 
     assert target.verification_target_id == TARGET_ID
+
+
+def test_each_stage_uses_the_matching_evaluation_criterion() -> None:
+    technical = replace(_target(), criterion_text="기술 역량\n구현 원리를 평가")
+    project = replace(
+        _target(),
+        verification_target_id=PROJECT_TARGET_ID,
+        criterion_id=PROJECT_CRITERION_ID,
+        criterion_text="프로젝트 실행 역량\n프로젝트 목표와 결과를 평가",
+    )
+    behavioral = replace(
+        _target(),
+        verification_target_id=BEHAVIORAL_TARGET_ID,
+        criterion_id=BEHAVIORAL_CRITERION_ID,
+        criterion_text="협업·행동 역량\n의견 조율과 소통을 평가",
+    )
+    plan = InterviewPlan(
+        criterion_ids=(CRITERION_ID, PROJECT_CRITERION_ID, BEHAVIORAL_CRITERION_ID),
+        initial_question="직접 수행한 경험을 설명해 주세요?",
+        prohibited_topics=(),
+        fallback_question="판단 근거를 설명해 주세요?",
+        remaining_time_seconds=FIXED_INTERVIEW_DURATION_SECONDS,
+        model_config_version="question-v1",
+        retrieval_config_version="stage-aware-hybrid-v1",
+        voice_id="Seoyeon",
+        verification_targets=(technical, project, behavioral),
+    )
+
+    assert plan.initial_target_for_stage(InterviewStage.TECHNICAL) == technical
+    assert plan.initial_target_for_stage(InterviewStage.PROJECT_DEEP_DIVE) == project
+    assert plan.initial_target_for_stage(InterviewStage.BEHAVIORAL) == behavioral
+    assert (
+        plan.next_target_for_question(
+            answered_target_id=PROJECT_TARGET_ID,
+            follow_up_count=0,
+            completed_target_ids=frozenset({PROJECT_TARGET_ID}),
+            prefer_new_target=True,
+            interview_stage=InterviewStage.BEHAVIORAL,
+        )
+        == behavioral
+    )

@@ -70,7 +70,28 @@ _STAGE_SIGNAL_GROUPS = {
     ),
     "project_deep_dive": (
         ("프로젝트", "서비스", "기능", "저장소", "github", "개발", "작업", "경험"),
-        ("목표", "역할", "담당", "직접", "설계", "구현", "범위", "결과", "성과", "회고", "기여"),
+        (
+            "목표",
+            "역할",
+            "담당",
+            "직접",
+            "설계",
+            "구현",
+            "구조",
+            "아키텍처",
+            "구성 요소",
+            "책임",
+            "경계",
+            "흐름",
+            "트레이드오프",
+            "운영",
+            "확장",
+            "범위",
+            "결과",
+            "성과",
+            "회고",
+            "기여",
+        ),
     ),
     "behavioral": (
         ("팀", "팀원", "동료", "협업", "상대", "구성원", "리뷰어", "이해관계자", "다른 사람"),
@@ -85,9 +106,11 @@ _STAGE_FALLBACK_QUESTIONS = {
         "구현 과정에서 검토한 대안과 최종 선택의 이유를 설명해 주세요.",
     ),
     "project_deep_dive": (
-        "이 프로젝트의 목표와 본인이 직접 맡은 역할을 설명해 주세요.",
-        "프로젝트에서 본인이 내린 핵심 설계 결정과 그 결과를 설명해 주세요.",
-        "프로젝트 진행 중 맡은 범위와 결과를 확인한 방법을 설명해 주세요.",
+        "이 프로젝트의 주요 구성 요소와 각각의 책임을 어떻게 나누었는지 설명해 주세요.",
+        "프로젝트의 요청과 데이터가 주요 구성 요소 사이를 어떻게 흐르도록 "
+        "설계했는지 설명해 주세요.",
+        "현재 구조를 선택하며 비교한 대안과 감수한 트레이드오프를 설명해 주세요.",
+        "사용량 증가나 장애 상황에서 현재 구조의 어느 부분을 먼저 보완할지 설명해 주세요.",
     ),
     "behavioral": (
         "팀원과 의견이 달랐던 상황이 있었다면 어떻게 조율했는지 말씀해 주세요.",
@@ -120,6 +143,41 @@ _FUNDAMENTALS_SIGNALS = (
     "인덱스",
 )
 
+_PROJECT_CODE_LEVEL_PHRASES = (
+    "함수",
+    "메서드",
+    "클래스",
+    "함수명",
+    "메서드명",
+    "클래스명",
+    "특정 함수",
+    "해당 함수",
+    "이 함수",
+    "특정 메서드",
+    "해당 메서드",
+    "이 메서드",
+    "특정 클래스",
+    "해당 클래스",
+    "이 클래스",
+    "매개변수",
+    "파라미터",
+    "반환값",
+    "리턴값",
+    "변수명",
+    "호출 순서",
+    "조건문",
+    "반복문",
+    "몇 번째 줄",
+    "코드 한 줄",
+    "코드 내부",
+    "내부 로직",
+)
+_PROJECT_CODE_PATH_PATTERN = re.compile(
+    r"(?:[\w.-]+/)+[\w.-]+\.(?:py|js|jsx|ts|tsx|java|kt|go|rs|cs|cpp|c|rb|php)\b",
+    re.IGNORECASE,
+)
+_PROJECT_FUNCTION_CALL_PATTERN = re.compile(r"\b[A-Za-z_]\w*\s*\([^()\n]{0,80}\)")
+
 
 def _prompt_body(text: str) -> str:
     return text.strip().rstrip(".!?！？。 ")
@@ -128,6 +186,15 @@ def _prompt_body(text: str) -> str:
 def _is_polite_request(text: str) -> bool:
     body = _prompt_body(text)
     return any(body.endswith(ending) for ending in _POLITE_REQUEST_ENDINGS)
+
+
+def _is_project_code_level_question(text: str) -> bool:
+    normalized = text.casefold()
+    return (
+        any(phrase in normalized for phrase in _PROJECT_CODE_LEVEL_PHRASES)
+        or _PROJECT_CODE_PATH_PATTERN.search(text) is not None
+        or _PROJECT_FUNCTION_CALL_PATTERN.search(text) is not None
+    )
 
 
 def normalize_interview_prompt(text: str) -> str:
@@ -303,6 +370,10 @@ class QuestionPolicy:
             question_type=question_type,
         ):
             reasons.append("stage_mismatch")
+        if interview_stage == "project_deep_dive" and _is_project_code_level_question(
+            candidate.text
+        ):
+            reasons.append("code_level_question")
         if required_assessment_axis == "fundamentals" and not any(
             signal in candidate.text.casefold() for signal in _FUNDAMENTALS_SIGNALS
         ):

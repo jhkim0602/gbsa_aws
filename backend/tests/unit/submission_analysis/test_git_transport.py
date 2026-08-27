@@ -352,6 +352,37 @@ def test_a_repository_of_only_prose_is_still_analyzed() -> None:
     assert [file.path for file in snapshot.files] == ["CHANGES.rst"] * 3
 
 
+def test_repository_head_collects_tree_readme_and_architecture_files() -> None:
+    sha = _sha("a")
+    responses = _responses(listing=[_listed(sha)], details={sha: _detail(sha)})
+    responses[f"{API_ROOT}/git/trees/{sha}?recursive=1"] = {
+        "tree": [
+            {"path": "README.md", "type": "blob"},
+            {"path": "docs/architecture.md", "type": "blob"},
+            {"path": "apps/api/main.py", "type": "blob"},
+            {"path": "package.json", "type": "blob"},
+            {"path": "node_modules/generated.js", "type": "blob"},
+        ]
+    }
+    raw_root = f"https://raw.githubusercontent.com/example/candidate-project/{sha}"
+    responses[f"{raw_root}/README.md"] = b"# Candidate project\nArchitecture overview\n"
+    responses[f"{raw_root}/docs/architecture.md"] = b"API -> worker -> database\n"
+    responses[f"{raw_root}/package.json"] = b'{"scripts":{"start":"node app.js"}}\n'
+    transport = RecordingTransport(responses)
+
+    snapshot = transport.fetch(REPOSITORY_URL, limits=GitFetchLimits(), identity=None)
+
+    assert snapshot.tree_paths == (
+        "README.md",
+        "apps/api/main.py",
+        "docs/architecture.md",
+        "package.json",
+    )
+    overview = {file.path: file for file in snapshot.files if not file.commit_sha}
+    assert set(overview) == {"README.md", "docs/architecture.md", "package.json"}
+    assert overview["README.md"].content.startswith(b"# Candidate project")
+
+
 def test_the_same_submission_draws_the_same_commits_every_time() -> None:
     """Evidence has to be reproducible or a recruiter cannot audit where a question came from.
 

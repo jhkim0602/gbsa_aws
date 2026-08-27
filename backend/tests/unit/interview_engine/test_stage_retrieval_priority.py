@@ -85,6 +85,13 @@ def _retrieve(stage: InterviewStage) -> tuple[str, ...]:
                 material_type=None,
                 excerpt="class PaymentService",
             ),
+            Record(
+                source_id=UUID("00000000-0000-7000-8000-000000000013"),
+                source_type="repository_overview",
+                material_type="projects",
+                excerpt="API, worker, database로 구성된 저장소 구조",
+                locator={"section": "repository_overview:repository_structure"},
+            ),
         )
     )
     outcome = RetrievalClient(provider, limit=3).retrieve(
@@ -103,8 +110,8 @@ def _retrieve(stage: InterviewStage) -> tuple[str, ...]:
     return tuple(hit.material_type or hit.source_type for hit in outcome.hits)
 
 
-def test_project_stage_prioritizes_github_code() -> None:
-    assert _retrieve(InterviewStage.PROJECT_DEEP_DIVE)[0] == "candidate_code_unit"
+def test_project_stage_prioritizes_repository_architecture_before_code() -> None:
+    assert _retrieve(InterviewStage.PROJECT_DEEP_DIVE)[0] == "projects"
 
 
 def test_project_stage_fetches_github_when_general_shortlist_has_only_documents() -> None:
@@ -144,7 +151,7 @@ def test_project_stage_fetches_github_when_general_shortlist_has_only_documents(
     assert any(hit.source_type == "candidate_code_unit" for hit in outcome.hits)
     assert provider.requested_source_types == [
         None,
-        frozenset({"candidate_code_unit"}),
+        frozenset({"candidate_code_unit", "repository_overview"}),
     ]
 
 
@@ -208,8 +215,12 @@ def test_required_github_question_is_policy_safe_and_keeps_code_source() -> None
         previous_questions=(),
         fallback_question="프로젝트 경험을 설명해 주시겠습니까?",
         fallback_criterion_id=CRITERION_ID,
+        interview_stage="project_deep_dive",
     )
 
     assert result.accepted
     assert result.question.source_reference_ids == draft.source_reference_ids
-    assert "PaymentService" in result.question.text
+    assert "주요 구성 요소" in result.question.text
+    assert "구조를 선택한 이유" in result.question.text
+    assert "PaymentService" not in result.question.text
+    assert "payment.py" not in result.question.text

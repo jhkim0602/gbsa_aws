@@ -32,8 +32,9 @@ INTERVIEW_STAGE_FOCUS = {
         "협업 방식 자체를 중심 질문으로 삼지 않습니다."
     ),
     InterviewStage.PROJECT_DEEP_DIVE: (
-        "하나의 실제 프로젝트를 기준으로 목표, 본인 역할, 설계와 구현 범위, 결과와 회고를 "
-        "연결해 확인합니다. 단편적인 기술 원리만 다시 묻지 않습니다."
+        "하나의 실제 프로젝트를 기준으로 목표, 주요 구성 요소와 책임 경계, 요청·데이터 흐름, "
+        "설계 결정과 트레이드오프, 운영·확장 방식, 본인 기여를 연결해 확인합니다. "
+        "특정 함수, 메서드, 클래스 내부 구현이나 코드 문법을 직접 묻지 않습니다."
     ),
     InterviewStage.BEHAVIORAL: (
         "실제 경험에서 함께 일한 사람, 역할 조율, 의견 차이, 의사소통, 피드백과 책임을 "
@@ -63,6 +64,37 @@ DEFAULT_WARM_UP_QUESTION = (
     "먼저 간단한 자기소개와 지원 직무와 관련해 가장 자신 있는 경험을 말씀해 주시겠어요?"
 )
 
+_STAGE_CRITERION_TERMS = {
+    InterviewStage.TECHNICAL: (
+        "기술",
+        "구현",
+        "개발",
+        "시스템",
+        "설계",
+        "cs 기본기",
+        "문제 해결",
+    ),
+    InterviewStage.PROJECT_DEEP_DIVE: (
+        "프로젝트",
+        "실행",
+        "성과",
+        "제품",
+        "과제",
+        "오너십",
+    ),
+    InterviewStage.BEHAVIORAL: (
+        "협업",
+        "행동",
+        "인성",
+        "소통",
+        "조율",
+        "피드백",
+        "갈등",
+        "리더십",
+        "팀워크",
+    ),
+}
+
 
 @dataclass(frozen=True, slots=True)
 class VerificationTargetPlan:
@@ -88,6 +120,27 @@ class VerificationTargetPlan:
             raise ValueError("verification target follow-up budget must be between 0 and 3")
         if self.time_budget_seconds <= 0:
             raise ValueError("verification target requires a positive time budget")
+
+    @property
+    def preferred_stage(self) -> InterviewStage | None:
+        return infer_criterion_stage(self.criterion_text)
+
+
+def infer_criterion_stage(criterion_text: str) -> InterviewStage | None:
+    """Map a published criterion to the interview stage that can actually assess it."""
+    normalized = criterion_text.casefold()
+    name = normalized.splitlines()[0] if normalized else ""
+    scores = {
+        stage: sum(
+            (4 if term.casefold() in name else 0) + (1 if term.casefold() in normalized else 0)
+            for term in terms
+        )
+        for stage, terms in _STAGE_CRITERION_TERMS.items()
+    }
+    best_score = max(scores.values(), default=0)
+    if best_score == 0:
+        return None
+    return max(scores, key=scores.__getitem__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,6 +225,23 @@ class InterviewPlan:
 
     def initial_target(self) -> VerificationTargetPlan | None:
         return self.verification_targets[0] if self.verification_targets else None
+
+    def targets_for_stage(self, stage: InterviewStage) -> tuple[VerificationTargetPlan, ...]:
+        matched = tuple(
+            target for target in self.verification_targets if target.preferred_stage is stage
+        )
+        if matched:
+            return matched
+        unclassified = tuple(
+            target for target in self.verification_targets if target.preferred_stage is None
+        )
+        return unclassified or self.verification_targets
+
+    def initial_target_for_stage(
+        self,
+        stage: InterviewStage,
+    ) -> VerificationTargetPlan | None:
+        return next(iter(self.targets_for_stage(stage)), None)
 
     @property
     def initial_stage(self) -> InterviewStage:
@@ -261,10 +331,17 @@ class InterviewPlan:
         follow_up_count: int,
         completed_target_ids: frozenset[UUID],
         prefer_new_target: bool,
+        interview_stage: InterviewStage | None = None,
     ) -> VerificationTargetPlan:
         answered = self.target(answered_target_id)
+        eligible_targets = (
+            self.targets_for_stage(interview_stage)
+            if interview_stage is not None
+            else self.verification_targets
+        )
         if (
             not prefer_new_target
+            and answered in eligible_targets
             and answered_target_id not in completed_target_ids
             and follow_up_count < self.follow_up_budget(answered)
         ):
@@ -272,13 +349,13 @@ class InterviewPlan:
         upcoming = next(
             (
                 target
-                for target in self.verification_targets
+                for target in eligible_targets
                 if target.verification_target_id not in completed_target_ids
                 and target.verification_target_id != answered_target_id
             ),
             None,
         )
-        return upcoming or self.initial_target() or answered
+        return upcoming or next(iter(eligible_targets), None) or answered
 
     def target(self, target_id: UUID) -> VerificationTargetPlan:
         for target in self.verification_targets:
