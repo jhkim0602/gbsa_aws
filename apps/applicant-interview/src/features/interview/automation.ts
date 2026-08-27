@@ -1,6 +1,7 @@
 export type AutomatedInterviewMode = "fast" | "speech" | "entry-low";
 
-export type AutomatedAnswerProfile = "standard" | "entry_low";
+export type AutomatedAnswerProfile =
+  "standard" | "entry_low" | "developer_guide";
 
 export function automatedAnswerProfile(
   mode: AutomatedInterviewMode,

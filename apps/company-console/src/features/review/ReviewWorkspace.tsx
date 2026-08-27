@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { buildEvidenceContext } from "./evidenceContext";
 import { HumanReview } from "./HumanReview";
 import { ReportView } from "./ReportView";
-import { TimelineView } from "./TimelineView";
 import type {
   AssessmentState,
   InterviewStageSummary,
@@ -43,7 +42,7 @@ const WORKSPACE_LAYOUT =
   " px-8 pt-5 pb-12" +
   " mw-1180:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.15fr)]" +
   " mw-820:grid-cols-[minmax(0,1fr)]" +
-  " mw-820:[grid-template-areas:'timeline'_'report'_'decision']" +
+  " mw-820:[grid-template-areas:'decision'_'report']" +
   " mw-680:p-4 print:block print:p-0";
 
 const SIDEBAR =
@@ -132,15 +131,6 @@ export function ReviewWorkspace({
 
       <div className={WORKSPACE_LAYOUT}>
         <div className={SIDEBAR}>
-          <div className="min-w-0 mw-820:[grid-area:timeline] print:hidden">
-            <TimelineView
-              entries={timeline.entries}
-              playbackStatus={timeline.playback.status}
-              playbackUrl={timeline.playback.url}
-              selectedStartMs={selectedStartMs}
-              onSeek={setSelectedStartMs}
-            />
-          </div>
           <div className="min-w-0 sticky top-3 mw-820:[grid-area:decision] mw-820:static print:hidden">
             <HumanReview
               api={api}

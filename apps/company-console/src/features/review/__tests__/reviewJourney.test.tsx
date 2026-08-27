@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -204,7 +210,7 @@ describe("Lane D review journey", () => {
     expect(screen.queryByText("북마크 저장")).toBeNull();
   });
 
-  it("keeps Evidence selection synchronized with the media timeline", () => {
+  it("keeps Evidence selection synchronized with the media timeline", async () => {
     const play = vi
       .spyOn(HTMLMediaElement.prototype, "play")
       .mockResolvedValue(undefined);
@@ -274,25 +280,25 @@ describe("Lane D review journey", () => {
     fireEvent.click(screen.getByRole("tab", { name: "기준별 평가" }));
     fireEvent.click(screen.getByRole("button", { name: "Evidence 재생" }));
 
-    const video = document.querySelector("video");
-    expect(video?.currentTime).toBe(62);
+    const selectedVideoPanel = screen.getByRole("tabpanel", {
+      name: "면접 영상",
+    });
+    const video = selectedVideoPanel.querySelector("video");
+    fireEvent.loadedMetadata(video!);
+    await waitFor(() => expect(video?.currentTime).toBe(62));
     expect(play).toHaveBeenCalled();
     expect(screen.getByText("세션 12345678")).toBeTruthy();
 
-    const timelinePanel = screen
-      .getByRole("heading", { name: "면접 타임라인" })
-      .closest("section");
     const humanReviewPanel = screen
       .getByRole("heading", { name: "사람 검토" })
       .closest("section");
-    expect(timelinePanel?.parentElement?.className).not.toContain("sticky");
     expect(humanReviewPanel?.parentElement?.className).toContain("sticky");
-    expect(timelinePanel?.parentElement?.parentElement).toBe(
-      humanReviewPanel?.parentElement?.parentElement,
-    );
-    expect(timelinePanel?.parentElement?.parentElement?.className).toContain(
+    expect(humanReviewPanel?.parentElement?.parentElement?.className).toContain(
       "[grid-area:sidebar]",
     );
+    expect(
+      humanReviewPanel?.parentElement?.parentElement?.firstElementChild,
+    ).toBe(humanReviewPanel?.parentElement);
 
     const reportTabList = screen.getByRole("tablist", {
       name: "리포트 항목",
@@ -304,11 +310,19 @@ describe("Lane D review journey", () => {
     ).toEqual([
       "종합평가",
       "기준별 평가",
+      "면접 영상",
       "면접 타임라인",
       "자격요건 충족도",
       "추가 확인",
     ]);
     expect(reportTabList.className).not.toContain("overflow-x-auto");
+
+    fireEvent.click(screen.getByRole("tab", { name: "면접 영상" }));
+    const videoPanel = screen.getByRole("tabpanel", { name: "면접 영상" });
+    expect(videoPanel.querySelector("video")).toBeTruthy();
+    expect(
+      within(videoPanel).getByRole("heading", { name: "면접 영상" }),
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("tab", { name: "면접 타임라인" }));
     const expandedTimeline = screen.getByRole("tabpanel", {
@@ -324,10 +338,15 @@ describe("Lane D review journey", () => {
       .getByText("캐시와 큐의 장단점을 비교했습니다.")
       .closest("button");
     expect(expandedAnswer).toBeTruthy();
-    fireEvent.click(expandedAnswer!);
-    expect(video?.currentTime).toBe(62);
     expect(
       within(expandedTimeline).getByPlaceholderText("자막 내용 검색"),
     ).toBeTruthy();
+    fireEvent.click(expandedAnswer!);
+    const answerVideoPanel = screen.getByRole("tabpanel", {
+      name: "면접 영상",
+    });
+    const answerVideo = answerVideoPanel.querySelector("video");
+    fireEvent.loadedMetadata(answerVideo!);
+    await waitFor(() => expect(answerVideo?.currentTime).toBe(62));
   });
 });

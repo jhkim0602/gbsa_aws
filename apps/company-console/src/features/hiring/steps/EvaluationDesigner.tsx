@@ -5,7 +5,7 @@ import {
   useState,
 } from "react";
 
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Sparkles, Trash2 } from "lucide-react";
 
 import { ICON_BUTTON } from "../../../app/styles/primitives";
 import type { FormVariant } from "../components/FormPrimitives";
@@ -61,6 +61,11 @@ const REQUIREMENT_DELETE = `${ICON_BUTTON} h-8 w-8 border-transparent bg-transpa
 const REQUIREMENT_ADD =
   "inline-flex h-9 w-full items-center justify-center gap-1 border-t border-border-muted" +
   " text-[9px] font-semibold text-muted hover:bg-brand-soft hover:text-brand";
+const REQUIREMENT_EXAMPLE =
+  "inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-md border border-brand/25" +
+  " bg-brand-soft px-3 text-[10px] font-semibold text-brand transition-colors" +
+  " hover:border-brand hover:bg-brand/10 focus-visible:outline-none focus-visible:ring-2" +
+  " focus-visible:ring-brand/20";
 
 const STATEMENT =
   "h-8 min-w-0 w-full rounded-md border border-transparent bg-transparent px-2 text-[10px] text-ink" +
@@ -237,6 +242,51 @@ export function EvaluationDesigner({
     );
   }
 
+  function applyRequirementExamples() {
+    const roleName = draft.title.trim() || "지원 직무";
+    const exampleStatements: ReadonlyArray<{
+      requirementType: RequirementType;
+      statement: string;
+    }> = [
+      {
+        requirementType: "required",
+        statement: `${roleName}와 관련된 실무 또는 프로젝트 경험`,
+      },
+      {
+        requirementType: "required",
+        statement: "업무 중 발생한 문제의 원인을 찾고 해결한 경험",
+      },
+      {
+        requirementType: "required",
+        statement: "담당한 업무의 과정과 결과를 구체적으로 설명할 수 있는 분",
+      },
+      {
+        requirementType: "preferred",
+        statement: "서비스나 업무 방식을 개선해 성과를 만든 경험",
+      },
+      {
+        requirementType: "preferred",
+        statement: "팀원과 의견을 조율하며 함께 일한 경험",
+      },
+      {
+        requirementType: "preferred",
+        statement: "새로운 지식이나 도구를 익혀 업무에 적용한 경험",
+      },
+    ];
+    const generatedAt = Date.now();
+
+    update(
+      "jobRequirements",
+      exampleStatements.map((example, index) => ({
+        id: `requirement-example-${generatedAt}-${index + 1}`,
+        requirementType: example.requirementType,
+        statement: example.statement,
+        priority: Math.min(index + 1, 5),
+        criterionCode: inferRequirementCriterionCode(example.statement),
+      })),
+    );
+  }
+
   return (
     <section className={DESIGNER} aria-labelledby="evaluation-design-title">
       <header className={HEADER}>
@@ -251,6 +301,15 @@ export function EvaluationDesigner({
             우선순위만 높입니다.
           </p>
         </div>
+        <button
+          aria-label="자격요건 예시 6개 적용"
+          className={REQUIREMENT_EXAMPLE}
+          type="button"
+          onClick={applyRequirementExamples}
+        >
+          <Sparkles aria-hidden="true" size={14} />
+          예시 적용
+        </button>
       </header>
 
       <div className={CRITERIA_LAYOUT}>
@@ -286,9 +345,18 @@ export function EvaluationDesigner({
                 );
               return (
                 <article
-                  className={REQUIREMENT_ROW}
+                  className={`${REQUIREMENT_ROW} ${
+                    requirement.id.startsWith("requirement-example-")
+                      ? "[animation:requirement-example-in_.42s_cubic-bezier(.22,.8,.2,1)_both] motion-reduce:animate-none"
+                      : ""
+                  }`}
                   key={requirement.id}
                   role="listitem"
+                  style={
+                    requirement.id.startsWith("requirement-example-")
+                      ? { animationDelay: `${index * 60}ms` }
+                      : undefined
+                  }
                 >
                   <span className={REQUIREMENT_INDEX}>
                     <i

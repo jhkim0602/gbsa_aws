@@ -122,6 +122,7 @@ const CITATION_CHIP =
 const reportTabs = [
   { id: "overview", label: "종합평가" },
   { id: "criteria", label: "기준별 평가" },
+  { id: "video", label: "면접 영상" },
   { id: "timeline", label: "면접 타임라인" },
   { id: "requirements", label: "자격요건 충족도" },
   { id: "followups", label: "추가 확인" },
@@ -186,7 +187,7 @@ export function ReportView({
   const requirementAssessments = report.requirementAssessments ?? [];
   const availableTabs = timeline
     ? reportTabs
-    : reportTabs.filter((tab) => tab.id !== "timeline");
+    : reportTabs.filter((tab) => tab.id !== "video" && tab.id !== "timeline");
   const activeIndex = availableTabs.findIndex((tab) => tab.id === activeTab);
 
   function selectTab(index: number) {
@@ -213,6 +214,18 @@ export function ReportView({
       event.preventDefault();
       selectTab(availableTabs.length - 1);
     }
+  }
+
+  function showEvidenceInVideo(startMs: number) {
+    onSelectEvidence(startMs);
+    if (!timeline) return;
+    setActiveTab("video");
+    window.requestAnimationFrame(() => {
+      document.getElementById("report-panel-video")?.scrollIntoView?.({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
   }
 
   return (
@@ -269,7 +282,26 @@ export function ReportView({
         ))}
       </div>
 
-      {activeTab === "timeline" && timeline ? (
+      {activeTab === "video" && timeline ? (
+        <div
+          id="report-panel-video"
+          className="bg-surface p-[14px] outline-none mw-680:p-3 print:hidden"
+          role="tabpanel"
+          aria-labelledby="report-tab-video"
+          tabIndex={0}
+        >
+          <TimelineView
+            entries={timeline.entries}
+            playbackStatus={timeline.playback.status}
+            playbackUrl={timeline.playback.url}
+            selectedStartMs={selectedStartMs}
+            onSeek={onSelectEvidence}
+            showTimeline={false}
+            expanded
+            idPrefix="report-video"
+          />
+        </div>
+      ) : activeTab === "timeline" && timeline ? (
         <div
           id="report-panel-timeline"
           className="bg-surface p-[14px] outline-none mw-680:p-3 print:hidden"
@@ -282,7 +314,7 @@ export function ReportView({
             playbackStatus={timeline.playback.status}
             playbackUrl={timeline.playback.url}
             selectedStartMs={selectedStartMs}
-            onSeek={onSelectEvidence}
+            onSeek={showEvidenceInVideo}
             showMedia={false}
             expanded
             idPrefix="report-timeline"
@@ -329,7 +361,7 @@ export function ReportView({
                   <CriteriaPage
                     report={report}
                     evidenceContext={evidenceContext}
-                    onSelectEvidence={onSelectEvidence}
+                    onSelectEvidence={showEvidenceInVideo}
                     onOverride={onOverride}
                   />
                 ) : null}

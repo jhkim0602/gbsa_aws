@@ -142,3 +142,19 @@ def test_generated_answer_uses_the_current_questions_source_excerpts() -> None:
     assert "깊이와 구체성이" in str(entry_prompt["system"])
     assert "평가 가능한 내용" in str(entry_prompt["system"])
     assert "다른 대안과 결과 수치" in entry_generated.text
+
+    generator.generate(
+        context(),
+        session_id=SESSION_ID,
+        question_turn_id=QUESTION_ID,
+        retrieval_config_version="hybrid-v1",
+        fallback_stage=InterviewStage.TECHNICAL,
+        answer_profile=AutomatedAnswerProfile.DEVELOPER_GUIDE,
+    )
+
+    guide_prompt = model.calls[2][1]
+    guide_payload = json.loads(guide_prompt["messages"][0]["content"][0]["text"])
+    assert guide_payload["answer_profile"] == AutomatedAnswerProfile.DEVELOPER_GUIDE.value
+    assert guide_prompt["max_tokens"] == 320
+    assert "짧은 2~3문장" in str(guide_prompt["system"])
+    assert "어려운 전문 용어" in str(guide_prompt["system"])

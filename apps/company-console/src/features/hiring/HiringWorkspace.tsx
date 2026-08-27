@@ -18,6 +18,7 @@ import {
   createDefaultCriteria,
   inferRequirementCriterionCode,
   initialHiringDraft,
+  interviewLevelLabels,
   type CriteriaConfiguration,
   type CriteriaHiringStep,
   type HiringDraft,
@@ -89,6 +90,7 @@ function readStoredDraft(): HiringDraft {
     };
     return {
       ...restored,
+      interviewerName: `${interviewLevelLabels[restored.interviewLevel].name} 면접관`,
       criteria: createDefaultCriteria(),
       jobRequirements: restored.jobRequirements.map((requirement, index) => ({
         ...requirement,

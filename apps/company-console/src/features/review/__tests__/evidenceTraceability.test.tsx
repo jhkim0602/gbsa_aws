@@ -8,7 +8,13 @@
  * it can be honestly incomplete: an answer missing from the transcript, and a citation the
  * Evidence rows no longer carry.
  */
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { buildEvidenceContext } from "../evidenceContext";
@@ -340,7 +346,7 @@ describe("evidence traceability", () => {
     expect(play).not.toHaveBeenCalled();
   });
 
-  it("seeks the interview video when a reviewer follows a citation", () => {
+  it("seeks the interview video when a reviewer follows a citation", async () => {
     const play = vi
       .spyOn(HTMLMediaElement.prototype, "play")
       .mockResolvedValue(undefined);
@@ -367,7 +373,9 @@ describe("evidence traceability", () => {
       screen.getByRole("button", { name: "본인 기여 근거 2 답변 보기" }),
     );
 
-    expect(document.querySelector("video")?.currentTime).toBe(121);
+    const video = document.querySelector("video");
+    fireEvent.loadedMetadata(video!);
+    await waitFor(() => expect(video?.currentTime).toBe(121));
     expect(play).toHaveBeenCalled();
   });
   it("records the reviewer's own reason when they overrule the AI, not a fixed string", () => {

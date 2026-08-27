@@ -382,7 +382,7 @@ export const initialHiringDraft: HiringDraft = {
   interviewDurationMinutes: 30,
   interviewLevel: "junior",
   axisWeights: { ...defaultAxisWeights },
-  interviewerName: "실무형 면접관",
+  interviewerName: "주니어 면접관",
   interviewerTone: "analytical",
   interviewerVoiceId: "Seoyeon",
 };

@@ -97,7 +97,7 @@ describe("InterviewSession", () => {
         expect(protocol.requestAutomatedAnswer).toHaveBeenCalledWith({
           questionTurnId,
           includeAudio: false,
-          answerProfile: "standard",
+          answerProfile: "developer_guide",
         }),
       );
       await waitFor(() =>

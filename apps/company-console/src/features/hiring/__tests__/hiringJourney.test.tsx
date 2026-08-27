@@ -169,25 +169,8 @@ describe("HiringWorkspace", () => {
     expect(screen.queryByText("내부 면접 정책")).toBeNull();
     expect(screen.queryByLabelText("금지 주제")).toBeNull();
     expect(screen.queryByLabelText("면접 시간(분)")).toBeNull();
-    expect(screen.getByText("면접 시간 안내")).toBeTruthy();
-    expect(
-      screen.getByText("모든 면접은 30분을 기준으로 진행됩니다"),
-    ).toBeTruthy();
-    expect(screen.getByText("9분 · 12분 · 9분 = 총 30분")).toBeTruthy();
-    expect(screen.getByText("1. 기술 면접 · 9분")).toBeTruthy();
-    expect(screen.getByText("2. 프로젝트 심층 · 12분")).toBeTruthy();
-    expect(screen.getByText("3. 협업·인성 · 9분")).toBeTruthy();
-    const timeExplanation = screen
-      .getByText("시간 배분은 어떻게 동작하나요?")
-      .closest("details");
-    expect(timeExplanation?.hasAttribute("open")).toBe(false);
-    fireEvent.click(screen.getByText("시간 배분은 어떻게 동작하나요?"));
-    expect(timeExplanation?.hasAttribute("open")).toBe(true);
-    expect(screen.getByText("가중치 4/10 → 12분")).toBeTruthy();
-    expect(screen.getByText("핵심 질문 최대 8개")).toBeTruthy();
-    expect(
-      screen.getByText(/답변을 마친 뒤 다음 단계로 이동하므로/),
-    ).toBeTruthy();
+    expect(screen.queryByText("면접 시간 안내")).toBeNull();
+    expect(screen.queryByText("02 · 진행 시간")).toBeNull();
     expect(screen.getByAltText("신입 AI 면접관").getAttribute("src")).toBe(
       "/interviewers/entry_eyes_open_mouth_closed.webp",
     );
@@ -197,6 +180,10 @@ describe("HiringWorkspace", () => {
     expect(screen.getByAltText("시니어 AI 면접관").getAttribute("src")).toBe(
       "/interviewers/senior_eyes_open_mouth_closed.webp",
     );
+    expect(screen.getByText("신입 면접관")).toBeTruthy();
+    expect(screen.getByText("주니어 면접관")).toBeTruthy();
+    expect(screen.getByText("시니어 면접관")).toBeTruthy();
+    expect(screen.queryByText("안내형 면접관")).toBeNull();
     expect(screen.getAllByText("한국어 남성 음성")).toHaveLength(3);
     expect(screen.queryByText("Seoyeon")).toBeNull();
     fireEvent.change(screen.getByLabelText("채용 인원"), {
@@ -205,21 +192,7 @@ describe("HiringWorkspace", () => {
     fireEvent.change(screen.getByLabelText("면접 정원"), {
       target: { value: "4" },
     });
-    expect(
-      screen.getByLabelText("예약 오토스케일링 예상 비용").textContent,
-    ).toContain("추가 증설 없음 · 0원");
-    fireEvent.change(screen.getByLabelText("면접 정원"), {
-      target: { value: "100" },
-    });
-    expect(
-      screen.getByLabelText("예약 오토스케일링 예상 비용").textContent,
-    ).toContain("필요 최소 용량 · API 5개 · Worker 5개");
-    expect(
-      screen.getByLabelText("예약 오토스케일링 예상 비용").textContent,
-    ).toContain("예약 증설 약 484원/회");
-    fireEvent.change(screen.getByLabelText("면접 정원"), {
-      target: { value: "4" },
-    });
+    expect(screen.queryByLabelText("예약 오토스케일링 예상 비용")).toBeNull();
     fireEvent.change(screen.getByLabelText("면접 시각"), {
       target: { value: "2026-09-15T14:00" },
     });
@@ -323,7 +296,7 @@ describe("HiringWorkspace", () => {
         communication: 16,
       },
       personaDefinition: {
-        name: "심층형 면접관",
+        name: "시니어 면접관",
         tone: "concise",
         voiceId: "Seoyeon",
       },
@@ -384,6 +357,27 @@ describe("HiringWorkspace", () => {
     expect(screen.getByText("기술 역량")).toBeTruthy();
     expect(screen.getByText("프로젝트 실행 역량")).toBeTruthy();
     expect(screen.getByText("협업·행동 역량")).toBeTruthy();
+  });
+
+  it("fills three required and three preferred requirement examples", async () => {
+    const api = createApi();
+    await advanceToEvaluation(api);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "자격요건 예시 6개 적용" }),
+    );
+
+    const list = screen.getByRole("list", { name: "자격요건 목록" });
+    const rows = within(list).getAllByRole("listitem");
+    expect(rows).toHaveLength(6);
+    expect(screen.getByText("필 3")).toBeTruthy();
+    expect(screen.getByText("우 3")).toBeTruthy();
+    expect(
+      (screen.getByLabelText("자격요건 1") as HTMLInputElement).value,
+    ).toContain("백엔드 플랫폼 엔지니어");
+    expect(
+      rows.every((row) => row.className.includes("requirement-example-in")),
+    ).toBe(true);
   });
 
   it("keeps qualification importance out of the form", async () => {

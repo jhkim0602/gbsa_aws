@@ -187,7 +187,7 @@ export class InterviewProtocolClient {
     input: Readonly<{
       questionTurnId: string;
       includeAudio: boolean;
-      answerProfile: "standard" | "entry_low";
+      answerProfile: "standard" | "entry_low" | "developer_guide";
     }>,
   ): Promise<GeneratedAutomatedAnswer> {
     const existing = this.pendingAutomatedAnswers.get(input.questionTurnId);

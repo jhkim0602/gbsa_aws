@@ -523,7 +523,7 @@ export function InterviewSession({
       .requestAutomatedAnswer({
         questionTurnId,
         includeAudio: false,
-        answerProfile: "standard",
+        answerProfile: "developer_guide",
       })
       .then((generated) => {
         guidedQuestionIdsRef.current.add(questionTurnId);
@@ -882,7 +882,7 @@ function logDeveloperAnswerGuide(
 ) {
   console.groupCollapsed("[WhyYou 개발 답변 가이드]");
   console.info("면접관 질문:", question);
-  console.info("추천 답변:", generated.text);
+  console.info("추천 답변:", formatDeveloperAnswerGuide(generated.text));
   console.info(
     "제출 자료 근거:",
     generated.grounded
@@ -890,6 +890,15 @@ function logDeveloperAnswerGuide(
       : "확인 가능한 근거 없음",
   );
   console.groupEnd();
+}
+
+function formatDeveloperAnswerGuide(text: string) {
+  const sentences = text
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .filter(Boolean);
+  return (sentences.length ? sentences : [text.trim()]).slice(0, 3).join("\n");
 }
 
 async function stopMedia(

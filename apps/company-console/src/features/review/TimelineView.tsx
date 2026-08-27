@@ -93,9 +93,39 @@ const RATIONALE_SUMMARY =
 const SOURCE_PROSE = "text-[8px] leading-[1.55] text-muted";
 
 export function seekToEvidence(
-  media: Pick<HTMLMediaElement, "currentTime" | "play">,
+  media: Pick<
+    HTMLMediaElement,
+    | "currentTime"
+    | "play"
+    | "readyState"
+    | "addEventListener"
+    | "removeEventListener"
+  >,
   startMs: number,
 ) {
+  if (media.readyState === 0) {
+    return new Promise<void>((resolve, reject) => {
+      const handleLoadedMetadata = () => {
+        cleanup();
+        media.currentTime = startMs / 1000;
+        media.play().then(resolve, reject);
+      };
+      const handleError = () => {
+        cleanup();
+        reject(new Error("영상 정보를 불러오지 못했습니다."));
+      };
+      const cleanup = () => {
+        media.removeEventListener("loadedmetadata", handleLoadedMetadata);
+        media.removeEventListener("error", handleError);
+      };
+
+      media.addEventListener("loadedmetadata", handleLoadedMetadata, {
+        once: true,
+      });
+      media.addEventListener("error", handleError, { once: true });
+    });
+  }
+
   media.currentTime = startMs / 1000;
   return media.play();
 }
@@ -134,7 +164,7 @@ export function TimelineView({
   useEffect(() => {
     if (selectedStartMs == null || !mediaRef.current) return;
     void seekToEvidence(mediaRef.current, selectedStartMs);
-  }, [selectedStartMs]);
+  }, [playbackUrl, selectedStartMs, showMedia]);
 
   // The cue text comes from the transcript already in memory; a blob URL keeps it
   // out of a second request that could not carry the tenant token.

@@ -27,6 +27,7 @@ ANTHROPIC_BEDROCK_VERSION = "bedrock-2023-05-31"
 class AutomatedAnswerProfile(StrEnum):
     STANDARD = "standard"
     ENTRY_LOW = "entry_low"
+    DEVELOPER_GUIDE = "developer_guide"
 
 
 _STANDARD_SYSTEM_PROMPT = """\
@@ -73,9 +74,24 @@ _ENTRY_LOW_SYSTEM_PROMPT = """\
 13. 설명이나 마크다운 없이 {"answer": "한국어 답변"} 형식의 JSON 객체 하나만 출력합니다.
 """
 
+_DEVELOPER_GUIDE_SYSTEM_PROMPT = """\
+당신은 면접 지원자가 질문에 답할 때 참고할 짧은 추천 답변을 만드는 생성기입니다.
+
+반드시 지켜야 할 규칙:
+1. provided_sources에 명시된 사실만 답변의 근거로 사용합니다.
+2. 자료에 없는 경력, 성과, 수치, 기술, 역할을 만들지 않습니다.
+3. 현재 질문에 바로 답하고 핵심 행동과 결과만 남깁니다.
+4. 자연스러운 한국어 구어체로 짧은 2~3문장만 작성합니다.
+5. 어려운 전문 용어와 줄임말을 되도록 쓰지 않습니다. 꼭 필요한 용어는 일상적인 말로 풀어 씁니다.
+6. 한 문장을 길게 늘이지 않고 지원자가 실제 면접에서 바로 말할 수 있게 작성합니다.
+7. 자동 생성, AI, 제공 자료, 출처 ID를 답변에서 언급하지 않습니다.
+8. 설명이나 마크다운 없이 {"answer": "한국어 답변"} 형식의 JSON 객체 하나만 출력합니다.
+"""
+
 _SYSTEM_PROMPTS = {
     AutomatedAnswerProfile.STANDARD: _STANDARD_SYSTEM_PROMPT,
     AutomatedAnswerProfile.ENTRY_LOW: _ENTRY_LOW_SYSTEM_PROMPT,
+    AutomatedAnswerProfile.DEVELOPER_GUIDE: _DEVELOPER_GUIDE_SYSTEM_PROMPT,
 }
 
 _ENTRY_LOW_LIMITATIONS = {
@@ -207,7 +223,9 @@ class AutomatedAnswerGenerator:
                 {
                     "anthropic_version": ANTHROPIC_BEDROCK_VERSION,
                     "system": _SYSTEM_PROMPTS[answer_profile],
-                    "max_tokens": 900,
+                    "max_tokens": (
+                        320 if answer_profile is AutomatedAnswerProfile.DEVELOPER_GUIDE else 900
+                    ),
                     "temperature": (
                         0.45 if answer_profile is AutomatedAnswerProfile.ENTRY_LOW else 0.35
                     ),
