@@ -36,7 +36,7 @@ async function advanceToPositionDescription() {
   fireEvent.click(
     screen.getByRole("button", { name: /서비스 백엔드 사용자 기능/ }),
   );
-  fireEvent.click(screen.getByRole("button", { name: "선택 완료" }));
+  fireEvent.click(screen.getByRole("button", { name: "적용하기" }));
   completePositionBasics();
   fireEvent.click(screen.getByRole("button", { name: "다음" }));
   await screen.findByRole("heading", { name: "포지션 상세" });
@@ -83,26 +83,38 @@ describe("HiringWorkspace", () => {
       target: { value: "직접 수정한 포지션명" },
     });
     expect((screen.getByLabelText("포지션명") as HTMLInputElement).value).toBe(
+      "",
+    );
+    fireEvent.click(
+      within(roleDialog).getByRole("button", { name: "적용하기" }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect((screen.getByLabelText("포지션명") as HTMLInputElement).value).toBe(
       "직접 수정한 포지션명",
     );
-    fireEvent.keyDown(editableTitle, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
     fireEvent.click(screen.getByLabelText("포지션명"));
     fireEvent.click(
       screen.getByRole("button", { name: /서비스 백엔드 사용자 기능/ }),
     );
     expect((screen.getByLabelText("포지션명") as HTMLInputElement).value).toBe(
-      "서비스 백엔드",
+      "직접 수정한 포지션명",
     );
     expect(screen.getByRole("dialog")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "선택 완료" }));
+    fireEvent.click(screen.getByRole("button", { name: "적용하기" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect((screen.getByLabelText("포지션명") as HTMLInputElement).value).toBe(
+      "서비스 백엔드",
+    );
 
     completePositionBasics();
     fireEvent.click(screen.getByRole("button", { name: "다음" }));
     expect(
       await screen.findByRole("heading", { name: "포지션 상세" }),
+    ).toBeTruthy();
+    expect(screen.getByText("이 내용은 어디에 쓰이나요?")).toBeTruthy();
+    expect(
+      screen.getByText(/면접 질문이나 점수에는 직접 반영되지 않으며/),
     ).toBeTruthy();
     expect(screen.queryByText("주요 기술 스택을 선택해 주세요")).toBeNull();
     expect(screen.queryByLabelText("기술 스택 검색")).toBeNull();

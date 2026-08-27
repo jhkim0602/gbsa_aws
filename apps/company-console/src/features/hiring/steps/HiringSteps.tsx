@@ -14,7 +14,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "../tech-stack-combobox/dialog";
@@ -112,6 +111,8 @@ export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
   const { draft, stage, submitting, update, onSubmit, onBack } = props;
   const [positionPage, setPositionPage] = useState<PositionPage>("basics");
   const [rolePickerOpen, setRolePickerOpen] = useState(false);
+  const [pendingRoleTitle, setPendingRoleTitle] = useState(draft.title);
+  const [pendingRoleType, setPendingRoleType] = useState(draft.roleType);
   const roleTitleInputRef = useRef<HTMLInputElement>(null);
   const periodValid =
     !draft.recruitmentStartAt ||
@@ -137,11 +138,21 @@ export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
   };
 
   function openRolePicker() {
+    setPendingRoleTitle(draft.title);
+    setPendingRoleType(draft.roleType);
     setRolePickerOpen(true);
   }
 
   function closeRolePicker() {
     setRolePickerOpen(false);
+  }
+
+  function applyRoleSelection() {
+    const title = pendingRoleTitle.trim();
+    if (!title || !pendingRoleType) return;
+    update("title", title);
+    update("roleType", pendingRoleType);
+    closeRolePicker();
   }
 
   function handleSubmit(event: FormEvent) {
@@ -233,7 +244,13 @@ export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
                   모집 종료일은 시작일 이후로 선택해 주세요.
                 </p>
               ) : null}
-              <Dialog open={rolePickerOpen} onOpenChange={setRolePickerOpen}>
+              <Dialog
+                open={rolePickerOpen}
+                onOpenChange={(open) => {
+                  if (open) openRolePicker();
+                  else closeRolePicker();
+                }}
+              >
                 <DialogContent
                   className="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-[980px]"
                   onOpenAutoFocus={(event) => {
@@ -255,42 +272,48 @@ export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
                     </DialogDescription>
                   </DialogHeader>
 
-                  <div className="border-b border-border-muted px-6 py-4">
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 border-b border-border-muted px-6 py-4 mw-520:grid-cols-[minmax(0,1fr)]">
                     <label className="grid gap-2 text-[11px] font-semibold text-ink">
                       포지션명 수정
                       <input
                         ref={roleTitleInputRef}
                         className={formInputClass()}
                         maxLength={200}
-                        value={draft.title}
+                        value={pendingRoleTitle}
                         placeholder="예: 백엔드 플랫폼 엔지니어"
                         onChange={(event) =>
-                          update("title", event.target.value)
+                          setPendingRoleTitle(event.target.value)
                         }
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            applyRoleSelection();
+                          }
+                        }}
                       />
                     </label>
+                    <button
+                      className={`${BUTTON_PRIMARY} min-w-[92px] mw-520:w-full`}
+                      disabled={
+                        !pendingRoleTitle.trim() || !pendingRoleType.trim()
+                      }
+                      type="button"
+                      onClick={applyRoleSelection}
+                    >
+                      적용하기
+                    </button>
                   </div>
 
                   <div className="min-h-0 overflow-y-auto">
                     <RoleCategoryField
-                      value={draft.roleType}
+                      value={pendingRoleType}
                       onRequestClose={closeRolePicker}
                       onChange={(value, suggestedTitle) => {
-                        update("roleType", value);
-                        if (suggestedTitle) update("title", suggestedTitle);
+                        setPendingRoleType(value);
+                        if (suggestedTitle) setPendingRoleTitle(suggestedTitle);
                       }}
                     />
                   </div>
-
-                  <DialogFooter className="border-t border-border px-6 py-4">
-                    <button
-                      className={BUTTON_PRIMARY}
-                      type="button"
-                      onClick={closeRolePicker}
-                    >
-                      선택 완료
-                    </button>
-                  </DialogFooter>
                 </DialogContent>
               </Dialog>
             </FormSection>
@@ -302,6 +325,15 @@ export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
               title="포지션 상세"
               description="회사 소개, 포지션 배경과 주요 업무를 하나의 본문으로 구성합니다."
             >
+              <aside className="grid gap-1.5 rounded-lg border border-brand/20 bg-brand-soft px-4 py-3 text-[11px] leading-5 text-ink-secondary">
+                <strong className="text-ink">이 내용은 어디에 쓰이나요?</strong>
+                <p>
+                  지원자가 읽는 채용 공고와 포지션 안내에 사용됩니다. 면접
+                  질문이나 점수에는 직접 반영되지 않으며, 질문 생성과 평가는
+                  다음 단계에서 작성하는 필수·우대 자격요건을 기준으로
+                  진행합니다.
+                </p>
+              </aside>
               <PositionDescriptionEditor
                 value={draft.description}
                 completed={draft.descriptionCompleted}
