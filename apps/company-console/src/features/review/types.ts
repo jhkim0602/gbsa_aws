@@ -33,7 +33,8 @@ export type RequirementAssessment = {
   } | null;
 };
 
-export type InterviewStage = "technical" | "project_deep_dive" | "behavioral";
+export type InterviewStage =
+  "adaptive" | "technical" | "project_deep_dive" | "behavioral";
 
 export type InterviewStageSummary = {
   stage: InterviewStage;
@@ -179,6 +180,8 @@ export type ReviewTimelineEntry = {
       | "source_conflict"
       | "ownership_uncertain"
       | "company_required_question"
+      | "job_requirement_required"
+      | "job_requirement_preferred"
       | "criterion_baseline";
     objective: string;
     questionType: string;

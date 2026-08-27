@@ -1257,11 +1257,11 @@ export interface components {
             readonly criterion_id: string;
             readonly generation_version: string;
             /** @enum {string} */
-            readonly interview_stage: "technical" | "project_deep_dive" | "behavioral";
+            readonly interview_stage: "adaptive" | "technical" | "project_deep_dive" | "behavioral";
             readonly objective: string;
             readonly policy_result: string;
             /** @enum {string} */
-            readonly question_type: "common" | "personalized" | "follow_up" | "degraded" | "stage_opening" | "adaptive" | "stage_final";
+            readonly question_type: "common" | "personalized" | "follow_up" | "degraded" | "stage_opening" | "adaptive" | "stage_final" | "company_required";
             readonly retrieval_version: string;
             readonly source_references: readonly {
                 readonly excerpt: string;
@@ -1271,7 +1271,7 @@ export interface components {
                 readonly source_type: string;
             }[];
             /** @enum {string} */
-            readonly verification_target_type: "not_mentioned" | "claim_found" | "detail_missing" | "source_conflict" | "ownership_uncertain";
+            readonly verification_target_type: "not_mentioned" | "claim_found" | "detail_missing" | "source_conflict" | "ownership_uncertain" | "company_required_question" | "job_requirement_required" | "job_requirement_preferred" | "criterion_baseline";
         };
         readonly RecordingChunk: {
             readonly chunk_sequence: number;

@@ -6,6 +6,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from interview_evidence.company_management.application.company_service import (
     CompanyManagementPublic,
     CriterionSnapshot,
+    JobRequirementSnapshot,
 )
 from interview_evidence.interview_engine.adapters.retrieval_client import RetrievalRecord
 from interview_evidence.interview_engine.application.authorization import (
@@ -155,9 +156,13 @@ class SubmissionInterviewBoundary:
         ):
             raise PermissionError("interview plan is outside tenant scope")
         criterion_ids = tuple(criterion.criterion_id for criterion in criteria.criteria)
-        # Job requirements are reporting dimensions, not question prompts. Questions
-        # follow stable competency stages plus the company's explicit required questions.
-        verification_targets = _interview_targets(criteria.criteria)
+        # The interview flow is built from the company's own requirements and explicit
+        # questions. The engine retrieves applicant-specific material for each target and
+        # decides at runtime whether to move on or ask a focused follow-up.
+        verification_targets = _interview_targets(
+            criteria.criteria,
+            criteria.job_requirements,
+        )
         verification_prompt = next(
             (
                 point.prompt
@@ -226,9 +231,12 @@ def _criterion_text(
 
 def _interview_targets(
     criteria: tuple[CriterionSnapshot, ...],
+    requirements: tuple[JobRequirementSnapshot, ...] = (),
 ) -> tuple[VerificationTargetPlan, ...]:
     mandatory: list[VerificationTargetPlan] = []
+    requirement_targets: list[VerificationTargetPlan] = []
     baseline: list[VerificationTargetPlan] = []
+    criteria_by_code = {criterion.code: criterion for criterion in criteria}
     for criterion in criteria:
         for index, question in enumerate(criterion.common_questions):
             normalized = _as_question(question)
@@ -244,7 +252,7 @@ def _interview_targets(
                     objective=normalized,
                     missing_dimensions=(),
                     follow_up_directions=(),
-                    max_follow_ups=0,
+                    max_follow_ups=1,
                     common_question=normalized,
                     time_budget_seconds=180,
                 )
@@ -267,7 +275,51 @@ def _interview_targets(
                 time_budget_seconds=_time_budget_seconds(criterion),
             )
         )
-    return tuple((*mandatory, *baseline))
+    for requirement in sorted(
+        requirements,
+        key=lambda item: (
+            0 if item.requirement_type == "required" else 1,
+            item.priority,
+        ),
+    ):
+        criterion = criteria_by_code.get(requirement.criterion_code)
+        if criterion is None:
+            continue
+        statement = requirement.statement.strip()
+        requirement_targets.append(
+            VerificationTargetPlan(
+                verification_target_id=uuid5(
+                    NAMESPACE_URL,
+                    f"iep:job-requirement:{requirement.job_requirement_id}:{statement}",
+                ),
+                criterion_id=criterion.criterion_id,
+                criterion_text=statement,
+                target_type=f"job_requirement_{requirement.requirement_type}",
+                objective=(
+                    f"‘{statement}’ 자격요건을 지원자의 제출 자료와 면접 답변을 연결해 확인합니다."
+                ),
+                missing_dimensions=(
+                    "구체적인 상황 또는 문제",
+                    "본인이 직접 수행한 행동",
+                    "선택이나 판단의 근거",
+                    "결과 또는 검증 방법",
+                ),
+                follow_up_directions=(
+                    "제출 자료에 적힌 경험과 답변의 연결",
+                    "본인이 직접 담당한 범위",
+                    "대안과 최종 판단의 이유",
+                    "측정하거나 확인한 결과",
+                ),
+                max_follow_ups=(2 if requirement.requirement_type == "required" else 1),
+                common_question=(
+                    f"제출 자료와 연결해 ‘{statement}’에 해당하는 본인의 경험과 판단 "
+                    "근거를 설명해 주세요."
+                ),
+                time_budget_seconds=(240 if requirement.requirement_type == "required" else 180),
+            )
+        )
+    configured = tuple((*mandatory, *requirement_targets))
+    return configured or tuple(baseline)
 
 
 def _baseline_question(criterion: CriterionSnapshot) -> str:

@@ -247,10 +247,19 @@ describe("HiringWorkspace", () => {
     expect(screen.queryByLabelText("면접 시간(분)")).toBeNull();
     expect(screen.getByText("반드시 물어볼 질문")).toBeTruthy();
     expect(
-      screen.getByText(/필수·우대 자격요건은 질문을 직접 만들지 않고/),
+      screen.getByRole("region", { name: "지원자별 적응형 면접 구성" }),
+    ).toBeTruthy();
+    expect(screen.getByText("기업 기준으로 구성")).toBeTruthy();
+    expect(screen.getByText("지원자 자료와 연결")).toBeTruthy();
+    expect(screen.getByText("필요한 만큼만 꼬리질문")).toBeTruthy();
+    expect(
+      screen.getByText(/답변에 따라 질문의 깊이와 꼬리질문을 유동적으로 조정/),
     ).toBeTruthy();
     expect(
-      screen.getByText(/아래 질문만 기업이 직접 지정한 질문으로 별도 표시/),
+      screen.getByText(/필수·우대 자격요건은 AI가 확인할 면접 주제/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/꼬리질문은 지원자마다 다르게 이어집니다/),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "필수 질문 추가" }));
     fireEvent.change(screen.getByLabelText("필수 질문 1"), {
@@ -460,10 +469,10 @@ describe("HiringWorkspace", () => {
     expect(screen.getByText("자격요건을 적으면 이렇게 동작해요")).toBeTruthy();
     expect(screen.getByText("“대규모 API 설계 경험”")).toBeTruthy();
     expect(screen.getByText("우대 사항 예시")).toBeTruthy();
-    expect(screen.getByText(/각각 하나의 리포트 판정/)).toBeTruthy();
     expect(
-      screen.getByText(/다음 단계의 ‘필수 질문’에 따로 입력/),
+      screen.getByText(/면접에서 확인할 주제이자 하나의 리포트/),
     ).toBeTruthy();
+    expect(screen.getByText(/지원자 자료에 맞춰 자연스럽게 질문/)).toBeTruthy();
   });
 
   it("fills realistic project qualification examples with a staggered animation", async () => {
@@ -539,7 +548,7 @@ describe("HiringWorkspace", () => {
 
     expect(screen.getByRole("list", { name: "자격요건 목록" })).toBeTruthy();
     expect(
-      screen.getByText(/필수·우대 항목은 질문이 아니라 각각 하나의 리포트/),
+      screen.getByText(/면접에서 확인할 주제이자 하나의 리포트/),
     ).toBeTruthy();
     expect(screen.queryByRole("slider")).toBeNull();
     expect(screen.queryByText(/다섯 방향/)).toBeNull();

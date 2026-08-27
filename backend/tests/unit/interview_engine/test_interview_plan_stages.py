@@ -27,27 +27,24 @@ def _plan(**overrides: Any) -> InterviewPlan:
     return InterviewPlan(**values)
 
 
-def test_plan_has_fixed_stages_and_a_separate_warm_up() -> None:
+def test_plan_uses_one_adaptive_flow_and_a_separate_warm_up() -> None:
     plan = _plan()
 
     assert plan.stages == DEFAULT_INTERVIEW_STAGES
-    assert plan.stages == (
-        InterviewStage.TECHNICAL,
-        InterviewStage.PROJECT_DEEP_DIVE,
-        InterviewStage.BEHAVIORAL,
-    )
+    assert plan.stages == (InterviewStage.ADAPTIVE,)
+    assert plan.stage_time_budget_seconds(InterviewStage.ADAPTIVE) == 30 * 60
     assert plan.opening_prompt.startswith("안녕하세요.")
     assert plan.opening_prompt.endswith("말씀해 주시겠어요?")
     assert plan.is_warm_up_question(plan.opening_prompt)
     assert not plan.is_warm_up_question(plan.initial_question)
 
 
-def test_plan_rejects_a_custom_stage_sequence() -> None:
+def test_plan_rejects_an_empty_flow() -> None:
     with pytest.raises(
         ValueError,
-        match="fixed interview stage sequence",
+        match="at least one unique interview flow stage",
     ):
-        _plan(stages=(InterviewStage.TECHNICAL,))
+        _plan(stages=())
 
 
 def test_plan_rejects_a_configurable_duration() -> None:

@@ -251,8 +251,9 @@ export function EvaluationDesigner({
             필수·우대 자격요건
           </h3>
           <p className={DESCRIPTION}>
-            작성한 각 항목은 질문 문구를 직접 만들지 않습니다. 제출 자료와 면접
-            답변을 함께 판정해 최종 리포트에 항목별 충족도로 보여줍니다.
+            작성한 각 항목은 AI가 확인할 면접 주제이자 리포트 판정 기준이
+            됩니다. 지원자의 제출 자료와 답변을 연결해 항목별 충족도로
+            보여줍니다.
           </p>
         </div>
       </header>
@@ -447,9 +448,9 @@ function RequirementFlowOverview({
         "필수·우대 문장마다 리포트에서 확인할 자격요건 항목을 하나씩 만듭니다.",
     },
     {
-      title: "제출 자료와 면접 답변에서 근거 확인",
+      title: "제출 자료를 엮어 질문",
       description:
-        "이력서·포트폴리오와 실제 면접 답변을 함께 살펴 관련 근거를 모읍니다.",
+        "이력서·포트폴리오·GitHub에서 관련 근거를 찾아 지원자별 질문을 만듭니다.",
     },
     {
       title: "점수 없이 상태로 리포트 표시",
@@ -471,8 +472,7 @@ function RequirementFlowOverview({
           자격요건을 적으면 이렇게 동작해요
         </h4>
         <p className="text-[8px] leading-[1.5] text-muted">
-          작성한 필수·우대 항목은 질문이 아니라 각각 하나의 리포트 판정 기준이
-          됩니다.
+          각 항목은 면접에서 확인할 주제이자 하나의 리포트 판정 기준이 됩니다.
         </p>
       </header>
 
@@ -508,9 +508,9 @@ function RequirementFlowOverview({
       </ol>
 
       <p className="border-l-2 border-brand pl-2.5 text-[8px] leading-[1.5] text-ink-secondary">
-        이 항목으로 면접 질문을 직접 만들지는 않습니다. 실제로 반드시 물어볼
-        내용은 다음 단계의 ‘필수 질문’에 따로 입력하며, 자격요건은 자료와 답변에
-        근거가 없으면 판단 불가로 남습니다.
+        AI는 이 문장을 그대로 반복하지 않고 지원자 자료에 맞춰 자연스럽게
+        질문합니다. 모든 지원자에게 같은 문구로 꼭 물어볼 내용은 다음 단계의
+        ‘필수 질문’에 입력하며, 근거가 없으면 리포트에는 판단 불가로 남습니다.
       </p>
     </aside>
   );

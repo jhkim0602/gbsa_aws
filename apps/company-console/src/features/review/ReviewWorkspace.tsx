@@ -151,7 +151,7 @@ export function summarizeInterviewStages(
   report?: ReviewReport,
   evidenceContext?: ReturnType<typeof buildEvidenceContext>,
 ): InterviewStageSummary[] {
-  const stages: InterviewStageSummary[] = [
+  const legacyStages: InterviewStageSummary[] = [
     {
       stage: "technical",
       label: "기술 면접",
@@ -171,6 +171,19 @@ export function summarizeInterviewStages(
       evidenceCount: 0,
     },
   ];
+  const hasAdaptiveFlow = entries.some(
+    (entry) => entry.questionRationale?.interviewStage === "adaptive",
+  );
+  const stages: InterviewStageSummary[] = hasAdaptiveFlow
+    ? [
+        {
+          stage: "adaptive",
+          label: "기업 기준 적응형 면접",
+          questionCount: 0,
+          evidenceCount: 0,
+        },
+      ]
+    : legacyStages;
   for (const entry of entries) {
     const stage = entry.questionRationale?.interviewStage;
     if (!stage) continue;

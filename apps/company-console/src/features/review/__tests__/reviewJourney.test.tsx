@@ -211,6 +211,31 @@ describe("Lane D review journey", () => {
     ]);
   });
 
+  it("summarizes new interviews as one adaptive company flow", () => {
+    const stages = summarizeInterviewStages([
+      {
+        entryId: "question-adaptive",
+        type: "question",
+        startMs: 0,
+        endMs: 1000,
+        text: "자격요건 기반 질문",
+        questionRationale: {
+          criterionId: "criterion-1",
+          interviewStage: "adaptive",
+          verificationTargetType: "job_requirement_required",
+          objective: "기업 자격요건 확인",
+          questionType: "adaptive",
+          policyResult: "accepted",
+          sourceReferences: [],
+        },
+      },
+    ]);
+
+    expect(stages.map((stage) => [stage.label, stage.questionCount])).toEqual([
+      ["기업 기준 적응형 면접", 1],
+    ]);
+  });
+
   it("keeps only note and configurable final-decision controls", async () => {
     render(
       <HumanReview

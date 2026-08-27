@@ -375,6 +375,7 @@ def _follow_up_for(
 
 def _stage_label(stage: str) -> str:
     return {
+        "adaptive": "기업 기준 적응형 면접",
         "technical": "기술 면접",
         "project_deep_dive": "프로젝트 심층",
         "behavioral": "협업·인성 면접",

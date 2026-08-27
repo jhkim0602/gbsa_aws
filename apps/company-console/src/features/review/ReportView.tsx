@@ -1003,6 +1003,7 @@ function EvidenceCard({
 }
 
 const interviewStageLabels: Record<InterviewStage, string> = {
+  adaptive: "기업 기준",
   technical: "기술",
   project_deep_dive: "프로젝트",
   behavioral: "협업·인성",

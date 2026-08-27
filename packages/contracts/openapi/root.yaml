@@ -2512,6 +2512,7 @@ components:
         interview_stage:
           type: string
           enum:
+          - adaptive
           - technical
           - project_deep_dive
           - behavioral
@@ -2523,6 +2524,10 @@ components:
           - detail_missing
           - source_conflict
           - ownership_uncertain
+          - company_required_question
+          - job_requirement_required
+          - job_requirement_preferred
+          - criterion_baseline
         objective:
           type: string
           minLength: 1
@@ -2537,6 +2542,7 @@ components:
           - stage_opening
           - adaptive
           - stage_final
+          - company_required
         retrieval_version:
           type: string
           minLength: 1

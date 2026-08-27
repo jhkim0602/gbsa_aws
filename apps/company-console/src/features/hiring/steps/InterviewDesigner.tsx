@@ -27,6 +27,23 @@ import {
 
 const MAX_MANDATORY_QUESTIONS = 3;
 
+const adaptiveInterviewFlow = [
+  {
+    label: "기업 기준으로 구성",
+    description:
+      "필수·우대 자격요건과 반드시 물어볼 질문을 확인 순서에 넣습니다.",
+  },
+  {
+    label: "지원자 자료와 연결",
+    description:
+      "이력서·포트폴리오·GitHub에서 관련 근거를 찾아 질문에 엮습니다.",
+  },
+  {
+    label: "필요한 만큼만 꼬리질문",
+    description: "답변의 본인 역할·판단 근거·결과가 부족할 때만 더 확인합니다.",
+  },
+] as const;
+
 const interviewerOptions: ReadonlyArray<{
   level: InterviewLevel;
   name: string;
@@ -313,11 +330,11 @@ export function InterviewDesigner({
               <MessageSquareText aria-hidden="true" size={17} />
             </span>
             <p className="text-[10px] leading-[1.65] text-ink-secondary">
-              앞에서 작성한 필수·우대 자격요건은 질문을 직접 만들지 않고, 제출
-              자료와 면접 답변을 판정해 리포트의 충족 상태를 구성합니다.
+              앞에서 작성한 필수·우대 자격요건은 AI가 확인할 면접 주제가 되고,
+              지원자의 제출 자료와 연결해 질문을 구성합니다.
               <br />
-              면접은 기술·프로젝트·협업의 3단계로 진행되며, 아래 질문만 기업이
-              직접 지정한 질문으로 별도 표시됩니다.
+              아래 질문은 모든 지원자에게 반드시 묻고, 이후 답변에 필요한
+              꼬리질문은 지원자마다 다르게 이어집니다.
             </p>
           </div>
           <div className="grid gap-2 bg-white px-4 py-4">
@@ -351,9 +368,38 @@ export function InterviewDesigner({
                 </label>
               ))
             ) : (
-              <p className="rounded-md border border-dashed border-border px-3 py-4 text-center text-[9px] text-muted">
-                필수 질문이 없으면 AI가 3단계 면접 질문을 구성합니다.
-              </p>
+              <section
+                className="grid gap-2 rounded-md border border-dashed border-brand/25 bg-brand-soft/20 p-3"
+                aria-label="지원자별 적응형 면접 구성"
+              >
+                <header className="grid gap-0.5 text-center">
+                  <strong className="text-[10px] text-ink">
+                    정해진 3단계 대신 기업 기준과 지원자 근거로 진행합니다
+                  </strong>
+                  <span className="text-[8px] leading-[1.45] text-muted">
+                    필수 질문이 없어도 자격요건을 중심으로 묻고, 답변에 따라
+                    질문의 깊이와 꼬리질문을 유동적으로 조정합니다.
+                  </span>
+                </header>
+                <ol className="grid grid-cols-3 gap-1.5 mw-620:grid-cols-1">
+                  {adaptiveInterviewFlow.map((step, index) => (
+                    <li
+                      className="grid gap-1 rounded-md border border-border-muted bg-white px-2.5 py-2.5"
+                      key={step.label}
+                    >
+                      <span className="font-mono text-[8px] font-semibold text-brand">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      <strong className="text-[9px] text-ink">
+                        {step.label}
+                      </strong>
+                      <small className="text-[8px] leading-[1.45] text-muted">
+                        {step.description}
+                      </small>
+                    </li>
+                  ))}
+                </ol>
+              </section>
             )}
             {draft.mandatoryQuestions.length < MAX_MANDATORY_QUESTIONS ? (
               <button

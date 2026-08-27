@@ -42,6 +42,11 @@ def _plan() -> InterviewPlan:
         retrieval_config_version="stage-aware-hybrid-v1",
         voice_id="Seoyeon",
         verification_targets=(_target(),),
+        stages=(
+            InterviewStage.TECHNICAL,
+            InterviewStage.PROJECT_DEEP_DIVE,
+            InterviewStage.BEHAVIORAL,
+        ),
     )
 
 
@@ -269,6 +274,11 @@ def test_each_stage_uses_the_matching_evaluation_criterion() -> None:
         retrieval_config_version="stage-aware-hybrid-v1",
         voice_id="Seoyeon",
         verification_targets=(technical, project, behavioral),
+        stages=(
+            InterviewStage.TECHNICAL,
+            InterviewStage.PROJECT_DEEP_DIVE,
+            InterviewStage.BEHAVIORAL,
+        ),
     )
 
     assert plan.initial_target_for_stage(InterviewStage.TECHNICAL) == technical

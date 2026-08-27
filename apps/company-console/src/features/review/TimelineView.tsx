@@ -413,6 +413,8 @@ function targetTypeLabel(
     source_conflict: "자료 간 차이 확인",
     ownership_uncertain: "본인 기여 확인",
     company_required_question: "기업 설정 질문",
+    job_requirement_required: "필수 자격요건",
+    job_requirement_preferred: "우대 자격요건",
     criterion_baseline: "단계 기본 질문",
   }[type];
 }
@@ -424,6 +426,7 @@ function interviewStageLabel(
     string,
 ) {
   return {
+    adaptive: "기업 기준 적응형 면접",
     technical: "기술 면접",
     project_deep_dive: "프로젝트 심층",
     behavioral: "협업·인성",

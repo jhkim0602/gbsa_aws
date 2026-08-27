@@ -773,6 +773,17 @@ class VerificationTargetType(StrEnum):
     detail_missing = "detail_missing"
     source_conflict = "source_conflict"
     ownership_uncertain = "ownership_uncertain"
+    company_required_question = "company_required_question"
+    job_requirement_required = "job_requirement_required"
+    job_requirement_preferred = "job_requirement_preferred"
+    criterion_baseline = "criterion_baseline"
+
+
+class InterviewStage(StrEnum):
+    adaptive = "adaptive"
+    technical = "technical"
+    project_deep_dive = "project_deep_dive"
+    behavioral = "behavioral"
 
 
 class QuestionType(StrEnum):
@@ -780,6 +791,10 @@ class QuestionType(StrEnum):
     personalized = "personalized"
     follow_up = "follow_up"
     degraded = "degraded"
+    stage_opening = "stage_opening"
+    adaptive = "adaptive"
+    stage_final = "stage_final"
+    company_required = "company_required"
 
 
 class SourceReference(BaseModel):
@@ -797,6 +812,7 @@ class QuestionRationaleView(BaseModel):
         extra="forbid",
     )
     criterion_id: UUID
+    interview_stage: InterviewStage
     verification_target_type: VerificationTargetType
     objective: constr(min_length=1, max_length=4000)
     question_type: QuestionType

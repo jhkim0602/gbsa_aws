@@ -125,7 +125,7 @@ class InterviewService:
         voice_id: str,
         occurred_at: datetime,
         interview_level: InterviewLevel = DEFAULT_INTERVIEW_LEVEL,
-        interview_stage: InterviewStage = InterviewStage.TECHNICAL,
+        interview_stage: InterviewStage = InterviewStage.ADAPTIVE,
         question_type: str = "adaptive",
         answered_stage: InterviewStage | None = None,
         answered_target: VerificationTargetPlan | None = None,
@@ -277,6 +277,7 @@ class InterviewService:
         company_required_question = (
             question_target is not None
             and question_target.target_type == "company_required_question"
+            and question_type != "follow_up"
         )
         effective_question_type = "company_required" if company_required_question else question_type
         verification_objective = (
@@ -293,8 +294,9 @@ class InterviewService:
             if question_type == "follow_up" and answered_stage is interview_stage
             else ()
         )
-        # Requirements are assessed in the report; only explicit company questions are
-        # copied verbatim into the interview question stream.
+        # Every generated question is anchored to either a company requirement or an
+        # explicit company question. Explicit questions keep their wording; requirement
+        # targets are personalized with the applicant's retrieved material.
         required_assessment_axis = None
         built_context = self._context_builder.build(
             recent_turns=tuple(

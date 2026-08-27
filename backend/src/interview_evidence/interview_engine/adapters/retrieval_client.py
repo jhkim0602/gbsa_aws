@@ -11,6 +11,7 @@ from interview_evidence.shared.aws_clients.ports import TextEmbedder
 from interview_evidence.shared.tenant import TenantContext
 
 _STAGE_SOURCE_BOOSTS: Final = {
+    InterviewStage.ADAPTIVE: {},
     InterviewStage.TECHNICAL: {
         "candidate_code_unit": 0.15,
         "repository_overview": 0.1,
@@ -26,6 +27,13 @@ _STAGE_SOURCE_BOOSTS: Final = {
 }
 _PROJECT_GIT_SOURCE_TYPES: Final = frozenset({"candidate_code_unit", "repository_overview"})
 _STAGE_MATERIAL_BOOSTS: Final = {
+    InterviewStage.ADAPTIVE: {
+        "resume": 0.16,
+        "career_description": 0.16,
+        "portfolio": 0.16,
+        "projects": 0.16,
+        "cover_letter": 0.1,
+    },
     InterviewStage.TECHNICAL: {
         "resume": 0.24,
         "career_description": 0.18,
@@ -135,7 +143,7 @@ class RetrievalClient:
         criterion_id: UUID,
         config_version: str,
         exact_symbol: str | None = None,
-        interview_stage: InterviewStage = InterviewStage.TECHNICAL,
+        interview_stage: InterviewStage = InterviewStage.ADAPTIVE,
     ) -> RetrievalOutcome:
         del session_id
         try:
