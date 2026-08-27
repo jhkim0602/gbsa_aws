@@ -176,6 +176,9 @@ describe("HiringWorkspace", () => {
     expect(
       await screen.findByText(/미리보기 안의 내용을 클릭하면 바로 수정/),
     ).toBeTruthy();
+    expect(
+      (screen.getByLabelText("초대 메일 헤드라인") as HTMLInputElement).value,
+    ).toBe("지원해주셔서 감사합니다");
     expect(screen.queryByText("안내 메시지")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "예시 적용" }));

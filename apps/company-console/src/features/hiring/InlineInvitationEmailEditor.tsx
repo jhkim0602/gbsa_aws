@@ -22,7 +22,7 @@ const descriptionExample = `우리 팀은 기업 고객이 사용하는 AI 기�
 
 const fallbackTemplate: InvitationEmailTemplateState = {
   subject: "[{{회사명}}] {{포지션명}} 온라인 면접 안내",
-  headline: "서류 전형 합격을 축하드립니다",
+  headline: "지원해주셔서 감사합니다",
   intro:
     "{{지원자명}}님, {{회사명}} {{포지션명}} 포지션에 지원해주셔서 감사합니다.\n서류 검토 결과 다음 단계인 온라인 구조화 면접에 초대드립니다.",
   guides: [],

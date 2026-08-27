@@ -104,7 +104,7 @@ class InvitationEmailTemplate(BaseModel):
 
 DEFAULT_INVITATION_EMAIL_TEMPLATE: Final = InvitationEmailTemplate(
     subject=f"[{_PLACEHOLDER_COMPANY}] {_PLACEHOLDER_POSITION} 온라인 면접 안내",
-    headline="서류 전형 합격을 축하드립니다",
+    headline="지원해주셔서 감사합니다",
     intro=(
         f"{_PLACEHOLDER_APPLICANT}님, {_PLACEHOLDER_COMPANY} {_PLACEHOLDER_POSITION} 포지션에 "
         "지원해주셔서 진심으로 감사합니다.\n"

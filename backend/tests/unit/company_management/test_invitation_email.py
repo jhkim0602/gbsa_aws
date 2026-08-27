@@ -98,7 +98,7 @@ def test_handler_renders_the_company_template_into_the_delivered_message() -> No
 
     rendered = sender.messages[0].rendered
     assert rendered.subject == "[넥스트하이어] 백엔드 엔지니어 온라인 면접 안내"
-    assert "서류 전형 합격을 축하드립니다" in rendered.html_body
+    assert "지원해주셔서 감사합니다" in rendered.html_body
     assert f"{APPLICANT_NAME}님" in rendered.html_body
     assert SECRET_URL in rendered.html_body
     assert "면접 시작하기" in rendered.text_body
