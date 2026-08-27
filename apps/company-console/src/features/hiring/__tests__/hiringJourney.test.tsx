@@ -207,6 +207,21 @@ describe("HiringWorkspace", () => {
 
     fireEvent.change(description, { target: { value: "수정된 내용" } });
     expect(saveButton).toHaveProperty("disabled", false);
+
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "다음" }));
+    expect(
+      screen.getByText("수정한 포지션 상세와 초대 메일을 먼저 저장해 주세요."),
+    ).toBeTruthy();
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "center",
+    });
+    expect(saveButton).toBe(document.activeElement);
   });
 
   it("publishes evaluation items with internal verification guides", async () => {

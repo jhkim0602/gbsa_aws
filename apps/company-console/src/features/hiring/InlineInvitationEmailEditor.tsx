@@ -162,6 +162,7 @@ export function InlineInvitationEmailEditor({
           </button>
           <button
             className={BUTTON_PRIMARY}
+            data-validation-target="description-save"
             disabled={!ready || saving || (!dirty && descriptionCompleted)}
             type="button"
             onClick={save}

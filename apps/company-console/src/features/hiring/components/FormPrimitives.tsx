@@ -130,13 +130,16 @@ export function FormActions({
   disabled = false,
   variant = "wizard",
   onBack,
+  onDisabledClick,
 }: {
   submitting: boolean;
   label: string;
   disabled?: boolean;
   variant?: "wizard" | "modal";
   onBack?: () => void;
+  onDisabledClick?: () => void;
 }) {
+  const blocked = disabled && !submitting;
   return (
     <footer className={ACTIONS[variant]}>
       <span
@@ -162,8 +165,10 @@ export function FormActions({
           // `.form-actions .button-primary { width: 100% }` at 620px is not scoped to the
           // modal, so it applies in the wizard too.
           className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-brand bg-brand px-[18px] text-[14px] font-semibold text-white shadow-soft hover:not-disabled:bg-brand-strong mw-620:w-full"
-          type="submit"
-          disabled={submitting || disabled}
+          type={blocked && onDisabledClick ? "button" : "submit"}
+          aria-disabled={blocked || undefined}
+          disabled={submitting || (disabled && !onDisabledClick)}
+          onClick={blocked ? onDisabledClick : undefined}
         >
           {submitting ? "처리 중" : label}
           {submitting ? null : <ArrowRight size={14} aria-hidden="true" />}

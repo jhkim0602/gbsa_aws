@@ -71,6 +71,8 @@ export function PositionStep(
   const [rolePickerOpen, setRolePickerOpen] = useState(false);
   const [pendingRoleTitle, setPendingRoleTitle] = useState(draft.title);
   const [pendingRoleType, setPendingRoleType] = useState(draft.roleType);
+  const [validationMessage, setValidationMessage] = useState("");
+  const formRef = useRef<HTMLFormElement>(null);
   const roleTitleInputRef = useRef<HTMLInputElement>(null);
   const periodValid =
     !draft.recruitmentStartAt ||
@@ -115,6 +117,7 @@ export function PositionStep(
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    setValidationMessage("");
     if (stage === "application") {
       onSubmit(event);
       return;
@@ -127,6 +130,50 @@ export function PositionStep(
       return;
     }
     onSubmit(event);
+  }
+
+  function showMissingField() {
+    let message = "필수 입력값을 확인해 주세요.";
+    let selector = "";
+
+    if (stage === "application") {
+      message = "지원자에게 요청할 필수 제출 자료를 하나 이상 선택해 주세요.";
+      selector = 'input[type="checkbox"]';
+    } else if (positionPage === "basics") {
+      if (!draft.title.trim()) {
+        message = "포지션명을 입력해 주세요.";
+        selector = '[aria-label="포지션명"]';
+      } else if (!draft.recruitmentStartAt) {
+        message = "모집 시작일을 선택해 주세요.";
+        selector = '[aria-label="모집 시작일"]';
+      } else if (!draft.recruitmentEndAt) {
+        message = "모집 종료일을 선택해 주세요.";
+        selector = '[aria-label="모집 종료일"]';
+      } else if (!periodValid) {
+        message = "모집 종료일은 시작일 이후로 선택해 주세요.";
+        selector = '[aria-label="모집 종료일"]';
+      }
+    } else if (!draft.description.trim()) {
+      message = "메일 안의 포지션 상세를 입력해 주세요.";
+      selector = '[aria-label="포지션 설명"]';
+    } else if (!draft.descriptionCompleted) {
+      message = "수정한 포지션 상세와 초대 메일을 먼저 저장해 주세요.";
+      selector = '[data-validation-target="description-save"]';
+    }
+
+    setValidationMessage(message);
+    const target = formRef.current?.querySelector<HTMLElement>(selector);
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.focus({ preventScroll: true });
+    target.setAttribute("aria-invalid", "true");
+    target.style.outline = "2px solid #d64545";
+    target.style.outlineOffset = "3px";
+    window.setTimeout(() => {
+      target.removeAttribute("aria-invalid");
+      target.style.removeProperty("outline");
+      target.style.removeProperty("outline-offset");
+    }, 2400);
   }
 
   function handleBack() {
@@ -144,7 +191,7 @@ export function PositionStep(
     stage === "application" || positionPage !== positionPageOrder[0];
 
   return (
-    <form className="grid" onSubmit={handleSubmit}>
+    <form ref={formRef} className="grid" onSubmit={handleSubmit}>
       {stage === "position" ? (
         <>
           {positionPage === "basics" ? (
@@ -156,6 +203,7 @@ export function PositionStep(
               <div className={POSITION_BASICS_GRID}>
                 <Field label="포지션명">
                   <input
+                    aria-label="포지션명"
                     aria-expanded={rolePickerOpen}
                     aria-haspopup="dialog"
                     className={formInputClass()}
@@ -175,6 +223,7 @@ export function PositionStep(
                 </Field>
                 <Field label="모집 시작일">
                   <input
+                    aria-label="모집 시작일"
                     className={formInputClass()}
                     required
                     type="date"
@@ -186,6 +235,7 @@ export function PositionStep(
                 </Field>
                 <Field label="모집 종료일">
                   <input
+                    aria-label="모집 종료일"
                     className={formInputClass()}
                     required
                     type="date"
@@ -320,10 +370,19 @@ export function PositionStep(
         <ApplicantMaterials draft={draft} update={update} />
       ) : null}
 
+      {validationMessage ? (
+        <p
+          className={`${formAlertClass()} fixed right-5 bottom-5 z-[80] max-w-[380px] shadow-lg mw-620:right-3 mw-620:bottom-3 mw-620:left-3`}
+          role="alert"
+        >
+          {validationMessage}
+        </p>
+      ) : null}
       <FormActions
         submitting={submitting}
         disabled={!readyByStage[stage]}
         label="다음"
+        onDisabledClick={showMissingField}
         onBack={canGoBack ? handleBack : undefined}
       />
     </form>
