@@ -161,6 +161,7 @@ const hiringApi: HiringWorkspaceApi = {
           name: input.personaDefinition.name,
           tone: input.personaDefinition.tone,
           voice_id: input.personaDefinition.voiceId,
+          system_prompt: input.personaDefinition.systemPrompt,
         },
       }),
     });
@@ -773,6 +774,8 @@ function toCompanyPersona(value: unknown) {
     name: persona.name,
     tone: tone as "calm" | "friendly" | "analytical" | "concise",
     voiceId: persona.voice_id,
+    systemPrompt:
+      typeof persona.system_prompt === "string" ? persona.system_prompt : "",
   };
 }
 

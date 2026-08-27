@@ -125,6 +125,7 @@ class InterviewService:
         voice_id: str,
         occurred_at: datetime,
         interview_level: InterviewLevel = DEFAULT_INTERVIEW_LEVEL,
+        interviewer_system_prompt: str = "",
         interview_stage: InterviewStage = InterviewStage.ADAPTIVE,
         question_type: str = "adaptive",
         answered_stage: InterviewStage | None = None,
@@ -169,6 +170,7 @@ class InterviewService:
                 voice_id=voice_id,
                 occurred_at=occurred_at,
                 interview_level=interview_level,
+                interviewer_system_prompt=interviewer_system_prompt,
                 interview_stage=interview_stage,
                 question_type=question_type,
                 answered_stage=answered_stage,
@@ -202,6 +204,7 @@ class InterviewService:
         voice_id: str,
         occurred_at: datetime,
         interview_level: InterviewLevel,
+        interviewer_system_prompt: str,
         interview_stage: InterviewStage,
         question_type: str,
         answered_stage: InterviewStage | None,
@@ -354,6 +357,7 @@ class InterviewService:
                     model_config_version=model_config_version,
                     retrieval_config_version=retrieval_config_version,
                     interview_level=interview_level,
+                    interviewer_system_prompt=interviewer_system_prompt,
                 )
             )
         except QuestionGenerationUnavailable:
@@ -430,6 +434,7 @@ class InterviewService:
                     model_config_version=model_config_version,
                     retrieval_config_version=retrieval_config_version,
                     interview_level=interview_level,
+                    interviewer_system_prompt=interviewer_system_prompt,
                 )
             except QuestionGenerationUnavailable:
                 pass

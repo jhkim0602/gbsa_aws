@@ -154,6 +154,7 @@ class InterviewerPersonaDefinitionInput(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     tone: InterviewerTone
     voice_id: str = Field(min_length=1, max_length=100)
+    system_prompt: str | None = Field(default=None, min_length=1, max_length=1_000)
 
 
 class EvaluationCriterionInput(BaseModel):

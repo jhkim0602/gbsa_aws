@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import {
   CalendarClock,
   Check,
@@ -19,6 +21,7 @@ import {
 } from "../interviewCapacityEstimate";
 import {
   interviewLevelLabels,
+  interviewerSystemPrompts,
   type HiringDraft,
   type HiringDraftUpdater,
   type InterviewLevel,
@@ -52,6 +55,7 @@ const interviewerOptions: ReadonlyArray<{
   voiceId: string;
   tone: InterviewerTone;
   image: string;
+  systemPrompt: string;
 }> = [
   {
     level: "entry",
@@ -61,6 +65,7 @@ const interviewerOptions: ReadonlyArray<{
     voiceId: "Seoyeon",
     tone: "friendly",
     image: "/interviewers/entry_eyes_open_mouth_closed.webp",
+    systemPrompt: interviewerSystemPrompts.entry,
   },
   {
     level: "junior",
@@ -70,6 +75,7 @@ const interviewerOptions: ReadonlyArray<{
     voiceId: "Seoyeon",
     tone: "analytical",
     image: "/interviewers/junior_eyes_open_mouth_closed.webp",
+    systemPrompt: interviewerSystemPrompts.junior,
   },
   {
     level: "senior",
@@ -79,6 +85,7 @@ const interviewerOptions: ReadonlyArray<{
     voiceId: "Seoyeon",
     tone: "concise",
     image: "/interviewers/senior_eyes_open_mouth_closed.webp",
+    systemPrompt: interviewerSystemPrompts.senior,
   },
 ];
 
@@ -121,9 +128,15 @@ const REQUIRED_QUESTION_PANEL =
   "overflow-hidden rounded-lg border border-brand/20 bg-brand-soft/25";
 const PICKER_GRID =
   "grid grid-cols-[repeat(3,minmax(0,1fr))] gap-2.5 mw-620:grid-cols-[minmax(0,1fr)]";
+const PICKER_SHELL =
+  "relative min-h-[286px] min-w-0 [perspective:1200px] mw-620:min-h-[250px]";
+const PICKER_CARD =
+  "relative size-full min-h-[286px] [transform-style:preserve-3d]" +
+  " [transition:transform_.55s_cubic-bezier(.2,.75,.25,1)] mw-620:min-h-[250px]";
 const PICKER_OPTION =
-  "group relative isolate min-h-[286px] min-w-0 overflow-hidden rounded-lg border" +
+  "group absolute inset-0 isolate min-h-[286px] min-w-0 overflow-hidden rounded-lg border" +
   " text-left text-white shadow-[0_8px_24px_#17203a14] outline-none" +
+  " [backface-visibility:hidden]" +
   " [transition:border-color_.18s,transform_.18s,box-shadow_.18s]" +
   " focus-visible:[box-shadow:0_0_0_3px_#5966ce47] mw-620:min-h-[250px]";
 const PICKER_OPTION_SELECTED =
@@ -144,6 +157,10 @@ const PICKER_SELECTED =
   " py-1 text-[9px] font-semibold text-white shadow-md";
 const PICKER_CONTENT =
   "absolute inset-x-0 bottom-0 z-20 grid gap-1 px-4 pb-4 pt-12";
+const PICKER_BACK =
+  "absolute inset-0 z-30 flex min-h-[286px] flex-col overflow-hidden rounded-lg border" +
+  " border-brand/35 bg-white p-4 text-ink shadow-[0_14px_34px_#17203a20]" +
+  " [backface-visibility:hidden] [transform:rotateY(180deg)] mw-620:min-h-[250px]";
 
 export function InterviewDesigner({
   draft,
@@ -152,16 +169,31 @@ export function InterviewDesigner({
   draft: HiringDraft;
   update: HiringDraftUpdater;
 }) {
+  const [flippedLevel, setFlippedLevel] = useState<InterviewLevel | null>(null);
+  const [promptEditorValue, setPromptEditorValue] = useState("");
   const capacityEstimate = estimateInterviewCapacity(draft.interviewCapacity);
   const hasAdditionalCapacity =
     capacityEstimate.additionalApiTasks > 0 ||
     capacityEstimate.additionalWorkerTasks > 0;
 
-  function selectInterviewer(option: (typeof interviewerOptions)[number]) {
+  function applyInterviewer(
+    option: (typeof interviewerOptions)[number],
+    systemPrompt = option.systemPrompt,
+  ) {
     update("interviewLevel", option.level);
     update("interviewerName", option.name);
     update("interviewerTone", option.tone);
     update("interviewerVoiceId", option.voiceId);
+    update("interviewerSystemPrompt", systemPrompt.trim());
+  }
+
+  function openInterviewerPrompt(option: (typeof interviewerOptions)[number]) {
+    setPromptEditorValue(
+      draft.interviewLevel === option.level
+        ? draft.interviewerSystemPrompt || option.systemPrompt
+        : option.systemPrompt,
+    );
+    setFlippedLevel(option.level);
   }
 
   function updateMandatoryQuestion(index: number, value: string) {
@@ -424,11 +456,11 @@ export function InterviewDesigner({
         <header className={SECTION_HEADER}>
           <span className={SECTION_EYEBROW}>03 · 면접관</span>
           <h3 className={SECTION_TITLE} id="interviewer-title">
-            면접관과 난이도
+            면접관의 질문 방식
           </h3>
           <p className={SECTION_TEXT}>
-            난이도에 따라 질문 깊이와 확인 관점만 달라집니다. 꼬리질문은
-            난이도와 무관하게 답변 근거가 부족할 때 진행됩니다.
+            카드를 눌러 실제 시스템 프롬프트를 확인하고 직접 수정할 수 있습니다.
+            적용한 내용은 지원자 자료를 엮는 질문 방식과 꼬리질문에 반영됩니다.
           </p>
         </header>
         <select
@@ -439,7 +471,7 @@ export function InterviewDesigner({
             const option = interviewerOptions.find(
               (candidate) => candidate.level === event.target.value,
             );
-            if (option) selectInterviewer(option);
+            if (option) applyInterviewer(option);
           }}
         >
           {interviewerOptions.map((option) => (
@@ -451,45 +483,101 @@ export function InterviewDesigner({
         <div className={PICKER_GRID}>
           {interviewerOptions.map((option) => {
             const selected = draft.interviewLevel === option.level;
+            const flipped = flippedLevel === option.level;
             return (
-              <button
-                aria-pressed={selected}
-                className={`${PICKER_OPTION} ${
-                  selected ? PICKER_OPTION_SELECTED : PICKER_OPTION_IDLE
-                }`}
-                key={option.level}
-                type="button"
-                onClick={() => selectInterviewer(option)}
-              >
-                <img
-                  alt={`${interviewLevelLabels[option.level].name} AI 면접관`}
-                  className={PICKER_IMAGE}
-                  decoding="async"
-                  src={option.image}
-                />
-                <span aria-hidden="true" className={PICKER_SHADE} />
-                <span className={PICKER_LEVEL}>
-                  {interviewLevelLabels[option.level].name}
-                </span>
-                {selected ? (
-                  <span className={PICKER_SELECTED}>
-                    <Check aria-hidden="true" size={11} />
-                    선택됨
-                  </span>
-                ) : null}
-                <span className={PICKER_CONTENT}>
-                  <strong className="text-[15px] text-white">
-                    {option.name}
-                  </strong>
-                  <small className="text-[9px] leading-[1.45] text-white/75">
-                    {option.role}
-                  </small>
-                  <span className="mt-2 flex items-center gap-1.5 border-t border-white/20 pt-2.5 text-[8px] text-white/65">
-                    <Mic2 aria-hidden="true" size={12} />
-                    {option.voice}
-                  </span>
-                </span>
-              </button>
+              <article className={PICKER_SHELL} key={option.level}>
+                <div
+                  className={`${PICKER_CARD} ${flipped ? "[transform:rotateY(180deg)]" : ""}`}
+                >
+                  <button
+                    aria-label={`${interviewLevelLabels[option.level].name} ${selected ? "선택됨 " : ""}${option.name} 시스템 프롬프트 보기`}
+                    aria-pressed={selected}
+                    className={`${PICKER_OPTION} ${
+                      selected ? PICKER_OPTION_SELECTED : PICKER_OPTION_IDLE
+                    }`}
+                    type="button"
+                    onClick={() => openInterviewerPrompt(option)}
+                  >
+                    <img
+                      alt={`${interviewLevelLabels[option.level].name} AI 면접관`}
+                      className={PICKER_IMAGE}
+                      decoding="async"
+                      src={option.image}
+                    />
+                    <span aria-hidden="true" className={PICKER_SHADE} />
+                    <span className={PICKER_LEVEL}>
+                      {interviewLevelLabels[option.level].name}
+                    </span>
+                    {selected ? (
+                      <span className={PICKER_SELECTED}>
+                        <Check aria-hidden="true" size={11} />
+                        선택됨
+                      </span>
+                    ) : null}
+                    <span className={PICKER_CONTENT}>
+                      <strong className="text-[15px] text-white">
+                        {option.name}
+                      </strong>
+                      <small className="text-[9px] leading-[1.45] text-white/75">
+                        {option.role}
+                      </small>
+                      <span className="mt-2 flex items-center gap-1.5 border-t border-white/20 pt-2.5 text-[8px] text-white/65">
+                        <Mic2 aria-hidden="true" size={12} />
+                        {option.voice}
+                      </span>
+                    </span>
+                  </button>
+                  <section
+                    aria-label={`${option.name} 시스템 프롬프트 편집`}
+                    aria-hidden={!flipped}
+                    className={PICKER_BACK}
+                  >
+                    <span className="font-mono text-[8px] font-semibold text-brand">
+                      실제 질문 생성에 적용
+                    </span>
+                    <strong className="mt-1 text-[13px]">{option.name}</strong>
+                    <label className="mt-3 grid min-h-0 flex-1 gap-1.5">
+                      <span className="text-[9px] font-semibold text-ink-secondary">
+                        면접관 시스템 프롬프트
+                      </span>
+                      <textarea
+                        aria-label={`${option.name} 시스템 프롬프트`}
+                        className="min-h-[116px] w-full resize-none rounded-md border border-border bg-surface-muted p-2.5 text-[9px] leading-[1.55] outline-none focus:border-brand"
+                        maxLength={1000}
+                        tabIndex={flipped ? 0 : -1}
+                        value={
+                          flipped ? promptEditorValue : option.systemPrompt
+                        }
+                        onChange={(event) =>
+                          setPromptEditorValue(event.target.value)
+                        }
+                      />
+                    </label>
+                    <div className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-2">
+                      <button
+                        className="min-h-9 rounded-md border border-border px-3 text-[9px] font-semibold text-muted hover:bg-surface-muted"
+                        tabIndex={flipped ? 0 : -1}
+                        type="button"
+                        onClick={() => setFlippedLevel(null)}
+                      >
+                        취소
+                      </button>
+                      <button
+                        className="min-h-9 rounded-md bg-brand px-3 text-[9px] font-semibold text-white disabled:opacity-45"
+                        disabled={!promptEditorValue.trim()}
+                        tabIndex={flipped ? 0 : -1}
+                        type="button"
+                        onClick={() => {
+                          applyInterviewer(option, promptEditorValue);
+                          setFlippedLevel(null);
+                        }}
+                      >
+                        이 면접관으로 적용
+                      </button>
+                    </div>
+                  </section>
+                </div>
+              </article>
             );
           })}
         </div>
@@ -499,9 +587,13 @@ export function InterviewDesigner({
       </section>
 
       <HiringAiFlow
-        title="게시 후 면접 실행 흐름"
-        description="예약 정보와 선택한 면접관 프리셋을 기준으로 질문 정책을 고정하고, 모든 지원자에게 동일한 평가 버전을 적용합니다."
-        stages={["실행 환경 예약", "AI 질문·TTS", "근거 리포트"]}
+        title="게시 후 지원자별 면접 흐름"
+        description="자격요건·필수 질문·면접관 프롬프트를 한 평가 버전으로 고정한 뒤, 각 지원자의 제출 자료와 답변에 맞춰 질문과 꼬리질문을 구성합니다."
+        stages={[
+          "기업 설정 버전 고정",
+          "자료 기반 질문·꼬리질문",
+          "자격요건 근거 리포트",
+        ]}
       />
     </div>
   );

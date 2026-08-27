@@ -655,6 +655,12 @@ components:
           type: string
           minLength: 1
           maxLength: 100
+        system_prompt:
+          type:
+          - string
+          - 'null'
+          minLength: 1
+          maxLength: 1000
     JobRequirementInput:
       type: object
       additionalProperties: false

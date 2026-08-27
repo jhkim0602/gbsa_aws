@@ -51,6 +51,7 @@ class QuestionGenerator:
         model_config_version: str,
         retrieval_config_version: str,
         interview_level: InterviewLevel = DEFAULT_INTERVIEW_LEVEL,
+        interviewer_system_prompt: str | None = None,
     ) -> QuestionDraft:
         try:
             response = self._model.generate(
@@ -60,6 +61,7 @@ class QuestionGenerator:
                     target_criterion_id=target_criterion_id,
                     context_payload=context_payload,
                     model_config_version=model_config_version,
+                    interviewer_system_prompt=interviewer_system_prompt,
                 ),
             )
             fields = parse_question_response(response)

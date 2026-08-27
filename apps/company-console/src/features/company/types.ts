@@ -86,6 +86,7 @@ export type CompanyCriterionVersion = Readonly<{
     name: string;
     tone: InterviewerTone;
     voiceId: string;
+    systemPrompt: string;
   }>;
 }>;
 

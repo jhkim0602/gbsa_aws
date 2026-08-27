@@ -241,7 +241,7 @@ describe("HiringWorkspace", () => {
       target: { value: "ECS 운영 장애 대응 경험" },
     });
     fireEvent.click(screen.getByRole("button", { name: "다음" }));
-    await screen.findByText("면접은 어떻게 진행할까요?");
+    await screen.findByText("지원자별 면접을 완성해 주세요");
     expect(screen.queryByText("내부 면접 정책")).toBeNull();
     expect(screen.queryByLabelText("금지 주제")).toBeNull();
     expect(screen.queryByLabelText("면접 시간(분)")).toBeNull();
@@ -276,6 +276,26 @@ describe("HiringWorkspace", () => {
     );
     expect(screen.getAllByText("한국어 남성 음성")).toHaveLength(3);
     expect(screen.queryByText("Seoyeon")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /시니어 심층형 면접관 시스템 프롬프트 보기/,
+      }),
+    );
+    const systemPrompt = screen.getByLabelText("심층형 면접관 시스템 프롬프트");
+    expect((systemPrompt as HTMLTextAreaElement).value).toContain(
+      "설계 판단과 트레이드오프",
+    );
+    fireEvent.change(systemPrompt, {
+      target: {
+        value:
+          "당신은 운영 근거와 설계 판단을 차분하게 확인하는 기업 맞춤 면접관입니다.",
+      },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "이 면접관으로 적용" }));
+    expect(screen.getByText("게시 후 지원자별 면접 흐름")).toBeTruthy();
+    expect(screen.getByText("기업 설정 버전 고정")).toBeTruthy();
+    expect(screen.getByText("자료 기반 질문·꼬리질문")).toBeTruthy();
+    expect(screen.getByText("자격요건 근거 리포트")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("채용 인원"), {
       target: { value: "2" },
     });
@@ -309,9 +329,6 @@ describe("HiringWorkspace", () => {
     ).toBe(true);
     fireEvent.change(screen.getByLabelText("면접 정원"), {
       target: { value: "4" },
-    });
-    fireEvent.change(screen.getByLabelText("면접 난이도"), {
-      target: { value: "senior" },
     });
     fireEvent.click(screen.getByRole("button", { name: "포지션 게시" }));
 
@@ -395,6 +412,8 @@ describe("HiringWorkspace", () => {
         name: "심층형 면접관",
         tone: "concise",
         voiceId: "Seoyeon",
+        systemPrompt:
+          "당신은 운영 근거와 설계 판단을 차분하게 확인하는 기업 맞춤 면접관입니다.",
       },
     });
     expect(invitationTemplateApi.savePositionTemplate).toHaveBeenCalledWith(

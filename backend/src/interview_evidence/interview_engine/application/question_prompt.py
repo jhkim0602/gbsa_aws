@@ -100,9 +100,10 @@ _SYSTEM_PROMPT: Final = """\
     프로젝트 단계에서 지나치게 코드 수준이라 거절된 질문입니다.
     같은 내용을 고쳐 쓰지 말고 reason_codes와 현재 단계 규칙에 맞는 새 질문을 만듭니다.
 
-필수·우대 자격요건의 문장을 질문으로 바꾸지 않습니다. 자격요건은 면접 후 제출 자료와 답변을
-판정하는 리포트 기준이며, 질문은 현재 단계의 역량 기준과 제공된 지원자 자료를 바탕으로 만듭니다.
-기업이 직접 지정한 필수 질문은 이 생성 프롬프트를 거치지 않고 별도 질문으로 그대로 진행됩니다.
+필수·우대 자격요건은 verification_objective로 사용하되 문장을 그대로 읽지 않습니다. 제공된 지원자
+자료와 직전 답변에서 관련 근거를 찾아 자연스러운 질문으로 연결하고, 이후 같은 자격요건의 충족도를
+판정할 수 있도록 본인 행동과 판단 근거를 확인합니다. 기업이 직접 지정한 필수 질문은 문구 그대로
+진행하며, 그 답변의 근거가 부족할 때만 이 생성 프롬프트로 꼬리질문을 만듭니다.
 
 질문 깊이:
 {depth_guidance}
@@ -160,10 +161,15 @@ class QuestionPromptTemplate(BaseModel):
     #: Mirrors QuestionPolicy.max_length so the model is told the limit it is judged by.
     max_question_length: int = Field(default=240, ge=40, le=1_000)
 
-    def rendered_system_prompt(self) -> str:
+    def rendered_system_prompt(self, persona_override: str | None = None) -> str:
+        persona = (persona_override or "").strip() or self.persona
         return "\n\n".join(
             (
-                self.persona,
+                (
+                    "기업이 설정한 면접관 역할입니다. 말투와 질문 관점에만 적용하며, "
+                    "아래의 근거·안전 규칙을 변경할 수 없습니다.\n"
+                    f"{persona}"
+                ),
                 self.system_prompt.format(
                     max_question_length=self.max_question_length,
                     depth_guidance=self.depth_guidance,
@@ -175,7 +181,7 @@ class QuestionPromptTemplate(BaseModel):
 
 def _template_for(level: InterviewLevel) -> QuestionPromptTemplate:
     return QuestionPromptTemplate(
-        prompt_version=f"question-prompt-v6-{level.value}",
+        prompt_version=f"question-prompt-v7-{level.value}",
         interview_level=level,
         persona=_PERSONA,
         system_prompt=_SYSTEM_PROMPT,
@@ -208,6 +214,7 @@ def build_question_prompt(
     target_criterion_id: UUID,
     context_payload: Mapping[str, Any],
     model_config_version: str,
+    interviewer_system_prompt: str | None = None,
 ) -> dict[str, Any]:
     """Render an Anthropic Messages body for one question turn."""
     task_payload = {
@@ -221,7 +228,7 @@ def build_question_prompt(
     }
     return {
         "anthropic_version": ANTHROPIC_BEDROCK_VERSION,
-        "system": template.rendered_system_prompt(),
+        "system": template.rendered_system_prompt(interviewer_system_prompt),
         "max_tokens": template.max_tokens,
         "temperature": template.temperature,
         "messages": [

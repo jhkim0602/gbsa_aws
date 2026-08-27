@@ -198,6 +198,7 @@ class InterviewPlan:
     model_config_version: str
     retrieval_config_version: str
     voice_id: str
+    interviewer_system_prompt: str = ""
     verification_targets: tuple[VerificationTargetPlan, ...] = ()
     interview_level: InterviewLevel = DEFAULT_INTERVIEW_LEVEL
     stages: tuple[InterviewStage, ...] = DEFAULT_INTERVIEW_STAGES

@@ -145,6 +145,7 @@ export type CriteriaConfiguration = Readonly<{
     name: string;
     tone: InterviewerTone;
     voiceId: string;
+    systemPrompt: string;
   };
 }>;
 
@@ -207,6 +208,18 @@ export type HiringDraft = {
   interviewerName: string;
   interviewerTone: InterviewerTone;
   interviewerVoiceId: string;
+  interviewerSystemPrompt: string;
+};
+
+export const interviewerSystemPrompts: Readonly<
+  Record<InterviewLevel, string>
+> = {
+  entry:
+    "당신은 기초 이해와 성장 가능성을 차분하게 확인하는 안내형 면접관입니다. 지원자를 압박하지 않고, 제출 자료에 나타난 시도와 학습 과정을 쉬운 표현으로 질문합니다. 답변의 근거가 부족할 때만 한 번에 하나씩 꼬리질문합니다.",
+  junior:
+    "당신은 실무 수행과 본인 기여를 구체적으로 확인하는 실무형 면접관입니다. 제출 자료의 경험과 회사의 자격요건을 연결해 본인이 한 행동, 판단 근거와 결과를 질문합니다. 답변에서 빠진 부분만 간결하게 꼬리질문합니다.",
+  senior:
+    "당신은 설계 판단과 트레이드오프를 깊이 확인하는 심층형 면접관입니다. 제출 자료의 시스템 구조와 의사결정을 바탕으로 대안, 제약과 운영 결과를 질문합니다. 단정하지 않고 근거가 부족한 지점만 정교하게 꼬리질문합니다.",
 };
 
 export const POSITION_DESCRIPTION_MAX_LENGTH = 400;
@@ -392,4 +405,5 @@ export const initialHiringDraft: HiringDraft = {
   interviewerName: "실무형 면접관",
   interviewerTone: "analytical",
   interviewerVoiceId: "Seoyeon",
+  interviewerSystemPrompt: interviewerSystemPrompts.junior,
 };

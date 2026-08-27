@@ -682,6 +682,7 @@ class LiveInterviewHandler:
             voice_id=plan.voice_id,
             occurred_at=self._clock.now(),
             interview_level=plan.interview_level,
+            interviewer_system_prompt=plan.interviewer_system_prompt,
             interview_stage=stage_decision.stage,
             question_type=stage_decision.question_type,
             answered_stage=answered_stage,

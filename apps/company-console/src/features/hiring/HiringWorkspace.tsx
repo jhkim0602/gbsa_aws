@@ -19,6 +19,7 @@ import {
   createDefaultCriteria,
   inferRequirementCriterionCode,
   initialHiringDraft,
+  interviewerSystemPrompts,
   type CriteriaConfiguration,
   type CriteriaHiringStep,
   type HiringDraft,
@@ -47,8 +48,9 @@ const stepCopy = {
   },
   interview: {
     eyebrow: "4 / 4 · 면접 운영",
-    title: "면접은 어떻게 진행할까요?",
-    description: "시간과 난이도를 확인한 뒤 포지션을 게시합니다.",
+    title: "지원자별 면접을 완성해 주세요",
+    description:
+      "운영 일정과 필수 질문, 면접관의 질문 방식을 확인한 뒤 포지션을 게시합니다.",
   },
 } as const;
 
@@ -374,6 +376,9 @@ export function toCriteriaConfiguration(
       name: draft.interviewerName,
       tone: draft.interviewerTone,
       voiceId: draft.interviewerVoiceId,
+      systemPrompt:
+        draft.interviewerSystemPrompt.trim() ||
+        interviewerSystemPrompts[draft.interviewLevel],
     },
   };
 }

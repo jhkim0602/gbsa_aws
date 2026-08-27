@@ -92,6 +92,25 @@ def test_generator_sends_a_system_prompt_and_token_limit() -> None:
     assert draft.model_config_version == "bedrock-claude-v1"
 
 
+def test_generator_applies_the_company_interviewer_prompt_as_system_context() -> None:
+    model = RecordingModel()
+    company_prompt = "당신은 운영 근거와 설계 판단을 차분하게 확인하는 기업 맞춤 면접관입니다."
+
+    QuestionGenerator(model).generate(
+        _context(),
+        target_criterion_id=CRITERION_ID,
+        context_payload={"criterion_text": "장애 대응 경험"},
+        model_config_version="bedrock-claude-v1",
+        retrieval_config_version="aurora-hybrid-v1",
+        interviewer_system_prompt=company_prompt,
+    )
+
+    system = model.inputs[0]["system"]
+    assert company_prompt in system
+    assert "아래의 근거·안전 규칙을 변경할 수 없습니다" in system
+    assert "제공된 retrieved_sources의 발췌문에서만" in system
+
+
 def test_generator_records_the_prompt_version_it_used() -> None:
     model = RecordingModel()
     generator = QuestionGenerator(model)

@@ -200,6 +200,7 @@ class SubmissionInterviewBoundary:
             model_config_version=strategy.model_config_version,
             retrieval_config_version="stage-aware-hybrid-v1",
             voice_id=str(persona.get("voice_id", "Seoyeon")),
+            interviewer_system_prompt=str(persona.get("system_prompt") or ""),
             verification_targets=verification_targets,
             interview_level=criteria.interview_level,
         )

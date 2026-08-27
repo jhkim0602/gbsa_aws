@@ -504,6 +504,7 @@ async def test_criterion_weights_and_interviewer_voice_are_validated_and_persist
                     "name": "심층형 면접관",
                     "tone": "concise",
                     "voice_id": "Seoyeon",
+                    "system_prompt": "당신은 설계 근거를 차분히 확인하는 면접관입니다.",
                 },
             },
         )
@@ -514,4 +515,5 @@ async def test_criterion_weights_and_interviewer_voice_are_validated_and_persist
         "name": "심층형 면접관",
         "tone": "concise",
         "voice_id": "Seoyeon",
+        "system_prompt": "당신은 설계 근거를 차분히 확인하는 면접관입니다.",
     }

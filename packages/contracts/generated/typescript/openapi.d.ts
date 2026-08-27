@@ -810,8 +810,12 @@ export interface components {
             readonly interview_level?: components["schemas"]["InterviewLevel"];
             /** @description Legacy versions can be empty; new version requests require at least one item. */
             readonly job_requirements: readonly components["schemas"]["JobRequirementInput"][];
-            /** @description System-managed compatibility field. */
-            readonly persona_definition?: Record<string, never>;
+            readonly persona_definition?: {
+                readonly name: string;
+                readonly tone: "calm" | "friendly" | "analytical" | "concise";
+                readonly voice_id: string;
+                readonly system_prompt?: string | null;
+            };
             /** Format: uuid */
             readonly position_id: string;
             readonly prohibited_topics: readonly string[];
@@ -828,8 +832,12 @@ export interface components {
             readonly interview_duration_minutes: 30;
             readonly interview_level?: components["schemas"]["InterviewLevel"];
             readonly job_requirements: readonly components["schemas"]["JobRequirementInput"][];
-            /** @description System-managed compatibility field; recruiter clients must not set it. */
-            readonly persona_definition?: Record<string, never>;
+            readonly persona_definition?: {
+                readonly name: string;
+                readonly tone: "calm" | "friendly" | "analytical" | "concise";
+                readonly voice_id: string;
+                readonly system_prompt?: string | null;
+            };
             readonly prohibited_topics: readonly string[];
         };
         readonly CompetencyModelVersionPage: {
