@@ -3,16 +3,9 @@
  *
  * The ReviewWorkspace component tests hand it an already-readable `criterionName`,
  * so they pass even when the adapter feeds the component a UUID. Only a test that
- * goes through `ReviewRoute` with a real API payload and opens the evidence tab
- * catches that.
+ * goes through `ReviewRoute` with a real API payload catches that.
  */
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -97,11 +90,6 @@ function renderReview(search = `invitationId=${INVITATION_ID}`) {
   );
 }
 
-async function openAnswerEvidence() {
-  const tab = await screen.findByRole("tab", { name: "면접 답변 근거" });
-  fireEvent.click(tab);
-}
-
 describe("ReviewRoute", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -111,8 +99,10 @@ describe("ReviewRoute", () => {
     stubApi("장애 대응");
     renderReview();
 
-    await openAnswerEvidence();
-    expect(await screen.findByText("장애 대응")).toBeTruthy();
+    // The name is a row header on the 종합평가 sheet's criterion table.
+    expect(
+      await screen.findByRole("rowheader", { name: "장애 대응" }),
+    ).toBeTruthy();
     expect(await screen.findByText("현재 단계 · 1차 합격")).toBeTruthy();
     expect(screen.queryByText(CRITERION_ID)).toBeNull();
   });
@@ -121,8 +111,9 @@ describe("ReviewRoute", () => {
     stubApi("");
     renderReview();
 
-    await openAnswerEvidence();
-    expect(await screen.findByText(CRITERION_ID)).toBeTruthy();
+    expect(
+      await screen.findByRole("rowheader", { name: CRITERION_ID }),
+    ).toBeTruthy();
   });
 
   it("reads a report generated before scoring existed without inventing zeroes", async () => {
@@ -131,9 +122,9 @@ describe("ReviewRoute", () => {
     stubApi("장애 대응");
     renderReview();
 
-    await screen.findByRole("tab", { name: "면접 답변 근거" });
-    expect(screen.getByText("상태별 판정")).toBeTruthy();
-    expect(screen.getByText("전체 0개 자격요건")).toBeTruthy();
+    await screen.findByRole("rowheader", { name: "장애 대응" });
+    expect(screen.getByText("점수화된 기준 없음")).toBeTruthy();
+    expect(screen.getAllByText("판단 근거 없음").length).toBeGreaterThan(0);
     expect(screen.queryByText("0점")).toBeNull();
   });
 
@@ -277,13 +268,10 @@ describe("ReviewRoute", () => {
         const url = String(input);
         if (url.endsWith("/final-decisions")) {
           return Promise.resolve(
-            new Response(
-              JSON.stringify({ detail: "stale applicant pipeline version" }),
-              {
-                status: 409,
-                headers: { "Content-Type": "application/json" },
-              },
-            ),
+            new Response(JSON.stringify({ detail: "stale applicant pipeline version" }), {
+              status: 409,
+              headers: { "Content-Type": "application/json" },
+            }),
           );
         }
         const body = url.endsWith("/timeline")
@@ -408,8 +396,9 @@ describe("ReviewRoute", () => {
           await vi.advanceTimersByTimeAsync(2000);
         });
 
-        fireEvent.click(screen.getByRole("tab", { name: "면접 답변 근거" }));
-        expect(screen.getByText("자동 면접 검증")).toBeTruthy();
+        expect(
+          screen.getByRole("rowheader", { name: "자동 면접 검증" }),
+        ).toBeTruthy();
         expect(reportRequests).toBe(2);
       } finally {
         vi.useRealTimers();

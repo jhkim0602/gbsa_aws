@@ -810,12 +810,8 @@ export interface components {
             readonly interview_level?: components["schemas"]["InterviewLevel"];
             /** @description Legacy versions can be empty; new version requests require at least one item. */
             readonly job_requirements: readonly components["schemas"]["JobRequirementInput"][];
-            readonly persona_definition?: {
-                readonly name: string;
-                readonly tone: "calm" | "friendly" | "analytical" | "concise";
-                readonly voice_id: string;
-                readonly system_prompt?: string | null;
-            };
+            /** @description System-managed compatibility field. */
+            readonly persona_definition?: Record<string, never>;
             /** Format: uuid */
             readonly position_id: string;
             readonly prohibited_topics: readonly string[];
@@ -832,12 +828,8 @@ export interface components {
             readonly interview_duration_minutes: 30;
             readonly interview_level?: components["schemas"]["InterviewLevel"];
             readonly job_requirements: readonly components["schemas"]["JobRequirementInput"][];
-            readonly persona_definition?: {
-                readonly name: string;
-                readonly tone: "calm" | "friendly" | "analytical" | "concise";
-                readonly voice_id: string;
-                readonly system_prompt?: string | null;
-            };
+            /** @description System-managed compatibility field; recruiter clients must not set it. */
+            readonly persona_definition?: Record<string, never>;
             readonly prohibited_topics: readonly string[];
         };
         readonly CompetencyModelVersionPage: {
@@ -1265,11 +1257,11 @@ export interface components {
             readonly criterion_id: string;
             readonly generation_version: string;
             /** @enum {string} */
-            readonly interview_stage: "adaptive" | "technical" | "project_deep_dive" | "behavioral";
+            readonly interview_stage: "technical" | "project_deep_dive" | "behavioral";
             readonly objective: string;
             readonly policy_result: string;
             /** @enum {string} */
-            readonly question_type: "common" | "personalized" | "follow_up" | "degraded" | "stage_opening" | "adaptive" | "stage_final" | "company_required";
+            readonly question_type: "common" | "personalized" | "follow_up" | "degraded" | "stage_opening" | "adaptive" | "stage_final";
             readonly retrieval_version: string;
             readonly source_references: readonly {
                 readonly excerpt: string;
@@ -1279,7 +1271,7 @@ export interface components {
                 readonly source_type: string;
             }[];
             /** @enum {string} */
-            readonly verification_target_type: "not_mentioned" | "claim_found" | "detail_missing" | "source_conflict" | "ownership_uncertain" | "company_required_question" | "job_requirement_required" | "job_requirement_preferred" | "criterion_baseline";
+            readonly verification_target_type: "not_mentioned" | "claim_found" | "detail_missing" | "source_conflict" | "ownership_uncertain";
         };
         readonly RecordingChunk: {
             readonly chunk_sequence: number;

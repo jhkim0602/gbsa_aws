@@ -123,10 +123,7 @@ def _publish_criteria(level: InterviewLevel) -> tuple[CompanyManagementPublic, U
         prohibited_topics=("가족관계",),
         interview_duration_minutes=30,
         interview_level=level,
-        persona_definition={
-            "voice_id": "Seoyeon",
-            "system_prompt": "당신은 기업이 설정한 운영 중심 면접관입니다.",
-        },
+        persona_definition={"voice_id": "Seoyeon"},
         idempotency_key="level-criterion",
     )
     published = criteria_service.publish_version(
@@ -256,7 +253,6 @@ def test_published_level_reaches_the_plan_without_moving_the_follow_up_budget(
     assert plan.follow_up_budget(target) == expected_follow_ups
     # And the level selects the prompt the model is actually given.
     assert question_prompt_for(plan.interview_level).interview_level is level
-    assert plan.interviewer_system_prompt == "당신은 기업이 설정한 운영 중심 면접관입니다."
 
 
 def test_the_criterion_time_budget_reaches_the_plan_and_bounds_the_interview() -> None:

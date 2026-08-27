@@ -125,8 +125,7 @@ class InterviewService:
         voice_id: str,
         occurred_at: datetime,
         interview_level: InterviewLevel = DEFAULT_INTERVIEW_LEVEL,
-        interviewer_system_prompt: str = "",
-        interview_stage: InterviewStage = InterviewStage.ADAPTIVE,
+        interview_stage: InterviewStage = InterviewStage.TECHNICAL,
         question_type: str = "adaptive",
         answered_stage: InterviewStage | None = None,
         answered_target: VerificationTargetPlan | None = None,
@@ -170,7 +169,6 @@ class InterviewService:
                 voice_id=voice_id,
                 occurred_at=occurred_at,
                 interview_level=interview_level,
-                interviewer_system_prompt=interviewer_system_prompt,
                 interview_stage=interview_stage,
                 question_type=question_type,
                 answered_stage=answered_stage,
@@ -204,7 +202,6 @@ class InterviewService:
         voice_id: str,
         occurred_at: datetime,
         interview_level: InterviewLevel,
-        interviewer_system_prompt: str,
         interview_stage: InterviewStage,
         question_type: str,
         answered_stage: InterviewStage | None,
@@ -277,30 +274,21 @@ class InterviewService:
             None,
         )
         turns = self._repository.list_final_turns(context, session_id)
-        company_required_question = (
-            question_target is not None
-            and question_target.target_type == "company_required_question"
-            and question_type != "follow_up"
-        )
-        effective_question_type = "company_required" if company_required_question else question_type
         verification_objective = (
-            question_target.objective
-            if company_required_question and question_target is not None
-            else (
-                stage_verification_objective(interview_stage, question_target)
-                if question_target
-                else ""
-            )
+            stage_verification_objective(interview_stage, question_target)
+            if question_target
+            else ""
         )
         answer_evidence_gaps = (
             missing_answer_evidence(answer_text, interview_stage.value)
             if question_type == "follow_up" and answered_stage is interview_stage
             else ()
         )
-        # Every generated question is anchored to either a company requirement or an
-        # explicit company question. Explicit questions keep their wording but receive
-        # a short spoken bridge so they do not interrupt the conversation abruptly.
-        required_assessment_axis = None
+        required_assessment_axis = (
+            "fundamentals"
+            if interview_stage is InterviewStage.TECHNICAL and question_type == "stage_opening"
+            else None
+        )
         built_context = self._context_builder.build(
             recent_turns=tuple(
                 ContextTurn(
@@ -315,7 +303,7 @@ class InterviewService:
             remaining_time_seconds=remaining_time_seconds,
             interview_stage=interview_stage.value,
             interview_stage_focus=INTERVIEW_STAGE_FOCUS[interview_stage],
-            next_question_type=effective_question_type,
+            next_question_type=question_type,
             required_assessment_axis=required_assessment_axis,
             retrieved_source_ids=tuple(hit.source_id for hit in retrieval.hits),
             retrieved_sources=tuple(
@@ -341,27 +329,13 @@ class InterviewService:
             ),
         )
         try:
-            draft = (
-                QuestionDraft(
-                    text=_company_question_with_bridge(
-                        question_target.common_question,
-                        previous_question_count=len(previous_questions),
-                    ),
-                    target_criterion_id=target_criterion_id,
-                    source_reference_ids=(),
-                    model_config_version=model_config_version,
-                    retrieval_config_version=retrieval_config_version,
-                )
-                if company_required_question and question_target is not None
-                else self._generator.generate(
-                    context,
-                    target_criterion_id=target_criterion_id,
-                    context_payload=built_context.model_payload(),
-                    model_config_version=model_config_version,
-                    retrieval_config_version=retrieval_config_version,
-                    interview_level=interview_level,
-                    interviewer_system_prompt=interviewer_system_prompt,
-                )
+            draft = self._generator.generate(
+                context,
+                target_criterion_id=target_criterion_id,
+                context_payload=built_context.model_payload(),
+                model_config_version=model_config_version,
+                retrieval_config_version=retrieval_config_version,
+                interview_level=interview_level,
             )
         except QuestionGenerationUnavailable:
             current = self._repository.get_session(context, session_id)
@@ -396,8 +370,7 @@ class InterviewService:
             }
         )
         if (
-            not company_required_question
-            and requires_git_question
+            requires_git_question
             and git_hit is not None
             and git_hit.source_id not in draft.source_reference_ids
         ):
@@ -415,7 +388,7 @@ class InterviewService:
             fallback_question=fallback_question,
             fallback_criterion_id=target_criterion_id,
             interview_stage=interview_stage.value,
-            question_type=effective_question_type,
+            question_type=question_type,
             required_assessment_axis=required_assessment_axis,
         )
         if {
@@ -437,7 +410,6 @@ class InterviewService:
                     model_config_version=model_config_version,
                     retrieval_config_version=retrieval_config_version,
                     interview_level=interview_level,
-                    interviewer_system_prompt=interviewer_system_prompt,
                 )
             except QuestionGenerationUnavailable:
                 pass
@@ -459,7 +431,7 @@ class InterviewService:
                     fallback_question=fallback_question,
                     fallback_criterion_id=target_criterion_id,
                     interview_stage=interview_stage.value,
-                    question_type=effective_question_type,
+                    question_type=question_type,
                     required_assessment_axis=required_assessment_axis,
                 )
         question = policy_result.question
@@ -515,7 +487,7 @@ class InterviewService:
                     verification_target_id=(question_target.verification_target_id),
                     verification_target_type=question_target.target_type,
                     objective=verification_objective,
-                    question_type=effective_question_type,
+                    question_type=question_type,
                     interview_stage=interview_stage.value,
                     retrieval_version=retrieval_config_version,
                     generation_version=model_config_version,
@@ -757,24 +729,6 @@ def _retrieval_query(
         )
         if part.strip()
     )
-
-
-_COMPANY_QUESTION_BRIDGES = (
-    "좋습니다. 이제 회사에서 꼭 확인하고 싶은 내용을 하나 여쭤보겠습니다.",
-    "알겠습니다. 이어서 회사가 미리 정한 질문을 하나 드리겠습니다.",
-    "좋아요. 이제 다음으로 꼭 확인할 질문을 하나 여쭤보겠습니다.",
-)
-
-
-def _company_question_with_bridge(
-    question: str,
-    *,
-    previous_question_count: int,
-) -> str:
-    bridge = _COMPANY_QUESTION_BRIDGES[
-        max(0, previous_question_count - 1) % len(_COMPANY_QUESTION_BRIDGES)
-    ]
-    return f"{bridge} {question.strip()}"
 
 
 _BEHAVIORAL_CONTEXT_TERMS = (

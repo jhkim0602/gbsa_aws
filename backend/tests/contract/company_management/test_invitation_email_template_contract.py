@@ -98,7 +98,7 @@ async def test_company_template_defaults_then_persists_company_edits() -> None:
         reverted = await client.delete("/v1/invitation-email-template", headers=AUTH)
 
     assert default.status_code == 200
-    assert default.json()["headline"] == "지원해주셔서 감사합니다"
+    assert default.json()["headline"] == "서류 전형 합격을 축하드립니다"
     assert default.json()["is_position_override"] is False
     assert default.json()["logo_url"] is None
 

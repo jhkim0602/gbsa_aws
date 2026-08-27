@@ -16,6 +16,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { Link } from "react-router-dom";
 
 import {
   ASYNC_STATE,
@@ -23,6 +24,7 @@ import {
   invitationTone,
 } from "../../app/styles/primitives";
 import { invitationStatusMeta } from "../hiring/PositionInvitations";
+import { applicantWorkspacePath } from "../../app/applicantWorkspacePath";
 import { ApplicantReportModal } from "../assistant/components/ApplicantReportModal";
 import type { ApplicantReportPreview } from "../assistant/types";
 import { summarizeApplicantPipeline } from "./applicantSummary";
@@ -393,38 +395,21 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
     invitationIds: readonly string[],
     targetStageId: string,
   ) {
-    if (!api.moveApplicantsToRecruitingStage) {
+    if (!currentPosition || !api.moveApplicantsToRecruitingStage) {
       setPipelineNotice("현재 환경에서는 채용 단계를 변경할 수 없습니다.");
       return false;
     }
     const idSet = new Set(invitationIds);
-    const movingInvitations = activeInvitations.filter((invitation) =>
-      idSet.has(invitation.invitationId),
-    );
-    const positionIds = new Set(
-      movingInvitations.map((invitation) => invitation.positionId),
-    );
-    const positionId = movingInvitations[0]?.positionId;
-    const targetStage = stages.find(
-      (stage) => stage.recruitingStageId === targetStageId,
-    );
-    if (
-      !positionId ||
-      positionIds.size !== 1 ||
-      !targetStage ||
-      targetStage.positionId !== positionId
-    ) {
-      setPipelineNotice("지원자의 포지션에 연결된 채용 단계를 선택해 주세요.");
-      return false;
-    }
     const before = new Map(
-      movingInvitations.map((invitation) => [
-        invitation.invitationId,
-        {
-          recruitingStageId: invitation.recruitingStageId,
-          pipelineRowVersion: invitation.pipelineRowVersion ?? 1,
-        },
-      ]),
+      activeInvitations
+        .filter((invitation) => idSet.has(invitation.invitationId))
+        .map((invitation) => [
+          invitation.invitationId,
+          {
+            recruitingStageId: invitation.recruitingStageId,
+            pipelineRowVersion: invitation.pipelineRowVersion ?? 1,
+          },
+        ]),
     );
     if (before.size === 0) return false;
     setPipelineBusy(true);
@@ -438,7 +423,7 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
     );
     try {
       const assignments = await api.moveApplicantsToRecruitingStage(
-        positionId,
+        currentPosition.positionId,
         targetStageId,
         [...before].map(([invitationId, snapshot]) => ({
           invitationId,
@@ -903,7 +888,7 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
           )
         ) : (
           <>
-            <div className="grid grid-cols-[minmax(240px,1.1fr)_minmax(170px,0.8fr)_112px_120px_56px] bg-surface-muted px-5 py-3 text-[9px] font-semibold text-muted mw-720:hidden">
+            <div className="grid grid-cols-[minmax(240px,1.1fr)_minmax(170px,0.8fr)_140px_120px_56px] bg-surface-muted px-5 py-3 text-[9px] font-semibold text-muted mw-720:hidden">
               <span>지원자</span>
               <span>포지션</span>
               <span>현재 채용 단계</span>
@@ -929,11 +914,6 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
                     (stage) =>
                       stage.recruitingStageId === invitation.recruitingStageId,
                   );
-                  const availableStages = stages
-                    .filter(
-                      (stage) => stage.positionId === invitation.positionId,
-                    )
-                    .sort((left, right) => left.sortOrder - right.sortOrder);
                   const deletion = deletions[invitation.invitationId];
                   const deletionActive = deletion
                     ? isDeletionActive(deletion.status)
@@ -942,16 +922,14 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
                     deletion?.status === "partially_completed";
                   return (
                     <div
-                      className="grid grid-cols-[minmax(410px,1.9fr)_112px_120px_56px] items-center mw-720:grid-cols-[minmax(0,1fr)_auto_56px] mw-720:gap-y-1"
+                      className="grid grid-cols-[minmax(0,1fr)_56px]"
                       key={invitation.invitationId}
                     >
-                      <button
-                        type="button"
-                        className={`grid min-h-16 grid-cols-[minmax(240px,1.1fr)_minmax(170px,0.8fr)] items-center px-5 py-3 hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-brand mw-720:col-[1] mw-720:row-[1/3] mw-720:grid-cols-[44px_minmax(0,1fr)] mw-720:gap-x-3 mw-720:gap-y-2 ${deletionActive ? "pointer-events-none opacity-60" : ""}`}
-                        aria-label={`${displayName} 지원자 상세 열기`}
+                      <Link
+                        className={`grid min-h-16 grid-cols-[minmax(240px,1.1fr)_minmax(170px,0.8fr)_140px_120px] items-center px-5 py-3 hover:bg-surface-muted focus-visible:outline-2 focus-visible:outline-brand mw-720:grid-cols-[44px_minmax(0,1fr)_auto] mw-720:gap-x-3 mw-720:gap-y-2 ${deletionActive ? "pointer-events-none opacity-60" : ""}`}
+                        to={applicantWorkspacePath(invitation)}
+                        aria-label={`${displayName} 리포트 열기`}
                         aria-disabled={deletionActive}
-                        disabled={deletionActive}
-                        onClick={() => openApplicantReport(invitation)}
                       >
                         <span className="flex min-w-0 items-center gap-3 mw-720:contents">
                           <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-[11px] font-bold text-brand">
@@ -969,59 +947,23 @@ export function ApplicantManagement({ api }: { api: CompanyOperationsApi }) {
                         <span className="truncate text-[10px] font-semibold text-ink-secondary mw-720:col-[2] mw-720:row-[2]">
                           {invitation.positionTitle}
                         </span>
-                      </button>
-                      {deletion || availableStages.length === 0 ? (
                         <span
-                          className={`ml-1 w-fit ${INVITATION_STATUS} ${invitationTone(
+                          className={`w-fit ${INVITATION_STATUS} ${invitationTone(
                             deletionActive || deletionNeedsAttention
                               ? "attention"
                               : status.tone,
-                          )} mw-720:col-[2] mw-720:row-[1]`}
+                          )} mw-720:col-[3] mw-720:row-[1]`}
                         >
                           {deletion
                             ? deletionStatusLabel(deletion)
                             : (recruitingStage?.name ?? "미지정")}
                         </span>
-                      ) : (
-                        <select
-                          aria-label={`${displayName} 채용 단계`}
-                          className={`ml-1 min-h-[30px] w-[104px] cursor-pointer rounded-md border border-transparent px-2 text-[10px] font-semibold outline-none transition hover:border-brand focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand-soft disabled:cursor-not-allowed disabled:opacity-50 ${invitationTone(status.tone)} mw-720:col-[2] mw-720:row-[1]`}
-                          disabled={
-                            pipelineBusy || !api.moveApplicantsToRecruitingStage
-                          }
-                          title="클릭해서 채용 단계 변경"
-                          value={recruitingStage?.recruitingStageId ?? ""}
-                          onChange={(event) => {
-                            const targetStageId = event.target.value;
-                            if (
-                              targetStageId &&
-                              targetStageId !== invitation.recruitingStageId
-                            ) {
-                              void moveApplicants(
-                                [invitation.invitationId],
-                                targetStageId,
-                              );
-                            }
-                          }}
-                        >
-                          {!recruitingStage ? (
-                            <option value="">미지정</option>
-                          ) : null}
-                          {availableStages.map((stage) => (
-                            <option
-                              key={stage.recruitingStageId}
-                              value={stage.recruitingStageId}
-                            >
-                              {stage.name}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                      <span className="text-[10px] text-muted mw-720:col-[2] mw-720:row-[2]">
-                        {deletionActive ? "완료 확인 중" : status.label}
-                      </span>
+                        <span className="text-[10px] text-muted mw-720:col-[3] mw-720:row-[2]">
+                          {deletionActive ? "완료 확인 중" : status.label}
+                        </span>
+                      </Link>
                       <button
-                        className="m-2 grid size-10 place-items-center self-center rounded-lg border border-border bg-surface text-muted transition hover:border-danger hover:bg-danger-soft hover:text-danger disabled:cursor-not-allowed disabled:opacity-35 mw-720:col-[3] mw-720:row-[1/3]"
+                        className="m-2 grid size-10 place-items-center self-center rounded-lg border border-border bg-surface text-muted transition hover:border-danger hover:bg-danger-soft hover:text-danger disabled:cursor-not-allowed disabled:opacity-35"
                         type="button"
                         aria-label={`${displayName} 지원자 ${deletionActive ? "삭제 진행 중" : "삭제"}`}
                         title={deletionActive ? "삭제 진행 중" : "지원자 삭제"}

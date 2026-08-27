@@ -33,8 +33,7 @@ export type RequirementAssessment = {
   } | null;
 };
 
-export type InterviewStage =
-  "adaptive" | "technical" | "project_deep_dive" | "behavioral";
+export type InterviewStage = "technical" | "project_deep_dive" | "behavioral";
 
 export type InterviewStageSummary = {
   stage: InterviewStage;
@@ -160,7 +159,7 @@ export type ReviewReport = {
   /** How `overallScore` was reached, and what it leaves out. Null on pre-scoring reports. */
   scoringBreakdown: ScoreBreakdown | null;
   items: ReviewReportItem[];
-  /** The sole score source for requirement-only reports; unknown entries stay unscored. */
+  /** Qualification fulfillment is descriptive and never enters interview scoring. */
   requirementAssessments: RequirementAssessment[];
 };
 
@@ -178,11 +177,7 @@ export type ReviewTimelineEntry = {
       | "claim_found"
       | "detail_missing"
       | "source_conflict"
-      | "ownership_uncertain"
-      | "company_required_question"
-      | "job_requirement_required"
-      | "job_requirement_preferred"
-      | "criterion_baseline";
+      | "ownership_uncertain";
     objective: string;
     questionType: string;
     policyResult: string;

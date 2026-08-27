@@ -1273,7 +1273,7 @@
   },
   "invitationTemplate": {
     "subject": "[InterviewEP] {{포지션명}} AI 면접 안내",
-    "headline": "지원해주셔서 감사합니다",
+    "headline": "서류 전형 합격을 축하드립니다",
     "intro": "{{지원자명}}님, 지원해주셔서 감사합니다. 아래 안내에 따라 자료 제출과 AI 면접을 진행해 주세요.",
     "guides": [
       "필수 자료를 모두 제출해 주세요",

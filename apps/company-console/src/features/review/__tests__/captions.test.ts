@@ -96,20 +96,6 @@ describe("buildCaptionTrack", () => {
 
     expect(track).toContain("00:00:04.000 --> 00:00:04.700");
   });
-
-  it("keeps long native video captions short without changing the timeline text", () => {
-    const track = buildCaptionTrack([
-      entry({
-        type: "answer",
-        text: "지원자는 매우 긴 답변을 영상 자막 한 화면에 모두 표시하지 않고 원문은 면접 타임라인에서 계속 확인할 수 있도록 충분히 긴 문장을 설명했습니다.",
-      }),
-    ]);
-
-    expect(track).toContain(
-      "지원자는 매우 긴 답변을 영상 자막 한 화면에 모두 표시하지 않고 원문은 면접 타임라인에서 계속 확…",
-    );
-    expect(track).not.toContain("충분히 긴 문장을 설명했습니다");
-  });
 });
 
 describe("formatTimestamp", () => {

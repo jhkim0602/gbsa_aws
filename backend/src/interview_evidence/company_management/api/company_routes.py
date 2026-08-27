@@ -154,7 +154,6 @@ class InterviewerPersonaDefinitionInput(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     tone: InterviewerTone
     voice_id: str = Field(min_length=1, max_length=100)
-    system_prompt: str | None = Field(default=None, min_length=1, max_length=1_000)
 
 
 class EvaluationCriterionInput(BaseModel):
@@ -1138,7 +1137,6 @@ def create_company_router(
                             position_title=position.title,
                             deadline_text=format_deadline(issuance.invitation.expires_at),
                             template=template,
-                            position_description=position.description,
                             recipient_address=issuance.invitation.applicant_email,
                             invitation_url=_invitation_access_url(
                                 applicant_access_base_url,

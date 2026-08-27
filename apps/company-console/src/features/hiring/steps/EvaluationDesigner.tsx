@@ -1,12 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
-import { Plus, Sparkles, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 
 import { ICON_BUTTON } from "../../../app/styles/primitives";
 import type { FormVariant } from "../components/FormPrimitives";
 import {
+  assessmentAxisKeys,
+  assessmentAxisLabels,
   createRequirementDraft,
   inferRequirementCriterionCode,
+  type AssessmentAxisKey,
+  type AxisWeightDraft,
   type HiringDraft,
   type HiringDraftUpdater,
   type JobRequirementDraft,
@@ -52,48 +61,6 @@ const REQUIREMENT_DELETE = `${ICON_BUTTON} h-8 w-8 border-transparent bg-transpa
 const REQUIREMENT_ADD =
   "inline-flex h-9 w-full items-center justify-center gap-1 border-t border-border-muted" +
   " text-[9px] font-semibold text-muted hover:bg-brand-soft hover:text-brand";
-const EXAMPLE_BUTTON =
-  "inline-flex min-h-7 items-center gap-1 rounded-md border border-brand/20 bg-white px-2" +
-  " text-[8px] font-semibold text-brand hover:bg-brand-soft";
-
-const projectRequirementExamples = [
-  {
-    requirementType: "required",
-    statement:
-      "Python·FastAPI 기반 비동기 API와 멀티테넌트 백엔드 설계·운영 경험",
-  },
-  {
-    requirementType: "required",
-    statement: "PostgreSQL 데이터 모델링과 트랜잭션·동시성 제어 경험",
-  },
-  {
-    requirementType: "required",
-    statement: "AWS ECS·S3·RDS 기반 서비스 배포 및 장애 대응 경험",
-  },
-  {
-    requirementType: "required",
-    statement: "LLM·RAG 기반 AI 기능을 제품에 적용하고 결과 품질을 검증한 경험",
-  },
-  {
-    requirementType: "preferred",
-    statement: "Terraform 기반 AWS 인프라 코드화 및 CI/CD 자동화 경험",
-  },
-  {
-    requirementType: "preferred",
-    statement: "React·TypeScript 기반 운영 콘솔 또는 복잡한 업무 UI 개발 경험",
-  },
-  {
-    requirementType: "preferred",
-    statement: "채용·HR 도메인 또는 평가·리포팅 시스템 개발 경험",
-  },
-  {
-    requirementType: "preferred",
-    statement: "보안·감사 로그·테넌트 격리를 고려한 B2B SaaS 운영 경험",
-  },
-] as const satisfies ReadonlyArray<{
-  requirementType: RequirementType;
-  statement: string;
-}>;
 
 const STATEMENT =
   "h-8 min-w-0 w-full rounded-md border border-transparent bg-transparent px-2 text-[10px] text-ink" +
@@ -102,6 +69,67 @@ const STATEMENT =
   " focus:shadow-[0_0_0_3px_#5966ce1f]";
 const CRITERIA_OVERVIEW =
   "sticky top-4 grid gap-3 rounded-xl border border-border bg-surface p-4 shadow-[0_8px_24px_#1018280a] mw-680:static";
+// The scoring axes are their own block rather than a row inside a criterion: they apply to
+// every criterion at once, so putting them beside one would read as belonging to it.
+const AXIS_BLOCK = "grid gap-5 border-t border-border pt-7";
+const AXIS_LAYOUT =
+  "grid grid-cols-[minmax(0,1fr)_330px] items-stretch gap-6 mw-680:grid-cols-1";
+const AXIS_STORY = "grid content-center gap-5 py-2";
+const AXIS_STORY_HEADER = "grid gap-1.5";
+const AXIS_STORY_TITLE = "text-[18px] font-bold leading-[1.35] text-ink";
+const AXIS_STORY_DESCRIPTION = "text-[10px] leading-[1.7] text-muted";
+const AXIS_STEPS = "grid gap-2";
+const AXIS_STEP =
+  "grid grid-cols-[26px_minmax(0,1fr)] gap-2.5 rounded-md border border-border-muted" +
+  " bg-surface-muted/60 px-3 py-2";
+const AXIS_STEP_NUMBER = "font-mono text-[8px] font-semibold text-brand";
+const AXIS_STEP_TITLE = "text-[10px] font-semibold text-ink";
+const AXIS_STEP_DESCRIPTION = "mt-0.5 text-[9px] leading-[1.5] text-muted";
+const AXIS_NOTE =
+  "border-l-2 border-brand pl-3 text-[9px] leading-[1.55] text-ink-secondary";
+const AXIS_CONTROL =
+  "grid rounded-xl border border-border bg-surface px-3 pt-3 pb-3 shadow-[0_8px_24px_#1018280a]";
+const AXIS_CONTROL_HEADER = "flex items-center justify-between gap-3 px-1";
+const AXIS_CONTROL_TITLE = "text-[10px] font-semibold text-ink";
+const AXIS_CONTROL_HINT = "mt-0.5 text-[8px] text-muted";
+const AXIS_AUTO_BADGE =
+  "rounded-full bg-brand-soft px-2.5 py-1 text-[8px] font-semibold text-brand";
+const AXIS_BAR_LIST = "grid gap-1 px-1 pb-1";
+const AXIS_BAR_ROW =
+  "grid grid-cols-[56px_minmax(0,1fr)_36px] items-center gap-2";
+const AXIS_BAR_LABEL = "text-[9px] font-medium text-ink-secondary";
+const AXIS_BAR = "relative h-7";
+const AXIS_BAR_TRACK =
+  "absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full bg-surface-strong";
+const AXIS_BAR_FILL = "block h-full rounded-full bg-brand";
+const AXIS_BAR_THUMB =
+  "absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-brand bg-white shadow-sm";
+const AXIS_BAR_INPUT =
+  "absolute inset-0 h-full w-full cursor-pointer opacity-0";
+const AXIS_BAR_VALUE = "text-right text-[8px] font-semibold text-muted";
+
+const axisEvaluationSteps = [
+  {
+    title: "답변 근거 분해",
+    description: "상황·행동·판단 근거·결과를 분리해 실제 경험을 구조화합니다.",
+  },
+  {
+    title: "다섯 관점으로 검증",
+    description: "정확성, 깊이, 기본기, 본인 기여, 설명력을 함께 확인합니다.",
+  },
+  {
+    title: "근거 기반 종합 판단",
+    description: "담당자가 설정한 관점의 비중을 적용해 최종 평가를 구성합니다.",
+  },
+] as const;
+
+const PENTAGON_WIDTH = 330;
+const PENTAGON_HEIGHT = 220;
+const PENTAGON_CENTER_X = 165;
+const PENTAGON_CENTER_Y = 100;
+const PENTAGON_RADIUS = 70;
+
+type AxisPreferenceScores = Record<AssessmentAxisKey, number>;
 
 const requirementGroupMetadata = [
   {
@@ -133,8 +161,6 @@ export function EvaluationDesigner({
 }) {
   const inputRefs = useRef(new Map<string, HTMLInputElement>());
   const pendingFocusId = useRef<string | null>(null);
-  const animationTimerRef = useRef<number | null>(null);
-  const [exampleAnimating, setExampleAnimating] = useState(false);
   const requiredCount = draft.jobRequirements.filter(
     (requirement) => requirement.requirementType === "required",
   ).length;
@@ -146,15 +172,6 @@ export function EvaluationDesigner({
     inputRefs.current.get(id)?.focus();
     pendingFocusId.current = null;
   }, [draft.jobRequirements.length]);
-
-  useEffect(
-    () => () => {
-      if (animationTimerRef.current !== null) {
-        window.clearTimeout(animationTimerRef.current);
-      }
-    },
-    [],
-  );
 
   function updateRequirement(id: string, patch: Partial<JobRequirementDraft>) {
     const normalizedPatch =
@@ -220,40 +237,18 @@ export function EvaluationDesigner({
     );
   }
 
-  function applyProjectExamples() {
-    const runId = Date.now();
-    setExampleAnimating(true);
-    update(
-      "jobRequirements",
-      projectRequirementExamples.map((example, index) => ({
-        id: `project-example-${runId}-${index + 1}`,
-        requirementType: example.requirementType,
-        statement: example.statement,
-        priority: Math.min(index + 1, 5),
-        criterionCode: inferRequirementCriterionCode(example.statement),
-      })),
-    );
-    if (animationTimerRef.current !== null) {
-      window.clearTimeout(animationTimerRef.current);
-    }
-    animationTimerRef.current = window.setTimeout(() => {
-      setExampleAnimating(false);
-      animationTimerRef.current = null;
-    }, 1100);
-  }
-
   return (
     <section className={DESIGNER} aria-labelledby="evaluation-design-title">
       <header className={HEADER}>
         <div className="min-w-0">
           <span className={EYEBROW}>면접 결과 평가</span>
           <h3 className={TITLE} id="evaluation-design-title">
-            필수·우대 자격요건
+            자격요건과 답변 평가 관점
           </h3>
           <p className={DESCRIPTION}>
-            작성한 각 항목은 AI가 확인할 면접 주제이자 리포트 판정 기준이
-            됩니다. 지원자의 제출 자료와 답변을 연결해 항목별 충족도로
-            보여줍니다.
+            필수·우대 요건은 충족 여부를 별도로 판정합니다. 자격요건 자체는 면접
+            점수에 가중치로 반영되지 않으며, 관련 제출 근거가 있을 때 질문
+            우선순위만 높입니다.
           </p>
         </div>
       </header>
@@ -267,20 +262,10 @@ export function EvaluationDesigner({
                 Enter로 다음 항목 추가
               </span>
             </div>
-            <span className="flex items-center gap-2">
-              <button
-                className={EXAMPLE_BUTTON}
-                type="button"
-                onClick={applyProjectExamples}
-              >
-                <Sparkles aria-hidden="true" size={11} />
-                예시 채우기
-              </button>
-              <span className={TYPE_COUNTS}>
-                <b className={TYPE_COUNT_REQUIRED}>필 {requiredCount}</b>
-                <i aria-hidden="true">·</i>
-                <b className={TYPE_COUNT_PREFERRED}>우 {preferredCount}</b>
-              </span>
+            <span className={TYPE_COUNTS}>
+              <b className={TYPE_COUNT_REQUIRED}>필 {requiredCount}</b>
+              <i aria-hidden="true">·</i>
+              <b className={TYPE_COUNT_PREFERRED}>우 {preferredCount}</b>
             </span>
           </header>
 
@@ -301,18 +286,9 @@ export function EvaluationDesigner({
                 );
               return (
                 <article
-                  className={`${REQUIREMENT_ROW} ${
-                    exampleAnimating
-                      ? "[animation:requirement-row-in_.42s_cubic-bezier(.2,.8,.2,1)_both] motion-reduce:animate-none"
-                      : ""
-                  }`}
+                  className={REQUIREMENT_ROW}
                   key={requirement.id}
                   role="listitem"
-                  style={
-                    exampleAnimating
-                      ? { animationDelay: `${index * 70}ms` }
-                      : undefined
-                  }
                 >
                   <span className={REQUIREMENT_INDEX}>
                     <i
@@ -423,97 +399,436 @@ export function EvaluationDesigner({
           </button>
         </section>
 
-        <RequirementFlowOverview requirements={draft.jobRequirements} />
+        <CriteriaOverview criteria={draft.criteria} />
       </div>
+
+      <ScoringAxisWeights
+        weights={draft.axisWeights}
+        onChange={(weights) => update("axisWeights", weights)}
+      />
     </section>
   );
 }
 
-function RequirementFlowOverview({
-  requirements,
-}: {
-  requirements: HiringDraft["jobRequirements"];
-}) {
-  const example =
-    requirements.find((requirement) => requirement.statement.trim()) ??
-    requirements[0];
-  const isRequired = example?.requirementType !== "preferred";
-  const exampleStatement =
-    example?.statement.trim() || "대규모 트래픽 시스템 설계·운영 경험";
-  const exampleTypeLabel = isRequired ? "필수 사항" : "우대 사항";
-  const steps = [
-    {
-      title: "항목 하나가 판정 기준 하나로 저장",
-      description:
-        "필수·우대 문장마다 리포트에서 확인할 자격요건 항목을 하나씩 만듭니다.",
-    },
-    {
-      title: "제출 자료를 엮어 질문",
-      description:
-        "이력서·포트폴리오·GitHub에서 관련 근거를 찾아 지원자별 질문을 만듭니다.",
-    },
-    {
-      title: "점수 없이 상태로 리포트 표시",
-      description:
-        "각 항목을 충족·부분 충족·미충족·판단 불가 중 하나로 보여줍니다.",
-    },
-  ] as const;
-
+function CriteriaOverview({ criteria }: { criteria: HiringDraft["criteria"] }) {
   return (
     <aside
       className={CRITERIA_OVERVIEW}
-      aria-labelledby="requirement-flow-title"
+      aria-labelledby="criteria-overview-title"
     >
       <header className="grid gap-1">
         <h4
           className="text-[10px] font-semibold text-ink"
-          id="requirement-flow-title"
+          id="criteria-overview-title"
         >
-          자격요건을 적으면 이렇게 동작해요
+          면접 답변 평가 구성
         </h4>
         <p className="text-[8px] leading-[1.5] text-muted">
-          각 항목은 면접에서 확인할 주제이자 하나의 리포트 판정 기준이 됩니다.
+          자격요건 개수와 무관하게 모든 지원자를 같은 세 기준으로 평가합니다.
         </p>
       </header>
-
-      <div className="grid gap-1.5 rounded-md border border-brand/20 bg-brand-soft/45 px-2.5 py-2.5">
-        <span className="font-mono text-[8px] font-semibold text-brand">
-          {exampleTypeLabel} 예시
-        </span>
-        <strong className="line-clamp-3 text-[9px] leading-[1.55] text-ink">
-          “{exampleStatement}”
-        </strong>
-        <span className="text-[8px] leading-[1.45] text-muted">
-          이렇게 입력하면 아래 순서로 확인합니다.
-        </span>
-      </div>
-
-      <ol className="grid gap-1.5" aria-label="자격요건 처리 순서">
-        {steps.map((step, index) => (
-          <li
-            className="grid grid-cols-[18px_minmax(0,1fr)] gap-2 rounded-md border border-border-muted bg-surface-muted/60 px-2 py-2"
-            key={step.title}
+      <div className="grid gap-2">
+        {criteria.map((criterion, index) => (
+          <div
+            className="grid grid-cols-[20px_minmax(0,1fr)_34px] items-start gap-2 rounded-md border border-border-muted bg-surface-muted/60 px-2.5 py-2"
+            key={criterion.code}
           >
             <span className="font-mono text-[8px] font-semibold text-brand">
               {String(index + 1).padStart(2, "0")}
             </span>
             <span className="grid gap-0.5">
-              <strong className="text-[8px] text-ink">{step.title}</strong>
+              <strong className="text-[9px] text-ink">{criterion.name}</strong>
               <small className="text-[8px] leading-[1.45] text-muted">
-                {step.description}
+                {criterion.description}
               </small>
             </span>
-          </li>
+            <b className="text-right font-mono text-[8px] text-ink">
+              {criterion.weight}%
+            </b>
+          </div>
         ))}
-      </ol>
-
+      </div>
       <p className="border-l-2 border-brand pl-2.5 text-[8px] leading-[1.5] text-ink-secondary">
-        AI는 이 문장을 그대로 반복하지 않고 지원자 자료에 맞춰 자연스럽게
-        질문합니다. 모든 지원자에게 같은 문구로 꼭 물어볼 내용은 다음 단계의
-        ‘필수 질문’에 입력하며, 근거가 없으면 리포트에는 판단 불가로 남습니다.
+        필수·우대 충족도는 이 점수와 분리해 리포트에서 별도로 확인합니다.
       </p>
     </aside>
   );
+}
+
+/**
+ * The five axes every answer is scored on, and how much each counts here.
+ *
+ * Separate from qualification fulfillment above: the axes describe how an interview answer
+ * is *read*. A recruiter cannot add or remove an axis, because each one carries the guidance
+ * the scoring prompt is built from — see `shared/assessment_axes.py`.
+ *
+ * The UI keeps five independent preference scores so adjusting one control does not move the
+ * other four. Before updating the draft, those scores are normalized to the API's existing
+ * percentage contract, which still totals 100.
+ */
+function ScoringAxisWeights({
+  weights,
+  onChange,
+}: {
+  weights: AxisWeightDraft;
+  onChange: (weights: AxisWeightDraft) => void;
+}) {
+  const [preferenceScores, setPreferenceScores] =
+    useState<AxisPreferenceScores>(() => axisPreferencesFromWeights(weights));
+  const preferenceScoresRef = useRef(preferenceScores);
+  const [selectedAxis, setSelectedAxis] =
+    useState<AssessmentAxisKey>("correctness");
+  const [draggingAxis, setDraggingAxis] = useState<AssessmentAxisKey | null>(
+    null,
+  );
+  const dataPoints = assessmentAxisKeys.map((key, index) =>
+    pointOnPentagonAxis(index, preferenceScores[key] / 100),
+  );
+
+  function setPreference(key: AssessmentAxisKey, requested: number) {
+    const score = Math.round(Math.min(100, Math.max(0, requested)) / 5) * 5;
+    const next = { ...preferenceScoresRef.current, [key]: score };
+    preferenceScoresRef.current = next;
+    setPreferenceScores(next);
+    onChange(normalizeAxisPreferences(next));
+  }
+
+  function setWeightFromPointer(
+    key: AssessmentAxisKey,
+    event: ReactPointerEvent<SVGElement>,
+  ) {
+    const svg = event.currentTarget.closest("svg");
+    if (!svg) return;
+    const bounds = svg.getBoundingClientRect();
+    if (bounds.width === 0 || bounds.height === 0) return;
+    const x = ((event.clientX - bounds.left) / bounds.width) * PENTAGON_WIDTH;
+    const y = ((event.clientY - bounds.top) / bounds.height) * PENTAGON_HEIGHT;
+    const axisIndex = assessmentAxisKeys.indexOf(key);
+    const outer = pointOnPentagonAxis(axisIndex, 1);
+    const unitX = (outer.x - PENTAGON_CENTER_X) / PENTAGON_RADIUS;
+    const unitY = (outer.y - PENTAGON_CENTER_Y) / PENTAGON_RADIUS;
+    const projected =
+      ((x - PENTAGON_CENTER_X) * unitX + (y - PENTAGON_CENTER_Y) * unitY) /
+      PENTAGON_RADIUS;
+    const ratio = Math.min(1, Math.max(0, projected));
+    setPreference(key, ratio * 100);
+  }
+
+  function beginAxisDrag(
+    key: AssessmentAxisKey,
+    event: ReactPointerEvent<SVGElement>,
+  ) {
+    event.preventDefault();
+    setSelectedAxis(key);
+    setDraggingAxis(key);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    setWeightFromPointer(key, event);
+  }
+
+  return (
+    <section className={AXIS_BLOCK} aria-labelledby="scoring-axis-title">
+      <div className={AXIS_LAYOUT}>
+        <div className={AXIS_STORY}>
+          <header className={AXIS_STORY_HEADER}>
+            <span className={EYEBROW}>채점축</span>
+            <h3 className={AXIS_STORY_TITLE} id="scoring-axis-title">
+              WhyYou는 답변의 근거를
+              <br />
+              다섯 방향으로 읽습니다
+            </h3>
+            <p className={AXIS_STORY_DESCRIPTION}>
+              단순 키워드나 인상으로 점수를 매기지 않습니다. 지원자가 말한
+              사실과 행동을 근거 단위로 정리한 뒤, 서로 다른 다섯 관점에서
+              일관성을 확인합니다.
+            </p>
+          </header>
+
+          <ol className={AXIS_STEPS}>
+            {axisEvaluationSteps.map((step, index) => (
+              <li className={AXIS_STEP} key={step.title}>
+                <span className={AXIS_STEP_NUMBER}>
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <div>
+                  <strong className={AXIS_STEP_TITLE}>{step.title}</strong>
+                  <p className={AXIS_STEP_DESCRIPTION}>{step.description}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+
+          <p className={AXIS_NOTE}>
+            각 막대는 서로 독립적으로 움직입니다. 실제 평가 비중은 시스템이
+            내부에서 자동 환산하므로 합계를 맞출 필요가 없습니다.
+          </p>
+        </div>
+
+        <div
+          aria-label="답변 평가 관점 오각형"
+          className={AXIS_CONTROL}
+          role="group"
+        >
+          <header className={AXIS_CONTROL_HEADER}>
+            <div>
+              <h4 className={AXIS_CONTROL_TITLE}>평가 관점 조정</h4>
+              <p className={AXIS_CONTROL_HINT}>
+                오각형이나 아래 막대를 각각 조절하세요
+              </p>
+            </div>
+            <span className={AXIS_AUTO_BADGE}>자동 환산</span>
+          </header>
+
+          <svg
+            className="mt-1 w-full touch-none select-none"
+            viewBox={`0 0 ${PENTAGON_WIDTH} ${PENTAGON_HEIGHT}`}
+            onPointerLeave={() => setDraggingAxis(null)}
+            onPointerMove={(event) => {
+              if (draggingAxis) setWeightFromPointer(draggingAxis, event);
+            }}
+            onPointerUp={() => setDraggingAxis(null)}
+          >
+            {[0.25, 0.5, 0.75, 1].map((ratio) => (
+              <polygon
+                fill={ratio === 1 ? "#f8f9fb" : "none"}
+                key={ratio}
+                points={pentagonPoints(ratio)}
+                stroke={ratio === 1 ? "#d9dce5" : "#e8eaf0"}
+                strokeWidth={ratio === 1 ? 1.2 : 1}
+              />
+            ))}
+
+            {assessmentAxisKeys.map((key, index) => {
+              const outer = pointOnPentagonAxis(index, 1);
+              return (
+                <line
+                  key={key}
+                  stroke={
+                    selectedAxis === key ? "rgba(89,102,206,0.55)" : "#e2e4eb"
+                  }
+                  strokeWidth={selectedAxis === key ? 1.5 : 1}
+                  x1={PENTAGON_CENTER_X}
+                  x2={outer.x}
+                  y1={PENTAGON_CENTER_Y}
+                  y2={outer.y}
+                />
+              );
+            })}
+
+            <polygon
+              fill="rgba(89,102,206,0.11)"
+              points={dataPoints.map(({ x, y }) => `${x},${y}`).join(" ")}
+              stroke="rgba(89,102,206,0.78)"
+              strokeLinejoin="round"
+              strokeWidth="2"
+            />
+
+            {assessmentAxisKeys.map((key, index) => {
+              const outer = pointOnPentagonAxis(index, 1);
+              return (
+                <line
+                  aria-hidden="true"
+                  className="cursor-pointer transition-[stroke] duration-150 hover:stroke-[rgba(89,102,206,0.14)]"
+                  key={`${key}-hit-area`}
+                  stroke="rgba(89,102,206,0.045)"
+                  strokeWidth="22"
+                  x1={PENTAGON_CENTER_X}
+                  x2={outer.x}
+                  y1={PENTAGON_CENTER_Y}
+                  y2={outer.y}
+                  onPointerDown={(event) => beginAxisDrag(key, event)}
+                />
+              );
+            })}
+
+            {assessmentAxisKeys.map((key, index) => {
+              const point = dataPoints[index];
+              return (
+                <circle
+                  aria-hidden="true"
+                  className="cursor-grab"
+                  cx={point.x}
+                  cy={point.y}
+                  fill={selectedAxis === key ? "#5966ce" : "#ffffff"}
+                  key={`${key}-handle`}
+                  r={selectedAxis === key ? 6 : 5}
+                  stroke="#5966ce"
+                  strokeWidth="2"
+                  onPointerDown={(event) => beginAxisDrag(key, event)}
+                />
+              );
+            })}
+
+            {assessmentAxisKeys.map((key, index) => {
+              const labelPoint = pointOnPentagonAxis(index, 1.34);
+              const textAnchor =
+                labelPoint.x < PENTAGON_CENTER_X - 12
+                  ? "end"
+                  : labelPoint.x > PENTAGON_CENTER_X + 12
+                    ? "start"
+                    : "middle";
+              return (
+                <text
+                  className="cursor-pointer"
+                  fill={selectedAxis === key ? "#5966ce" : "#4c5068"}
+                  fontSize="9"
+                  fontWeight={selectedAxis === key ? 700 : 500}
+                  key={`${key}-label`}
+                  textAnchor={textAnchor}
+                  x={labelPoint.x}
+                  y={labelPoint.y}
+                  onClick={() => setSelectedAxis(key)}
+                >
+                  <tspan x={labelPoint.x}>{assessmentAxisLabels[key]}</tspan>
+                  <tspan
+                    dy="12"
+                    fill={selectedAxis === key ? "#5966ce" : "#9295a8"}
+                    fontFamily="monospace"
+                    fontSize="8"
+                    x={labelPoint.x}
+                  >
+                    {axisStrengthLabel(preferenceScores[key])}
+                  </tspan>
+                </text>
+              );
+            })}
+
+            <circle
+              cx={PENTAGON_CENTER_X}
+              cy={PENTAGON_CENTER_Y}
+              fill="#5966ce"
+              r="2.5"
+            />
+          </svg>
+
+          <div className={AXIS_BAR_LIST}>
+            {assessmentAxisKeys.map((key) => (
+              <label className={AXIS_BAR_ROW} key={`${key}-bar`}>
+                <span className={AXIS_BAR_LABEL}>
+                  {assessmentAxisLabels[key]}
+                </span>
+                <span className={AXIS_BAR}>
+                  <span className={AXIS_BAR_TRACK} aria-hidden="true">
+                    <i
+                      className={AXIS_BAR_FILL}
+                      style={{ width: `${preferenceScores[key]}%` }}
+                    />
+                  </span>
+                  <i
+                    aria-hidden="true"
+                    className={AXIS_BAR_THUMB}
+                    style={{
+                      left: `${Math.min(98, Math.max(2, preferenceScores[key]))}%`,
+                    }}
+                  />
+                  <input
+                    aria-label={`${assessmentAxisLabels[key]} 관점 강도`}
+                    className={AXIS_BAR_INPUT}
+                    max={100}
+                    min={0}
+                    step={5}
+                    type="range"
+                    value={preferenceScores[key]}
+                    onChange={(event) =>
+                      setPreference(key, Number(event.target.value))
+                    }
+                    onFocus={() => setSelectedAxis(key)}
+                    onPointerDown={() => setSelectedAxis(key)}
+                  />
+                </span>
+                <output className={AXIS_BAR_VALUE}>
+                  {axisStrengthLabel(preferenceScores[key])}
+                </output>
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function pointOnPentagonAxis(index: number, ratio: number) {
+  const angle = -Math.PI / 2 + (index * Math.PI * 2) / 5;
+  return {
+    x: PENTAGON_CENTER_X + Math.cos(angle) * PENTAGON_RADIUS * ratio,
+    y: PENTAGON_CENTER_Y + Math.sin(angle) * PENTAGON_RADIUS * ratio,
+  };
+}
+
+function pentagonPoints(ratio: number) {
+  return assessmentAxisKeys
+    .map((_, index) => {
+      const point = pointOnPentagonAxis(index, ratio);
+      return `${point.x},${point.y}`;
+    })
+    .join(" ");
+}
+
+function axisPreferencesFromWeights(
+  weights: AxisWeightDraft,
+): AxisPreferenceScores {
+  const totalWeight = assessmentAxisKeys.reduce(
+    (sum, key) => sum + Math.max(0, weights[key]),
+    0,
+  );
+  if (totalWeight <= 0) {
+    return Object.fromEntries(
+      assessmentAxisKeys.map((key) => [key, 50]),
+    ) as AxisPreferenceScores;
+  }
+  const averageWeight = totalWeight / assessmentAxisKeys.length;
+  return Object.fromEntries(
+    assessmentAxisKeys.map((key) => [
+      key,
+      Math.min(
+        100,
+        Math.round(((Math.max(0, weights[key]) / averageWeight) * 50) / 5) * 5,
+      ),
+    ]),
+  ) as AxisPreferenceScores;
+}
+
+function normalizeAxisPreferences(
+  preferences: AxisPreferenceScores,
+): AxisWeightDraft {
+  const total = assessmentAxisKeys.reduce(
+    (sum, key) => sum + Math.max(0, preferences[key]),
+    0,
+  );
+  if (total <= 0) {
+    return {
+      correctness: 20,
+      depth: 20,
+      fundamentals: 20,
+      ownership: 20,
+      communication: 20,
+    };
+  }
+  const exactWeights = assessmentAxisKeys.map(
+    (key) => (Math.max(0, preferences[key]) / total) * 100,
+  );
+  const normalized = exactWeights.map(Math.floor);
+  let remainder = 100 - normalized.reduce((sum, value) => sum + value, 0);
+  const remainderOrder = exactWeights
+    .map((weight, index) => ({ fraction: weight - Math.floor(weight), index }))
+    .sort(
+      (left, right) =>
+        right.fraction - left.fraction || left.index - right.index,
+    );
+  for (let cursor = 0; remainder > 0; cursor += 1) {
+    normalized[remainderOrder[cursor % remainderOrder.length].index] += 1;
+    remainder -= 1;
+  }
+  return Object.fromEntries(
+    assessmentAxisKeys.map((key, index) => [key, normalized[index]]),
+  ) as AxisWeightDraft;
+}
+
+function axisStrengthLabel(score: number) {
+  if (score === 0) return "제외";
+  if (score <= 35) return "낮게";
+  if (score <= 75) return "보통";
+  return "높게";
 }
 
 function nextDraftIndex(ids: string[]) {

@@ -16,19 +16,17 @@ from interview_evidence.shared.tenant import TenantContext
 
 
 class InterviewStage(StrEnum):
-    ADAPTIVE = "adaptive"
     TECHNICAL = "technical"
     PROJECT_DEEP_DIVE = "project_deep_dive"
     BEHAVIORAL = "behavioral"
 
 
-DEFAULT_INTERVIEW_STAGES = (InterviewStage.ADAPTIVE,)
+DEFAULT_INTERVIEW_STAGES = (
+    InterviewStage.TECHNICAL,
+    InterviewStage.PROJECT_DEEP_DIVE,
+    InterviewStage.BEHAVIORAL,
+)
 INTERVIEW_STAGE_FOCUS = {
-    InterviewStage.ADAPTIVE: (
-        "회사가 설정한 필수·우대 자격요건과 반드시 물어볼 질문을 중심으로 확인합니다. "
-        "지원자의 제출 자료에서 관련 근거를 찾아 질문에 자연스럽게 연결하고, 직전 답변에 "
-        "상황·본인 행동·판단 근거·결과가 부족할 때만 필요한 꼬리질문을 이어갑니다."
-    ),
     InterviewStage.TECHNICAL: (
         "기술 선택, 구현 원리, 문제 해결 과정, 대안과 트레이드오프를 확인합니다. "
         "협업 방식 자체를 중심 질문으로 삼지 않습니다."
@@ -44,7 +42,6 @@ INTERVIEW_STAGE_FOCUS = {
     ),
 }
 INTERVIEW_STAGE_WEIGHTS = {
-    InterviewStage.ADAPTIVE: 1,
     InterviewStage.TECHNICAL: 3,
     InterviewStage.PROJECT_DEEP_DIVE: 4,
     InterviewStage.BEHAVIORAL: 3,
@@ -62,9 +59,7 @@ CORE_QUESTION_TYPES = frozenset(
         "stage_final",
     }
 )
-DEFAULT_OPENING_MESSAGE = (
-    "안녕하세요. 오늘은 회사가 설정한 자격요건과 제출하신 자료를 바탕으로 진행하겠습니다."
-)
+DEFAULT_OPENING_MESSAGE = "안녕하세요. 오늘은 기술, 프로젝트, 협업 경험을 중심으로 진행하겠습니다."
 DEFAULT_WARM_UP_QUESTION = (
     "먼저 간단한 자기소개와 지원 직무와 관련해 가장 자신 있는 경험을 말씀해 주시겠어요?"
 )
@@ -167,11 +162,6 @@ def stage_verification_objective(
     stage: InterviewStage,
     target: VerificationTargetPlan,
 ) -> str:
-    if stage is InterviewStage.ADAPTIVE:
-        return (
-            f"{target.objective} 지원자의 제출 자료와 직전 답변을 연결하고, 실제 본인 경험과 "
-            "판단 근거 및 결과를 확인합니다."
-        )
     if stage is InterviewStage.TECHNICAL:
         return (
             f"{target.objective} 답변에서는 실제 기술 선택, 구현 방식, 판단 근거와 검증 결과를 "
@@ -198,7 +188,6 @@ class InterviewPlan:
     model_config_version: str
     retrieval_config_version: str
     voice_id: str
-    interviewer_system_prompt: str = ""
     verification_targets: tuple[VerificationTargetPlan, ...] = ()
     interview_level: InterviewLevel = DEFAULT_INTERVIEW_LEVEL
     stages: tuple[InterviewStage, ...] = DEFAULT_INTERVIEW_STAGES
@@ -218,8 +207,8 @@ class InterviewPlan:
             target_criteria = {target.criterion_id for target in self.verification_targets}
             if not target_criteria.issubset(set(self.criterion_ids)):
                 raise ValueError("verification target criterion is outside the plan")
-        if not self.stages or len(set(self.stages)) != len(self.stages):
-            raise ValueError("interview plan requires at least one unique interview flow stage")
+        if self.stages != DEFAULT_INTERVIEW_STAGES:
+            raise ValueError("interview plan requires the fixed interview stage sequence")
         if not self.opening_message.strip():
             raise ValueError("interview plan requires an opening message")
         if not is_interview_prompt(self.warm_up_question):
@@ -259,7 +248,7 @@ class InterviewPlan:
         return self.stages[0]
 
     def stage_time_budget_seconds(self, stage: InterviewStage) -> int:
-        weight_total = sum(INTERVIEW_STAGE_WEIGHTS[item] for item in self.stages)
+        weight_total = sum(INTERVIEW_STAGE_WEIGHTS.values())
         return max(
             1,
             self.remaining_time_seconds * INTERVIEW_STAGE_WEIGHTS[stage] // weight_total,
@@ -411,30 +400,6 @@ class InterviewPlan:
         if upcoming is not None and remaining_seconds < upcoming.time_budget_seconds:
             return None
         return upcoming
-
-    def has_sufficient_evidence_for_all_targets(
-        self,
-        *,
-        answered_target_id: UUID,
-        answer_needs_follow_up: bool,
-        follow_up_count: int,
-        completed_target_ids: frozenset[UUID],
-    ) -> bool:
-        """Return whether the adaptive interview can finish before the 30-minute cap.
-
-        A target is complete when the latest answer no longer needs clarification or
-        when its configured follow-up budget has been exhausted. The clock remains a
-        hard upper bound; collecting enough evidence is the normal earlier stop.
-        """
-        if follow_up_count < 0:
-            raise ValueError("interview target progress cannot be negative")
-        answered = self.target(answered_target_id)
-        assessed = set(completed_target_ids)
-        if not answer_needs_follow_up or follow_up_count >= self.follow_up_budget(answered):
-            assessed.add(answered_target_id)
-        return bool(self.verification_targets) and all(
-            target.verification_target_id in assessed for target in self.verification_targets
-        )
 
 
 class InterviewPlanProvider(Protocol):

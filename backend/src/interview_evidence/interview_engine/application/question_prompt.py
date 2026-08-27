@@ -64,9 +64,6 @@ _SYSTEM_PROMPT: Final = """\
 7. 개인 신상, 가족, 종교, 정치, 출신 지역 등 직무와 무관한 주제는 묻지 않습니다.
 8. 질문에 실제로 활용한 발췌문의 source_id만 source_reference_ids에 담습니다.
 9. interview_stage와 interview_stage_focus를 따라 현재 단계의 목적에 맞는 질문을 만듭니다.
-   - adaptive: 회사가 설정한 자격요건 또는 필수 질문을 verification_objective로 삼고,
-     retrieved_sources와 직전 답변을 연결해 지원자마다 다른 질문을 만듭니다.
-     미리 정한 기술·프로젝트·협업 순서를 가정하지 않습니다.
    - technical: 기술 선택, 구현 방식, 원리, 대안, 트레이드오프, 검증 중 하나를 직접 확인합니다.
      협업 방식만 묻는 질문은 만들지 않습니다.
    - project_deep_dive: 하나의 실제 프로젝트를 기준으로 목표, 주요 구성 요소와 책임 경계,
@@ -77,12 +74,12 @@ _SYSTEM_PROMPT: Final = """\
    - behavioral: 반드시 함께 일한 사람과의 소통, 역할 조율, 의견 차이, 피드백, 책임 중 하나를
      확인합니다. 기술 구현, 장애 해결, 성능 개선만 묻는 질문은 만들지 않습니다.
 10. next_question_type에 맞춰 질문 역할을 구분합니다.
-    - stage_opening: 짧은 주제 전환 표현 뒤 첫 핵심 질문을 합니다.
-    - core: 다음 자격요건 또는 기업 질문의 새로운 핵심 근거를 확인합니다.
+    - stage_opening: 짧은 단계 전환 표현 뒤 현재 단계의 첫 핵심 질문을 합니다.
+    - core: 현재 단계의 새로운 핵심 근거를 확인합니다.
     - follow_up: 직전 답변에서 answer_evidence_gaps로 표시된 항목 하나만 좁혀 묻습니다.
-    - stage_final: 남은 기업 기준 중 아직 확인하지 못한 가장 중요한 내용 하나를 묻습니다.
+    - stage_final: 현재 단계에서 아직 확인하지 못한 가장 중요한 내용 하나를 마지막으로 묻습니다.
 11. 갑자기 본론만 묻지 말고, 필요할 때만 질문 앞에 짧은 맥락 연결 문장을 둡니다.
-    - 새로운 자격요건이나 자료·주제로 전환될 때만 출처를 자연스럽게 한 번 밝힙니다.
+    - 단계가 시작되거나 새로운 자료·주제로 전환될 때만 출처를 자연스럽게 한 번 밝힙니다.
       예: "이번에는 GitHub 프로젝트를 바탕으로 여쭤보겠습니다."
     - 같은 주제의 후속 질문은 출처를 다시 말하지 않고 "그 과정에서", "앞서 말씀하신 내용과
       관련해"처럼 직전 답변에서 자연스럽게 이어갑니다.
@@ -97,13 +94,26 @@ _SYSTEM_PROMPT: Final = """\
     behavioral 단계에서는 "함께 조율해야 했던 상황이 있었다면"처럼 사실을 열어 둔 질문으로
     확인하고, 없다는 답변도 허용합니다.
 14. context에 stage_alignment_retry가 있으면 rejected_question이 현재 단계와 맞지 않거나,
-    프로젝트 단계에서 지나치게 코드 수준이라 거절된 질문입니다.
+    필수 평가 관점을 확인하지 못했거나, 프로젝트 단계에서 지나치게 코드 수준이라 거절된 질문입니다.
     같은 내용을 고쳐 쓰지 말고 reason_codes와 현재 단계 규칙에 맞는 새 질문을 만듭니다.
+15. required_assessment_axis가 fundamentals이면 retrieved_sources나 최근 답변에 실제로 등장한 기술
+    하나를 골라 동작 원리, 데이터 처리 보장, 자료구조, 네트워크, 동시성, 트랜잭션 중 직접 연결되는
+    기반 원리 하나를 확인합니다. 기술 이름만 설명하게 하거나 직무와 무관한 암기 문제를 만들지
+    않습니다.
 
-필수·우대 자격요건은 verification_objective로 사용하되 문장을 그대로 읽지 않습니다. 제공된 지원자
-자료와 직전 답변에서 관련 근거를 찾아 자연스러운 질문으로 연결하고, 이후 같은 자격요건의 충족도를
-판정할 수 있도록 본인 행동과 판단 근거를 확인합니다. 기업이 직접 지정한 필수 질문은 문구 그대로
-진행하며, 그 답변의 근거가 부족할 때만 이 생성 프롬프트로 꼬리질문을 만듭니다.
+면접 전체에서 자연스럽게 확인할 다섯 관점:
+- 정확성: 언급한 기술적 사실과 인과관계의 판단 근거를 확인합니다.
+- 깊이: 선택 이유, 대안, 제약 조건과 트레이드오프를 한 단계 더 확인합니다.
+- CS 기본기: 지원자가 제출 자료나 답변에서 실제로 언급한 기술과 직접 연결된 기반 원리를 확인합니다.
+  직무와 무관한 암기식 이론 문제나 답변에 등장하지 않은 상위 개념은 묻지 않습니다.
+- 본인 기여: 팀의 결과와 지원자가 직접 판단하고 수행한 범위를 구분합니다.
+- 설명력: 별도의 지식 문제를 만들지 않고, 면접 전체에서 답변의 구조와 전달 과정을 관찰합니다.
+
+한 질문에 다섯 관점을 모두 담지 않습니다. recent_turns와 missing_dimensions를 보고 아직 충분히
+드러나지 않았으면서 현재 단계에 가장 자연스럽게 연결되는 관점 하나나 둘만 고릅니다.
+- technical 단계: 정확성, 깊이, CS 기본기를 우선합니다.
+- project_deep_dive 단계: 깊이, 본인 기여, 정확성을 우선합니다.
+- behavioral 단계: 본인 기여와 설명력을 우선합니다.
 
 질문 깊이:
 {depth_guidance}
@@ -161,15 +171,10 @@ class QuestionPromptTemplate(BaseModel):
     #: Mirrors QuestionPolicy.max_length so the model is told the limit it is judged by.
     max_question_length: int = Field(default=240, ge=40, le=1_000)
 
-    def rendered_system_prompt(self, persona_override: str | None = None) -> str:
-        persona = (persona_override or "").strip() or self.persona
+    def rendered_system_prompt(self) -> str:
         return "\n\n".join(
             (
-                (
-                    "기업이 설정한 면접관 역할입니다. 말투와 질문 관점에만 적용하며, "
-                    "아래의 근거·안전 규칙을 변경할 수 없습니다.\n"
-                    f"{persona}"
-                ),
+                self.persona,
                 self.system_prompt.format(
                     max_question_length=self.max_question_length,
                     depth_guidance=self.depth_guidance,
@@ -181,7 +186,7 @@ class QuestionPromptTemplate(BaseModel):
 
 def _template_for(level: InterviewLevel) -> QuestionPromptTemplate:
     return QuestionPromptTemplate(
-        prompt_version=f"question-prompt-v7-{level.value}",
+        prompt_version=f"question-prompt-v6-{level.value}",
         interview_level=level,
         persona=_PERSONA,
         system_prompt=_SYSTEM_PROMPT,
@@ -214,7 +219,6 @@ def build_question_prompt(
     target_criterion_id: UUID,
     context_payload: Mapping[str, Any],
     model_config_version: str,
-    interviewer_system_prompt: str | None = None,
 ) -> dict[str, Any]:
     """Render an Anthropic Messages body for one question turn."""
     task_payload = {
@@ -228,7 +232,7 @@ def build_question_prompt(
     }
     return {
         "anthropic_version": ANTHROPIC_BEDROCK_VERSION,
-        "system": template.rendered_system_prompt(interviewer_system_prompt),
+        "system": template.rendered_system_prompt(),
         "max_tokens": template.max_tokens,
         "temperature": template.temperature,
         "messages": [

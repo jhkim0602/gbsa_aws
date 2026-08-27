@@ -8,9 +8,6 @@ from interview_evidence.interview_engine.application.interview_plan import (
     StageQuestionDecision,
     VerificationTargetPlan,
 )
-from interview_evidence.interview_engine.application.interview_service import (
-    _company_question_with_bridge,
-)
 
 CRITERION_ID = UUID("00000000-0000-7000-8000-000000000001")
 TARGET_ID = UUID("00000000-0000-7000-8000-000000000002")
@@ -45,11 +42,6 @@ def _plan() -> InterviewPlan:
         retrieval_config_version="stage-aware-hybrid-v1",
         voice_id="Seoyeon",
         verification_targets=(_target(),),
-        stages=(
-            InterviewStage.TECHNICAL,
-            InterviewStage.PROJECT_DEEP_DIVE,
-            InterviewStage.BEHAVIORAL,
-        ),
     )
 
 
@@ -87,35 +79,6 @@ def test_stage_time_budgets_split_the_fixed_thirty_minutes() -> None:
         540,
     )
     assert tuple(plan.stage_question_limit(stage) for stage in plan.stages) == (6, 8, 6)
-
-
-def test_company_question_is_spoken_with_a_natural_transition() -> None:
-    spoken = _company_question_with_bridge(
-        "협업 과정에서 의견이 달랐을 때 어떻게 조율했나요?",
-        previous_question_count=1,
-    )
-
-    assert spoken == (
-        "좋습니다. 이제 회사에서 꼭 확인하고 싶은 내용을 하나 여쭤보겠습니다. "
-        "협업 과정에서 의견이 달랐을 때 어떻게 조율했나요?"
-    )
-
-
-def test_adaptive_interview_finishes_early_when_all_target_evidence_is_sufficient() -> None:
-    plan = replace(_plan(), stages=(InterviewStage.ADAPTIVE,))
-
-    assert plan.has_sufficient_evidence_for_all_targets(
-        answered_target_id=TARGET_ID,
-        answer_needs_follow_up=False,
-        follow_up_count=0,
-        completed_target_ids=frozenset(),
-    )
-    assert not plan.has_sufficient_evidence_for_all_targets(
-        answered_target_id=TARGET_ID,
-        answer_needs_follow_up=True,
-        follow_up_count=0,
-        completed_target_ids=frozenset(),
-    )
 
 
 def test_fast_answers_use_question_limits_instead_of_looping_forever() -> None:
@@ -306,11 +269,6 @@ def test_each_stage_uses_the_matching_evaluation_criterion() -> None:
         retrieval_config_version="stage-aware-hybrid-v1",
         voice_id="Seoyeon",
         verification_targets=(technical, project, behavioral),
-        stages=(
-            InterviewStage.TECHNICAL,
-            InterviewStage.PROJECT_DEEP_DIVE,
-            InterviewStage.BEHAVIORAL,
-        ),
     )
 
     assert plan.initial_target_for_stage(InterviewStage.TECHNICAL) == technical

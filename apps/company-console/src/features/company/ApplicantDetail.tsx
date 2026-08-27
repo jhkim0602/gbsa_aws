@@ -12,6 +12,7 @@ import {
   MessageSquareQuote,
   PlayCircle,
   ShieldCheck,
+  Sparkles,
   UserRound,
   Video,
 } from "lucide-react";
@@ -26,13 +27,8 @@ import {
   invitationTone,
 } from "../../app/styles/primitives";
 import { invitationStatusMeta } from "../hiring/PositionInvitations";
-import { RequirementRadarProfile, TimelineView } from "../review";
-import type {
-  RequirementAssessment,
-  RequirementAssessmentStatus,
-  RequirementEvidence,
-  ReviewTimelineEntry,
-} from "../review/types";
+import { InterviewAxisRadarProfile, TimelineView } from "../review";
+import { ApplicantCapabilityBars } from "./CompetencyInsights";
 import type {
   CompanyApplicantReport,
   CompanyInvitation,
@@ -90,28 +86,19 @@ export function ApplicantDetail({
   positionId,
   invitationId,
   api,
-  embedded = false,
-  initialInvitation,
 }: {
   positionId: string;
   invitationId: string;
   api: CompanyOperationsApi;
-  embedded?: boolean;
-  initialInvitation?: PositionedInvitation;
 }) {
   const { invitations, loading, error } = useRecruitingOperations(
     api,
     positionId,
   );
-  const invitation =
-    invitations.find(
-      (item) =>
-        item.positionId === positionId && item.invitationId === invitationId,
-    ) ??
-    (initialInvitation?.positionId === positionId &&
-    initialInvitation.invitationId === invitationId
-      ? initialInvitation
-      : undefined);
+  const invitation = invitations.find(
+    (item) =>
+      item.positionId === positionId && item.invitationId === invitationId,
+  );
   const [selectedTab, setSelectedTab] =
     useState<ApplicantReportTab>("analysis");
   const [selectedStartMs, setSelectedStartMs] = useState<number | null>(null);
@@ -126,37 +113,34 @@ export function ApplicantDetail({
   } = useApplicantReviewDossier({
     api,
     invitation,
-    enabled: Boolean(invitation && (embedded || !redirectToReview)),
+    enabled: Boolean(invitation && !redirectToReview),
   });
 
-  if (loading && !invitation) {
+  if (loading) {
     return (
       <div className={ASYNC_STATE} role="status">
         지원자 정보를 불러오는 중입니다.
       </div>
     );
   }
-  if ((!invitation && error) || !invitation) {
+  if (error || !invitation) {
     return (
       <div className={ASYNC_STATE} role="alert">
         지원자 정보를 찾을 수 없습니다.
       </div>
     );
   }
-  if (redirectToReview && !embedded) {
+  if (redirectToReview) {
     return <Navigate replace to={redirectToReview} />;
   }
 
   const displayName =
     invitation.applicantDisplayName || invitation.applicantEmail.split("@")[0];
   const status = invitationStatusMeta[invitation.status];
-  const requirementAssessments = report?.report.requirementAssessments ?? [];
-  const requirementCount = (status: string) =>
-    requirementAssessments.filter((assessment) => {
-      const effective = assessment.humanOverride?.status ?? assessment.status;
-      const normalized = effective === "unknown" ? "not_met" : effective;
-      return normalized === status;
-    }).length;
+  const evidenceCount = report?.report.items.reduce(
+    (sum, item) => sum + item.evidence.length,
+    0,
+  );
 
   function openEvidence(startMs: number) {
     setSelectedStartMs(startMs);
@@ -177,16 +161,11 @@ export function ApplicantDetail({
   }
 
   return (
-    <div
-      className={embedded ? "grid min-h-full gap-0 bg-[#f6f7fa] pb-6" : ROOT}
-    >
+    <div className={ROOT}>
       <header className={HEADER}>
-        {embedded ? null : (
-          <Link to={`/positions/${positionId}`} className={BACK}>
-            <ArrowLeft size={14} aria-hidden="true" />{" "}
-            {invitation.positionTitle}
-          </Link>
-        )}
+        <Link to={`/positions/${positionId}`} className={BACK}>
+          <ArrowLeft size={14} aria-hidden="true" /> {invitation.positionTitle}
+        </Link>
         <div className={IDENTITY}>
           <span className={AVATAR} aria-hidden="true">
             {getInitial(displayName)}
@@ -217,25 +196,29 @@ export function ApplicantDetail({
         </div>
       </header>
 
-      <section className={SCORE_STRIP} aria-label="지원자 자격요건 판정 요약">
+      <section className={SCORE_STRIP} aria-label="지원자 역량 요약">
         <ScoreMetric
-          label="충족"
-          value={report ? `${requirementCount("met")}개` : "–"}
-          icon={<CheckCircle2 size={16} />}
+          label="총점"
+          value={
+            report?.insight.overallScore == null
+              ? "–"
+              : String(report.insight.overallScore)
+          }
+          icon={<Sparkles size={16} />}
         />
         <ScoreMetric
-          label="부분 충족"
-          value={report ? `${requirementCount("partially_met")}개` : "–"}
+          label="답변 근거 충족"
+          value={report ? `${report.insight.evidenceCoverage}%` : "–"}
           icon={<ShieldCheck size={16} />}
         />
         <ScoreMetric
-          label="미충족"
-          value={report ? `${requirementCount("not_met")}개` : "–"}
-          icon={<CircleDashed size={16} />}
+          label="평가 기준"
+          value={report ? `${report.insight.criteria.length}개` : "–"}
+          icon={<BarChart3 size={16} />}
         />
         <ScoreMetric
-          label="전체 자격요건"
-          value={report ? `${requirementAssessments.length}개` : "–"}
+          label="인용 근거"
+          value={evidenceCount == null ? "–" : `${evidenceCount}개`}
           icon={<MessageSquareQuote size={16} />}
         />
       </section>
@@ -301,15 +284,6 @@ export function ApplicantDetail({
   );
 }
 
-function InterviewMetric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="border-r border-border-muted px-3 last:border-r-0 mw-720:border-r-0 mw-720:border-b mw-720:py-2 mw-720:last:border-b-0">
-      <dt className="text-[9px] text-muted">{label}</dt>
-      <dd className="mt-1 font-mono text-[20px] text-ink">{value}개</dd>
-    </div>
-  );
-}
-
 function AnalysisPanel({
   report,
   onOpenEvidence,
@@ -321,39 +295,8 @@ function AnalysisPanel({
     return (
       <ReportPending icon={<BarChart3 size={22} />} title="분석 리포트 대기" />
     );
-  const requirements = report.report.requirementAssessments ?? [];
-  const decidedRequirements = requirements.length;
-  const questions = report.timeline.entries.filter(
-    (entry) => entry.type === "question",
-  );
-  const mandatoryQuestionAnswers = pairMandatoryQuestionAnswers(
-    report.timeline.entries,
-  );
-  const durationMinutes = Math.max(
-    1,
-    Math.ceil(
-      Math.max(0, ...report.timeline.entries.map((entry) => entry.endMs)) /
-        60_000,
-    ),
-  );
-  const companyQuestionCount = questions.filter(
-    (entry) => entry.questionRationale?.questionType === "company_required",
-  ).length;
-  const followUpCount = questions.filter(
-    (entry) => entry.questionRationale?.questionType === "follow_up",
-  ).length;
-  const requirementQuestionCount = questions.filter((entry) =>
-    entry.questionRationale?.verificationTargetType.startsWith(
-      "job_requirement_",
-    ),
-  ).length;
   return (
     <div className="grid gap-4">
-      <MandatoryQuestionAnswers
-        entries={mandatoryQuestionAnswers}
-        onOpenEvidence={onOpenEvidence}
-      />
-
       <div className="grid grid-cols-[minmax(0,0.82fr)_minmax(320px,1.18fr)] gap-4 mw-900:grid-cols-[minmax(0,1fr)]">
         <section
           className={`${CARD} bg-[linear-gradient(145deg,#f3f5ff,#ffffff)]`}
@@ -363,43 +306,32 @@ function AnalysisPanel({
               <p className="text-[9px] font-bold text-brand uppercase">
                 AI SUMMARY
               </p>
-              <h2 className="mt-1 text-[14px] text-ink">자격요건 판정 요약</h2>
+              <h2 className="mt-1 text-[14px] text-ink">종합 분석</h2>
             </div>
-            <strong className="font-mono text-[24px] text-brand">
-              {decidedRequirements}/{requirements.length}
+            <strong className="font-mono text-[30px] text-brand">
+              {report.insight.overallScore}
             </strong>
           </header>
           <p className="p-5 text-[12px] leading-[1.75] text-ink-secondary">
             {report.report.summary}
           </p>
           <div className="border-t border-border-muted px-5 py-3 text-[9px] text-muted">
-            제출 자료와 면접 답변의 근거를 함께 확인한 상태이며 채용 결정을
-            대신하지 않습니다.
+            게시된 가중치를 적용한 참고 점수이며 채용 결정을 대신하지 않습니다.
           </div>
         </section>
         <section className={CARD}>
           <header className={CARD_HEADER}>
             <div>
-              <h2 className="text-[14px] text-ink">면접 진행 요약</h2>
+              <h2 className="text-[14px] text-ink">기준별 역량</h2>
               <p className="mt-1 text-[10px] text-muted">
-                최대 30분 안에서 필요한 근거가 모이면 조기 종료합니다.
+                실제 답변 근거가 있는 기준별 점수입니다.
               </p>
             </div>
-            <span className="text-[10px] text-muted">
-              실제 {durationMinutes}분
-            </span>
+            <span className="text-[10px] text-muted">100점 기준</span>
           </header>
-          <dl className="grid grid-cols-3 p-5 text-center mw-720:grid-cols-1 mw-720:text-left">
-            <InterviewMetric
-              label="자격요건 질문"
-              value={requirementQuestionCount}
-            />
-            <InterviewMetric
-              label="기업 설정 질문"
-              value={companyQuestionCount}
-            />
-            <InterviewMetric label="필요한 꼬리질문" value={followUpCount} />
-          </dl>
+          <div className="p-5">
+            <ApplicantCapabilityBars insight={report.insight} />
+          </div>
         </section>
       </div>
 
@@ -409,222 +341,77 @@ function AnalysisPanel({
             <p className="text-[9px] font-bold text-brand uppercase">
               INTERVIEW PROFILE
             </p>
-            <h2 className="mt-1 text-[14px] text-ink">자격요건 충족 레이더</h2>
+            <h2 className="mt-1 text-[14px] text-ink">5축 역량 레이더</h2>
             <p className="mt-1 text-[10px] text-muted">
-              기업이 설정한 필수·우대 항목별 충족도를 비교합니다.
+              정확성·깊이·CS 기본기·본인 기여·설명력을 답변 근거로 비교합니다.
             </p>
           </div>
         </header>
         <div className="p-5 mw-720:p-3">
-          <RequirementRadarProfile
-            assessments={report.report.requirementAssessments ?? []}
-          />
+          <InterviewAxisRadarProfile items={report.report.items} />
         </div>
       </section>
 
       <section className={CARD}>
         <header className={CARD_HEADER}>
           <div>
-            <p className="text-[9px] font-bold text-brand uppercase">
-              REQUIREMENT EVIDENCE
-            </p>
-            <h2 className="mt-1 text-[14px] text-ink">자격요건별 근거 상세</h2>
+            <h2 className="text-[14px] text-ink">평가 기준과 답변 근거</h2>
             <p className="mt-1 text-[10px] text-muted">
-              기업이 설정한 필수·우대 자격요건마다 판정 상태와 실제 근거를
-              확인합니다.
+              타임스탬프를 누르면 해당 답변 영상으로 이동합니다.
             </p>
           </div>
         </header>
-        {requirements.length ? (
-          <div className="grid">
-            {requirements.map((assessment, index) => (
-              <RequirementEvidenceArticle
-                assessment={assessment}
-                index={index}
-                key={assessment.requirementAssessmentId}
-                onOpenEvidence={onOpenEvidence}
-              />
-            ))}
-          </div>
-        ) : (
-          <p className="p-5 text-[11px] text-muted">
-            이 리포트에는 기업 자격요건 판정이 아직 생성되지 않았습니다.
-          </p>
-        )}
-      </section>
-    </div>
-  );
-}
-
-type MandatoryQuestionAnswer = {
-  question: ReviewTimelineEntry;
-  answer: ReviewTimelineEntry | null;
-};
-
-function MandatoryQuestionAnswers({
-  entries,
-  onOpenEvidence,
-}: {
-  entries: readonly MandatoryQuestionAnswer[];
-  onOpenEvidence(startMs: number): void;
-}) {
-  return (
-    <section className={`${CARD} border-brand/30`}>
-      <header className={`${CARD_HEADER} bg-brand-soft/35`}>
-        <div>
-          <p className="text-[9px] font-bold text-brand uppercase">
-            COMPANY REQUIRED QUESTIONS
-          </p>
-          <h2 className="mt-1 text-[14px] text-ink">
-            기업이 반드시 물어본 질문
-          </h2>
-          <p className="mt-1 text-[10px] text-muted">
-            기업 담당자가 직접 설정한 질문과 지원자의 실제 답변입니다.
-          </p>
-        </div>
-        <strong className="rounded-full bg-surface px-3 py-1.5 font-mono text-[10px] text-brand">
-          {entries.length}개
-        </strong>
-      </header>
-      {entries.length ? (
-        <ol className="grid">
-          {entries.map(({ question, answer }, index) => (
-            <li
-              className="grid gap-3 border-b border-border-muted p-5 last:border-b-0"
-              key={question.entryId}
+        <div className="grid">
+          {report.report.items.map((item) => (
+            <article
+              className="grid gap-4 border-b border-border-muted p-5 last:border-b-0"
+              key={item.reportItemId}
             >
-              <div className="flex items-start gap-3">
-                <span className="grid size-7 shrink-0 place-items-center rounded-full bg-brand text-[9px] font-bold text-white">
-                  Q{index + 1}
-                </span>
-                <p className="pt-1 text-[12px] font-semibold leading-[1.6] text-ink">
-                  {question.text ?? "질문 원문 없음"}
-                </p>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <span
+                    className={`inline-flex rounded px-2 py-1 text-[9px] font-bold ${assessmentTone(item.assessmentState)}`}
+                  >
+                    {assessmentLabel(item.assessmentState)}
+                  </span>
+                  <h3 className="mt-2 text-[14px] text-ink">
+                    {item.criterionName}
+                  </h3>
+                  <p className="mt-2 text-[11px] leading-[1.65] text-ink-secondary">
+                    {item.observation}
+                  </p>
+                </div>
+                <strong className="flex-none font-mono text-[24px] text-ink">
+                  {item.averageScore ?? "–"}
+                </strong>
               </div>
-              {answer?.text ? (
-                <button
-                  className="ml-10 grid gap-2 rounded-lg border border-border bg-surface-muted px-4 py-3 text-left transition hover:border-brand hover:bg-brand-soft/25"
-                  type="button"
-                  onClick={() => onOpenEvidence(answer.startMs)}
-                >
-                  <span className="inline-flex items-center gap-1.5 text-[9px] font-bold text-brand">
-                    <PlayCircle size={13} aria-hidden="true" />
-                    {formatTime(answer.startMs)} · 지원자 답변
-                  </span>
-                  <span className="text-[11px] leading-[1.7] text-ink-secondary">
-                    {answer.text}
-                  </span>
-                </button>
-              ) : (
-                <p className="ml-10 rounded-md bg-warning-soft px-3 py-2.5 text-[10px] text-warning">
-                  연결된 답변 기록이 없습니다.
+              <div className="flex flex-wrap gap-2">
+                {item.evidence.map((evidence) => (
+                  <button
+                    className="inline-flex min-h-9 items-center gap-2 rounded-md border border-border bg-surface-muted px-3 text-left text-[10px] text-ink-secondary hover:border-brand hover:text-brand"
+                    key={evidence.evidenceId}
+                    type="button"
+                    onClick={() => onOpenEvidence(evidence.startMs)}
+                  >
+                    <PlayCircle size={14} aria-hidden="true" />
+                    <span>
+                      <b className="font-mono">
+                        {formatTime(evidence.startMs)}
+                      </b>{" "}
+                      · {evidence.observation}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {item.followUpQuestion ? (
+                <p className="rounded-md bg-warning-soft px-3 py-2.5 text-[10px] leading-[1.55] text-warning">
+                  추가 확인 · {item.followUpQuestion}
                 </p>
-              )}
-            </li>
-          ))}
-        </ol>
-      ) : (
-        <p className="p-5 text-[11px] leading-[1.7] text-muted">
-          이 면접에는 기업이 별도로 설정한 필수 질문이 없습니다.
-        </p>
-      )}
-    </section>
-  );
-}
-
-function RequirementEvidenceArticle({
-  assessment,
-  index,
-  onOpenEvidence,
-}: {
-  assessment: RequirementAssessment;
-  index: number;
-  onOpenEvidence(startMs: number): void;
-}) {
-  const sourceStatus = assessment.humanOverride?.status ?? assessment.status;
-  const status = sourceStatus === "unknown" ? "not_met" : sourceStatus;
-  return (
-    <article className="grid gap-4 border-b border-border-muted p-5 last:border-b-0">
-      <div className="flex items-start justify-between gap-4 mw-720:flex-col">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-[9px] font-bold text-brand">
-              {String(index + 1).padStart(2, "0")}
-            </span>
-            <span className="rounded bg-brand-soft px-2 py-1 text-[8px] font-bold text-brand">
-              {assessment.requirementType === "required" ? "필수" : "우대"}
-            </span>
-            <span
-              className={`rounded px-2 py-1 text-[8px] font-bold ${requirementStatusTone(status)}`}
-            >
-              {requirementStatusLabel(status)}
-            </span>
-          </div>
-          <h3 className="mt-2 text-[13px] leading-[1.55] text-ink">
-            {assessment.statement}
-          </h3>
-          <p className="mt-2 text-[10px] leading-[1.65] text-ink-secondary">
-            {assessment.rationale}
-          </p>
-        </div>
-      </div>
-      {assessment.evidence.length ? (
-        <div className="grid gap-2">
-          {assessment.evidence.map((evidence) => (
-            <RequirementEvidenceItem
-              evidence={evidence}
-              key={evidence.evidenceId}
-              onOpenEvidence={onOpenEvidence}
-            />
+              ) : null}
+            </article>
           ))}
         </div>
-      ) : (
-        <p className="rounded-md bg-surface-muted px-3 py-2.5 text-[10px] text-muted">
-          직접 연결된 제출 자료 또는 면접 답변 근거가 없어 판단을 보류합니다.
-        </p>
-      )}
-    </article>
-  );
-}
-
-function RequirementEvidenceItem({
-  evidence,
-  onOpenEvidence,
-}: {
-  evidence: RequirementEvidence;
-  onOpenEvidence(startMs: number): void;
-}) {
-  const startMs = requirementEvidenceStartMs(evidence);
-  const content = (
-    <>
-      <span className="inline-flex items-center gap-1.5 text-[9px] font-bold text-brand">
-        {evidence.sourceKind === "interview" ? (
-          <PlayCircle size={13} aria-hidden="true" />
-        ) : (
-          <FileText size={13} aria-hidden="true" />
-        )}
-        {startMs != null ? `${formatTime(startMs)} · ` : ""}
-        {evidence.sourceKind === "interview" ? "면접 답변" : "제출 자료"}
-      </span>
-      <span className="text-[11px] leading-[1.65] text-ink-secondary">
-        {evidence.excerpt}
-      </span>
-      <small className="text-[9px] leading-[1.55] text-muted">
-        {evidence.explanation}
-      </small>
-    </>
-  );
-  return evidence.sourceKind === "interview" && startMs != null ? (
-    <button
-      className="grid gap-1.5 rounded-lg border border-border bg-surface-muted px-4 py-3 text-left transition hover:border-brand hover:bg-brand-soft/25"
-      type="button"
-      onClick={() => onOpenEvidence(startMs)}
-    >
-      {content}
-    </button>
-  ) : (
-    <div className="grid gap-1.5 rounded-lg border border-border bg-surface-muted px-4 py-3">
-      {content}
+      </section>
     </div>
   );
 }
@@ -686,20 +473,6 @@ function InterviewPanel({
                           ? "지원자"
                           : "기록"}
                     </strong>
-                    {entry.type === "question" && entry.questionRationale ? (
-                      <span className="mt-1 inline-flex rounded-full bg-brand-soft px-2 py-0.5 text-[8px] font-bold text-brand">
-                        {entry.questionRationale.questionType ===
-                        "company_required"
-                          ? "기업 설정 질문"
-                          : entry.questionRationale.questionType === "follow_up"
-                            ? "꼬리질문"
-                            : entry.questionRationale.verificationTargetType.startsWith(
-                                  "job_requirement_",
-                                )
-                              ? "자격요건 질문"
-                              : "AI 질문"}
-                      </span>
-                    ) : null}
                     <small className="mt-1 block text-[11px] leading-[1.65] text-ink-secondary">
                       {entry.text}
                     </small>
@@ -933,56 +706,23 @@ function submissionStatusLabel(status: string) {
   return "접수 완료";
 }
 
-function pairMandatoryQuestionAnswers(
-  entries: readonly ReviewTimelineEntry[],
-): MandatoryQuestionAnswer[] {
-  const paired: MandatoryQuestionAnswer[] = [];
-  entries.forEach((entry, index) => {
-    if (
-      entry.type !== "question" ||
-      (entry.questionRationale?.questionType !== "company_required" &&
-        entry.questionRationale?.verificationTargetType !==
-          "company_required_question")
-    ) {
-      return;
-    }
-    let answer: ReviewTimelineEntry | null = null;
-    for (let cursor = index + 1; cursor < entries.length; cursor += 1) {
-      const candidate = entries[cursor];
-      if (candidate.type === "question") break;
-      if (candidate.type === "answer") {
-        answer = candidate;
-        break;
-      }
-    }
-    paired.push({ question: entry, answer });
-  });
-  return paired;
-}
-
-function requirementStatusLabel(value: RequirementAssessmentStatus) {
+function assessmentLabel(
+  value: CompanyApplicantReport["report"]["items"][number]["assessmentState"],
+) {
   return {
-    met: "충족",
-    partially_met: "부분 충족",
-    not_met: "미충족",
-    unknown: "미충족",
+    confirmed: "근거 충분",
+    partially_confirmed: "부분 확인",
+    insufficient_evidence: "근거 부족",
+    needs_follow_up: "추가 확인",
   }[value];
 }
 
-function requirementStatusTone(value: RequirementAssessmentStatus) {
-  if (value === "met") return "bg-success-soft text-success";
-  if (value === "partially_met") return "bg-warning-soft text-warning";
-  return "bg-danger-soft text-danger";
-}
-
-function requirementEvidenceStartMs(evidence: RequirementEvidence) {
-  const value =
-    evidence.locator.video_start_ms ??
-    evidence.locator.start_ms ??
-    evidence.locator.startMs;
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
-    : null;
+function assessmentTone(
+  value: CompanyApplicantReport["report"]["items"][number]["assessmentState"],
+) {
+  if (value === "confirmed") return "bg-success-soft text-success";
+  if (value === "partially_confirmed") return "bg-brand-soft text-brand";
+  return "bg-warning-soft text-warning";
 }
 
 function formatTime(milliseconds: number) {

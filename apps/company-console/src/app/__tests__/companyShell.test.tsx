@@ -45,22 +45,4 @@ describe("CompanyShell", () => {
     expect(screen.queryByRole("button", { name: "지원자 화면" })).toBeNull();
     expect(screen.queryByRole("button", { name: "알림" })).toBeNull();
   });
-
-  it("keeps review pages inside the applicant navigation context", () => {
-    render(
-      <MemoryRouter initialEntries={["/review/session-1"]}>
-        <Routes>
-          <Route element={<CompanyShell />}>
-            <Route path="/review/:sessionId" element={<h1>지원자 검토</h1>} />
-          </Route>
-        </Routes>
-      </MemoryRouter>,
-    );
-
-    const applicantLink = screen.getByRole("link", { name: "지원자 관리" });
-    expect(applicantLink.className).toContain("bg-[#f2f3ff]");
-    expect(
-      screen.queryByText("지원자 검토", { selector: "nav span" }),
-    ).toBeNull();
-  });
 });

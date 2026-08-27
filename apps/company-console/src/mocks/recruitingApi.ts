@@ -666,6 +666,5 @@ function toApplicantInsight(
       : 0,
     summary: report.summary,
     criteria,
-    requirementAssessments: report.requirementAssessments,
   } satisfies CompanyApplicantInsight;
 }

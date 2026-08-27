@@ -36,6 +36,7 @@ import {
   defaultAxisWeights,
   type InvitationStatus,
   HiringWorkspace,
+  InvitationEmailSettings,
   type InvitationEmailTemplate,
   type InvitationEmailTemplateApi,
   type InvitationEmailTemplateState,
@@ -154,14 +155,14 @@ const hiringApi: HiringWorkspaceApi = {
         prohibited_topics: input.prohibitedTopics,
         interview_duration_minutes: 30,
         interview_level: input.interviewLevel,
-        // New reports are assessed only against the company's required/preferred job
-        // requirements. Keep the legacy field empty for backward-compatible API reads.
-        axis_weights: {},
+        // All five axes, always. The API accepts an empty mapping as equal weight for versions
+        // published before weights existed, but refuses a partial one — no reading of the
+        // absent keys is anything but a silently wrong score.
+        axis_weights: input.axisWeights,
         persona_definition: {
           name: input.personaDefinition.name,
           tone: input.personaDefinition.tone,
           voice_id: input.personaDefinition.voiceId,
-          system_prompt: input.personaDefinition.systemPrompt,
         },
       }),
     });
@@ -774,8 +775,6 @@ function toCompanyPersona(value: unknown) {
     name: persona.name,
     tone: tone as "calm" | "friendly" | "analytical" | "concise",
     voiceId: persona.voice_id,
-    systemPrompt:
-      typeof persona.system_prompt === "string" ? persona.system_prompt : "",
   };
 }
 
@@ -948,7 +947,6 @@ function toApplicantInsight(
       : 0,
     summary: report.summary,
     criteria,
-    requirementAssessments: report.requirementAssessments,
   };
 }
 
@@ -1012,7 +1010,7 @@ export function InvitationEmailSettingsRoute() {
   if (AUTH_CONFIG && !getCompanyAccessToken(localStorage)) {
     return <Navigate replace to="/auth/login" />;
   }
-  return <Navigate replace to="/hiring" />;
+  return <InvitationEmailSettings api={invitationEmailTemplateApi} />;
 }
 
 export function ApplicantManagementRoute() {
@@ -1061,7 +1059,6 @@ export function HiringRoute() {
   return (
     <HiringWorkspace
       api={hiringApi}
-      invitationTemplateApi={invitationEmailTemplateApi}
       onOpenPosition={(positionId) => navigate(`/positions/${positionId}`)}
     />
   );

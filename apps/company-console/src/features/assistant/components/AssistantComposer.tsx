@@ -144,7 +144,7 @@ function RagContextMenu({
         <ContextSource
           icon={<FileText size={13} />}
           title="지원자 AI 최종 리포트"
-          detail={`${reportCount}건의 자격요건 판정·답변 근거`}
+          detail={`${reportCount}건의 요약·점수·평가 기준`}
         />
         <ContextSource
           icon={<BriefcaseBusiness size={13} />}

@@ -18,9 +18,6 @@ const speakerLabels: Record<"question" | "answer", string> = {
 /** A cue with no duration is dropped by the parser, so give it a readable floor. */
 const MINIMUM_CUE_MS = 700;
 
-/** Keep native video captions compact; the full transcript remains available in the timeline. */
-const MAX_CAPTION_CHARACTERS = 56;
-
 export function buildCaptionTrack(entries: ReviewTimelineEntry[]): string {
   const cues = entries
     .filter(
@@ -37,17 +34,11 @@ export function buildCaptionTrack(entries: ReviewTimelineEntry[]): string {
       return [
         String(index + 1),
         `${formatTimestamp(start)} --> ${formatTimestamp(end)}`,
-        `<v ${speaker}>${escapeCueText(compactCaptionText(entry.text))}`,
+        `<v ${speaker}>${escapeCueText(entry.text)}`,
       ].join("\n");
     });
 
   return ["WEBVTT", "", ...cues.flatMap((cue) => [cue, ""])].join("\n").trim();
-}
-
-function compactCaptionText(text: string): string {
-  const compact = text.replace(/\s+/g, " ").trim();
-  if (compact.length <= MAX_CAPTION_CHARACTERS) return compact;
-  return `${compact.slice(0, MAX_CAPTION_CHARACTERS - 1).trimEnd()}…`;
 }
 
 export function formatTimestamp(milliseconds: number): string {

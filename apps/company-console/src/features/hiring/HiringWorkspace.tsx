@@ -14,12 +14,10 @@ import {
   CriteriaStep,
   PositionStep,
 } from "./steps/HiringSteps";
-import type { InvitationEmailTemplateApi } from "./invitationEmailTemplate";
 import {
   createDefaultCriteria,
   inferRequirementCriterionCode,
   initialHiringDraft,
-  interviewerSystemPrompts,
   type CriteriaConfiguration,
   type CriteriaHiringStep,
   type HiringDraft,
@@ -27,7 +25,6 @@ import {
   type HiringStep,
   type HiringWorkspaceApi,
   type PositionHiringStep,
-  POSITION_DESCRIPTION_MAX_LENGTH,
 } from "./types";
 
 const stepCopy = {
@@ -44,13 +41,12 @@ const stepCopy = {
   evaluation: {
     eyebrow: "3 / 4 · 평가 설계",
     title: "어떤 기준으로 평가할까요?",
-    description: "지원자를 확인할 필수·우대 자격요건을 설정합니다.",
+    description: "필수·우대 자격요건과 답변 평가 관점을 설정합니다.",
   },
   interview: {
     eyebrow: "4 / 4 · 면접 운영",
-    title: "지원자별 면접을 완성해 주세요",
-    description:
-      "운영 일정과 필수 질문, 면접관의 질문 방식을 확인한 뒤 포지션을 게시합니다.",
+    title: "면접은 어떻게 진행할까요?",
+    description: "시간과 난이도를 확인한 뒤 포지션을 게시합니다.",
   },
 } as const;
 
@@ -69,21 +65,6 @@ const criteriaSteps: CriteriaHiringStep[] = ["evaluation", "interview"];
 const hiringDraftStorageKey = "iep.company-console.hiring-draft.v2";
 const hiringDraftStorageVersion = 2;
 
-function compactStoredDescription(value: string) {
-  if (value.length <= POSITION_DESCRIPTION_MAX_LENGTH) return value;
-
-  const sentences = value
-    .replace(/\s+/g, " ")
-    .trim()
-    .match(/[^.!?]+[.!?]?/g)
-    ?.map((sentence) => sentence.trim())
-    .filter(Boolean);
-  return (sentences?.slice(0, 4).join("\n") ?? value).slice(
-    0,
-    POSITION_DESCRIPTION_MAX_LENGTH,
-  );
-}
-
 function readStoredDraft(): HiringDraft {
   if (typeof window === "undefined" || import.meta.env.MODE === "test") {
     return initialHiringDraft;
@@ -101,15 +82,10 @@ function readStoredDraft(): HiringDraft {
       return initialHiringDraft;
     }
 
-    const storedDescription = parsed.draft.description ?? "";
-    const description = compactStoredDescription(storedDescription);
     const restored = {
       ...initialHiringDraft,
       ...parsed.draft,
-      description,
-      descriptionCompleted:
-        parsed.draft.descriptionCompleted === true &&
-        description === storedDescription,
+      descriptionCompleted: parsed.draft.descriptionCompleted === true,
     };
     return {
       ...restored,
@@ -127,11 +103,9 @@ function readStoredDraft(): HiringDraft {
 
 export function HiringWorkspace({
   api,
-  invitationTemplateApi,
   onOpenPosition,
 }: {
   api: HiringWorkspaceApi;
-  invitationTemplateApi?: InvitationEmailTemplateApi;
   onOpenPosition?: (positionId: string) => void;
 }) {
   const [step, setStep] = useState<HiringStep>("position");
@@ -239,7 +213,6 @@ export function HiringWorkspace({
           {positionSteps.includes(step as PositionHiringStep) ? (
             <PositionStep
               {...commonStepProps}
-              invitationTemplateApi={invitationTemplateApi}
               stage={step as PositionHiringStep}
               onBack={step === "position" ? undefined : () => move(-1)}
               onSubmit={(event) => {
@@ -288,12 +261,6 @@ export function HiringWorkspace({
                       positionId,
                       positionRowVersion,
                     }));
-                  }
-                  if (draft.invitationEmailTemplate && invitationTemplateApi) {
-                    await invitationTemplateApi.savePositionTemplate(
-                      positionId,
-                      draft.invitationEmailTemplate,
-                    );
                   }
                   if (!ids.versionId) {
                     const published = await api.publishCriteria(
@@ -347,7 +314,7 @@ export function toCriteriaConfiguration(
       priority: Math.min(index + 1, 5),
       criterionCode: inferRequirementCriterionCode(requirement.statement),
     })),
-    criteria: draft.criteria.map((criterion, index) => ({
+    criteria: draft.criteria.map((criterion) => ({
       code: criterion.code,
       name: criterion.name.trim(),
       description: criterion.description.trim(),
@@ -362,23 +329,18 @@ export function toCriteriaConfiguration(
         timeBudgetSeconds: criterion.timeBudgetSeconds,
       },
       abstainGuidance: criterion.abstainGuidance.trim(),
-      commonQuestions:
-        index === 0
-          ? draft.mandatoryQuestions
-              .map((question) => question.trim())
-              .filter(Boolean)
-          : [],
+      commonQuestions: splitLines(criterion.commonQuestions),
     })),
     prohibitedTopics: splitCommaSeparated(draft.prohibitedTopics),
     interviewDurationMinutes: draft.interviewDurationMinutes,
     interviewLevel: draft.interviewLevel,
+    // Copied rather than passed through: the draft stays editable after the publish request is
+    // built, and a shared reference would let a later keystroke change what was sent.
+    axisWeights: { ...draft.axisWeights },
     personaDefinition: {
       name: draft.interviewerName,
       tone: draft.interviewerTone,
       voiceId: draft.interviewerVoiceId,
-      systemPrompt:
-        draft.interviewerSystemPrompt.trim() ||
-        interviewerSystemPrompts[draft.interviewLevel],
     },
   };
 }

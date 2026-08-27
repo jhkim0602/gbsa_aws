@@ -172,7 +172,7 @@ function renderReport(value: ReviewReport, entries = TIMELINE) {
       onOverride={onOverride}
     />,
   );
-  fireEvent.click(screen.getByRole("tab", { name: "면접 답변 근거" }));
+  fireEvent.click(screen.getByRole("tab", { name: "기준별 평가" }));
   return { onSelectEvidence, onOverride };
 }
 
@@ -208,8 +208,19 @@ describe("evidence traceability", () => {
     ).toBeTruthy();
   });
 
-  it("marks the answer a reviewer follows so the citation is not matched by eye", () => {
+  it("makes an axis score reach its own evidence instead of stating a count", () => {
     const { onSelectEvidence } = renderReport(report());
+
+    // 본인 기여 rests on two answers, so it offers two ways in -- not "2건".
+    fireEvent.click(
+      screen.getByRole("button", { name: "본인 기여 근거 2 답변 보기" }),
+    );
+
+    expect(onSelectEvidence).toHaveBeenCalledWith(SUPPORTING_EVIDENCE.startMs);
+  });
+
+  it("marks the answer a reviewer followed so the citation is not matched by eye", () => {
+    renderReport(report());
 
     const card = screen
       .getByText(SUPPORTING_EVIDENCE.observation)
@@ -217,10 +228,9 @@ describe("evidence traceability", () => {
     expect(card?.getAttribute("aria-current")).toBeNull();
 
     fireEvent.click(
-      screen.getAllByRole("button", { name: "Evidence 재생" })[1]!,
+      screen.getByRole("button", { name: "본인 기여 근거 2 답변 보기" }),
     );
 
-    expect(onSelectEvidence).toHaveBeenCalledWith(SUPPORTING_EVIDENCE.startMs);
     expect(
       screen
         .getByText(SUPPORTING_EVIDENCE.observation)
@@ -234,6 +244,30 @@ describe("evidence traceability", () => {
         .closest("article")
         ?.getAttribute("aria-current"),
     ).toBeNull();
+  });
+
+  it("says so when a citation cannot be resolved rather than showing one fewer", () => {
+    renderReport(
+      report({
+        items: [
+          {
+            ...report().items[0]!,
+            axisAssessments: [
+              {
+                axis: "correctness",
+                label: "정확성",
+                score: 78,
+                rationale: "재시도 폭주를 원인으로 정확히 짚었습니다.",
+                quotedEvidenceIds: ["ev-1", "ev-missing"],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    expect(screen.getByText("인용한 답변 2건")).toBeTruthy();
+    expect(screen.getByText("근거 2 · 확인 불가")).toBeTruthy();
   });
 
   it("says so when the quoted answer is missing from the transcript", () => {
@@ -292,7 +326,7 @@ describe("evidence traceability", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("tab", { name: "면접 답변 근거" }));
+    fireEvent.click(screen.getByRole("tab", { name: "기준별 평가" }));
 
     // Scoped to the report: the timeline renders the same sentence one panel over, so an
     // unscoped query would pass even with the report reading no transcript at all.
@@ -328,12 +362,11 @@ describe("evidence traceability", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("tab", { name: "면접 답변 근거" }));
+    fireEvent.click(screen.getByRole("tab", { name: "기준별 평가" }));
     fireEvent.click(
-      screen.getAllByRole("button", { name: "Evidence 재생" })[1]!,
+      screen.getByRole("button", { name: "본인 기여 근거 2 답변 보기" }),
     );
 
-    fireEvent.click(screen.getByRole("tab", { name: "면접 타임라인" }));
     expect(document.querySelector("video")?.currentTime).toBe(121);
     expect(play).toHaveBeenCalled();
   });

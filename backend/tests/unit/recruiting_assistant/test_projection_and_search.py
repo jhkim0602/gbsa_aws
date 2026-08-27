@@ -1,5 +1,4 @@
 from collections.abc import Mapping
-from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -20,10 +19,6 @@ from interview_evidence.reporting.domain.report import (
     ReportItem,
     ReportKind,
     ReportStatus,
-    RequirementAssessment,
-    RequirementAssessmentStatus,
-    RequirementEvidence,
-    RequirementEvidenceRelation,
 )
 from interview_evidence.shared.aws_clients.ports import StaticTextEmbedder
 from interview_evidence.shared.tenant import ActorType, TenantContext
@@ -114,29 +109,6 @@ def _report(
     )
 
 
-def _report_with_requirements() -> Report:
-    evidence = RequirementEvidence(
-        evidence_id=UUID("00000000-0000-7000-8000-000000000030"),
-        source_kind="interview",
-        source_type="answer",
-        excerpt="ECS 장애 원인을 분석하고 배포 절차를 개선했습니다.",
-        locator={"start_ms": 12000, "end_ms": 18000},
-        relation=RequirementEvidenceRelation.SUPPORTS,
-        explanation="실제 운영 장애를 분석하고 개선한 경험을 직접 설명했습니다.",
-    )
-    assessment = RequirementAssessment(
-        requirement_assessment_id=UUID("00000000-0000-7000-8000-000000000031"),
-        job_requirement_id=UUID("00000000-0000-7000-8000-000000000032"),
-        requirement_type="required",
-        statement="대규모 트래픽 시스템 운영 경험",
-        status=RequirementAssessmentStatus.MET,
-        rationale="운영 장애 분석과 개선 경험이 확인되었습니다.",
-        confidence=0.92,
-        evidence=(evidence,),
-    )
-    return replace(_report(), requirement_assessments=(assessment,))
-
-
 def test_report_projection_is_idempotent_and_searchable_by_position() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -186,37 +158,6 @@ def test_report_projection_is_idempotent_and_searchable_by_position() -> None:
     assert criterion.applicant_id == APPLICANT_ID
     assert criterion.metadata["criterion_name"] == "문제 해결"
     assert criterion.metadata["applicant_display_name"] == "김민준"
-
-
-def test_report_projection_indexes_requirement_status_and_direct_evidence() -> None:
-    engine = create_engine("sqlite+pysqlite:///:memory:")
-    Base.metadata.create_all(engine)
-    embedder = StaticTextEmbedder(_vector())
-
-    with Session(engine) as session:
-        repository = SQLAlchemyAssistantDocumentRepository(session)
-        documents = ReportSearchProjector(repository, embedder).project(
-            _context(),
-            position_id=POSITION_ID,
-            position_title="백엔드 엔지니어",
-            applicant_id=APPLICANT_ID,
-            applicant_display_name="김민준",
-            report=_report_with_requirements(),
-        )
-
-    assert len(documents) == 2
-    summary = next(item for item in documents if item.document_type == "report_summary")
-    requirement = next(item for item in documents if item.document_type == "report_criterion")
-    assert "충족 1 / 전체 1" in summary.text
-    assert "종합 점수" not in summary.text
-    assert summary.source_version == "1:requirements-v2"
-    assert summary.metadata["requirements_met"] == 1
-    assert requirement.metadata["requirement_statement"] == ("대규모 트래픽 시스템 운영 경험")
-    assert requirement.metadata["requirement_status"] == "met"
-    assert "판정 상태: 충족" in requirement.text
-    assert "면접 답변" in requirement.text
-    assert "평가 기준" not in requirement.text
-    assert "점" not in requirement.text
 
 
 def test_search_never_crosses_company_or_position_scope() -> None:
@@ -378,8 +319,6 @@ def test_rag_answer_only_returns_source_ids_that_were_actually_retrieved() -> No
     assert model.calls[0]["temperature"] == 0.3
     assert model.calls[0]["max_tokens"] == 1600
     assert "비슷한 사례" in model.calls[0]["system"]
-    assert "필수·우대 자격요건" in model.calls[0]["system"]
-    assert "숫자 점수" in model.calls[0]["system"]
 
 
 def test_rag_answer_does_not_call_model_without_grounding_sources() -> None:

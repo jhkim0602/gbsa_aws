@@ -100,11 +100,6 @@ _STAGE_SIGNAL_GROUPS = {
 }
 
 _STAGE_FALLBACK_QUESTIONS = {
-    "adaptive": (
-        "제출 자료와 연결해 본인이 직접 수행한 경험과 그 판단 근거를 설명해 주세요.",
-        "그 경험에서 본인이 맡은 행동과 확인한 결과를 구체적으로 설명해 주세요.",
-        "앞선 답변에서 가장 중요한 선택과 대안, 최종 결과를 설명해 주세요.",
-    ),
     "technical": (
         "기술적으로 가장 어려웠던 지점과 해결 방식을 설명해 주세요.",
         "그 기술 방식을 선택한 기준과 검증 결과를 설명해 주세요.",
@@ -369,14 +364,10 @@ class QuestionPolicy:
             reasons.append("question_too_long")
         if any(_is_duplicate(candidate.text, question) for question in previous_questions):
             reasons.append("duplicate_question")
-        if (
-            interview_stage is not None
-            and question_type != "company_required"
-            and not _stage_aligned(
-                candidate.text,
-                interview_stage,
-                question_type=question_type,
-            )
+        if interview_stage is not None and not _stage_aligned(
+            candidate.text,
+            interview_stage,
+            question_type=question_type,
         ):
             reasons.append("stage_mismatch")
         if interview_stage == "project_deep_dive" and _is_project_code_level_question(

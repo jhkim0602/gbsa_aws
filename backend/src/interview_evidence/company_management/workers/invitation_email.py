@@ -30,7 +30,6 @@ class InvitationEmailCommand:
     position_title: str
     deadline_text: str
     template: InvitationEmailTemplate
-    position_description: str
     recipient_address: str = field(repr=False)
     invitation_url: str = field(repr=False)
     applicant_display_name: str | None = field(default=None, repr=False)
@@ -66,7 +65,6 @@ class InvitationEmailHandler:
                 deadline_text=command.deadline_text,
                 invitation_url=command.invitation_url,
                 applicant_display_name=command.applicant_display_name,
-                position_description=command.position_description,
             ),
         )
         return self._sender.send_template(

@@ -28,6 +28,7 @@ import {
 
 import {
   interviewLevelLabels,
+  interviewerVoiceLabel,
   invitationStatusMeta,
   PositionInvitations,
   type InvitationEmailTemplateApi,
@@ -46,8 +47,10 @@ import { statusLabel, statusTone } from "./companyFormatters";
 import { PositionDashboard } from "./PositionDashboard";
 import { PositionQuickEditModal } from "./PositionSettings";
 import {
+  ApplicantScoreTable,
   applyConfiguredWeights,
-  RequirementFitDistribution,
+  CompetencyDistribution,
+  ScoreDistribution,
 } from "./CompetencyInsights";
 import {
   countRecruiterPhases,
@@ -78,8 +81,7 @@ const TITLE =
   "[overflow-wrap:anywhere] text-[26px] leading-[1.25] text-ink" +
   " mw-720:text-[21px]";
 const DESCRIPTION =
-  "mt-[5px] line-clamp-3 max-w-[760px] [overflow-wrap:anywhere] whitespace-pre-line" +
-  " text-[13px] leading-[1.55] text-muted";
+  "mt-[5px] max-w-[760px] text-[13px] leading-[1.55] text-muted";
 const META = "mt-[11px] flex flex-wrap items-center gap-2";
 // Each entry is separated by a hairline, so the first one drops its rule and inset.
 const META_ITEM =
@@ -150,6 +152,10 @@ const CRITERION_BADGE =
   "inline-flex min-h-[22px] items-center rounded bg-brand-soft px-[7px]" +
   " text-[10px] font-bold text-brand";
 const FOCUS_TITLE = "ml-[9px] text-[13px]";
+const FOCUS_TEXT = "mt-[5px] text-[12px] text-muted";
+const FOCUS_WEIGHT =
+  "grid size-[42px] flex-none place-items-center rounded-[7px] bg-surface-muted" +
+  " text-[13px] text-ink";
 
 const EMPTY_COPY = "grid justify-items-center gap-[11px]";
 const EMPTY_TEXT = "text-[12px]";
@@ -184,7 +190,11 @@ const INFORMATION_EMPTY = "text-[12px] text-muted";
 const CRITERION_LIST = "grid rounded-md border border-border-muted";
 const CRITERION =
   "border-b border-b-border-muted p-[17px_18px] last:border-b-0";
+const CRITERION_HEADER =
+  "flex items-start justify-between gap-[18px] mw-720:flex-col";
 const CRITERION_TITLE = "ml-[9px] text-[13px]";
+const CRITERION_TEXT = "mt-[5px] text-[12px] text-muted";
+const CRITERION_WEIGHT = "flex-none text-[11px] text-muted";
 
 const POLICY_GRID =
   "grid grid-cols-6 mw-1180:grid-cols-3 mw-720:grid-cols-[minmax(0,1fr)]";
@@ -209,7 +219,7 @@ const positionTabs: ReadonlyArray<{
 }> = [
   { id: "overview", label: "인사이트", icon: LayoutDashboard },
   { id: "applicants", label: "지원자", icon: Users },
-  { id: "statistics", label: "자격요건 분포", icon: BarChart3 },
+  { id: "statistics", label: "역량 분포", icon: BarChart3 },
   { id: "stages", label: "면접 운영", icon: Route },
   { id: "information", label: "설정값", icon: Info },
 ];
@@ -474,10 +484,15 @@ export function PositionOperations({
             aria-labelledby="position-tab-statistics"
             className={PANEL_GROUP}
           >
-            <RequirementFitDistribution
-              criteria={currentCriteria}
+            <ScoreDistribution insights={weightedInsights} />
+            <CompetencyDistribution
               insights={weightedInsights}
               invitations={positionInvitations}
+              limit={10}
+            />
+            <ApplicantScoreTable
+              invitations={positionInvitations}
+              insights={weightedInsights}
             />
           </section>
         ) : null}
@@ -590,7 +605,7 @@ function ApplicantRoster({
           </p>
           <h2 className="mt-1 text-[16px] text-ink">지원자 비교</h2>
           <p className="mt-1 text-[11px] text-muted">
-            지원자의 자격요건 충족 상태와 핵심 근거를 먼저 확인합니다.
+            지원자의 현재 역량 점수와 핵심 근거를 먼저 확인합니다.
           </p>
         </div>
         <div className="flex gap-2 mw-720:flex-col">
@@ -625,9 +640,9 @@ function ApplicantRoster({
 
       <div className="grid grid-cols-[minmax(160px,0.7fr)_minmax(210px,1fr)_90px_100px] gap-3 border-b border-border-muted bg-surface-muted px-5 py-2.5 text-[9px] font-semibold text-muted mw-720:hidden">
         <span>지원자</span>
-        <span>자격요건 요약</span>
-        <span className="text-right">충족 / 전체</span>
-        <span className="text-right">미충족</span>
+        <span>확인된 강점</span>
+        <span className="text-right">역량 점수</span>
+        <span className="text-right">근거 충족</span>
       </div>
       {visible.length ? (
         <div className="grid [content-visibility:auto]">
@@ -637,20 +652,13 @@ function ApplicantRoster({
             const displayName =
               invitation.applicantDisplayName ||
               invitation.applicantEmail.split("@")[0];
-            const assessments = insight?.requirementAssessments ?? [];
-            const metCount = assessments.filter(
-              (assessment) => assessment.status === "met",
-            ).length;
-            const partialCount = assessments.filter(
-              (assessment) => assessment.status === "partially_met",
-            ).length;
-            const notMetCount = assessments.filter(
-              (assessment) =>
-                (assessment.humanOverride?.status ?? assessment.status) ===
-                  "not_met" ||
-                (assessment.humanOverride?.status ?? assessment.status) ===
-                  "unknown",
-            ).length;
+            const strongest = insight
+              ? [...insight.criteria]
+                  .filter((criterion) => criterion.score != null)
+                  .sort(
+                    (left, right) => (right.score ?? 0) - (left.score ?? 0),
+                  )[0]
+              : null;
             return (
               <Link
                 className="group grid min-h-[70px] grid-cols-[minmax(160px,0.7fr)_minmax(210px,1fr)_90px_100px] items-center gap-3 border-b border-border-muted px-5 py-3 last:border-b-0 hover:bg-surface-muted mw-720:grid-cols-[minmax(0,1fr)_64px]"
@@ -672,17 +680,15 @@ function ApplicantRoster({
                   </span>
                 </span>
                 <span className="min-w-0 truncate text-[10px] text-ink-secondary mw-720:col-[1] mw-720:pl-[44px]">
-                  {assessments.length
-                    ? `충족 ${metCount} · 부분 충족 ${partialCount}`
+                  {strongest
+                    ? `${strongest.criterionName} · ${strongest.score}`
                     : `${status.label} · 면접 결과 대기`}
                 </span>
                 <strong className="text-right font-mono text-[18px] text-ink mw-720:row-[1] mw-720:col-[2]">
-                  {assessments.length
-                    ? `${metCount} / ${assessments.length}`
-                    : "–"}
+                  {insight?.overallScore ?? "–"}
                 </strong>
                 <span className="text-right text-[10px] text-muted mw-720:hidden">
-                  {assessments.length ? `${notMetCount}개` : "–"}
+                  {insight ? `${insight.evidenceCoverage}%` : "–"}
                 </span>
               </Link>
             );
@@ -736,28 +742,22 @@ function InterviewStages({
           <div>
             <h2 className={SECTION_HEADING_TITLE}>면접에서 확인할 중점</h2>
             <p className={SECTION_HEADING_TEXT}>
-              기업이 설정한 필수·우대 자격요건을 질문 구성과 최종 판정에
-              동일하게 적용합니다.
+              기업이 설정한 평가기준을 면접 질문과 검토에 동일하게 적용합니다.
             </p>
           </div>
         </header>
         {criteria ? (
           <div className="grid">
-            {criteria.jobRequirements.map((requirement, index) => (
-              <article
-                className={FOCUS_ROW}
-                key={`${requirement.criterionCode}-${index}`}
-              >
+            {criteria.criteria.map((criterion) => (
+              <article className={FOCUS_ROW} key={criterion.code}>
                 <div className="min-w-0">
                   <span className={CRITERION_BADGE}>
-                    {requirement.requirementType === "required"
-                      ? "필수"
-                      : "우대"}
+                    {criterion.required ? "필수" : "선택"}
                   </span>
-                  <strong className={FOCUS_TITLE}>
-                    {requirement.statement}
-                  </strong>
+                  <strong className={FOCUS_TITLE}>{criterion.name}</strong>
+                  <p className={FOCUS_TEXT}>{criterion.description}</p>
                 </div>
+                <b className={FOCUS_WEIGHT}>{criterion.weight}</b>
               </article>
             ))}
           </div>
@@ -790,8 +790,6 @@ function PositionInformation({
   error: string;
   onEditPosition(): void;
 }) {
-  const mandatoryQuestions =
-    criteria?.criteria.flatMap((criterion) => criterion.commonQuestions) ?? [];
   return (
     <>
       <section className={SUB_PANEL}>
@@ -920,28 +918,31 @@ function PositionInformation({
             </section>
 
             <section className={CRITERIA_SECTION}>
-              <h3 className={CRITERIA_SECTION_TITLE}>반드시 물어볼 질문</h3>
+              <h3 className={CRITERIA_SECTION_TITLE}>면접 답변 평가 기준</h3>
               <p className="text-[10px] leading-[1.55] text-muted">
-                모든 지원자에게 자연스러운 전환 문구와 함께 묻고, 답변에 필요한
-                경우에만 지원자별 꼬리질문을 이어갑니다.
+                아래 기준은 면접 답변의 품질을 평가합니다. 필수·우대 자격요건
+                충족도는 리포트에서 별도로 판정하며 이 점수에 포함하지 않습니다.
               </p>
-              {mandatoryQuestions.length ? (
-                <ol className={CRITERION_LIST}>
-                  {mandatoryQuestions.map((question, index) => (
-                    <li className={CRITERION} key={`${question}-${index}`}>
-                      <span className={CRITERION_BADGE}>
-                        필수 질문 {index + 1}
-                      </span>
-                      <strong className={CRITERION_TITLE}>{question}</strong>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <p className={INFORMATION_EMPTY}>
-                  별도 질문 없음 · 자격요건과 지원자 제출 자료를 바탕으로 AI가
-                  질문을 구성합니다.
-                </p>
-              )}
+              <div className={CRITERION_LIST}>
+                {criteria.criteria.map((criterion) => (
+                  <article className={CRITERION} key={criterion.code}>
+                    <header className={CRITERION_HEADER}>
+                      <div>
+                        <span className={CRITERION_BADGE}>고정 기준</span>
+                        <strong className={CRITERION_TITLE}>
+                          {criterion.name}
+                        </strong>
+                        <p className={CRITERION_TEXT}>
+                          {criterion.description}
+                        </p>
+                      </div>
+                      <b className={CRITERION_WEIGHT}>
+                        가중치 {criterion.weight}
+                      </b>
+                    </header>
+                  </article>
+                ))}
+              </div>
             </section>
           </div>
         ) : (
@@ -972,7 +973,7 @@ function PositionInformation({
               <Timer className={POLICY_ICON} size={17} aria-hidden="true" />
               <small className={POLICY_LABEL}>면접 시간</small>
               <strong className={POLICY_VALUE}>
-                최대 {criteria.interviewDurationMinutes}분
+                {criteria.interviewDurationMinutes}분
               </strong>
             </span>
             <span className={POLICY}>
@@ -981,7 +982,7 @@ function PositionInformation({
                 size={17}
                 aria-hidden="true"
               />
-              <small className={POLICY_LABEL}>질문 깊이</small>
+              <small className={POLICY_LABEL}>면접 난이도</small>
               <strong className={POLICY_VALUE}>
                 {interviewLevelLabels[criteria.interviewLevel].name}
               </strong>
@@ -999,8 +1000,10 @@ function PositionInformation({
             </span>
             <span className={POLICY}>
               <Info className={POLICY_ICON} size={17} aria-hidden="true" />
-              <small className={POLICY_LABEL}>종료 방식</small>
-              <strong className={POLICY_VALUE}>근거 충분 시 조기 종료</strong>
+              <small className={POLICY_LABEL}>음성 프리셋</small>
+              <strong className={POLICY_VALUE}>
+                {interviewerVoiceLabel(criteria.personaDefinition?.voiceId)}
+              </strong>
             </span>
             <span className={POLICY}>
               <ClipboardCheck
@@ -1008,16 +1011,18 @@ function PositionInformation({
                 size={17}
                 aria-hidden="true"
               />
-              <small className={POLICY_LABEL}>자격요건</small>
+              <small className={POLICY_LABEL}>평가기준</small>
               <strong className={POLICY_VALUE}>
-                {criteria.jobRequirements.length}개
+                {criteria.criteria.length}개
               </strong>
             </span>
             <span className={POLICY}>
               <Info className={POLICY_ICON} size={17} aria-hidden="true" />
-              <small className={POLICY_LABEL}>필수 질문</small>
+              <small className={POLICY_LABEL}>금지 주제</small>
               <strong className={POLICY_VALUE}>
-                {mandatoryQuestions.length}개
+                {criteria.prohibitedTopics.length
+                  ? criteria.prohibitedTopics.join(", ")
+                  : "등록 없음"}
               </strong>
             </span>
           </div>

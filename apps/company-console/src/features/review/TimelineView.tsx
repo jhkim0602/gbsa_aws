@@ -66,8 +66,7 @@ const TIMELINE_LIST =
   "grid max-h-[calc(100vh-390px)] overflow-auto px-2.5 pb-2.5" +
   " mw-820:max-h-[360px]";
 
-const TIMELINE_LIST_EXPANDED =
-  "grid max-h-[560px] overflow-auto px-3 pb-3 mw-680:max-h-[420px]";
+const TIMELINE_LIST_EXPANDED = "grid px-3 pb-3";
 
 const ENTRY_SEEK =
   "grid w-full grid-cols-[26px_minmax(0,1fr)] items-start gap-2 rounded-sm px-1" +
@@ -157,9 +156,7 @@ export function TimelineView({
   function selectTime(startMs: number) {
     onSeek(startMs);
     if (mediaRef.current) {
-      const media = mediaRef.current;
-      void seekToEvidence(media, startMs);
-      media.scrollIntoView?.({ behavior: "smooth", block: "center" });
+      void seekToEvidence(mediaRef.current, startMs);
     }
   }
 
@@ -412,10 +409,6 @@ function targetTypeLabel(
     detail_missing: "세부 내용 부족",
     source_conflict: "자료 간 차이 확인",
     ownership_uncertain: "본인 기여 확인",
-    company_required_question: "기업 설정 질문",
-    job_requirement_required: "필수 자격요건",
-    job_requirement_preferred: "우대 자격요건",
-    criterion_baseline: "단계 기본 질문",
   }[type];
 }
 
@@ -426,7 +419,6 @@ function interviewStageLabel(
     string,
 ) {
   return {
-    adaptive: "기업 기준 적응형 면접",
     technical: "기술 면접",
     project_deep_dive: "프로젝트 심층",
     behavioral: "협업·인성",
@@ -434,7 +426,6 @@ function interviewStageLabel(
 }
 
 function questionTypeLabel(questionType: string) {
-  if (questionType === "company_required") return "기업 설정 질문";
   return questionType === "follow_up" ? "꼬리질문" : "핵심 질문";
 }
 

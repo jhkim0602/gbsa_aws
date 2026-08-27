@@ -56,14 +56,13 @@ export function EvidenceDrawer({
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-[8px] font-medium text-muted">
-                    지원자 근거 데이터
+                    지원자 평가 문서
                   </p>
                   <h3 className="mt-1 text-[12px] font-semibold text-ink">
-                    지원자 상세
+                    지원자 리포트 요약
                   </h3>
                   <p className="mt-1 text-[9px] leading-[1.55] text-muted">
-                    페이지를 이동하지 않고 자격요건 판정과 실제 답변 근거를
-                    확인합니다.
+                    페이지를 이동하지 않고 평가 요약과 기준별 근거를 확인합니다.
                   </p>
                 </div>
                 <span className="grid size-9 shrink-0 place-items-center rounded-full bg-brand-soft text-brand">
@@ -78,7 +77,7 @@ export function EvidenceDrawer({
                 }
               >
                 <FileText size={13} aria-hidden="true" />
-                지원자 상세 보기
+                간단 리포트 보기
               </button>
             </section>
           ) : null}
@@ -156,9 +155,9 @@ function EvidenceSummaryTable({ citation }: { citation: Citation }) {
       >
         <tbody>
           <EvidenceSummaryRow label="지원 포지션" value={citation.source} />
-          <EvidenceSummaryRow label="근거 유형" value={citation.sourceType} />
+          <EvidenceSummaryRow label="문서 유형" value={citation.sourceType} />
           <EvidenceSummaryRow label="검색 범위" value={citation.scopeLabel} />
-          <EvidenceSummaryRow label="자격요건 판정" value={citation.meta} />
+          <EvidenceSummaryRow label="검색 정보" value={citation.meta} />
           <EvidenceSummaryRow
             label="검색 상태"
             value="인덱싱 완료"
@@ -196,16 +195,8 @@ function EvidenceSummaryRow({
 const NARRATIVE_CONTEXT_LABELS = new Set([
   "종합 요약",
   "관찰 내용",
-  "판정 근거",
   "평가 근거",
   "불확실성",
-  "제출 자료 근거",
-  "면접 답변 근거",
-]);
-
-const HIDDEN_LEGACY_CONTEXT_LABELS = new Set([
-  "종합 점수",
-  "점수",
   "정확성",
   "깊이",
   "CS 기본기",
@@ -222,9 +213,7 @@ function EvidenceContext({
 }) {
   const context = parseEvidenceContext(excerpt);
   const metadata = context.fields.filter(
-    (field) =>
-      !NARRATIVE_CONTEXT_LABELS.has(field.label) &&
-      !HIDDEN_LEGACY_CONTEXT_LABELS.has(field.label),
+    (field) => !NARRATIVE_CONTEXT_LABELS.has(field.label),
   );
   const narratives = context.fields.filter((field) =>
     NARRATIVE_CONTEXT_LABELS.has(field.label),
@@ -261,7 +250,7 @@ function EvidenceContext({
                 key={field.label}
               >
                 <p className="text-[8px] font-semibold text-muted">
-                  {displayContextLabel(field.label)}
+                  {field.label}
                 </p>
                 <p className="mt-1.5 whitespace-pre-line text-[10px] leading-[1.75] text-ink-secondary">
                   {field.value}
@@ -296,7 +285,7 @@ function ContextMetaRow({ field }: { field: ContextField }) {
   return (
     <tr className="border-t border-border-muted first:border-t-0">
       <th className="w-[96px] bg-surface-muted px-3 py-2.5 text-[8px] font-semibold text-muted">
-        {displayContextLabel(field.label)}
+        {field.label}
       </th>
       <td className="break-words px-3 py-2.5 text-[9px] font-medium leading-[1.55] text-ink-secondary">
         {displayContextValue(field)}
@@ -334,11 +323,4 @@ function displayContextValue(field: ContextField) {
     if (field.value === "insufficient_evidence") return "근거 부족";
   }
   return field.value;
-}
-
-function displayContextLabel(label: string) {
-  if (label === "평가 기준") return "자격요건 / 확인 주제";
-  if (label === "평가 상태") return "판정 상태";
-  if (label === "평가 근거") return "판정 근거";
-  return label;
 }

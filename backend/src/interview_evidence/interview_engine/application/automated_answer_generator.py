@@ -79,10 +79,6 @@ _SYSTEM_PROMPTS = {
 }
 
 _ENTRY_LOW_LIMITATIONS = {
-    InterviewStage.ADAPTIVE: (
-        "다만 제가 직접 맡은 범위와 선택의 근거, 결과를 확인한 방법까지는 구체적으로 "
-        "설명하기 어렵습니다."
-    ),
     InterviewStage.TECHNICAL: (
         "다만 정확한 기술 원리와 제가 직접 맡은 범위, 이 방법을 고른 기준, 다른 대안과 "
         "결과 수치까지는 구체적으로 설명하기 어렵습니다."

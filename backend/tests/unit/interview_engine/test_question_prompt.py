@@ -82,22 +82,23 @@ def test_system_prompt_carries_the_persona_and_the_policy_limits() -> None:
     assert "source_reference_ids" in system
 
 
-def test_system_prompt_uses_grounded_conversational_bridges_and_adaptive_company_targets() -> None:
+def test_system_prompt_uses_grounded_conversational_bridges_and_natural_axis_coverage() -> None:
     system = str(_prompt()["system"])
 
-    assert "새로운 자격요건이나 자료·주제로 전환될 때만" in system
+    assert "단계가 시작되거나 새로운 자료·주제로 전환될 때만" in system
     assert '"제출하신 자료에서", "작성해 주신 내용에서"' in system
     assert "매 질문마다 또는\n    연속해서 사용하지 않습니다" in system
     assert "source_reference_ids에 유지합니다" in system
     assert "지원자의 답변을 미리 평가하거나 정답을 암시하지 않으며" in system
     assert '"설명해 주세요", "말씀해 주세요" 같은 요청형은' in system
     assert "실제 의문형만 물음표로 끝냅니다" in system
-    assert "자격요건은 verification_objective로 사용하되" in system
-    assert "직전 답변에서 관련 근거를 찾아 자연스러운 질문으로 연결" in system
-    assert "미리 정한 기술·프로젝트·협업 순서를 가정하지 않습니다" in system
+    for label in ("정확성", "깊이", "CS 기본기", "본인 기여", "설명력"):
+        assert label in system
+    assert "한 질문에 다섯 관점을 모두 담지 않습니다" in system
     assert "기술 구현, 장애 해결, 성능 개선만 묻는 질문은 만들지 않습니다" in system
     assert "answer_evidence_gaps" in system
     assert "stage_alignment_retry" in system
+    assert "required_assessment_axis가 fundamentals이면" in system
     assert "주요 구성 요소와 책임 경계" in system
     assert "특정 파일명·함수명·메서드명·클래스명" in system
     assert "코드는 구조를 추론하는 근거로만 사용합니다" in system

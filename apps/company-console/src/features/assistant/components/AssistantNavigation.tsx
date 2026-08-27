@@ -210,7 +210,7 @@ export function ConversationHistory({
               RAG 검색 데이터
             </strong>
             <small className="mt-0.5 block truncate text-[7px] text-muted">
-              자격요건 판정과 실제 답변 근거를 검색합니다.
+              최종 리포트와 평가 기준별 근거를 검색합니다.
             </small>
           </span>
         </div>
@@ -308,7 +308,7 @@ function RagSearchHelpDialog({
               <SearchHelpSection
                 icon={<FileSearch size={13} />}
                 title="직접 검색하는 자료"
-                body="완료된 지원자의 필수·우대 자격요건 판정, 판정 근거, 실제 면접 답변과 제출 자료 근거 요약을 검색합니다."
+                body="완료된 지원자 AI 최종 리포트의 종합 요약과 평가 기준별 관찰 내용, 평가 근거, 불확실성, 세부 점수를 검색합니다."
               />
               <SearchHelpSection
                 icon={<Database size={13} />}
@@ -317,8 +317,8 @@ function RagSearchHelpDialog({
               />
               <SearchHelpSection
                 icon={<FileCheck2 size={13} />}
-                title="자격요건 판정 정보"
-                body="기업이 설정한 필수·우대 자격요건의 충족·부분 충족·미충족 상태와 그 근거를 검색합니다."
+                title="평가 기준 정보"
+                body="최종 리포트에 포함된 평가 항목명, 판정 상태와 기준별 근거를 검색합니다. 별도의 정책 문서를 통째로 검색하는 방식은 아닙니다."
               />
               <SearchHelpSection
                 icon={<ShieldCheck size={13} />}

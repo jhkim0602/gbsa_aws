@@ -28,35 +28,6 @@ const recruitingState = {
 };
 
 describe("Lane D review journey", () => {
-  it("marks a company-required question separately in the timeline", () => {
-    render(
-      <TimelineView
-        entries={[
-          {
-            entryId: "company-question",
-            type: "question",
-            startMs: 1000,
-            endMs: 2500,
-            text: "입사 후 가장 먼저 개선하고 싶은 부분은 무엇인가요?",
-            questionRationale: {
-              criterionId: "criterion-1",
-              interviewStage: "technical",
-              verificationTargetType: "company_required_question",
-              objective: "입사 후 가장 먼저 개선하고 싶은 부분은 무엇인가요?",
-              questionType: "company_required",
-              policyResult: "accepted",
-              sourceReferences: [],
-            },
-          },
-        ]}
-        playbackStatus="unavailable"
-        onSeek={vi.fn()}
-      />,
-    );
-
-    expect(screen.getAllByText("기업 설정 질문")).toHaveLength(2);
-  });
-
   it("shows immutable AI results and seeks Evidence on the timeline", () => {
     const seek = vi.fn();
     render(
@@ -144,10 +115,10 @@ describe("Lane D review journey", () => {
 
     expect(screen.getByText("AI 원본 · 변경 불가")).toBeTruthy();
     expect(screen.getByLabelText("AI 리포트")).toBeTruthy();
-    // 종합평가는 자격요건 점수만 보여 주고, 기존 기준 판정은 답변 근거 탭에 남깁니다.
-    expect(screen.queryByText("확인됨")).toBeNull();
-    fireEvent.click(screen.getByRole("tab", { name: "면접 답변 근거" }));
-    expect(screen.getByText("확인됨")).toBeTruthy();
+    // 종합평가 opens first: it counts the states and lists them per criterion, so the
+    // badge appears once in each. Evidence playback lives one tab over.
+    expect(screen.getAllByText("확인됨").length).toBe(2);
+    fireEvent.click(screen.getByRole("tab", { name: "기준별 평가" }));
     fireEvent.click(screen.getByRole("button", { name: "Evidence 재생" }));
     expect(seek).toHaveBeenCalledWith(1200);
     expect(screen.getByText("캐시와 큐를 비교했습니다.")).toBeTruthy();
@@ -211,31 +182,6 @@ describe("Lane D review journey", () => {
     ]);
   });
 
-  it("summarizes new interviews as one adaptive company flow", () => {
-    const stages = summarizeInterviewStages([
-      {
-        entryId: "question-adaptive",
-        type: "question",
-        startMs: 0,
-        endMs: 1000,
-        text: "자격요건 기반 질문",
-        questionRationale: {
-          criterionId: "criterion-1",
-          interviewStage: "adaptive",
-          verificationTargetType: "job_requirement_required",
-          objective: "기업 자격요건 확인",
-          questionType: "adaptive",
-          policyResult: "accepted",
-          sourceReferences: [],
-        },
-      },
-    ]);
-
-    expect(stages.map((stage) => [stage.label, stage.questionCount])).toEqual([
-      ["기업 기준 적응형 면접", 1],
-    ]);
-  });
-
   it("keeps only note and configurable final-decision controls", async () => {
     render(
       <HumanReview
@@ -262,11 +208,6 @@ describe("Lane D review journey", () => {
     const play = vi
       .spyOn(HTMLMediaElement.prototype, "play")
       .mockResolvedValue(undefined);
-    const scrollIntoView = vi.fn();
-    Object.defineProperty(HTMLMediaElement.prototype, "scrollIntoView", {
-      configurable: true,
-      value: scrollIntoView,
-    });
 
     render(
       <ReviewWorkspace
@@ -330,13 +271,28 @@ describe("Lane D review journey", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("tab", { name: "면접 답변 근거" }));
+    fireEvent.click(screen.getByRole("tab", { name: "기준별 평가" }));
     fireEvent.click(screen.getByRole("button", { name: "Evidence 재생" }));
-    expect(
-      screen.getByRole("dialog", { name: "Evidence 영상 확인" }),
-    ).toBeTruthy();
+
+    const video = document.querySelector("video");
+    expect(video?.currentTime).toBe(62);
+    expect(play).toHaveBeenCalled();
     expect(screen.getByText("세션 12345678")).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "면접 타임라인" })).toBeNull();
+
+    const timelinePanel = screen
+      .getByRole("heading", { name: "면접 타임라인" })
+      .closest("section");
+    const humanReviewPanel = screen
+      .getByRole("heading", { name: "사람 검토" })
+      .closest("section");
+    expect(timelinePanel?.parentElement?.className).not.toContain("sticky");
+    expect(humanReviewPanel?.parentElement?.className).toContain("sticky");
+    expect(timelinePanel?.parentElement?.parentElement).toBe(
+      humanReviewPanel?.parentElement?.parentElement,
+    );
+    expect(timelinePanel?.parentElement?.parentElement?.className).toContain(
+      "[grid-area:sidebar]",
+    );
 
     const reportTabList = screen.getByRole("tablist", {
       name: "리포트 항목",
@@ -347,9 +303,9 @@ describe("Lane D review journey", () => {
         .map((tab) => tab.textContent),
     ).toEqual([
       "종합평가",
-      "면접 답변 근거",
+      "기준별 평가",
       "면접 타임라인",
-      "자격요건 평가",
+      "자격요건 충족도",
       "추가 확인",
     ]);
     expect(reportTabList.className).not.toContain("overflow-x-auto");
@@ -358,22 +314,18 @@ describe("Lane D review journey", () => {
     const expandedTimeline = screen.getByRole("tabpanel", {
       name: "면접 타임라인",
     });
-    const video = expandedTimeline.querySelector("video")!;
-    expect(video.currentTime).toBe(62);
-    expect(play).toHaveBeenCalled();
+    expect(within(expandedTimeline).queryByRole("video")).toBeNull();
     expect(
-      screen.getAllByRole("heading", { name: "면접 타임라인" }),
-    ).toHaveLength(1);
+      within(expandedTimeline).getByText(
+        "구간을 선택하면 왼쪽 면접 영상이 해당 시점으로 이동합니다.",
+      ),
+    ).toBeTruthy();
     const expandedAnswer = within(expandedTimeline)
       .getByText("캐시와 큐의 장단점을 비교했습니다.")
       .closest("button");
     expect(expandedAnswer).toBeTruthy();
     fireEvent.click(expandedAnswer!);
     expect(video?.currentTime).toBe(62);
-    expect(scrollIntoView).toHaveBeenCalledWith({
-      behavior: "smooth",
-      block: "center",
-    });
     expect(
       within(expandedTimeline).getByPlaceholderText("자막 내용 검색"),
     ).toBeTruthy();

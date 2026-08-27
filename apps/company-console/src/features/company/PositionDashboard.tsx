@@ -2,7 +2,10 @@ import { ArrowRight, BarChart3, ListChecks, Send } from "lucide-react";
 
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "../../app/styles/primitives";
 import { interviewLevelLabels } from "../hiring";
-import { RequirementFitDistribution } from "./CompetencyInsights";
+import {
+  ApplicantScoreTable,
+  CompetencyDistribution,
+} from "./CompetencyInsights";
 import type { PositionTab } from "./positionWorkspaceModel";
 import type {
   CompanyApplicantInsight,
@@ -27,8 +30,6 @@ export function PositionDashboard({
   onOpenTab(tab: PositionTab): void;
   onOpenInvitations(): void;
 }) {
-  const mandatoryQuestions =
-    criteria?.criteria.flatMap((criterion) => criterion.commonQuestions) ?? [];
   return (
     <div className="grid gap-4">
       <section className="overflow-hidden rounded-lg border border-border bg-surface">
@@ -40,8 +41,7 @@ export function PositionDashboard({
             <div className="min-w-0">
               <h2 className="text-[15px] text-ink">포지션 판단 요약</h2>
               <p className="mt-1 text-[11px] leading-[1.5] text-muted">
-                기업이 설정한 필수·우대 자격요건별 충족 상태와 답변 근거를
-                비교합니다.
+                완료된 면접의 총점과 답변 근거를 기준으로 비교합니다.
               </p>
             </div>
           </div>
@@ -68,10 +68,18 @@ export function PositionDashboard({
         </header>
       </section>
 
-      <RequirementFitDistribution
-        criteria={criteria}
+      <CompetencyDistribution
         insights={insights}
         invitations={invitations}
+        limit={4}
+        title="평가 기준별 평균"
+        description="인사이트에서는 핵심 기준만 요약합니다. 막대에 마우스를 올리면 상위 5명을 확인할 수 있습니다."
+      />
+
+      <ApplicantScoreTable
+        invitations={invitations}
+        insights={insights}
+        limit={5}
       />
 
       <section className="overflow-hidden rounded-lg border border-border bg-surface">
@@ -99,7 +107,7 @@ export function PositionDashboard({
           <div className="grid grid-cols-[repeat(3,minmax(140px,0.45fr))_minmax(260px,1fr)] mw-1050:grid-cols-3 mw-720:grid-cols-[minmax(0,1fr)]">
             <SettingValue
               label="면접 시간"
-              value={`최대 ${criteria.interviewDurationMinutes}분 · 근거 충분 시 조기 종료`}
+              value={`${criteria.interviewDurationMinutes}분`}
             />
             <SettingValue
               label="면접관"
@@ -109,28 +117,30 @@ export function PositionDashboard({
               }
             />
             <SettingValue
-              label="자격요건"
-              value={`${criteria.jobRequirements.length}개`}
+              label="평가 기준"
+              value={`${criteria.criteria.length}개 · 합계 100`}
             />
             <div className="grid gap-2 p-4 mw-1050:col-[1/-1] mw-1050:border-t mw-1050:border-border-muted">
               <span className="text-[10px] text-muted">
-                반드시 물어볼 질문 · {mandatoryQuestions.length}개
+                채용 관리에서 설정한 평가 가중치
               </span>
-              <div className="flex flex-wrap gap-1.5">
-                {mandatoryQuestions.length ? (
-                  mandatoryQuestions.map((question, index) => (
-                    <span
-                      className="rounded-md border border-border-muted bg-surface-muted px-2.5 py-1.5 text-[9px] text-ink-secondary"
-                      key={`${question}-${index}`}
-                    >
-                      {index + 1}. {question}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-[9px] text-muted">
-                    별도 질문 없음 · 자격요건과 지원자 자료를 기준으로 진행
+              <div className="flex h-2 overflow-hidden rounded-full bg-surface-strong">
+                {criteria.criteria.map((criterion, index) => (
+                  <i
+                    className={index % 2 ? "bg-[#8b97e8]" : "bg-brand"}
+                    key={criterion.code}
+                    style={{ width: `${criterion.weight}%` }}
+                    title={`${criterion.name} ${criterion.weight}`}
+                  />
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                {criteria.criteria.map((criterion) => (
+                  <span className="text-[9px] text-muted" key={criterion.code}>
+                    {criterion.required ? "필수" : "우대"} · {criterion.name}{" "}
+                    <b className="text-ink">{criterion.weight}</b>
                   </span>
-                )}
+                ))}
               </div>
             </div>
           </div>

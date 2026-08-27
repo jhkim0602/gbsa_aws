@@ -729,7 +729,6 @@ function criterionDraft(
           interviewerName: criteria.personaDefinition.name,
           interviewerTone: criteria.personaDefinition.tone,
           interviewerVoiceId: criteria.personaDefinition.voiceId,
-          interviewerSystemPrompt: criteria.personaDefinition.systemPrompt,
         }
       : {}),
   };

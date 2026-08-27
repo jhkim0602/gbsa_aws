@@ -98,6 +98,7 @@ from interview_evidence.reporting.api import (
 from interview_evidence.reporting.api.company_routes import (
     create_company_router as create_reporting_router,
 )
+from interview_evidence.reporting.application.assessment_service import CriterionAssessor
 from interview_evidence.reporting.application.deletion_service import DeletionService
 from interview_evidence.reporting.application.evidence_service import EvidenceService
 from interview_evidence.reporting.application.public import ReportingPublic
@@ -543,7 +544,12 @@ def create_production_runtime(
             "report_generation": ReportGenerator(
                 lane_d.repository,
                 EvidenceService(lane_d.repository),
-                requirement_assessor=RequirementAssessor(
+                CriterionAssessor(
+                    model,
+                    metrics=active_metrics,
+                    require_scores=True,
+                ),
+                RequirementAssessor(
                     model,
                     require_assessment=True,
                 ),

@@ -13,6 +13,7 @@ describe("company feature routes", () => {
     ["/ai-assistant", "AI 채용 어시스턴트"],
     ["/hiring", "포지션 만들기"],
     ["/review/00000000-0000-7000-8000-000000000001", "지원자 검토"],
+    ["/settings/invitation-email", "초대 메일 템플릿"],
   ])(
     "renders %s through the integration route registry",
     async (path, heading) => {
@@ -41,7 +42,7 @@ describe("company feature routes", () => {
     expect(screen.getByRole("link", { name: "지원자 관리" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "AI 어시스턴트" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "채용 관리" })).toBeTruthy();
-    expect(screen.queryByRole("link", { name: "초대 메일 템플릿" })).toBeNull();
+    expect(screen.getByRole("link", { name: "초대 메일 템플릿" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "AI 면접관" })).toBeNull();
     expect(screen.queryByRole("button", { name: "지원자 화면" })).toBeNull();
     expect(screen.queryByRole("button", { name: "알림" })).toBeNull();

@@ -104,7 +104,7 @@ class InvitationEmailTemplate(BaseModel):
 
 DEFAULT_INVITATION_EMAIL_TEMPLATE: Final = InvitationEmailTemplate(
     subject=f"[{_PLACEHOLDER_COMPANY}] {_PLACEHOLDER_POSITION} 온라인 면접 안내",
-    headline="지원해주셔서 감사합니다",
+    headline="서류 전형 합격을 축하드립니다",
     intro=(
         f"{_PLACEHOLDER_APPLICANT}님, {_PLACEHOLDER_COMPANY} {_PLACEHOLDER_POSITION} 포지션에 "
         "지원해주셔서 진심으로 감사합니다.\n"
@@ -132,7 +132,6 @@ class InvitationEmailContent:
     deadline_text: str
     invitation_url: str
     applicant_display_name: str | None = None
-    position_description: str | None = None
 
     def resolved_applicant_name(self, template: InvitationEmailTemplate) -> str:
         """Return the salutation, honouring the company's PII opt-in.
@@ -201,33 +200,6 @@ def _guide_rows(
             "</tr>"
         )
     return "".join(rows)
-
-
-def _position_details_block(
-    template: InvitationEmailTemplate,
-    content: InvitationEmailContent,
-) -> str:
-    """Render the live position description, with legacy guides as a fallback."""
-    if content.position_description:
-        description = _paragraphs(
-            content.position_description,
-            "margin:0 0 7px;font-size:12.5px;line-height:1.75;color:#414051",
-        )
-        return (
-            '<tr><td style="padding:26px 40px 0">'
-            '<div style="font-size:12.5px;font-weight:600;color:#1a1f36;'
-            'margin-bottom:12px">포지션 상세</div>'
-            f"{description}</td></tr>"
-        )
-    if not template.guides:
-        return ""
-    return (
-        '<tr><td style="padding:26px 40px 0">'
-        '<div style="font-size:12.5px;font-weight:600;color:#1a1f36;'
-        'margin-bottom:12px">면접 전 확인해 주세요</div>'
-        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-        f'border="0">{_guide_rows(template, content)}</table></td></tr>'
-    )
 
 
 def _brand_block(
@@ -338,7 +310,12 @@ style="background:#f8f9fb;border:1px solid #eef0f4;border-radius:9px">
     </table>
   </td></tr>
 
-  {_position_details_block(template, content)}
+  <tr><td style="padding:26px 40px 0">
+    <div style="font-size:12.5px;font-weight:600;color:#1a1f36;margin-bottom:12px">\
+면접 전 확인해 주세요</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">\
+{_guide_rows(template, content)}</table>
+  </td></tr>
 
   <tr><td align="center" style="padding:28px 40px 14px">
     <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
@@ -400,9 +377,7 @@ def _render_text(
         f"포지션: {content.position_title}",
         f"응시 마감: {content.deadline_text}",
     ]
-    if content.position_description:
-        blocks.extend(("", "포지션 상세", *_lines(content.position_description)))
-    elif template.guides:
+    if template.guides:
         blocks.extend(("", "면접 전 확인해 주세요"))
         for line in template.guides:
             label, separator, body = line.partition(GUIDE_SEPARATOR)

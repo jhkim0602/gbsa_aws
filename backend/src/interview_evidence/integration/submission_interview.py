@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from uuid import NAMESPACE_URL, UUID, uuid5
+from uuid import UUID
 
 from interview_evidence.company_management.application.company_service import (
     CompanyManagementPublic,
     CriterionSnapshot,
-    JobRequirementSnapshot,
 )
 from interview_evidence.interview_engine.adapters.retrieval_client import RetrievalRecord
 from interview_evidence.interview_engine.application.authorization import (
@@ -156,12 +155,37 @@ class SubmissionInterviewBoundary:
         ):
             raise PermissionError("interview plan is outside tenant scope")
         criterion_ids = tuple(criterion.criterion_id for criterion in criteria.criteria)
-        # The interview flow is built from the company's own requirements and explicit
-        # questions. The engine retrieves applicant-specific material for each target and
-        # decides at runtime whether to move on or ask a focused follow-up.
-        verification_targets = _interview_targets(
-            criteria.criteria,
-            criteria.job_requirements,
+        verification_map = self._submission.get_verification_map(
+            context,
+            applicant_id=strategy.applicant_id,
+            invitation_id=strategy.invitation_id,
+            competency_model_version_id=competency_model_version_id,
+        )
+        criteria_by_id = {criterion.criterion_id: criterion for criterion in criteria.criteria}
+        verification_targets = tuple(
+            VerificationTargetPlan(
+                verification_target_id=target.verification_target_id,
+                criterion_id=target.criterion_id,
+                criterion_text=_criterion_text(criteria_by_id[target.criterion_id]),
+                target_type=target.target_type,
+                objective=target.objective,
+                missing_dimensions=target.missing_dimensions,
+                follow_up_directions=_string_tuple(
+                    criteria_by_id[target.criterion_id].verification_guide.get(
+                        "follow_up_directions"
+                    )
+                ),
+                max_follow_ups=target.max_follow_ups,
+                common_question=next(
+                    iter(criteria_by_id[target.criterion_id].common_questions),
+                    "해당 경험에서 본인이 직접 수행한 작업을 설명해 주세요?",
+                ),
+                time_budget_seconds=_time_budget_seconds(
+                    criteria_by_id[target.criterion_id],
+                ),
+            )
+            for target in (verification_map.targets if verification_map else ())
+            if target.criterion_id in criteria_by_id
         )
         verification_prompt = next(
             (
@@ -171,7 +195,7 @@ class SubmissionInterviewBoundary:
             ),
             "",
         )
-        mandatory_question = next(
+        common_question = next(
             (
                 question
                 for criterion in criteria.criteria
@@ -186,10 +210,12 @@ class SubmissionInterviewBoundary:
                 if verification_targets
                 else verification_prompt
             )
-            or mandatory_question
+            or common_question
             or "최근 해결한 기술 문제를 설명해 주세요"
         )
-        fallback_question = _as_question("그 판단 과정과 결과를 구체적으로 설명해 주세요")
+        fallback_question = _as_question(
+            common_question or "그 판단 과정과 결과를 구체적으로 설명해 주세요"
+        )
         persona = criteria.persona_definition
         return InterviewPlan(
             criterion_ids=criterion_ids,
@@ -200,7 +226,6 @@ class SubmissionInterviewBoundary:
             model_config_version=strategy.model_config_version,
             retrieval_config_version="stage-aware-hybrid-v1",
             voice_id=str(persona.get("voice_id", "Seoyeon")),
-            interviewer_system_prompt=str(persona.get("system_prompt") or ""),
             verification_targets=verification_targets,
             interview_level=criteria.interview_level,
         )
@@ -230,107 +255,6 @@ def _criterion_text(
     )
 
 
-def _interview_targets(
-    criteria: tuple[CriterionSnapshot, ...],
-    requirements: tuple[JobRequirementSnapshot, ...] = (),
-) -> tuple[VerificationTargetPlan, ...]:
-    mandatory: list[VerificationTargetPlan] = []
-    requirement_targets: list[VerificationTargetPlan] = []
-    baseline: list[VerificationTargetPlan] = []
-    criteria_by_code = {criterion.code: criterion for criterion in criteria}
-    for criterion in criteria:
-        for index, question in enumerate(criterion.common_questions):
-            normalized = _as_question(question)
-            mandatory.append(
-                VerificationTargetPlan(
-                    verification_target_id=uuid5(
-                        NAMESPACE_URL,
-                        f"iep:company-required:{criterion.criterion_id}:{index}:{normalized}",
-                    ),
-                    criterion_id=criterion.criterion_id,
-                    criterion_text=_criterion_text(criterion),
-                    target_type="company_required_question",
-                    objective=normalized,
-                    missing_dimensions=(),
-                    follow_up_directions=(),
-                    max_follow_ups=1,
-                    common_question=normalized,
-                    time_budget_seconds=180,
-                )
-            )
-        guide = criterion.verification_guide
-        baseline.append(
-            VerificationTargetPlan(
-                verification_target_id=uuid5(
-                    NAMESPACE_URL,
-                    f"iep:criterion-baseline:{criterion.criterion_id}",
-                ),
-                criterion_id=criterion.criterion_id,
-                criterion_text=_criterion_text(criterion),
-                target_type="criterion_baseline",
-                objective=f"{criterion.name}을 일반적인 직무 면접 질문으로 확인합니다.",
-                missing_dimensions=_string_tuple(guide.get("observable_dimensions")),
-                follow_up_directions=_string_tuple(guide.get("follow_up_directions")),
-                max_follow_ups=_max_follow_ups(guide.get("max_follow_ups")),
-                common_question=_baseline_question(criterion),
-                time_budget_seconds=_time_budget_seconds(criterion),
-            )
-        )
-    for requirement in sorted(
-        requirements,
-        key=lambda item: (
-            0 if item.requirement_type == "required" else 1,
-            item.priority,
-        ),
-    ):
-        criterion = criteria_by_code.get(requirement.criterion_code)
-        if criterion is None:
-            continue
-        statement = requirement.statement.strip()
-        requirement_targets.append(
-            VerificationTargetPlan(
-                verification_target_id=uuid5(
-                    NAMESPACE_URL,
-                    f"iep:job-requirement:{requirement.job_requirement_id}:{statement}",
-                ),
-                criterion_id=criterion.criterion_id,
-                criterion_text=statement,
-                target_type=f"job_requirement_{requirement.requirement_type}",
-                objective=(
-                    f"‘{statement}’ 자격요건을 지원자의 제출 자료와 면접 답변을 연결해 확인합니다."
-                ),
-                missing_dimensions=(
-                    "구체적인 상황 또는 문제",
-                    "본인이 직접 수행한 행동",
-                    "선택이나 판단의 근거",
-                    "결과 또는 검증 방법",
-                ),
-                follow_up_directions=(
-                    "제출 자료에 적힌 경험과 답변의 연결",
-                    "본인이 직접 담당한 범위",
-                    "대안과 최종 판단의 이유",
-                    "측정하거나 확인한 결과",
-                ),
-                max_follow_ups=(2 if requirement.requirement_type == "required" else 1),
-                common_question=(
-                    f"제출 자료와 연결해 ‘{statement}’에 해당하는 본인의 경험과 판단 "
-                    "근거를 설명해 주세요."
-                ),
-                time_budget_seconds=(240 if requirement.requirement_type == "required" else 180),
-            )
-        )
-    configured = tuple((*mandatory, *requirement_targets))
-    return configured or tuple(baseline)
-
-
-def _baseline_question(criterion: CriterionSnapshot) -> str:
-    if criterion.code == "TECHNICAL_COMPETENCY":
-        return "직무와 관련해 직접 사용한 기술과 그 선택 이유를 설명해 주세요."
-    if criterion.code == "PROJECT_EXECUTION":
-        return "가장 자신 있는 프로젝트에서 맡은 역할과 해결한 문제를 설명해 주세요."
-    return "협업 과정에서 역할이나 의견을 조율한 경험을 설명해 주세요."
-
-
 def _time_budget_seconds(criterion: CriterionSnapshot) -> int:
     """Seconds this criterion may occupy, from its verification guide.
 
@@ -344,14 +268,6 @@ def _time_budget_seconds(criterion: CriterionSnapshot) -> int:
     except (TypeError, ValueError):
         return 300
     return max(60, min(seconds, 1800))
-
-
-def _max_follow_ups(value: object) -> int:
-    try:
-        count = int(str(value))
-    except (TypeError, ValueError):
-        return 1
-    return max(0, min(count, 3))
 
 
 def _string_tuple(value: object) -> tuple[str, ...]:
