@@ -162,6 +162,7 @@ export function TimelineView({
   const [query, setQuery] = useState("");
   const localMediaRef = useRef<HTMLVideoElement>(null);
   const mediaRef = mediaElementRef ?? localMediaRef;
+  const requestedStartSecondsRef = useRef<number | null>(null);
   const visible = useMemo(
     () =>
       entries.filter((entry) =>
@@ -169,6 +170,11 @@ export function TimelineView({
       ),
     [entries, query],
   );
+
+  useEffect(() => {
+    requestedStartSecondsRef.current =
+      selectedStartMs == null ? null : selectedStartMs / 1000;
+  }, [selectedStartMs]);
 
   useEffect(() => {
     if (selectedStartMs == null || !mediaRef.current) return;
@@ -181,6 +187,18 @@ export function TimelineView({
     }
     void seekToEvidence(mediaRef.current, selectedStartMs).catch(() => undefined);
   }, [playbackUrl, selectedStartMs, showMedia]);
+
+  function preserveRequestedStart(media: HTMLVideoElement) {
+    const targetSeconds = requestedStartSecondsRef.current;
+    if (targetSeconds == null || targetSeconds <= 1) return;
+    if (media.currentTime < 1) {
+      media.currentTime = targetSeconds;
+      return;
+    }
+    if (media.currentTime > targetSeconds + 0.25) {
+      requestedStartSecondsRef.current = null;
+    }
+  }
 
   // The cue text comes from the transcript already in memory; a blob URL keeps it
   // out of a second request that could not carry the tenant token.
@@ -242,6 +260,11 @@ export function TimelineView({
               controls
               preload="metadata"
               src={playbackUrl}
+              onPlay={(event) => preserveRequestedStart(event.currentTarget)}
+              onPlaying={(event) => preserveRequestedStart(event.currentTarget)}
+              onTimeUpdate={(event) =>
+                preserveRequestedStart(event.currentTarget)
+              }
             >
               {captionUrl ? (
                 <track

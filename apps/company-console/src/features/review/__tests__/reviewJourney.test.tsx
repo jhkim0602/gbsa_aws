@@ -299,6 +299,12 @@ describe("Lane D review journey", () => {
     expect(video).toBe(preparedVideo);
     await waitFor(() => expect(video?.currentTime).toBe(62));
     expect(play).toHaveBeenCalled();
+
+    // Chromium can briefly restart a remotely-served WebM at zero on the first native
+    // play after a deep seek. Keep the selected Evidence time instead of losing it.
+    video!.currentTime = 0.2;
+    fireEvent.timeUpdate(video!);
+    expect(video?.currentTime).toBe(62);
     expect(screen.getByText("세션 12345678")).toBeTruthy();
 
     const humanReviewPanel = screen
