@@ -58,7 +58,7 @@ describe("HiringWorkspace", () => {
     expect(screen.getByText("포지션명과 모집 기간")).toBeTruthy();
     expect(
       screen
-        .getByText("채용할 직무를 선택해 주세요")
+        .getByText("찾아보세요!")
         .closest("#position-role-picker")
         ?.getAttribute("aria-hidden"),
     ).toBe("true");
@@ -73,13 +73,13 @@ describe("HiringWorkspace", () => {
     expect(currentStep.className).toContain("!text-white");
 
     fireEvent.click(screen.getByLabelText("포지션명"));
-    expect(await screen.findByText("채용할 직무를 선택해 주세요")).toBeTruthy();
+    expect(await screen.findByText("찾아보세요!")).toBeTruthy();
     const customRoleInput = screen.getByLabelText("세부 직무 직접 입력");
     expect(customRoleInput).toBe(document.activeElement);
     fireEvent.keyDown(customRoleInput, { key: "Escape" });
     expect(
       screen
-        .getByText("채용할 직무를 선택해 주세요")
+        .getByText("찾아보세요!")
         .closest("#position-role-picker")
         ?.getAttribute("aria-hidden"),
     ).toBe("true");
@@ -93,7 +93,7 @@ describe("HiringWorkspace", () => {
     );
     expect(
       screen
-        .getByText("채용할 직무를 선택해 주세요")
+        .getByText("찾아보세요!")
         .closest("#position-role-picker")
         ?.getAttribute("aria-hidden"),
     ).toBe("true");

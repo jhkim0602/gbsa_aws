@@ -208,6 +208,11 @@ describe("Lane D review journey", () => {
     const play = vi
       .spyOn(HTMLMediaElement.prototype, "play")
       .mockResolvedValue(undefined);
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLMediaElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
 
     render(
       <ReviewWorkspace
@@ -308,6 +313,10 @@ describe("Lane D review journey", () => {
     expect(expandedAnswer).toBeTruthy();
     fireEvent.click(expandedAnswer!);
     expect(video?.currentTime).toBe(62);
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "center",
+    });
     expect(
       within(expandedTimeline).getByPlaceholderText("자막 내용 검색"),
     ).toBeTruthy();

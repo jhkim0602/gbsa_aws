@@ -250,7 +250,7 @@ export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
                         직무 선택
                       </span>
                       <h4 className="text-xl font-bold text-ink">
-                        채용할 직무를 선택해 주세요
+                        찾아보세요!
                       </h4>
                       <p className="text-[11px] leading-5 text-muted">
                         세부 직무를 선택하면 포지션명에 자동으로 반영됩니다.

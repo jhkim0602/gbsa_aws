@@ -157,7 +157,9 @@ export function TimelineView({
   function selectTime(startMs: number) {
     onSeek(startMs);
     if (mediaRef.current) {
-      void seekToEvidence(mediaRef.current, startMs);
+      const media = mediaRef.current;
+      void seekToEvidence(media, startMs);
+      media.scrollIntoView?.({ behavior: "smooth", block: "center" });
     }
   }
 
