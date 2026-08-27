@@ -403,7 +403,7 @@ describe("HiringWorkspace", () => {
       screen.getByText(/필수 사항 다음 순서로 실제 경험을 확인합니다/),
     ).toBeTruthy();
     expect(
-      screen.getByText(/충족 100점·부분 충족 50점·미충족 0점/),
+      screen.getByText(/충족·부분 충족·미충족·판단 불가 상태만 표시/),
     ).toBeTruthy();
   });
 

@@ -51,25 +51,26 @@ function renderReport(requirements: RequirementAssessment[]) {
 }
 
 describe("requirement-only report scoring", () => {
-  it("uses only scorable qualification statuses for the overview score", () => {
+  it("shows qualification statuses without an overview score", () => {
     renderReport([
       requirement(1, "met"),
       requirement(2, "partially_met"),
       requirement(3, "unknown", "preferred"),
     ]);
 
-    // (100 + 50) / 2 = 75. The legacy overallScore (12) and unknown item are ignored.
-    expect(screen.getByText("75")).toBeTruthy();
+    expect(screen.getByText("상태별 판정")).toBeTruthy();
+    expect(screen.getByText("점수로 환산하지 않음")).toBeTruthy();
+    expect(screen.queryByText("75")).toBeNull();
     expect(screen.queryByText("12")).toBeNull();
     expect(screen.getByText("전체 3개 자격요건")).toBeTruthy();
     expect(
       screen.getByRole("img", {
-        name: "기업이 설정한 자격요건 3개의 충족 점수 레이더 그래프",
+        name: "기업이 설정한 자격요건 3개의 상태 프로필",
       }),
     ).toBeTruthy();
   });
 
-  it("shows the transparent 100, 50, 0 and unknown mapping", () => {
+  it("shows only qualification statuses without numeric scores", () => {
     renderReport([
       requirement(1, "met"),
       requirement(2, "partially_met"),
@@ -79,13 +80,13 @@ describe("requirement-only report scoring", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "자격요건 평가" }));
 
-    expect(
-      screen.getByText(/충족 100점·부분 충족 50점·미충족 0점/),
-    ).toBeTruthy();
-    expect(screen.getAllByText("100점").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("50점").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("0점").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("판단 근거 없음").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("충족").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("부분 충족").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("미충족").length).toBeGreaterThan(0);
+    expect(screen.queryByText("100점")).toBeNull();
+    expect(screen.queryByText("50점")).toBeNull();
+    expect(screen.queryByText("0점")).toBeNull();
+    expect(screen.getAllByText("판단 불가").length).toBeGreaterThan(0);
   });
 
   it("draws a dynamic polygon from every configured qualification", () => {
@@ -104,7 +105,7 @@ describe("requirement-only report scoring", () => {
 
     expect(
       screen.getByRole("img", {
-        name: "기업이 설정한 자격요건 6개의 충족 점수 레이더 그래프",
+        name: "기업이 설정한 자격요건 6개의 상태 프로필",
       }),
     ).toBeTruthy();
     expect(screen.getAllByText("필수 1").length).toBeGreaterThan(0);
@@ -123,13 +124,11 @@ describe("requirement-only report scoring", () => {
     ).toBeTruthy();
   });
 
-  it("does not turn a qualification score into a hiring verdict", () => {
+  it("does not turn a qualification status into a hiring verdict", () => {
     renderReport([requirement(1, "met")]);
 
     const sheet = screen.getByRole("tabpanel");
-    expect(sheet.textContent).toContain(
-      "이 점수는 합격 여부가 아니며 최종 결정은 담당자가 기록합니다",
-    );
+    expect(sheet.textContent).toContain("최종 채용 결정은 담당자가 기록합니다");
     expect(sheet.textContent).not.toContain("합격입니다");
     expect(sheet.textContent).not.toContain("불합격입니다");
   });

@@ -419,8 +419,8 @@ function RequirementFlowOverview({
       </ol>
 
       <p className="border-l-2 border-brand pl-2.5 text-[8px] leading-[1.5] text-ink-secondary">
-        리포트 점수는 충족 100점·부분 충족 50점·미충족 0점으로 표시합니다.
-        자료와 답변에 근거가 없으면 0점이 아니라 판단 불가로 남깁니다.
+        리포트에는 충족·부분 충족·미충족·판단 불가 상태만 표시합니다. 자료와
+        답변에 근거가 없으면 판단 불가로 남깁니다.
       </p>
     </aside>
   );

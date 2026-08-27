@@ -344,6 +344,14 @@ const requirementStatusTone: Record<RequirementAssessmentStatus, string> = {
   unknown: "bg-surface-strong text-muted",
 };
 
+const requirementStatusTextColor: Record<RequirementAssessmentStatus, string> =
+  {
+    met: "var(--color-success)",
+    partially_met: "var(--color-warning)",
+    not_met: "var(--color-danger)",
+    unknown: "var(--color-subtle)",
+  };
+
 const requirementStatusOrder: RequirementAssessmentStatus[] = [
   "met",
   "partially_met",
@@ -351,24 +359,13 @@ const requirementStatusOrder: RequirementAssessmentStatus[] = [
   "unknown",
 ];
 
-function requirementScore(status: RequirementAssessmentStatus): number | null {
+function requirementPlotValue(
+  status: RequirementAssessmentStatus,
+): number | null {
   if (status === "met") return 100;
   if (status === "partially_met") return 50;
   if (status === "not_met") return 0;
   return null;
-}
-
-function averageRequirementScore(
-  assessments: RequirementAssessment[],
-): number | null {
-  const scores = assessments.flatMap((assessment) => {
-    const score = requirementScore(assessment.status);
-    return score === null ? [] : [score];
-  });
-  if (scores.length === 0) return null;
-  return Math.round(
-    scores.reduce((sum, score) => sum + score, 0) / scores.length,
-  );
 }
 
 function RequirementsPage({
@@ -402,9 +399,8 @@ function RequirementsPage({
   return (
     <div className="grid gap-4">
       <p className="rounded-e-[5px] border-l-2 border-brand bg-brand-soft px-3 py-2.5 text-[9px] leading-[1.65] text-ink-secondary">
-        제출 자료와 면접 답변을 함께 확인해 각 자격요건을 점수화합니다. 충족
-        100점·부분 충족 50점·미충족 0점이며, 근거가 없으면 0점이 아니라 판단
-        불가로 표시합니다.
+        제출 자료와 면접 답변을 함께 확인해 각 자격요건을 충족, 부분 충족,
+        미충족, 판단 불가 중 하나의 상태로 표시합니다.
       </p>
       <RequirementGroup
         assessments={required}
@@ -505,7 +501,6 @@ function RequirementCard({
           {assessment.statement}
         </strong>
         <span className="inline-flex shrink-0 items-center gap-1.5">
-          <ScoreValue score={requirementScore(assessment.status)} />
           <span
             className={`${BADGE_BASE} ${requirementStatusTone[initialStatus]}`}
           >
@@ -613,9 +608,8 @@ function OverviewPage({
   stageSummary: InterviewStageSummary[];
 }) {
   const assessments = report.requirementAssessments ?? [];
-  const overallScore = averageRequirementScore(assessments);
   const scoredCount = assessments.filter(
-    (assessment) => requirementScore(assessment.status) !== null,
+    (assessment) => assessment.status !== "unknown",
   ).length;
   const statusCounts = requirementStatusOrder.map(
     (status) =>
@@ -630,15 +624,13 @@ function OverviewPage({
       <div className="grid grid-cols-[132px_132px_minmax(0,1fr)] items-center gap-3 mw-680:grid-cols-[repeat(2,minmax(0,1fr))] mw-520:grid-cols-[minmax(0,1fr)]">
         <div className="grid justify-items-center gap-0.5 rounded-lg border border-border-muted bg-surface-muted px-2.5 py-[14px] text-center">
           <span className="text-[9px] font-[650] text-muted">
-            자격요건 충족도
+            자격요건 평가
           </span>
-          <strong
-            className={`text-[34px] font-bold leading-[1.1] ${toneText[toneOf(overallScore)]}`}
-          >
-            {overallScore ?? "—"}
+          <strong className="text-[17px] font-bold leading-[1.3] text-brand-strong">
+            상태별 판정
           </strong>
           <small className="text-[8px] leading-[1.4] text-subtle">
-            {overallScore === null ? "판단 가능한 요건 없음" : "100점 기준"}
+            점수로 환산하지 않음
           </small>
         </div>
         <div className="grid justify-items-center gap-0.5 rounded-lg border border-border-muted bg-brand-soft px-2.5 py-[14px] text-center">
@@ -656,9 +648,9 @@ function OverviewPage({
       </div>
 
       <p className="rounded-e-[5px] border-l-2 border-brand bg-brand-soft px-3 py-2.5 text-[9px] leading-[1.65] text-ink-secondary">
-        기업이 작성한 필수·우대 자격요건만 평가합니다. 충족은 100점, 부분 충족은
-        50점, 미충족은 0점이며 판단 불가는 평균에서 제외합니다. 이 점수는 합격
-        여부가 아니며 최종 결정은 담당자가 기록합니다.
+        기업이 작성한 필수·우대 자격요건만 평가합니다. 각 항목은 충족, 부분
+        충족, 미충족, 판단 불가 상태로만 표시하며 최종 채용 결정은 담당자가
+        기록합니다.
       </p>
 
       {stageSummary.length > 0 ? (
@@ -1264,15 +1256,15 @@ export function RequirementRadarProfile({
     return {
       ...assessment,
       shortLabel: `${assessment.requirementType === "required" ? "필수" : "우대"} ${index}`,
-      score: requirementScore(assessment.status),
+      plotValue: requirementPlotValue(assessment.status),
     };
   });
   const gridLevels = [25, 50, 75, 100];
   const dataPoints = plottedRequirements.map((requirement, index) =>
-    radarPoint(index, requirement.score ?? 0, plottedRequirements.length),
+    radarPoint(index, requirement.plotValue ?? 0, plottedRequirements.length),
   );
-  const hasMissingScore = plottedRequirements.some(
-    (requirement) => requirement.score === null,
+  const hasUnknownStatus = plottedRequirements.some(
+    (requirement) => requirement.plotValue === null,
   );
 
   if (plottedRequirements.length === 0) {
@@ -1282,15 +1274,15 @@ export function RequirementRadarProfile({
   return (
     <div className="grid grid-cols-[minmax(280px,0.95fr)_minmax(220px,1.05fr)] items-center gap-5 rounded-lg bg-surface-muted px-4 py-3 mw-680:grid-cols-[minmax(0,1fr)] mw-680:gap-2 mw-520:px-2.5">
       <svg
-        aria-label={`기업이 설정한 자격요건 ${plottedRequirements.length}개의 충족 점수 레이더 그래프`}
+        aria-label={`기업이 설정한 자격요건 ${plottedRequirements.length}개의 상태 프로필`}
         className="mx-auto h-auto w-full max-w-[360px] overflow-visible"
         role="img"
         viewBox={`0 0 ${RADAR_WIDTH} ${RADAR_HEIGHT}`}
       >
         <title>자격요건 충족 프로필</title>
         <desc>
-          기업이 설정한 필수·우대 자격요건별 100점 만점 충족 점수를 비교합니다.
-          점수가 표시되지 않은 축은 0점이 아니라 판단 근거가 없는 항목입니다.
+          기업이 설정한 필수·우대 자격요건을 충족, 부분 충족, 미충족, 판단 불가
+          상태로 비교합니다.
         </desc>
         {gridLevels.map((level) =>
           radarGrid(level, plottedRequirements.length),
@@ -1309,7 +1301,7 @@ export function RequirementRadarProfile({
             />
           );
         })}
-        {radarDataShape(dataPoints, hasMissingScore)}
+        {radarDataShape(dataPoints, hasUnknownStatus)}
         {dataPoints.map((point, index) => {
           const requirement = plottedRequirements[index];
           return (
@@ -1318,12 +1310,12 @@ export function RequirementRadarProfile({
               cx={point.x}
               cy={point.y}
               fill={
-                requirement.score === null
+                requirement.plotValue === null
                   ? "var(--color-surface)"
                   : "var(--color-brand)"
               }
               key={requirement.jobRequirementId}
-              r={requirement.score === null ? 3.5 : 4}
+              r={requirement.plotValue === null ? 3.5 : 4}
               stroke="var(--color-brand)"
               strokeWidth="1.5"
             />
@@ -1344,18 +1336,14 @@ export function RequirementRadarProfile({
                 {requirement.shortLabel}
               </text>
               <text
-                fill={
-                  requirement.score === null
-                    ? "var(--color-subtle)"
-                    : "var(--color-brand-strong)"
-                }
+                fill={requirementStatusTextColor[requirement.status]}
                 fontSize="9"
                 fontWeight="700"
                 textAnchor="middle"
                 x={labelPoint.x}
                 y={labelPoint.y + 11}
               >
-                {requirement.score === null ? "—" : `${requirement.score}점`}
+                {requirementStatusLabels[requirement.status]}
               </text>
             </g>
           );
@@ -1385,17 +1373,18 @@ export function RequirementRadarProfile({
                 {requirement.statement}
               </dt>
               <dd className="text-right">
-                <ScoreValue score={requirement.score} />
-                <small className="ml-1 block text-[7px] text-subtle">
+                <span
+                  className={`${BADGE_BASE} ${requirementStatusTone[requirement.status]}`}
+                >
                   {requirementStatusLabels[requirement.status]}
-                </small>
+                </span>
               </dd>
             </div>
           ))}
         </dl>
-        {hasMissingScore ? (
+        {hasUnknownStatus ? (
           <p className="text-[8px] leading-[1.5] text-subtle">
-            — 표시는 0점이 아니라 해당 자격요건을 판단할 근거가 없다는 뜻입니다.
+            판단 불가는 해당 자격요건을 확인할 근거가 부족하다는 뜻입니다.
           </p>
         ) : null}
       </div>
