@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Sparkles, Trash2 } from "lucide-react";
 
 import { ICON_BUTTON } from "../../../app/styles/primitives";
 import type { FormVariant } from "../components/FormPrimitives";
@@ -52,6 +52,48 @@ const REQUIREMENT_DELETE = `${ICON_BUTTON} h-8 w-8 border-transparent bg-transpa
 const REQUIREMENT_ADD =
   "inline-flex h-9 w-full items-center justify-center gap-1 border-t border-border-muted" +
   " text-[9px] font-semibold text-muted hover:bg-brand-soft hover:text-brand";
+const EXAMPLE_BUTTON =
+  "inline-flex min-h-7 items-center gap-1 rounded-md border border-brand/20 bg-white px-2" +
+  " text-[8px] font-semibold text-brand hover:bg-brand-soft";
+
+const projectRequirementExamples = [
+  {
+    requirementType: "required",
+    statement:
+      "Python·FastAPI 기반 비동기 API와 멀티테넌트 백엔드 설계·운영 경험",
+  },
+  {
+    requirementType: "required",
+    statement: "PostgreSQL 데이터 모델링과 트랜잭션·동시성 제어 경험",
+  },
+  {
+    requirementType: "required",
+    statement: "AWS ECS·S3·RDS 기반 서비스 배포 및 장애 대응 경험",
+  },
+  {
+    requirementType: "required",
+    statement: "LLM·RAG 기반 AI 기능을 제품에 적용하고 결과 품질을 검증한 경험",
+  },
+  {
+    requirementType: "preferred",
+    statement: "Terraform 기반 AWS 인프라 코드화 및 CI/CD 자동화 경험",
+  },
+  {
+    requirementType: "preferred",
+    statement: "React·TypeScript 기반 운영 콘솔 또는 복잡한 업무 UI 개발 경험",
+  },
+  {
+    requirementType: "preferred",
+    statement: "채용·HR 도메인 또는 평가·리포팅 시스템 개발 경험",
+  },
+  {
+    requirementType: "preferred",
+    statement: "보안·감사 로그·테넌트 격리를 고려한 B2B SaaS 운영 경험",
+  },
+] as const satisfies ReadonlyArray<{
+  requirementType: RequirementType;
+  statement: string;
+}>;
 
 const STATEMENT =
   "h-8 min-w-0 w-full rounded-md border border-transparent bg-transparent px-2 text-[10px] text-ink" +
@@ -91,6 +133,8 @@ export function EvaluationDesigner({
 }) {
   const inputRefs = useRef(new Map<string, HTMLInputElement>());
   const pendingFocusId = useRef<string | null>(null);
+  const animationTimerRef = useRef<number | null>(null);
+  const [exampleAnimating, setExampleAnimating] = useState(false);
   const requiredCount = draft.jobRequirements.filter(
     (requirement) => requirement.requirementType === "required",
   ).length;
@@ -102,6 +146,15 @@ export function EvaluationDesigner({
     inputRefs.current.get(id)?.focus();
     pendingFocusId.current = null;
   }, [draft.jobRequirements.length]);
+
+  useEffect(
+    () => () => {
+      if (animationTimerRef.current !== null) {
+        window.clearTimeout(animationTimerRef.current);
+      }
+    },
+    [],
+  );
 
   function updateRequirement(id: string, patch: Partial<JobRequirementDraft>) {
     const normalizedPatch =
@@ -167,6 +220,28 @@ export function EvaluationDesigner({
     );
   }
 
+  function applyProjectExamples() {
+    const runId = Date.now();
+    setExampleAnimating(true);
+    update(
+      "jobRequirements",
+      projectRequirementExamples.map((example, index) => ({
+        id: `project-example-${runId}-${index + 1}`,
+        requirementType: example.requirementType,
+        statement: example.statement,
+        priority: Math.min(index + 1, 5),
+        criterionCode: inferRequirementCriterionCode(example.statement),
+      })),
+    );
+    if (animationTimerRef.current !== null) {
+      window.clearTimeout(animationTimerRef.current);
+    }
+    animationTimerRef.current = window.setTimeout(() => {
+      setExampleAnimating(false);
+      animationTimerRef.current = null;
+    }, 1100);
+  }
+
   return (
     <section className={DESIGNER} aria-labelledby="evaluation-design-title">
       <header className={HEADER}>
@@ -191,10 +266,20 @@ export function EvaluationDesigner({
                 Enter로 다음 항목 추가
               </span>
             </div>
-            <span className={TYPE_COUNTS}>
-              <b className={TYPE_COUNT_REQUIRED}>필 {requiredCount}</b>
-              <i aria-hidden="true">·</i>
-              <b className={TYPE_COUNT_PREFERRED}>우 {preferredCount}</b>
+            <span className="flex items-center gap-2">
+              <button
+                className={EXAMPLE_BUTTON}
+                type="button"
+                onClick={applyProjectExamples}
+              >
+                <Sparkles aria-hidden="true" size={11} />
+                예시 채우기
+              </button>
+              <span className={TYPE_COUNTS}>
+                <b className={TYPE_COUNT_REQUIRED}>필 {requiredCount}</b>
+                <i aria-hidden="true">·</i>
+                <b className={TYPE_COUNT_PREFERRED}>우 {preferredCount}</b>
+              </span>
             </span>
           </header>
 
@@ -215,9 +300,18 @@ export function EvaluationDesigner({
                 );
               return (
                 <article
-                  className={REQUIREMENT_ROW}
+                  className={`${REQUIREMENT_ROW} ${
+                    exampleAnimating
+                      ? "[animation:requirement-row-in_.42s_cubic-bezier(.2,.8,.2,1)_both] motion-reduce:animate-none"
+                      : ""
+                  }`}
                   key={requirement.id}
                   role="listitem"
+                  style={
+                    exampleAnimating
+                      ? { animationDelay: `${index * 70}ms` }
+                      : undefined
+                  }
                 >
                   <span className={REQUIREMENT_INDEX}>
                     <i
@@ -348,19 +442,19 @@ function RequirementFlowOverview({
   const exampleTypeLabel = isRequired ? "필수 사항" : "우대 사항";
   const steps = [
     {
-      title: "알맞은 면접 기준에 연결",
+      title: "항목 하나가 판정 기준 하나로 저장",
       description:
-        "문장 내용에 따라 기술·프로젝트·협업 중 가장 가까운 기준에 자동으로 연결합니다.",
+        "필수·우대 문장마다 리포트에서 확인할 자격요건 항목을 하나씩 만듭니다.",
     },
     {
-      title: "제출 자료에서 근거 찾기",
+      title: "제출 자료와 면접 답변에서 근거 확인",
       description:
-        "이력서·포트폴리오 등에서 이 경험과 관련된 내용을 먼저 찾습니다.",
+        "이력서·포트폴리오와 실제 면접 답변을 함께 살펴 관련 근거를 모읍니다.",
     },
     {
-      title: "리포트에 따로 표시",
+      title: "점수 없이 상태로 리포트 표시",
       description:
-        "충족·일부 충족·미충족·판단 보류 중 하나로 결과를 보여줍니다.",
+        "각 항목을 충족·부분 충족·미충족·판단 불가 중 하나로 보여줍니다.",
     },
   ] as const;
 
@@ -377,7 +471,8 @@ function RequirementFlowOverview({
           자격요건을 적으면 이렇게 동작해요
         </h4>
         <p className="text-[8px] leading-[1.5] text-muted">
-          작성한 필수·우대 항목은 질문이 아니라 리포트 판정 기준이 됩니다.
+          작성한 필수·우대 항목은 질문이 아니라 각각 하나의 리포트 판정 기준이
+          됩니다.
         </p>
       </header>
 
@@ -413,9 +508,9 @@ function RequirementFlowOverview({
       </ol>
 
       <p className="border-l-2 border-brand pl-2.5 text-[8px] leading-[1.5] text-ink-secondary">
-        리포트에는 충족·부분 충족·미충족·판단 불가 상태만 표시합니다. 자료와
-        답변에 근거가 없으면 판단 불가로 남기며, 이 문장으로 질문을 직접
-        생성하지 않습니다.
+        이 항목으로 면접 질문을 직접 만들지는 않습니다. 실제로 반드시 물어볼
+        내용은 다음 단계의 ‘필수 질문’에 따로 입력하며, 자격요건은 자료와 답변에
+        근거가 없으면 판단 불가로 남습니다.
       </p>
     </aside>
   );

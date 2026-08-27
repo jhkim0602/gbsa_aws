@@ -460,10 +460,33 @@ describe("HiringWorkspace", () => {
     expect(screen.getByText("자격요건을 적으면 이렇게 동작해요")).toBeTruthy();
     expect(screen.getByText("“대규모 API 설계 경험”")).toBeTruthy();
     expect(screen.getByText("우대 사항 예시")).toBeTruthy();
-    expect(screen.getByText(/질문이 아니라 리포트 판정 기준/)).toBeTruthy();
+    expect(screen.getByText(/각각 하나의 리포트 판정/)).toBeTruthy();
     expect(
-      screen.getByText(/충족·부분 충족·미충족·판단 불가 상태만 표시/),
+      screen.getByText(/다음 단계의 ‘필수 질문’에 따로 입력/),
     ).toBeTruthy();
+  });
+
+  it("fills realistic project qualification examples with a staggered animation", async () => {
+    const api = createApi();
+    await advanceToEvaluation(api);
+
+    fireEvent.click(screen.getByRole("button", { name: "예시 채우기" }));
+
+    expect(screen.getByText("필 4")).toBeTruthy();
+    expect(screen.getByText("우 4")).toBeTruthy();
+    const requirements = within(
+      screen.getByRole("list", { name: "자격요건 목록" }),
+    ).getAllByRole("listitem");
+    expect(requirements).toHaveLength(8);
+    expect(
+      (screen.getByLabelText("자격요건 1") as HTMLInputElement).value,
+    ).toContain("Python·FastAPI");
+    expect(
+      (screen.getByLabelText("자격요건 8") as HTMLInputElement).value,
+    ).toContain("B2B SaaS");
+    expect(requirements[0]?.className).toContain("requirement-row-in");
+    expect(requirements[0]?.style.animationDelay).toBe("0ms");
+    expect(requirements[7]?.style.animationDelay).toBe("490ms");
   });
 
   it("keeps qualification importance out of the form", async () => {
@@ -516,7 +539,7 @@ describe("HiringWorkspace", () => {
 
     expect(screen.getByRole("list", { name: "자격요건 목록" })).toBeTruthy();
     expect(
-      screen.getByText(/필수·우대 항목은 질문이 아니라 리포트 판정 기준/),
+      screen.getByText(/필수·우대 항목은 질문이 아니라 각각 하나의 리포트/),
     ).toBeTruthy();
     expect(screen.queryByRole("slider")).toBeNull();
     expect(screen.queryByText(/다섯 방향/)).toBeNull();
