@@ -42,13 +42,7 @@ describe("CompanyShell", () => {
     expect(navigation.className).toContain("w-[224px]");
     expect(shell.className).toContain("grid-cols-[224px_minmax(0,1fr)]");
 
-    const applicantLinks = screen.getAllByRole("link", {
-      name: "지원자 화면",
-    });
-    expect(applicantLinks).toHaveLength(2);
-    applicantLinks.forEach((link) => {
-      expect(link.getAttribute("target")).toBe("_blank");
-      expect(link.getAttribute("rel")).toContain("noreferrer");
-    });
+    expect(screen.queryByRole("button", { name: "지원자 화면" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "알림" })).toBeNull();
   });
 });

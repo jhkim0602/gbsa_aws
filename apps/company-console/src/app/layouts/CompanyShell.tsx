@@ -1,10 +1,8 @@
 import {
-  Bell,
   BriefcaseBusiness,
   ChevronLeft,
   ChevronDown,
   ChevronRight,
-  ExternalLink,
   FilePlus2,
   LayoutDashboard,
   Mail,
@@ -19,7 +17,6 @@ import { useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import whyYouLogo from "../../assets/whyyou-logo.png";
-import { ICON_BUTTON } from "../styles/primitives";
 
 const navigation = [
   { label: "대시보드", to: "/company", icon: LayoutDashboard },
@@ -118,20 +115,16 @@ const USER_MENU_BUTTON =
 const WORKSPACE =
   "col-start-2 min-w-0 min-h-screen bg-canvas print:bg-transparent";
 const TOPBAR =
-  "sticky top-0 z-30 flex min-h-[58px] items-center justify-between px-[26px]" +
+  "sticky top-0 z-30 flex min-h-[58px] items-center justify-center px-[26px]" +
   " border-b border-border bg-[rgb(255_255_255_/_96%)] backdrop-blur-[12px]" +
   " mw-760:px-[14px] print:hidden";
 const TOPBAR_MENU =
-  "hidden size-8 place-items-center rounded-md border border-border bg-surface" +
+  "absolute left-[14px] hidden size-8 place-items-center rounded-md border border-border bg-surface" +
   " font-semibold text-muted hover:bg-surface-muted hover:text-ink mw-760:inline-grid";
 const TOPBAR_TITLE = "flex items-center gap-2";
 const TOPBAR_CRUMB =
   "text-[12px] text-muted after:ml-2 after:text-subtle after:content-['/']" +
   " mw-760:hidden";
-const TOPBAR_ACTIONS = "flex items-center gap-2";
-const TOPBAR_APPLICANT =
-  "inline-flex min-h-[34px] items-center gap-[7px] rounded-lg border" +
-  " border-border bg-white px-2.5 text-[11px] mw-760:hidden";
 const MAIN = "min-w-0 min-h-[calc(100vh-58px)] print:min-h-0";
 
 export function CompanyShell() {
@@ -142,8 +135,6 @@ export function CompanyShell() {
   const pageTitle =
     pageTitles.find((item) => location.pathname.startsWith(item.path))?.title ??
     "기업 콘솔";
-  const applicantAppUrl =
-    import.meta.env.VITE_APPLICANT_APP_URL ?? "http://localhost:5174/access";
   const sidebarClassName = [
     SIDEBAR,
     sidebarCollapsed ? SIDEBAR_DESKTOP_CLOSED : SIDEBAR_DESKTOP_OPEN,
@@ -216,20 +207,6 @@ export function CompanyShell() {
               </NavLink>
             );
           })}
-
-          <div className={NAV_DIVIDER} />
-          {compactSidebar ? null : <p className={NAV_LABEL}>지원자 경험</p>}
-          <a
-            className={`${NAV_ITEM} ${compactSidebar ? NAV_ITEM_COLLAPSED : ""}`}
-            href={applicantAppUrl}
-            aria-label="지원자 화면"
-            title={compactSidebar ? "지원자 화면" : undefined}
-            target="_blank"
-            rel="noreferrer"
-          >
-            <ExternalLink size={18} strokeWidth={1.8} aria-hidden="true" />
-            {compactSidebar ? null : <span>지원자 화면</span>}
-          </a>
 
           <div className={NAV_DIVIDER} />
           {compactSidebar ? null : <p className={NAV_LABEL}>설정</p>}
@@ -349,20 +326,6 @@ export function CompanyShell() {
           <div className={TOPBAR_TITLE}>
             <span className={TOPBAR_CRUMB}>채용 운영</span>
             <strong className="text-[14px]">{pageTitle}</strong>
-          </div>
-          <div className={TOPBAR_ACTIONS}>
-            <a
-              href={applicantAppUrl}
-              className={TOPBAR_APPLICANT}
-              target="_blank"
-              rel="noreferrer"
-            >
-              지원자 화면
-              <ExternalLink size={14} aria-hidden="true" />
-            </a>
-            <button className={ICON_BUTTON} type="button" aria-label="알림">
-              <Bell size={17} aria-hidden="true" />
-            </button>
           </div>
         </header>
         <main id="company-main" className={MAIN}>

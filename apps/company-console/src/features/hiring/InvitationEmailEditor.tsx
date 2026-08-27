@@ -1,5 +1,5 @@
-import { Check, ImageUp, Plus, RotateCcw, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, Plus, RotateCcw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   ASYNC_STATE,
@@ -11,10 +11,8 @@ import {
 import { formInputClass, formTextareaClass } from "./components/FormPrimitives";
 import {
   BRAND_COLOR_PRESETS,
-  describeLogoRejection,
   fromGuideLines,
   isBrandColor,
-  LOGO_CONTENT_TYPES,
   MAX_GUIDE_LINES,
   normalizeBrandColor,
   templateEquals,
@@ -87,11 +85,6 @@ const LABEL_IN_CONTROL = "flex min-w-0 items-baseline gap-2";
 const LABEL_TITLE = "text-[10px] font-semibold text-ink-secondary";
 const LABEL_NOTE = "text-[8px] text-subtle";
 const HINT = "-mt-0.5 text-[8px] leading-[1.45] text-subtle";
-
-const LOGO =
-  "flex items-center gap-2.5 rounded-md border border-border bg-surface-muted p-2.5";
-const LOGO_EMPTY = "text-[9px] text-subtle";
-const LOGO_ACTIONS = "ml-auto flex gap-1.5";
 
 const SWATCHES = "flex flex-wrap gap-1.5";
 const SWATCH =
@@ -175,8 +168,6 @@ export function InvitationEmailEditor({
   const [error, setError] = useState("");
   const [customColors, setCustomColors] = useState<readonly string[]>([]);
   const [colorInput, setColorInput] = useState("");
-  const fileInput = useRef<HTMLInputElement>(null);
-
   const load = useMemo(
     () => () =>
       scope.kind === "position"
@@ -310,38 +301,6 @@ export function InvitationEmailEditor({
     }
   }
 
-  async function uploadLogo(file: File | undefined) {
-    if (!file) return;
-    const rejection = describeLogoRejection(file);
-    if (rejection) {
-      setError(rejection);
-      return;
-    }
-    setError("");
-    try {
-      const logo = await api.uploadLogo(file);
-      setSaved((current) =>
-        current ? { ...current, logoUrl: logo.logoUrl } : current,
-      );
-      setNotice("로고를 등록했습니다.");
-    } catch {
-      setError("로고를 올리지 못했습니다.");
-    }
-  }
-
-  async function removeLogo() {
-    setError("");
-    try {
-      await api.deleteLogo();
-      setSaved((current) =>
-        current ? { ...current, logoUrl: null } : current,
-      );
-      setNotice("로고를 삭제했습니다. 회사명이 대신 표시됩니다.");
-    } catch {
-      setError("로고를 삭제하지 못했습니다.");
-    }
-  }
-
   if (loading || !draft || !saved) {
     return (
       <div className={ASYNC_STATE} role={error ? "alert" : "status"}>
@@ -385,57 +344,6 @@ export function InvitationEmailEditor({
 
         <section className={GROUP}>
           <h3 className={GROUP_TITLE}>브랜딩 {scopeTag}</h3>
-          <div className={FIELD}>
-            <span className={LABEL}>
-              <strong className={LABEL_TITLE}>기업 로고</strong>
-              <small className={LABEL_NOTE}>
-                PNG / SVG / JPG / WebP · 최대 512KB
-              </small>
-            </span>
-            <div className={LOGO}>
-              {saved.logoUrl ? (
-                <img src={saved.logoUrl} alt="등록된 기업 로고" height={30} />
-              ) : (
-                <span className={LOGO_EMPTY}>로고 없음</span>
-              )}
-              <div className={LOGO_ACTIONS}>
-                <button
-                  className={BUTTON_SECONDARY}
-                  type="button"
-                  onClick={() => fileInput.current?.click()}
-                >
-                  <ImageUp size={14} aria-hidden="true" />
-                  {saved.logoUrl ? "로고 교체" : "로고 업로드"}
-                </button>
-                {saved.logoUrl ? (
-                  <button
-                    className={BUTTON_QUIET}
-                    type="button"
-                    onClick={() => void removeLogo()}
-                  >
-                    <Trash2 size={14} aria-hidden="true" />
-                    삭제
-                  </button>
-                ) : null}
-              </div>
-              <input
-                ref={fileInput}
-                className="sr-only"
-                type="file"
-                aria-label="기업 로고 파일"
-                accept={LOGO_CONTENT_TYPES.join(",")}
-                onChange={(event) => {
-                  void uploadLogo(event.currentTarget.files?.[0]);
-                  event.currentTarget.value = "";
-                }}
-              />
-            </div>
-            <small className={HINT}>
-              로고는 전사 공통이며, 메일 앱이 인증 없이 불러갈 수 있도록 공개
-              주소로 제공됩니다.
-            </small>
-          </div>
-
           <div className={FIELD}>
             <span className={LABEL}>
               <strong className={LABEL_TITLE}>브랜드 색상</strong>

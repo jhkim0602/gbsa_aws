@@ -44,9 +44,8 @@ describe("company feature routes", () => {
     expect(screen.getByRole("link", { name: "채용 관리" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "초대 메일 템플릿" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "AI 면접관" })).toBeNull();
-    expect(screen.getAllByRole("link", { name: "지원자 화면" })).toHaveLength(
-      2,
-    );
+    expect(screen.queryByRole("button", { name: "지원자 화면" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "알림" })).toBeNull();
     expect(screen.getByRole("link", { name: "WhyYou 홈" })).toBeTruthy();
     expect(screen.getByRole("img", { name: "WhyYou" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "사용자 메뉴" })).toBeTruthy();

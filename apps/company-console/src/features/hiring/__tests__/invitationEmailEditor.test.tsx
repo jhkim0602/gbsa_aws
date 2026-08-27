@@ -62,6 +62,8 @@ describe("InvitationEmailEditor", () => {
     const headline = (await screen.findByRole("textbox", {
       name: /헤드라인/,
     })) as HTMLInputElement;
+    expect(screen.queryByText("기업 로고")).toBeNull();
+    expect(screen.queryByRole("button", { name: "로고 업로드" })).toBeNull();
     expect(headline.value).toBe("서류 전형 합격을 축하드립니다");
     expect(screen.getByRole("button", { name: "저장" })).toHaveProperty(
       "disabled",
@@ -138,48 +140,6 @@ describe("InvitationEmailEditor", () => {
       "disabled",
       true,
     );
-  });
-
-  it("uploads a logo and shows the URL the server derived for it", async () => {
-    const api = buildApi();
-
-    render(<InvitationEmailEditor api={api} scope={{ kind: "company" }} />);
-    await screen.findByRole("textbox", { name: /헤드라인/ });
-    expect(screen.getByText("로고 없음")).toBeTruthy();
-
-    const file = new File([new Uint8Array(64)], "logo.png", {
-      type: "image/png",
-    });
-    fireEvent.change(screen.getByLabelText("기업 로고 파일"), {
-      target: { files: [file] },
-    });
-
-    await waitFor(() => expect(api.uploadLogo).toHaveBeenCalledWith(file));
-    const logo = (await screen.findByAltText(
-      "등록된 기업 로고",
-    )) as HTMLImageElement;
-    expect(logo.src).toBe(
-      "https://console.example/v1/public/companies/company-1/logo",
-    );
-  });
-
-  it("refuses an oversized logo locally instead of uploading it", async () => {
-    const api = buildApi();
-
-    render(<InvitationEmailEditor api={api} scope={{ kind: "company" }} />);
-    await screen.findByRole("textbox", { name: /헤드라인/ });
-
-    const file = new File([new Uint8Array(512 * 1024 + 1)], "logo.png", {
-      type: "image/png",
-    });
-    fireEvent.change(screen.getByLabelText("기업 로고 파일"), {
-      target: { files: [file] },
-    });
-
-    expect(
-      await screen.findByText("로고 파일은 512KB 이하여야 합니다."),
-    ).toBeTruthy();
-    expect(api.uploadLogo).not.toHaveBeenCalled();
   });
 
   it("scopes position edits and reverts to the company-wide copy", async () => {
