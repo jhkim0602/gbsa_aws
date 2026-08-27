@@ -263,6 +263,8 @@ export function InterviewDesigner({
           </h3>
           <p className={SECTION_TEXT}>
             최종 채용 목표와 동시에 진행할 면접 정원, 시작 시각을 지정합니다.
+            면접은 최대 30분이며 자격요건과 필수 질문의 판단 근거를 모두
+            확보하면 더 일찍 종료될 수 있습니다.
           </p>
         </header>
         <div className={SCHEDULE_FIELDS}>
@@ -647,7 +649,7 @@ export function InterviewDesigner({
 
       <HiringAiFlow
         title="게시 후 지원자별 면접 흐름"
-        description="자격요건·필수 질문·면접관 프롬프트를 한 평가 버전으로 고정한 뒤, 각 지원자의 제출 자료와 답변에 맞춰 질문과 꼬리질문을 구성합니다."
+        description="자격요건·필수 질문·면접관 프롬프트를 한 평가 버전으로 고정한 뒤, 각 지원자의 제출 자료와 답변에 맞춰 질문과 꼬리질문을 구성합니다. 최대 30분 안에서 판단 근거가 충분해지면 면접을 자연스럽게 마칩니다."
         stages={[
           "기업 설정 버전 고정",
           "자료 기반 질문·꼬리질문",

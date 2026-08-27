@@ -426,7 +426,7 @@ describe("company workspace", () => {
       screen.getByRole("heading", { name: "포지션 판단 요약" }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("heading", { name: "평가 기준별 평균" }),
+      screen.getByRole("heading", { name: "기존 리포트 평가 기준별 평균" }),
     ).toBeTruthy();
     expect(
       screen.getByRole("heading", { name: "지원자 역량 비교" }),
@@ -468,10 +468,11 @@ describe("company workspace", () => {
     expect(
       screen.getByRole("heading", { name: "현재 적용 중인 면접 기준" }),
     ).toBeTruthy();
-    expect(screen.getByText("면접 난이도")).toBeTruthy();
+    expect(screen.getByText("질문 깊이")).toBeTruthy();
     expect(screen.getByText("시니어")).toBeTruthy();
     expect(screen.getByText("제품 문제를 구조화하는 경험")).toBeTruthy();
-    expect(screen.getByText("문제 해결")).toBeTruthy();
+    expect(screen.getByText("반드시 물어볼 질문")).toBeTruthy();
+    expect(screen.getByText("문제를 해결한 경험을 설명해 주세요.")).toBeTruthy();
     expect(
       screen.getByRole("heading", { name: "지원자 제출 자료" }),
     ).toBeTruthy();
@@ -1080,19 +1081,21 @@ describe("company workspace", () => {
         .getAttribute("aria-selected"),
     ).toBe("true");
     expect(
-      await screen.findByRole("heading", { name: "종합 분석" }),
+      await screen.findByRole("heading", { name: "자격요건 판정 요약" }),
     ).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "기준별 역량" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "면접 진행 요약" })).toBeTruthy();
     expect(
       screen.getByRole("heading", { name: "자격요건 충족 레이더" }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("img", { name: /자격요건 1개의 충족 점수 레이더/ }),
+      screen.getByRole("img", {
+        name: /기업이 설정한 자격요건 1개의 상태 프로필/,
+      }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("heading", { name: "평가 기준과 답변 근거" }),
+      screen.getByRole("heading", { name: "답변 근거 상세" }),
     ).toBeTruthy();
-    expect(screen.getByText("총점")).toBeTruthy();
+    expect(screen.getAllByText("충족").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("tab", { name: "면접 기록" }));
     expect(

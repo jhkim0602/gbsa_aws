@@ -298,8 +298,8 @@ class InterviewService:
             else ()
         )
         # Every generated question is anchored to either a company requirement or an
-        # explicit company question. Explicit questions keep their wording; requirement
-        # targets are personalized with the applicant's retrieved material.
+        # explicit company question. Explicit questions keep their wording but receive
+        # a short spoken bridge so they do not interrupt the conversation abruptly.
         required_assessment_axis = None
         built_context = self._context_builder.build(
             recent_turns=tuple(
@@ -343,7 +343,10 @@ class InterviewService:
         try:
             draft = (
                 QuestionDraft(
-                    text=question_target.common_question,
+                    text=_company_question_with_bridge(
+                        question_target.common_question,
+                        previous_question_count=len(previous_questions),
+                    ),
                     target_criterion_id=target_criterion_id,
                     source_reference_ids=(),
                     model_config_version=model_config_version,
@@ -754,6 +757,24 @@ def _retrieval_query(
         )
         if part.strip()
     )
+
+
+_COMPANY_QUESTION_BRIDGES = (
+    "좋습니다. 이제 회사에서 꼭 확인하고 싶은 내용을 하나 여쭤보겠습니다.",
+    "알겠습니다. 이어서 회사가 미리 정한 질문을 하나 드리겠습니다.",
+    "좋아요. 이제 다음으로 꼭 확인할 질문을 하나 여쭤보겠습니다.",
+)
+
+
+def _company_question_with_bridge(
+    question: str,
+    *,
+    previous_question_count: int,
+) -> str:
+    bridge = _COMPANY_QUESTION_BRIDGES[
+        max(0, previous_question_count - 1) % len(_COMPANY_QUESTION_BRIDGES)
+    ]
+    return f"{bridge} {question.strip()}"
 
 
 _BEHAVIORAL_CONTEXT_TERMS = (

@@ -30,6 +30,11 @@ export function PositionDashboard({
   onOpenTab(tab: PositionTab): void;
   onOpenInvitations(): void;
 }) {
+  const requirementAssessments = insights.flatMap(
+    (insight) => insight.requirementAssessments ?? [],
+  );
+  const mandatoryQuestions =
+    criteria?.criteria.flatMap((criterion) => criterion.commonQuestions) ?? [];
   return (
     <div className="grid gap-4">
       <section className="overflow-hidden rounded-lg border border-border bg-surface">
@@ -41,7 +46,8 @@ export function PositionDashboard({
             <div className="min-w-0">
               <h2 className="text-[15px] text-ink">포지션 판단 요약</h2>
               <p className="mt-1 text-[11px] leading-[1.5] text-muted">
-                완료된 면접의 총점과 답변 근거를 기준으로 비교합니다.
+                기업이 설정한 필수·우대 자격요건별 충족 상태와 답변 근거를
+                비교합니다.
               </p>
             </div>
           </div>
@@ -68,19 +74,24 @@ export function PositionDashboard({
         </header>
       </section>
 
-      <CompetencyDistribution
-        insights={insights}
-        invitations={invitations}
-        limit={4}
-        title="평가 기준별 평균"
-        description="인사이트에서는 핵심 기준만 요약합니다. 막대에 마우스를 올리면 상위 5명을 확인할 수 있습니다."
-      />
-
-      <ApplicantScoreTable
-        invitations={invitations}
-        insights={insights}
-        limit={5}
-      />
+      {requirementAssessments.length ? (
+        <RequirementStatusOverview insights={insights} />
+      ) : (
+        <>
+          <CompetencyDistribution
+            insights={insights}
+            invitations={invitations}
+            limit={4}
+            title="기존 리포트 평가 기준별 평균"
+            description="자격요건 판정이 생성되기 전 리포트는 기존 참고 점수로 표시합니다."
+          />
+          <ApplicantScoreTable
+            invitations={invitations}
+            insights={insights}
+            limit={5}
+          />
+        </>
+      )}
 
       <section className="overflow-hidden rounded-lg border border-border bg-surface">
         <header className="flex min-h-16 items-center justify-between gap-4 border-b border-border-muted px-5 py-3 mw-720:items-start">
@@ -107,7 +118,7 @@ export function PositionDashboard({
           <div className="grid grid-cols-[repeat(3,minmax(140px,0.45fr))_minmax(260px,1fr)] mw-1050:grid-cols-3 mw-720:grid-cols-[minmax(0,1fr)]">
             <SettingValue
               label="면접 시간"
-              value={`${criteria.interviewDurationMinutes}분`}
+              value={`최대 ${criteria.interviewDurationMinutes}분 · 근거 충분 시 조기 종료`}
             />
             <SettingValue
               label="면접관"
@@ -117,30 +128,28 @@ export function PositionDashboard({
               }
             />
             <SettingValue
-              label="평가 기준"
-              value={`${criteria.criteria.length}개 · 합계 100`}
+              label="자격요건"
+              value={`${criteria.jobRequirements.length}개`}
             />
             <div className="grid gap-2 p-4 mw-1050:col-[1/-1] mw-1050:border-t mw-1050:border-border-muted">
               <span className="text-[10px] text-muted">
-                채용 관리에서 설정한 평가 가중치
+                반드시 물어볼 질문 · {mandatoryQuestions.length}개
               </span>
-              <div className="flex h-2 overflow-hidden rounded-full bg-surface-strong">
-                {criteria.criteria.map((criterion, index) => (
-                  <i
-                    className={index % 2 ? "bg-[#8b97e8]" : "bg-brand"}
-                    key={criterion.code}
-                    style={{ width: `${criterion.weight}%` }}
-                    title={`${criterion.name} ${criterion.weight}`}
-                  />
-                ))}
-              </div>
-              <div className="flex flex-wrap gap-x-4 gap-y-1">
-                {criteria.criteria.map((criterion) => (
-                  <span className="text-[9px] text-muted" key={criterion.code}>
-                    {criterion.required ? "필수" : "우대"} · {criterion.name}{" "}
-                    <b className="text-ink">{criterion.weight}</b>
+              <div className="flex flex-wrap gap-1.5">
+                {mandatoryQuestions.length ? (
+                  mandatoryQuestions.map((question, index) => (
+                    <span
+                      className="rounded-md border border-border-muted bg-surface-muted px-2.5 py-1.5 text-[9px] text-ink-secondary"
+                      key={`${question}-${index}`}
+                    >
+                      {index + 1}. {question}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-[9px] text-muted">
+                    별도 질문 없음 · 자격요건과 지원자 자료를 기준으로 진행
                   </span>
-                ))}
+                )}
               </div>
             </div>
           </div>
@@ -151,6 +160,81 @@ export function PositionDashboard({
         )}
       </section>
     </div>
+  );
+}
+
+const requirementStatusMeta = {
+  met: { label: "충족", tone: "bg-success-soft text-success" },
+  partially_met: { label: "부분 충족", tone: "bg-warning-soft text-warning" },
+  not_met: { label: "미충족", tone: "bg-danger-soft text-danger" },
+  unknown: { label: "판단 보류", tone: "bg-surface-strong text-muted" },
+} as const;
+
+function RequirementStatusOverview({
+  insights,
+}: {
+  insights: readonly CompanyApplicantInsight[];
+}) {
+  const assessments = insights.flatMap(
+    (insight) => insight.requirementAssessments ?? [],
+  );
+  const totals = Object.fromEntries(
+    Object.keys(requirementStatusMeta).map((status) => [
+      status,
+      assessments.filter((assessment) => assessment.status === status).length,
+    ]),
+  ) as Record<keyof typeof requirementStatusMeta, number>;
+  const statements = Array.from(
+    new Map(
+      assessments.map((assessment) => [assessment.statement, assessment]),
+    ).values(),
+  );
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-border bg-surface">
+      <header className="border-b border-border-muted px-5 py-4">
+        <h2 className="text-[14px] text-ink">자격요건 판정 현황</h2>
+        <p className="mt-1 text-[10px] text-muted">
+          점수 대신 제출 자료와 면접 답변을 함께 확인한 상태를 집계합니다.
+        </p>
+      </header>
+      <dl className="grid grid-cols-4 border-b border-border-muted mw-720:grid-cols-2">
+        {Object.entries(requirementStatusMeta).map(([status, meta]) => (
+          <div className="border-r border-border-muted p-4 last:border-r-0" key={status}>
+            <dt className={`inline-flex rounded-full px-2 py-1 text-[9px] font-bold ${meta.tone}`}>
+              {meta.label}
+            </dt>
+            <dd className="mt-2 font-mono text-[22px] text-ink">
+              {totals[status as keyof typeof requirementStatusMeta]}건
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <div className="grid">
+        {statements.map((requirement) => {
+          const related = assessments.filter(
+            (assessment) => assessment.statement === requirement.statement,
+          );
+          return (
+            <div
+              className="grid grid-cols-[72px_minmax(0,1fr)_auto] items-center gap-3 border-b border-border-muted px-5 py-3 last:border-b-0 mw-720:grid-cols-[64px_minmax(0,1fr)]"
+              key={requirement.statement}
+            >
+              <span className="text-[9px] font-bold text-brand">
+                {requirement.requirementType === "required" ? "필수" : "우대"}
+              </span>
+              <strong className="text-[11px] leading-[1.5] text-ink">
+                {requirement.statement}
+              </strong>
+              <span className="text-[9px] text-muted mw-720:col-[2]">
+                {related.filter((item) => item.status === "met").length}명 충족 ·{" "}
+                {related.filter((item) => item.status === "partially_met").length}명 부분 충족
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

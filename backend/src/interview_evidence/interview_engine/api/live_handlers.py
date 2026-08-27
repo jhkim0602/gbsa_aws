@@ -26,6 +26,7 @@ from interview_evidence.interview_engine.application.interview_plan import (
     InterviewPlan,
     InterviewPlanProvider,
     InterviewStage,
+    StageQuestionDecision,
     is_core_question_type,
     is_follow_up_question_type,
 )
@@ -53,7 +54,9 @@ from interview_evidence.shared.ids import Clock, new_uuid7
 from interview_evidence.shared.security.principals import ApplicantPrincipal
 from interview_evidence.shared.tenant import TenantContext
 
-INTERVIEW_CLOSING_MESSAGE = "답변 감사합니다. 오늘 면접은 여기까지입니다."
+INTERVIEW_CLOSING_MESSAGE = (
+    "필요한 확인을 모두 마쳤습니다. 답변해 주셔서 감사합니다. 면접을 종료하겠습니다."
+)
 
 
 class LiveInterviewHandler:
@@ -570,6 +573,18 @@ class LiveInterviewHandler:
         elif plan.verification_targets:
             question_target = plan.initial_target_for_stage(plan.initial_stage)
 
+        needs_follow_up = rationale is not None and answer_needs_follow_up(
+            answer.text, current_stage.value
+        )
+        completed_target_ids = frozenset(
+            progress.verification_target_id
+            for progress in progress_rows
+            if progress.state
+            in {
+                VerificationProgressState.COMPLETED,
+                VerificationProgressState.EXHAUSTED,
+            }
+        )
         stage_decision = plan.next_stage_question(
             current_stage=current_stage,
             stage_core_question_count=stage_core_question_count,
@@ -579,13 +594,24 @@ class LiveInterviewHandler:
             last_question_was_final=(
                 rationale is not None and rationale.question_type == "stage_final"
             ),
-            answer_needs_follow_up=(
-                rationale is not None and answer_needs_follow_up(answer.text, current_stage.value)
-            ),
+            answer_needs_follow_up=needs_follow_up,
             follow_up_limit=(
                 plan.follow_up_budget(answered_target) if answered_target is not None else 0
             ),
         )
+        if answered_target is not None and plan.has_sufficient_evidence_for_all_targets(
+            answered_target_id=answered_target.verification_target_id,
+            answer_needs_follow_up=needs_follow_up,
+            follow_up_count=(
+                existing_progress.follow_up_count if existing_progress is not None else 0
+            ),
+            completed_target_ids=completed_target_ids,
+        ):
+            stage_decision = StageQuestionDecision(
+                current_stage,
+                "complete",
+                completes_interview=True,
+            )
         if answered_target is not None:
             if is_follow_up_question_type(stage_decision.question_type):
                 question_target = answered_target
@@ -595,15 +621,7 @@ class LiveInterviewHandler:
                     follow_up_count=(
                         existing_progress.follow_up_count if existing_progress is not None else 0
                     ),
-                    completed_target_ids=frozenset(
-                        progress.verification_target_id
-                        for progress in progress_rows
-                        if progress.state
-                        in {
-                            VerificationProgressState.COMPLETED,
-                            VerificationProgressState.EXHAUSTED,
-                        }
-                    ),
+                    completed_target_ids=completed_target_ids,
                     prefer_new_target=True,
                     interview_stage=stage_decision.stage,
                 )

@@ -412,6 +412,30 @@ class InterviewPlan:
             return None
         return upcoming
 
+    def has_sufficient_evidence_for_all_targets(
+        self,
+        *,
+        answered_target_id: UUID,
+        answer_needs_follow_up: bool,
+        follow_up_count: int,
+        completed_target_ids: frozenset[UUID],
+    ) -> bool:
+        """Return whether the adaptive interview can finish before the 30-minute cap.
+
+        A target is complete when the latest answer no longer needs clarification or
+        when its configured follow-up budget has been exhausted. The clock remains a
+        hard upper bound; collecting enough evidence is the normal earlier stop.
+        """
+        if follow_up_count < 0:
+            raise ValueError("interview target progress cannot be negative")
+        answered = self.target(answered_target_id)
+        assessed = set(completed_target_ids)
+        if not answer_needs_follow_up or follow_up_count >= self.follow_up_budget(answered):
+            assessed.add(answered_target_id)
+        return bool(self.verification_targets) and all(
+            target.verification_target_id in assessed for target in self.verification_targets
+        )
+
 
 class InterviewPlanProvider(Protocol):
     def get_interview_plan(

@@ -267,6 +267,7 @@ export type CompanyApplicantInsight = Readonly<{
   evidenceCoverage: number;
   summary: string;
   criteria: readonly CompanyApplicantCriterionScore[];
+  requirementAssessments?: ReviewReport["requirementAssessments"];
 }>;
 
 export type CompanyApplicantReport = Readonly<{

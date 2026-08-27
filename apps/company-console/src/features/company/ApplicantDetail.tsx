@@ -12,7 +12,6 @@ import {
   MessageSquareQuote,
   PlayCircle,
   ShieldCheck,
-  Sparkles,
   UserRound,
   Video,
 } from "lucide-react";
@@ -28,7 +27,6 @@ import {
 } from "../../app/styles/primitives";
 import { invitationStatusMeta } from "../hiring/PositionInvitations";
 import { RequirementRadarProfile, TimelineView } from "../review";
-import { ApplicantCapabilityBars } from "./CompetencyInsights";
 import type {
   CompanyApplicantReport,
   CompanyInvitation,
@@ -137,10 +135,10 @@ export function ApplicantDetail({
   const displayName =
     invitation.applicantDisplayName || invitation.applicantEmail.split("@")[0];
   const status = invitationStatusMeta[invitation.status];
-  const evidenceCount = report?.report.items.reduce(
-    (sum, item) => sum + item.evidence.length,
-    0,
-  );
+  const requirementAssessments = report?.report.requirementAssessments ?? [];
+  const requirementCount = (status: string) =>
+    requirementAssessments.filter((assessment) => assessment.status === status)
+      .length;
 
   function openEvidence(startMs: number) {
     setSelectedStartMs(startMs);
@@ -196,29 +194,25 @@ export function ApplicantDetail({
         </div>
       </header>
 
-      <section className={SCORE_STRIP} aria-label="지원자 역량 요약">
+      <section className={SCORE_STRIP} aria-label="지원자 자격요건 판정 요약">
         <ScoreMetric
-          label="총점"
-          value={
-            report?.insight.overallScore == null
-              ? "–"
-              : String(report.insight.overallScore)
-          }
-          icon={<Sparkles size={16} />}
+          label="충족"
+          value={report ? `${requirementCount("met")}개` : "–"}
+          icon={<CheckCircle2 size={16} />}
         />
         <ScoreMetric
-          label="답변 근거 충족"
-          value={report ? `${report.insight.evidenceCoverage}%` : "–"}
+          label="부분 충족"
+          value={report ? `${requirementCount("partially_met")}개` : "–"}
           icon={<ShieldCheck size={16} />}
         />
         <ScoreMetric
-          label="평가 기준"
-          value={report ? `${report.insight.criteria.length}개` : "–"}
-          icon={<BarChart3 size={16} />}
+          label="미충족"
+          value={report ? `${requirementCount("not_met")}개` : "–"}
+          icon={<CircleDashed size={16} />}
         />
         <ScoreMetric
-          label="인용 근거"
-          value={evidenceCount == null ? "–" : `${evidenceCount}개`}
+          label="판단 보류"
+          value={report ? `${requirementCount("unknown")}개` : "–"}
           icon={<MessageSquareQuote size={16} />}
         />
       </section>
@@ -284,6 +278,15 @@ export function ApplicantDetail({
   );
 }
 
+function InterviewMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="border-r border-border-muted px-3 last:border-r-0 mw-720:border-r-0 mw-720:border-b mw-720:py-2 mw-720:last:border-b-0">
+      <dt className="text-[9px] text-muted">{label}</dt>
+      <dd className="mt-1 font-mono text-[20px] text-ink">{value}개</dd>
+    </div>
+  );
+}
+
 function AnalysisPanel({
   report,
   onOpenEvidence,
@@ -295,6 +298,31 @@ function AnalysisPanel({
     return (
       <ReportPending icon={<BarChart3 size={22} />} title="분석 리포트 대기" />
     );
+  const requirements = report.report.requirementAssessments ?? [];
+  const decidedRequirements = requirements.filter(
+    (assessment) => assessment.status !== "unknown",
+  ).length;
+  const questions = report.timeline.entries.filter(
+    (entry) => entry.type === "question",
+  );
+  const durationMinutes = Math.max(
+    1,
+    Math.ceil(
+      Math.max(0, ...report.timeline.entries.map((entry) => entry.endMs)) /
+        60_000,
+    ),
+  );
+  const companyQuestionCount = questions.filter(
+    (entry) => entry.questionRationale?.questionType === "company_required",
+  ).length;
+  const followUpCount = questions.filter(
+    (entry) => entry.questionRationale?.questionType === "follow_up",
+  ).length;
+  const requirementQuestionCount = questions.filter((entry) =>
+    entry.questionRationale?.verificationTargetType.startsWith(
+      "job_requirement_",
+    ),
+  ).length;
   return (
     <div className="grid gap-4">
       <div className="grid grid-cols-[minmax(0,0.82fr)_minmax(320px,1.18fr)] gap-4 mw-900:grid-cols-[minmax(0,1fr)]">
@@ -306,32 +334,35 @@ function AnalysisPanel({
               <p className="text-[9px] font-bold text-brand uppercase">
                 AI SUMMARY
               </p>
-              <h2 className="mt-1 text-[14px] text-ink">종합 분석</h2>
+              <h2 className="mt-1 text-[14px] text-ink">자격요건 판정 요약</h2>
             </div>
-            <strong className="font-mono text-[30px] text-brand">
-              {report.insight.overallScore}
+            <strong className="font-mono text-[24px] text-brand">
+              {decidedRequirements}/{requirements.length}
             </strong>
           </header>
           <p className="p-5 text-[12px] leading-[1.75] text-ink-secondary">
             {report.report.summary}
           </p>
           <div className="border-t border-border-muted px-5 py-3 text-[9px] text-muted">
-            게시된 가중치를 적용한 참고 점수이며 채용 결정을 대신하지 않습니다.
+            제출 자료와 면접 답변의 근거를 함께 확인한 상태이며 채용 결정을
+            대신하지 않습니다.
           </div>
         </section>
         <section className={CARD}>
           <header className={CARD_HEADER}>
             <div>
-              <h2 className="text-[14px] text-ink">기준별 역량</h2>
+              <h2 className="text-[14px] text-ink">면접 진행 요약</h2>
               <p className="mt-1 text-[10px] text-muted">
-                실제 답변 근거가 있는 기준별 점수입니다.
+                최대 30분 안에서 필요한 근거가 모이면 조기 종료합니다.
               </p>
             </div>
-            <span className="text-[10px] text-muted">100점 기준</span>
+            <span className="text-[10px] text-muted">실제 {durationMinutes}분</span>
           </header>
-          <div className="p-5">
-            <ApplicantCapabilityBars insight={report.insight} />
-          </div>
+          <dl className="grid grid-cols-3 p-5 text-center mw-720:grid-cols-1 mw-720:text-left">
+            <InterviewMetric label="자격요건 질문" value={requirementQuestionCount} />
+            <InterviewMetric label="기업 설정 질문" value={companyQuestionCount} />
+            <InterviewMetric label="필요한 꼬리질문" value={followUpCount} />
+          </dl>
         </section>
       </div>
 
@@ -357,7 +388,7 @@ function AnalysisPanel({
       <section className={CARD}>
         <header className={CARD_HEADER}>
           <div>
-            <h2 className="text-[14px] text-ink">평가 기준과 답변 근거</h2>
+            <h2 className="text-[14px] text-ink">답변 근거 상세</h2>
             <p className="mt-1 text-[10px] text-muted">
               타임스탬프를 누르면 해당 답변 영상으로 이동합니다.
             </p>
@@ -383,9 +414,6 @@ function AnalysisPanel({
                     {item.observation}
                   </p>
                 </div>
-                <strong className="flex-none font-mono text-[24px] text-ink">
-                  {item.averageScore ?? "–"}
-                </strong>
               </div>
               <div className="flex flex-wrap gap-2">
                 {item.evidence.map((evidence) => (
@@ -475,6 +503,20 @@ function InterviewPanel({
                           ? "지원자"
                           : "기록"}
                     </strong>
+                    {entry.type === "question" && entry.questionRationale ? (
+                      <span className="mt-1 inline-flex rounded-full bg-brand-soft px-2 py-0.5 text-[8px] font-bold text-brand">
+                        {entry.questionRationale.questionType ===
+                        "company_required"
+                          ? "기업 설정 질문"
+                          : entry.questionRationale.questionType === "follow_up"
+                            ? "꼬리질문"
+                            : entry.questionRationale.verificationTargetType.startsWith(
+                                  "job_requirement_",
+                                )
+                              ? "자격요건 질문"
+                              : "AI 질문"}
+                      </span>
+                    ) : null}
                     <small className="mt-1 block text-[11px] leading-[1.65] text-ink-secondary">
                       {entry.text}
                     </small>

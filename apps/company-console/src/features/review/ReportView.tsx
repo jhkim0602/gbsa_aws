@@ -654,23 +654,30 @@ function OverviewPage({
       </p>
 
       {stageSummary.length > 0 ? (
-        <section className={REPORT_SECTION} aria-label="면접 단계 요약">
-          <h4 className={REPORT_SECTION_HEADING}>면접 단계</h4>
+        <section className={REPORT_SECTION} aria-label="적응형 면접 구성 요약">
+          <h4 className={REPORT_SECTION_HEADING}>지원자별 적응형 면접</h4>
+          <p className="mb-2 text-[8px] leading-[1.6] text-muted">
+            고정된 기술·프로젝트·인성 단계 대신 기업의 자격요건과 필수 질문을
+            지원자 자료에 연결하고, 답변 근거가 부족할 때만 꼬리질문을
+            이어갑니다. 총 질문 {stageSummary.reduce((sum, item) => sum + item.questionCount, 0)}개 ·
+            확인된 근거 {stageSummary.reduce((sum, item) => sum + item.evidenceCount, 0)}개
+          </p>
           <ol className="grid grid-cols-3 gap-2 mw-520:grid-cols-[minmax(0,1fr)]">
-            {stageSummary.map((stage, index) => (
+            {[
+              ["기업 자격요건 확인", "필수·우대 항목과 제출 자료의 관련 근거를 연결"],
+              ["반드시 물어볼 질문", "기업이 지정한 질문을 자연스러운 흐름으로 확인"],
+              ["필요한 꼬리질문", "본인 역할·판단 근거·결과가 부족한 경우에만 추가 확인"],
+            ].map(([label, description], index) => (
               <li
                 className="rounded-md border border-border-muted bg-surface-muted px-3 py-2.5"
-                key={stage.stage}
+                key={label}
               >
                 <small className="font-mono text-[8px] text-brand">
-                  단계 {index + 1}
+                  {String(index + 1).padStart(2, "0")}
                 </small>
-                <strong className="mt-0.5 block text-[10px]">
-                  {stage.label}
-                </strong>
+                <strong className="mt-0.5 block text-[10px]">{label}</strong>
                 <span className="mt-1 block text-[8px] text-muted">
-                  질문 {stage.questionCount}개 · 평가 근거 {stage.evidenceCount}
-                  개
+                  {description}
                 </span>
               </li>
             ))}
