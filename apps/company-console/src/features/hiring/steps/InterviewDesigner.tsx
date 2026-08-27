@@ -1,12 +1,12 @@
 import {
   CalendarClock,
   Check,
-  ChevronDown,
-  Clock3,
   Coins,
-  Info,
+  MessageSquareText,
   Mic2,
+  Plus,
   ServerCog,
+  Trash2,
   Users,
 } from "lucide-react";
 
@@ -25,29 +25,7 @@ import {
   type InterviewerTone,
 } from "../types";
 
-const interviewStages = [
-  {
-    name: "기술 면접",
-    duration: 9,
-    weight: 3,
-    questionLimit: 6,
-    description: "기술 선택과 문제 해결 과정",
-  },
-  {
-    name: "프로젝트 심층",
-    duration: 12,
-    weight: 4,
-    questionLimit: 8,
-    description: "본인 역할과 설계·구현 근거",
-  },
-  {
-    name: "협업·인성",
-    duration: 9,
-    weight: 3,
-    questionLimit: 6,
-    description: "협업 방식과 의사소통 경험",
-  },
-] as const;
+const MAX_MANDATORY_QUESTIONS = 3;
 
 const interviewerOptions: ReadonlyArray<{
   level: InterviewLevel;
@@ -122,24 +100,8 @@ const CAPACITY_ESTIMATE =
   " bg-[color-mix(in_srgb,var(--color-link)_4%,white)] px-4 py-3" +
   " mw-620:col-[1] mw-620:grid-cols-[auto_minmax(0,1fr)]";
 
-const DURATION_NOTICE =
-  "overflow-hidden rounded-lg border border-[color-mix(in_srgb,var(--color-brand)_20%,var(--color-border))]" +
-  " bg-[color-mix(in_srgb,var(--color-brand)_3%,white)]";
-const DURATION_TIMELINE =
-  "grid grid-cols-[9fr_12fr_9fr] border-t border-[color-mix(in_srgb,var(--color-brand)_14%,var(--color-border))]" +
-  " mw-620:grid-cols-[minmax(0,1fr)]";
-const DURATION_STAGE =
-  "relative grid min-h-[92px] content-center gap-1 px-4 py-3" +
-  " not-last:border-r not-last:border-[color-mix(in_srgb,var(--color-brand)_14%,var(--color-border))]" +
-  " mw-620:min-h-0 mw-620:grid-cols-[36px_minmax(0,1fr)_auto] mw-620:items-center" +
-  " mw-620:not-last:border-r-0 mw-620:not-last:border-b";
-const DURATION_EXPLANATION =
-  "group border-t border-[color-mix(in_srgb,var(--color-brand)_14%,var(--color-border))] bg-white";
-const DURATION_EXPLANATION_SUMMARY =
-  "flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3" +
-  " text-[10px] font-semibold text-ink-secondary outline-none" +
-  " hover:bg-brand-soft/40 focus-visible:bg-brand-soft/55" +
-  " [&::-webkit-details-marker]:hidden";
+const REQUIRED_QUESTION_PANEL =
+  "overflow-hidden rounded-lg border border-brand/20 bg-brand-soft/25";
 const PICKER_GRID =
   "grid grid-cols-[repeat(3,minmax(0,1fr))] gap-2.5 mw-620:grid-cols-[minmax(0,1fr)]";
 const PICKER_OPTION =
@@ -183,6 +145,29 @@ export function InterviewDesigner({
     update("interviewerName", option.name);
     update("interviewerTone", option.tone);
     update("interviewerVoiceId", option.voiceId);
+  }
+
+  function updateMandatoryQuestion(index: number, value: string) {
+    update(
+      "mandatoryQuestions",
+      draft.mandatoryQuestions.map((question, questionIndex) =>
+        questionIndex === index ? value : question,
+      ),
+    );
+  }
+
+  function addMandatoryQuestion() {
+    if (draft.mandatoryQuestions.length >= MAX_MANDATORY_QUESTIONS) return;
+    update("mandatoryQuestions", [...draft.mandatoryQuestions, ""]);
+  }
+
+  function removeMandatoryQuestion(index: number) {
+    update(
+      "mandatoryQuestions",
+      draft.mandatoryQuestions.filter(
+        (_, questionIndex) => questionIndex !== index,
+      ),
+    );
   }
 
   return (
@@ -308,109 +293,84 @@ export function InterviewDesigner({
         </div>
       </section>
 
-      <section className={SECTION_DIVIDED} aria-labelledby="duration-title">
+      <section
+        className={SECTION_DIVIDED}
+        aria-labelledby="required-question-title"
+      >
         <header className={SECTION_HEADER}>
-          <span className={SECTION_EYEBROW}>02 · 진행 시간</span>
-          <h3 className={SECTION_TITLE} id="duration-title">
-            면접 시간 안내
+          <span className={SECTION_EYEBROW}>02 · 필수 질문</span>
+          <h3 className={SECTION_TITLE} id="required-question-title">
+            반드시 물어볼 질문
           </h3>
           <p className={SECTION_TEXT}>
-            총 진행 시간과 단계별 시간 배분을 확인하세요.
+            회사가 꼭 확인해야 하는 질문을 입력하면 AI 면접관이 모든 지원자에게
+            직접 물어봅니다.
           </p>
         </header>
-        <aside className={DURATION_NOTICE} aria-label="30분 고정 면접 안내">
-          <div className="flex items-start gap-3 px-4 py-4 mw-620:flex-wrap">
+        <aside className={REQUIRED_QUESTION_PANEL}>
+          <div className="flex items-start gap-3 border-b border-brand/15 px-4 py-3.5">
             <span className="grid size-9 shrink-0 place-items-center rounded-full bg-brand text-white">
-              <Clock3 aria-hidden="true" size={18} />
+              <MessageSquareText aria-hidden="true" size={17} />
             </span>
-            <div className="min-w-0 flex-1">
-              <strong className="text-[13px] text-ink">
-                모든 면접은 30분을 기준으로 진행됩니다
-              </strong>
-              <p className="mt-1 text-[9px] leading-[1.55] text-muted">
-                지원자별로 시간을 따로 설정하지 않으며, 아래 3단계에 동일한 시간
-                배분 기준을 적용합니다.
-              </p>
-            </div>
-            <span className="rounded-full border border-brand/20 bg-brand-soft px-2.5 py-1 text-[9px] font-semibold text-brand">
-              기본 30분
-            </span>
+            <p className="text-[10px] leading-[1.65] text-ink-secondary">
+              앞에서 작성한 필수·우대 자격요건은 질문을 직접 만들지 않고, 제출
+              자료와 면접 답변을 판정해 리포트의 충족 상태를 구성합니다.
+              <br />
+              면접은 기술·프로젝트·협업의 3단계로 진행되며, 아래 질문만 기업이
+              직접 지정한 질문으로 별도 표시됩니다.
+            </p>
           </div>
-          <div className="flex items-center justify-between border-t border-[color-mix(in_srgb,var(--color-brand)_14%,var(--color-border))] bg-white/70 px-4 py-2">
-            <strong className="text-[9px] text-ink-secondary">
-              단계별 시간 배분
-            </strong>
-            <span className="font-mono text-[9px] font-semibold text-brand">
-              9분 · 12분 · 9분 = 총 30분
-            </span>
-          </div>
-          <ol className={DURATION_TIMELINE} aria-label="면접 단계별 시간">
-            {interviewStages.map((stage, index) => (
-              <li className={DURATION_STAGE} key={stage.name}>
-                <span className="font-mono text-[9px] font-semibold text-brand">
-                  0{index + 1}
-                </span>
-                <strong className="text-[12px] text-ink">
-                  {index + 1}. {stage.name} · {stage.duration}분
-                </strong>
-                <small className="text-[8px] leading-[1.45] text-muted mw-620:col-[2]">
-                  {stage.description}
-                </small>
-                <span
-                  aria-hidden="true"
-                  className="absolute inset-x-0 bottom-0 h-0.5 bg-brand/75"
-                />
-              </li>
-            ))}
-          </ol>
-          <details className={DURATION_EXPLANATION}>
-            <summary className={DURATION_EXPLANATION_SUMMARY}>
-              <span className="inline-flex items-center gap-2">
-                <Info aria-hidden="true" size={14} className="text-brand" />
-                시간 배분은 어떻게 동작하나요?
-              </span>
-              <ChevronDown
-                aria-hidden="true"
-                className="shrink-0 text-muted transition-transform group-open:rotate-180"
-                size={15}
-              />
-            </summary>
-            <div className="grid gap-3 border-t border-border-muted bg-[color-mix(in_srgb,var(--color-brand)_2%,white)] px-4 py-4">
-              <p className="text-[9px] leading-[1.6] text-ink-secondary">
-                전체 30분을 <strong className="text-ink">3:4:3</strong>으로
-                나눕니다. 질문 하나당 약 90초를 기준으로 단계별 질문 수를 제한해
-                한 영역에 면접 시간이 몰리지 않도록 합니다.
-              </p>
-              <dl className="grid grid-cols-3 gap-2 mw-620:grid-cols-1">
-                {interviewStages.map((stage) => (
-                  <div
-                    className="grid gap-1 rounded-md border border-border-muted bg-white px-3 py-2.5"
-                    key={stage.name}
+          <div className="grid gap-2 bg-white px-4 py-4">
+            {draft.mandatoryQuestions.length ? (
+              draft.mandatoryQuestions.map((question, index) => (
+                <label
+                  className="grid grid-cols-[28px_minmax(0,1fr)_34px] items-center gap-2 rounded-md border border-border-muted bg-surface-muted px-2 py-1.5"
+                  key={`mandatory-question-${index}`}
+                >
+                  <span className="font-mono text-[9px] font-semibold text-brand">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <input
+                    aria-label={`필수 질문 ${index + 1}`}
+                    className="min-h-9 w-full bg-transparent text-[11px] text-ink outline-none placeholder:text-subtle"
+                    maxLength={240}
+                    placeholder="예: 이 역할에서 가장 먼저 개선하고 싶은 부분은 무엇인가요?"
+                    value={question}
+                    onChange={(event) =>
+                      updateMandatoryQuestion(index, event.target.value)
+                    }
+                  />
+                  <button
+                    aria-label={`필수 질문 ${index + 1} 삭제`}
+                    className="grid size-8 place-items-center rounded-md text-subtle hover:bg-danger-soft hover:text-danger"
+                    type="button"
+                    onClick={() => removeMandatoryQuestion(index)}
                   >
-                    <dt className="text-[9px] font-semibold text-ink">
-                      {stage.name}
-                    </dt>
-                    <dd className="font-mono text-[9px] text-brand">
-                      가중치 {stage.weight}/10 → {stage.duration}분
-                    </dd>
-                    <dd className="text-[8px] text-muted">
-                      핵심 질문 최대 {stage.questionLimit}개
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-              <p className="flex items-start gap-2 rounded-md bg-warning-soft px-3 py-2.5 text-[8px] leading-[1.55] text-warning">
-                <span aria-hidden="true">※</span>
-                <span>
-                  단계 시간은 답변을 강제로 끊는 시간이 아니라 진행 기준입니다.
-                  답변 중 기준 시간이 지나면 답변을 마친 뒤 다음 단계로
-                  이동하므로 실제 종료 시각은 조금 달라질 수 있습니다. 답변
-                  근거가 부족할 때의 꼬리질문은 핵심 질문 상한에 포함하지 않지만
-                  전체 30분 안에서 진행합니다.
-                </span>
+                    <Trash2 aria-hidden="true" size={14} />
+                  </button>
+                </label>
+              ))
+            ) : (
+              <p className="rounded-md border border-dashed border-border px-3 py-4 text-center text-[9px] text-muted">
+                필수 질문이 없으면 AI가 3단계 면접 질문을 구성합니다.
               </p>
-            </div>
-          </details>
+            )}
+            {draft.mandatoryQuestions.length < MAX_MANDATORY_QUESTIONS ? (
+              <button
+                className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-md border border-border bg-white text-[10px] font-semibold text-brand hover:bg-brand-soft"
+                type="button"
+                onClick={addMandatoryQuestion}
+              >
+                <Plus aria-hidden="true" size={13} />
+                필수 질문 추가
+              </button>
+            ) : (
+              <small className="text-right text-[8px] text-muted">
+                필수 질문은 최대 {MAX_MANDATORY_QUESTIONS}개까지 설정할 수
+                있습니다.
+              </small>
+            )}
+          </div>
         </aside>
       </section>
 

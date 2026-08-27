@@ -364,10 +364,14 @@ class QuestionPolicy:
             reasons.append("question_too_long")
         if any(_is_duplicate(candidate.text, question) for question in previous_questions):
             reasons.append("duplicate_question")
-        if interview_stage is not None and not _stage_aligned(
-            candidate.text,
-            interview_stage,
-            question_type=question_type,
+        if (
+            interview_stage is not None
+            and question_type != "company_required"
+            and not _stage_aligned(
+                candidate.text,
+                interview_stage,
+                question_type=question_type,
+            )
         ):
             reasons.append("stage_mismatch")
         if interview_stage == "project_deep_dive" and _is_project_code_level_question(

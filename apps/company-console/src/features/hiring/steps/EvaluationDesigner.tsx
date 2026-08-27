@@ -176,8 +176,8 @@ export function EvaluationDesigner({
             필수·우대 자격요건
           </h3>
           <p className={DESCRIPTION}>
-            작성한 각 항목이 면접 질문과 최종 리포트의 평가축이 됩니다. 제출
-            자료와 면접 답변을 함께 확인해 항목별 충족도를 보여줍니다.
+            작성한 각 항목은 질문 문구를 직접 만들지 않습니다. 제출 자료와 면접
+            답변을 함께 판정해 최종 리포트에 항목별 충족도로 보여줍니다.
           </p>
         </div>
       </header>
@@ -358,12 +358,6 @@ function RequirementFlowOverview({
         "이력서·포트폴리오 등에서 이 경험과 관련된 내용을 먼저 찾습니다.",
     },
     {
-      title: "면접에서 다시 확인",
-      description: isRequired
-        ? "관련 근거가 있으면 우대 사항보다 먼저 확인할 수 있게 질문 순서를 앞당깁니다."
-        : "관련 근거가 있으면 필수 사항 다음 순서로 실제 경험을 확인합니다.",
-    },
-    {
       title: "리포트에 따로 표시",
       description:
         "충족·일부 충족·미충족·판단 보류 중 하나로 결과를 보여줍니다.",
@@ -383,7 +377,7 @@ function RequirementFlowOverview({
           자격요건을 적으면 이렇게 동작해요
         </h4>
         <p className="text-[8px] leading-[1.5] text-muted">
-          작성한 필수·우대 항목 하나하나가 리포트의 평가축이 됩니다.
+          작성한 필수·우대 항목은 질문이 아니라 리포트 판정 기준이 됩니다.
         </p>
       </header>
 
@@ -420,7 +414,8 @@ function RequirementFlowOverview({
 
       <p className="border-l-2 border-brand pl-2.5 text-[8px] leading-[1.5] text-ink-secondary">
         리포트에는 충족·부분 충족·미충족·판단 불가 상태만 표시합니다. 자료와
-        답변에 근거가 없으면 판단 불가로 남깁니다.
+        답변에 근거가 없으면 판단 불가로 남기며, 이 문장으로 질문을 직접
+        생성하지 않습니다.
       </p>
     </aside>
   );

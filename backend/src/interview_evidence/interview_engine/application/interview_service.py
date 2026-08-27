@@ -274,18 +274,27 @@ class InterviewService:
             None,
         )
         turns = self._repository.list_final_turns(context, session_id)
+        company_required_question = (
+            question_target is not None
+            and question_target.target_type == "company_required_question"
+        )
+        effective_question_type = "company_required" if company_required_question else question_type
         verification_objective = (
-            stage_verification_objective(interview_stage, question_target)
-            if question_target
-            else ""
+            question_target.objective
+            if company_required_question and question_target is not None
+            else (
+                stage_verification_objective(interview_stage, question_target)
+                if question_target
+                else ""
+            )
         )
         answer_evidence_gaps = (
             missing_answer_evidence(answer_text, interview_stage.value)
             if question_type == "follow_up" and answered_stage is interview_stage
             else ()
         )
-        # New interviews are driven by the company's job requirements. The former fixed
-        # fundamentals/depth/etc. scoring axes no longer force a question shape.
+        # Requirements are assessed in the report; only explicit company questions are
+        # copied verbatim into the interview question stream.
         required_assessment_axis = None
         built_context = self._context_builder.build(
             recent_turns=tuple(
@@ -301,7 +310,7 @@ class InterviewService:
             remaining_time_seconds=remaining_time_seconds,
             interview_stage=interview_stage.value,
             interview_stage_focus=INTERVIEW_STAGE_FOCUS[interview_stage],
-            next_question_type=question_type,
+            next_question_type=effective_question_type,
             required_assessment_axis=required_assessment_axis,
             retrieved_source_ids=tuple(hit.source_id for hit in retrieval.hits),
             retrieved_sources=tuple(
@@ -327,13 +336,23 @@ class InterviewService:
             ),
         )
         try:
-            draft = self._generator.generate(
-                context,
-                target_criterion_id=target_criterion_id,
-                context_payload=built_context.model_payload(),
-                model_config_version=model_config_version,
-                retrieval_config_version=retrieval_config_version,
-                interview_level=interview_level,
+            draft = (
+                QuestionDraft(
+                    text=question_target.common_question,
+                    target_criterion_id=target_criterion_id,
+                    source_reference_ids=(),
+                    model_config_version=model_config_version,
+                    retrieval_config_version=retrieval_config_version,
+                )
+                if company_required_question and question_target is not None
+                else self._generator.generate(
+                    context,
+                    target_criterion_id=target_criterion_id,
+                    context_payload=built_context.model_payload(),
+                    model_config_version=model_config_version,
+                    retrieval_config_version=retrieval_config_version,
+                    interview_level=interview_level,
+                )
             )
         except QuestionGenerationUnavailable:
             current = self._repository.get_session(context, session_id)
@@ -368,7 +387,8 @@ class InterviewService:
             }
         )
         if (
-            requires_git_question
+            not company_required_question
+            and requires_git_question
             and git_hit is not None
             and git_hit.source_id not in draft.source_reference_ids
         ):
@@ -386,7 +406,7 @@ class InterviewService:
             fallback_question=fallback_question,
             fallback_criterion_id=target_criterion_id,
             interview_stage=interview_stage.value,
-            question_type=question_type,
+            question_type=effective_question_type,
             required_assessment_axis=required_assessment_axis,
         )
         if {
@@ -429,7 +449,7 @@ class InterviewService:
                     fallback_question=fallback_question,
                     fallback_criterion_id=target_criterion_id,
                     interview_stage=interview_stage.value,
-                    question_type=question_type,
+                    question_type=effective_question_type,
                     required_assessment_axis=required_assessment_axis,
                 )
         question = policy_result.question
@@ -485,7 +505,7 @@ class InterviewService:
                     verification_target_id=(question_target.verification_target_id),
                     verification_target_type=question_target.target_type,
                     objective=verification_objective,
-                    question_type=question_type,
+                    question_type=effective_question_type,
                     interview_stage=interview_stage.value,
                     retrieval_version=retrieval_config_version,
                     generation_version=model_config_version,

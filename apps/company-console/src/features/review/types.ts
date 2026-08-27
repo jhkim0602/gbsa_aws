@@ -177,7 +177,9 @@ export type ReviewTimelineEntry = {
       | "claim_found"
       | "detail_missing"
       | "source_conflict"
-      | "ownership_uncertain";
+      | "ownership_uncertain"
+      | "company_required_question"
+      | "criterion_baseline";
     objective: string;
     questionType: string;
     policyResult: string;

@@ -198,6 +198,7 @@ export type HiringDraft = {
   recruitmentEndAt: string;
   submissionRequirements: SubmissionRequirementDraft[];
   jobRequirements: JobRequirementDraft[];
+  mandatoryQuestions: string[];
   criteria: CriterionDraft[];
   prohibitedTopics: string;
   interviewDurationMinutes: number;
@@ -382,6 +383,7 @@ export const initialHiringDraft: HiringDraft = {
     },
   ],
   jobRequirements: [createRequirementDraft(1)],
+  mandatoryQuestions: [],
   criteria: createDefaultCriteria(),
   prohibitedTopics: "가족관계, 출신지역, 혼인·임신 여부, 외모",
   interviewDurationMinutes: 30,

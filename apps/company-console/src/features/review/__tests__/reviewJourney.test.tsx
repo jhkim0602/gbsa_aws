@@ -28,6 +28,35 @@ const recruitingState = {
 };
 
 describe("Lane D review journey", () => {
+  it("marks a company-required question separately in the timeline", () => {
+    render(
+      <TimelineView
+        entries={[
+          {
+            entryId: "company-question",
+            type: "question",
+            startMs: 1000,
+            endMs: 2500,
+            text: "입사 후 가장 먼저 개선하고 싶은 부분은 무엇인가요?",
+            questionRationale: {
+              criterionId: "criterion-1",
+              interviewStage: "technical",
+              verificationTargetType: "company_required_question",
+              objective: "입사 후 가장 먼저 개선하고 싶은 부분은 무엇인가요?",
+              questionType: "company_required",
+              policyResult: "accepted",
+              sourceReferences: [],
+            },
+          },
+        ]}
+        playbackStatus="unavailable"
+        onSeek={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText("기업 설정 질문")).toHaveLength(2);
+  });
+
   it("shows immutable AI results and seeks Evidence on the timeline", () => {
     const seek = vi.fn();
     render(

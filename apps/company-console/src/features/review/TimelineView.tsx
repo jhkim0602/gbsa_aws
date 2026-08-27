@@ -412,6 +412,8 @@ function targetTypeLabel(
     detail_missing: "세부 내용 부족",
     source_conflict: "자료 간 차이 확인",
     ownership_uncertain: "본인 기여 확인",
+    company_required_question: "기업 설정 질문",
+    criterion_baseline: "단계 기본 질문",
   }[type];
 }
 
@@ -429,6 +431,7 @@ function interviewStageLabel(
 }
 
 function questionTypeLabel(questionType: string) {
+  if (questionType === "company_required") return "기업 설정 질문";
   return questionType === "follow_up" ? "꼬리질문" : "핵심 질문";
 }
 

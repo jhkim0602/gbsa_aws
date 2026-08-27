@@ -192,6 +192,22 @@ def test_policy_replaces_a_question_that_does_not_match_the_interview_stage() ->
     assert "팀원" in result.question.text or "협업" in result.question.text
 
 
+def test_company_required_question_keeps_the_company_wording_across_stages() -> None:
+    result = QuestionPolicy().evaluate(
+        draft("입사 후 가장 먼저 개선하고 싶은 부분은 무엇인가요?"),
+        allowed_criterion_ids=frozenset({CRITERION_A}),
+        prohibited_topics=(),
+        previous_questions=(),
+        fallback_question="협업 경험을 설명해 주세요.",
+        fallback_criterion_id=CRITERION_A,
+        interview_stage="behavioral",
+        question_type="company_required",
+    )
+
+    assert result.accepted is True
+    assert result.question.text == "입사 후 가장 먼저 개선하고 싶은 부분은 무엇인가요?"
+
+
 def test_behavioral_follow_up_can_rely_on_the_previous_question_context() -> None:
     result = QuestionPolicy().evaluate(
         draft("그때 의견을 어떤 방식으로 조율했는지 말씀해 주세요."),

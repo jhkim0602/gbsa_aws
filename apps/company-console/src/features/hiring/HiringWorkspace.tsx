@@ -345,7 +345,7 @@ export function toCriteriaConfiguration(
       priority: Math.min(index + 1, 5),
       criterionCode: inferRequirementCriterionCode(requirement.statement),
     })),
-    criteria: draft.criteria.map((criterion) => ({
+    criteria: draft.criteria.map((criterion, index) => ({
       code: criterion.code,
       name: criterion.name.trim(),
       description: criterion.description.trim(),
@@ -360,7 +360,12 @@ export function toCriteriaConfiguration(
         timeBudgetSeconds: criterion.timeBudgetSeconds,
       },
       abstainGuidance: criterion.abstainGuidance.trim(),
-      commonQuestions: splitLines(criterion.commonQuestions),
+      commonQuestions:
+        index === 0
+          ? draft.mandatoryQuestions
+              .map((question) => question.trim())
+              .filter(Boolean)
+          : [],
     })),
     prohibitedTopics: splitCommaSeparated(draft.prohibitedTopics),
     interviewDurationMinutes: draft.interviewDurationMinutes,
