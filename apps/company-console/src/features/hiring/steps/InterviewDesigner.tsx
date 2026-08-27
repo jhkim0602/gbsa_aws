@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   CalendarClock,
@@ -8,6 +8,7 @@ import {
   Mic2,
   Plus,
   ServerCog,
+  Sparkles,
   Trash2,
   Users,
 } from "lucide-react";
@@ -29,6 +30,12 @@ import {
 } from "../types";
 
 const MAX_MANDATORY_QUESTIONS = 3;
+
+const mandatoryQuestionExamples = [
+  "협업 과정에서 의견이 달랐을 때 어떻게 조율했나요?",
+  "업무 스트레스가 높을 때 본인만의 관리·회복 방법은 무엇인가요?",
+  "새로운 환경이나 업무를 빠르게 익혀야 했을 때 어떻게 접근했나요?",
+] as const;
 
 const adaptiveInterviewFlow = [
   {
@@ -126,6 +133,9 @@ const CAPACITY_ESTIMATE =
 
 const REQUIRED_QUESTION_PANEL =
   "overflow-hidden rounded-lg border border-brand/20 bg-brand-soft/25";
+const QUESTION_EXAMPLE_BUTTON =
+  "inline-flex min-h-7 items-center gap-1 rounded-md border border-brand/20 bg-white px-2" +
+  " text-[8px] font-semibold text-brand hover:bg-brand-soft";
 const PICKER_GRID =
   "grid grid-cols-[repeat(3,minmax(0,1fr))] gap-2.5 mw-620:grid-cols-[minmax(0,1fr)]";
 const PICKER_SHELL =
@@ -171,10 +181,22 @@ export function InterviewDesigner({
 }) {
   const [flippedLevel, setFlippedLevel] = useState<InterviewLevel | null>(null);
   const [promptEditorValue, setPromptEditorValue] = useState("");
+  const [questionExamplesAnimating, setQuestionExamplesAnimating] =
+    useState(false);
+  const questionAnimationTimerRef = useRef<number | null>(null);
   const capacityEstimate = estimateInterviewCapacity(draft.interviewCapacity);
   const hasAdditionalCapacity =
     capacityEstimate.additionalApiTasks > 0 ||
     capacityEstimate.additionalWorkerTasks > 0;
+
+  useEffect(
+    () => () => {
+      if (questionAnimationTimerRef.current !== null) {
+        window.clearTimeout(questionAnimationTimerRef.current);
+      }
+    },
+    [],
+  );
 
   function applyInterviewer(
     option: (typeof interviewerOptions)[number],
@@ -217,6 +239,18 @@ export function InterviewDesigner({
         (_, questionIndex) => questionIndex !== index,
       ),
     );
+  }
+
+  function applyMandatoryQuestionExamples() {
+    setQuestionExamplesAnimating(true);
+    update("mandatoryQuestions", [...mandatoryQuestionExamples]);
+    if (questionAnimationTimerRef.current !== null) {
+      window.clearTimeout(questionAnimationTimerRef.current);
+    }
+    questionAnimationTimerRef.current = window.setTimeout(() => {
+      setQuestionExamplesAnimating(false);
+      questionAnimationTimerRef.current = null;
+    }, 650);
   }
 
   return (
@@ -353,7 +387,8 @@ export function InterviewDesigner({
           </h3>
           <p className={SECTION_TEXT}>
             회사가 꼭 확인해야 하는 질문을 입력하면 AI 면접관이 모든 지원자에게
-            직접 물어봅니다.
+            직접 물어봅니다. 직무뿐 아니라 협업·업무 방식처럼 자유롭게 정할 수
+            있습니다.
           </p>
         </header>
         <aside className={REQUIRED_QUESTION_PANEL}>
@@ -370,11 +405,35 @@ export function InterviewDesigner({
             </p>
           </div>
           <div className="grid gap-2 bg-white px-4 py-4">
+            <header className="flex items-center justify-between gap-3 pb-1">
+              <span className="text-[8px] leading-[1.45] text-muted">
+                협업, 업무 스트레스 관리, 학습 방식 등 회사가 궁금한 내용을
+                자유롭게 입력하세요.
+              </span>
+              <button
+                aria-label="필수 질문 예시 채우기"
+                className={QUESTION_EXAMPLE_BUTTON}
+                type="button"
+                onClick={applyMandatoryQuestionExamples}
+              >
+                <Sparkles aria-hidden="true" size={11} />
+                예시 채우기
+              </button>
+            </header>
             {draft.mandatoryQuestions.length ? (
               draft.mandatoryQuestions.map((question, index) => (
                 <label
-                  className="grid grid-cols-[28px_minmax(0,1fr)_34px] items-center gap-2 rounded-md border border-border-muted bg-surface-muted px-2 py-1.5"
+                  className={`grid grid-cols-[28px_minmax(0,1fr)_34px] items-center gap-2 rounded-md border border-border-muted bg-surface-muted px-2 py-1.5 ${
+                    questionExamplesAnimating
+                      ? "[animation:requirement-row-in_.42s_cubic-bezier(.2,.8,.2,1)_both] motion-reduce:animate-none"
+                      : ""
+                  }`}
                   key={`mandatory-question-${index}`}
+                  style={
+                    questionExamplesAnimating
+                      ? { animationDelay: `${index * 90}ms` }
+                      : undefined
+                  }
                 >
                   <span className="font-mono text-[9px] font-semibold text-brand">
                     {String(index + 1).padStart(2, "0")}

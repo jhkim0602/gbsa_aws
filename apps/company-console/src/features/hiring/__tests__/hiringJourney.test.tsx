@@ -261,7 +261,21 @@ describe("HiringWorkspace", () => {
     expect(
       screen.getByText(/꼬리질문은 지원자마다 다르게 이어집니다/),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "필수 질문 추가" }));
+    expect(
+      screen.getByText(/협업, 업무 스트레스 관리, 학습 방식/),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "필수 질문 예시 채우기" }),
+    );
+    expect(
+      (screen.getByLabelText("필수 질문 1") as HTMLInputElement).value,
+    ).toBe("협업 과정에서 의견이 달랐을 때 어떻게 조율했나요?");
+    expect(
+      (screen.getByLabelText("필수 질문 2") as HTMLInputElement).value,
+    ).toBe("업무 스트레스가 높을 때 본인만의 관리·회복 방법은 무엇인가요?");
+    expect(
+      (screen.getByLabelText("필수 질문 3") as HTMLInputElement).value,
+    ).toBe("새로운 환경이나 업무를 빠르게 익혀야 했을 때 어떻게 접근했나요?");
     fireEvent.change(screen.getByLabelText("필수 질문 1"), {
       target: { value: "최근 가장 어려웠던 기술적 판단은 무엇이었나요?" },
     });
@@ -368,7 +382,11 @@ describe("HiringWorkspace", () => {
           code: "TECHNICAL_COMPETENCY",
           name: "기술 역량",
           weight: 30,
-          commonQuestions: ["최근 가장 어려웠던 기술적 판단은 무엇이었나요?"],
+          commonQuestions: [
+            "최근 가장 어려웠던 기술적 판단은 무엇이었나요?",
+            "업무 스트레스가 높을 때 본인만의 관리·회복 방법은 무엇인가요?",
+            "새로운 환경이나 업무를 빠르게 익혀야 했을 때 어떻게 접근했나요?",
+          ],
           verificationGuide: {
             observableDimensions: [
               "기술 선택 이유",
