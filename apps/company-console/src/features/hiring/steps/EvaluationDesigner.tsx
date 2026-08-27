@@ -399,7 +399,7 @@ export function EvaluationDesigner({
           </button>
         </section>
 
-        <CriteriaOverview criteria={draft.criteria} />
+        <RequirementFlowOverview requirements={draft.jobRequirements} />
       </div>
 
       <ScoringAxisWeights
@@ -410,46 +410,94 @@ export function EvaluationDesigner({
   );
 }
 
-function CriteriaOverview({ criteria }: { criteria: HiringDraft["criteria"] }) {
+function RequirementFlowOverview({
+  requirements,
+}: {
+  requirements: HiringDraft["jobRequirements"];
+}) {
+  const example =
+    requirements.find((requirement) => requirement.statement.trim()) ??
+    requirements[0];
+  const isRequired = example?.requirementType !== "preferred";
+  const exampleStatement =
+    example?.statement.trim() || "대규모 트래픽 시스템 설계·운영 경험";
+  const exampleTypeLabel = isRequired ? "필수 사항" : "우대 사항";
+  const steps = [
+    {
+      title: "알맞은 면접 기준에 연결",
+      description:
+        "문장 내용에 따라 기술·프로젝트·협업 중 가장 가까운 기준에 자동으로 연결합니다.",
+    },
+    {
+      title: "제출 자료에서 근거 찾기",
+      description:
+        "이력서·포트폴리오 등에서 이 경험과 관련된 내용을 먼저 찾습니다.",
+    },
+    {
+      title: "면접에서 다시 확인",
+      description: isRequired
+        ? "관련 근거가 있으면 우대 사항보다 먼저 확인할 수 있게 질문 순서를 앞당깁니다."
+        : "관련 근거가 있으면 필수 사항 다음 순서로 실제 경험을 확인합니다.",
+    },
+    {
+      title: "리포트에 따로 표시",
+      description:
+        "충족·일부 충족·미충족·판단 보류 중 하나로 결과를 보여줍니다.",
+    },
+  ] as const;
+
   return (
     <aside
       className={CRITERIA_OVERVIEW}
-      aria-labelledby="criteria-overview-title"
+      aria-labelledby="requirement-flow-title"
     >
       <header className="grid gap-1">
         <h4
           className="text-[10px] font-semibold text-ink"
-          id="criteria-overview-title"
+          id="requirement-flow-title"
         >
-          면접 답변 평가 구성
+          자격요건을 적으면 이렇게 동작해요
         </h4>
         <p className="text-[8px] leading-[1.5] text-muted">
-          자격요건 개수와 무관하게 모든 지원자를 같은 세 기준으로 평가합니다.
+          면접 점수를 만드는 항목이 아니라, 지원자별로 확인할 체크리스트가
+          됩니다.
         </p>
       </header>
-      <div className="grid gap-2">
-        {criteria.map((criterion, index) => (
-          <div
-            className="grid grid-cols-[20px_minmax(0,1fr)_34px] items-start gap-2 rounded-md border border-border-muted bg-surface-muted/60 px-2.5 py-2"
-            key={criterion.code}
+
+      <div className="grid gap-1.5 rounded-md border border-brand/20 bg-brand-soft/45 px-2.5 py-2.5">
+        <span className="font-mono text-[8px] font-semibold text-brand">
+          {exampleTypeLabel} 예시
+        </span>
+        <strong className="line-clamp-3 text-[9px] leading-[1.55] text-ink">
+          “{exampleStatement}”
+        </strong>
+        <span className="text-[8px] leading-[1.45] text-muted">
+          이렇게 입력하면 아래 순서로 확인합니다.
+        </span>
+      </div>
+
+      <ol className="grid gap-1.5" aria-label="자격요건 처리 순서">
+        {steps.map((step, index) => (
+          <li
+            className="grid grid-cols-[18px_minmax(0,1fr)] gap-2 rounded-md border border-border-muted bg-surface-muted/60 px-2 py-2"
+            key={step.title}
           >
             <span className="font-mono text-[8px] font-semibold text-brand">
               {String(index + 1).padStart(2, "0")}
             </span>
             <span className="grid gap-0.5">
-              <strong className="text-[9px] text-ink">{criterion.name}</strong>
+              <strong className="text-[8px] text-ink">{step.title}</strong>
               <small className="text-[8px] leading-[1.45] text-muted">
-                {criterion.description}
+                {step.description}
               </small>
             </span>
-            <b className="text-right font-mono text-[8px] text-ink">
-              {criterion.weight}%
-            </b>
-          </div>
+          </li>
         ))}
-      </div>
+      </ol>
+
       <p className="border-l-2 border-brand pl-2.5 text-[8px] leading-[1.5] text-ink-secondary">
-        필수·우대 충족도는 이 점수와 분리해 리포트에서 별도로 확인합니다.
+        자료에 없다는 이유만으로 미충족 처리하지 않으며, 면접 점수에 직접
+        더하거나 빼지 않습니다.
       </p>
     </aside>
   );

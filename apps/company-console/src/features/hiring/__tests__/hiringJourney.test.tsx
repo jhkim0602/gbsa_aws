@@ -382,9 +382,16 @@ describe("HiringWorkspace", () => {
     expect(
       screen.queryByRole("group", { name: "자격요건 1 중요도" }),
     ).toBeNull();
-    expect(screen.getByText("기술 역량")).toBeTruthy();
-    expect(screen.getByText("프로젝트 실행 역량")).toBeTruthy();
-    expect(screen.getByText("협업·행동 역량")).toBeTruthy();
+    expect(screen.getByText("자격요건을 적으면 이렇게 동작해요")).toBeTruthy();
+    expect(screen.getByText("“대규모 API 설계 경험”")).toBeTruthy();
+    expect(screen.getByText("우대 사항 예시")).toBeTruthy();
+    expect(screen.getByText("면접에서 다시 확인")).toBeTruthy();
+    expect(
+      screen.getByText(/필수 사항 다음 순서로 실제 경험을 확인합니다/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/면접 점수에 직접 더하거나 빼지 않습니다/),
+    ).toBeTruthy();
   });
 
   it("keeps qualification importance out of the form", async () => {
