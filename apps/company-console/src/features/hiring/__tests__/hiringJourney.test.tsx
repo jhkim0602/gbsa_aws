@@ -162,9 +162,6 @@ describe("HiringWorkspace", () => {
     fireEvent.change(screen.getByLabelText("자격요건 1"), {
       target: { value: "ECS 운영 장애 대응 경험" },
     });
-    fireEvent.change(screen.getByRole("slider", { name: "깊이 관점 강도" }), {
-      target: { value: "100" },
-    });
     fireEvent.click(screen.getByRole("button", { name: "다음" }));
     await screen.findByText("면접은 어떻게 진행할까요?");
     expect(screen.queryByText("내부 면접 정책")).toBeNull();
@@ -313,16 +310,6 @@ describe("HiringWorkspace", () => {
       prohibitedTopics: ["가족관계", "출신지역", "혼인·임신 여부", "외모"],
       interviewDurationMinutes: 30,
       interviewLevel: "senior",
-      // All five, always, and totalling 100. The API accepts an empty mapping as equal weight
-      // but refuses a partial one, so sending fewer than five would be a 422 rather than a
-      // default.
-      axisWeights: {
-        correctness: 17,
-        depth: 33,
-        fundamentals: 17,
-        ownership: 17,
-        communication: 16,
-      },
       personaDefinition: {
         name: "심층형 면접관",
         tone: "concise",
@@ -390,7 +377,7 @@ describe("HiringWorkspace", () => {
       screen.getByText(/필수 사항 다음 순서로 실제 경험을 확인합니다/),
     ).toBeTruthy();
     expect(
-      screen.getByText(/면접 점수에 직접 더하거나 빼지 않습니다/),
+      screen.getByText(/충족 100점·부분 충족 50점·미충족 0점/),
     ).toBeTruthy();
   });
 
@@ -438,57 +425,16 @@ describe("HiringWorkspace", () => {
     });
   });
 
-  it("keeps the five scoring axes at a total of 100 and sends all of them", async () => {
-    // The axes are fixed and the domain requires the five weights to total 100, so dragging one
-    // has to redistribute the rest. Sending a partial mapping would be a 422, not a default.
+  it("uses only the required and preferred qualification list for evaluation", async () => {
     const api = createApi();
     await advanceToEvaluation(api);
 
-    const control = screen.getByRole("group", {
-      name: "답변 평가 관점 오각형",
-    });
-    const accuracy = screen.getByRole("slider", {
-      name: "정확성 관점 강도",
-    }) as HTMLInputElement;
-    const depth = screen.getByRole("slider", {
-      name: "깊이 관점 강도",
-    }) as HTMLInputElement;
-
-    expect(accuracy.value).toBe("50");
-    expect(depth.value).toBe("50");
-    fireEvent.change(depth, { target: { value: "100" } });
-    expect(depth.value).toBe("100");
-    expect(accuracy.value).toBe("50");
-    expect(within(control).queryByText(/합계/)).toBeNull();
-
-    const fundamentals = screen.getByRole("slider", {
-      name: "CS 기본기 관점 강도",
-    }) as HTMLInputElement;
-    fireEvent.change(fundamentals, { target: { value: "0" } });
-    expect(fundamentals.value).toBe("0");
-    expect(accuracy.value).toBe("50");
-  });
-
-  it("axes cannot be added or removed by the recruiter", async () => {
-    // A company expresses what it values by which 평가기준 it asks about. The axes describe how
-    // an answer is read, and each carries the guidance the scoring prompt is built from, so
-    // there is deliberately no control here to add one.
-    const api = createApi();
-    await advanceToEvaluation(api);
-
-    expect(screen.getByText(/WhyYou는 답변의 근거를/)).toBeTruthy();
+    expect(screen.getByRole("list", { name: "자격요건 목록" })).toBeTruthy();
     expect(
-      screen.getByRole("group", { name: "답변 평가 관점 오각형" }),
+      screen.getByText(/필수·우대 항목 하나하나가 리포트의 평가축/),
     ).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /채점축 추가/ })).toBeNull();
-    for (const label of [
-      "정확성",
-      "깊이",
-      "CS 기본기",
-      "본인 기여",
-      "설명력",
-    ]) {
-      expect(screen.getByLabelText(`${label} 관점 강도`)).toBeTruthy();
-    }
+    expect(screen.queryByRole("slider")).toBeNull();
+    expect(screen.queryByText(/다섯 방향/)).toBeNull();
+    expect(screen.queryByText("정확성")).toBeNull();
   });
 });

@@ -27,7 +27,7 @@ import {
   invitationTone,
 } from "../../app/styles/primitives";
 import { invitationStatusMeta } from "../hiring/PositionInvitations";
-import { InterviewAxisRadarProfile, TimelineView } from "../review";
+import { RequirementRadarProfile, TimelineView } from "../review";
 import { ApplicantCapabilityBars } from "./CompetencyInsights";
 import type {
   CompanyApplicantReport,
@@ -341,14 +341,16 @@ function AnalysisPanel({
             <p className="text-[9px] font-bold text-brand uppercase">
               INTERVIEW PROFILE
             </p>
-            <h2 className="mt-1 text-[14px] text-ink">5축 역량 레이더</h2>
+            <h2 className="mt-1 text-[14px] text-ink">자격요건 충족 레이더</h2>
             <p className="mt-1 text-[10px] text-muted">
-              정확성·깊이·CS 기본기·본인 기여·설명력을 답변 근거로 비교합니다.
+              기업이 설정한 필수·우대 항목별 충족도를 비교합니다.
             </p>
           </div>
         </header>
         <div className="p-5 mw-720:p-3">
-          <InterviewAxisRadarProfile items={report.report.items} />
+          <RequirementRadarProfile
+            assessments={report.report.requirementAssessments ?? []}
+          />
         </div>
       </section>
 

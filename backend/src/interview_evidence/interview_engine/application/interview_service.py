@@ -284,11 +284,9 @@ class InterviewService:
             if question_type == "follow_up" and answered_stage is interview_stage
             else ()
         )
-        required_assessment_axis = (
-            "fundamentals"
-            if interview_stage is InterviewStage.TECHNICAL and question_type == "stage_opening"
-            else None
-        )
+        # New interviews are driven by the company's job requirements. The former fixed
+        # fundamentals/depth/etc. scoring axes no longer force a question shape.
+        required_assessment_axis = None
         built_context = self._context_builder.build(
             recent_turns=tuple(
                 ContextTurn(

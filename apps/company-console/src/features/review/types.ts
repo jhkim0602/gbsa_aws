@@ -159,7 +159,7 @@ export type ReviewReport = {
   /** How `overallScore` was reached, and what it leaves out. Null on pre-scoring reports. */
   scoringBreakdown: ScoreBreakdown | null;
   items: ReviewReportItem[];
-  /** Qualification fulfillment is descriptive and never enters interview scoring. */
+  /** The sole score source for requirement-only reports; unknown entries stay unscored. */
   requirementAssessments: RequirementAssessment[];
 };
 

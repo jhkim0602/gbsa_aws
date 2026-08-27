@@ -256,6 +256,19 @@ const applicantReport: CompanyApplicantReport = {
         ],
       },
     ],
+    requirementAssessments: [
+      {
+        requirementAssessmentId: "requirement-assessment-1",
+        jobRequirementId: "requirement-1",
+        requirementType: "required",
+        statement: "제품 문제를 구조화하는 경험",
+        status: "met",
+        rationale: "면접 답변에서 직접 수행한 근거를 확인했습니다.",
+        confidence: 0.9,
+        evidence: [],
+        humanOverride: null,
+      },
+    ],
   },
   timeline: {
     entries: [
@@ -1071,10 +1084,10 @@ describe("company workspace", () => {
     ).toBeTruthy();
     expect(screen.getByRole("heading", { name: "기준별 역량" })).toBeTruthy();
     expect(
-      screen.getByRole("heading", { name: "5축 역량 레이더" }),
+      screen.getByRole("heading", { name: "자격요건 충족 레이더" }),
     ).toBeTruthy();
     expect(
-      screen.getByRole("img", { name: /면접 점수 레이더 그래프/ }),
+      screen.getByRole("img", { name: /자격요건 1개의 충족 점수 레이더/ }),
     ).toBeTruthy();
     expect(
       screen.getByRole("heading", { name: "평가 기준과 답변 근거" }),

@@ -29,7 +29,6 @@ from interview_evidence.integration.interview_reporting import InterviewReportin
 from interview_evidence.interview_engine.application.public import InterviewEnginePublic
 from interview_evidence.recruiting_assistant.application import ReportSearchProjector
 from interview_evidence.reporting.api import LaneDRuntime
-from interview_evidence.reporting.application.assessment_service import CriterionAssessor
 from interview_evidence.reporting.application.deletion_service import DeletionService
 from interview_evidence.reporting.application.evidence_service import EvidenceService
 from interview_evidence.reporting.application.requirement_assessment import (
@@ -799,12 +798,7 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
                 generator=ReportGenerator(
                     lane_d.repository,
                     EvidenceService(lane_d.repository),
-                    CriterionAssessor(
-                        aws.model,
-                        metrics=metrics,
-                        require_scores=True,
-                    ),
-                    RequirementAssessor(
+                    requirement_assessor=RequirementAssessor(
                         aws.model,
                         require_assessment=True,
                     ),

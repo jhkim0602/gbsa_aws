@@ -202,6 +202,11 @@ class VerificationMapBuilder:
             else:
                 target_type = VerificationTargetType.CLAIM_FOUND
                 objective = f"자료에 언급된 {criterion.name} 경험의 상황과 본인 행동을 확인합니다."
+            if matched_requirements:
+                statements = ", ".join(
+                    f"‘{requirement.statement}’" for requirement in matched_requirements[:2]
+                )
+                objective = f"{objective} 연결 자격요건 {statements}의 충족 근거를 확인합니다."
             matched_priority = _matched_requirement_priority(matched_requirements)
             targets.append(
                 VerificationTarget(

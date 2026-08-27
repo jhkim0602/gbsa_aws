@@ -155,10 +155,9 @@ const hiringApi: HiringWorkspaceApi = {
         prohibited_topics: input.prohibitedTopics,
         interview_duration_minutes: 30,
         interview_level: input.interviewLevel,
-        // All five axes, always. The API accepts an empty mapping as equal weight for versions
-        // published before weights existed, but refuses a partial one — no reading of the
-        // absent keys is anything but a silently wrong score.
-        axis_weights: input.axisWeights,
+        // New reports are assessed only against the company's required/preferred job
+        // requirements. Keep the legacy field empty for backward-compatible API reads.
+        axis_weights: {},
         persona_definition: {
           name: input.personaDefinition.name,
           tone: input.personaDefinition.tone,

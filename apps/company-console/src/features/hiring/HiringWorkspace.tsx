@@ -41,7 +41,7 @@ const stepCopy = {
   evaluation: {
     eyebrow: "3 / 4 · 평가 설계",
     title: "어떤 기준으로 평가할까요?",
-    description: "필수·우대 자격요건과 답변 평가 관점을 설정합니다.",
+    description: "지원자를 확인할 필수·우대 자격요건을 설정합니다.",
   },
   interview: {
     eyebrow: "4 / 4 · 면접 운영",
@@ -334,9 +334,6 @@ export function toCriteriaConfiguration(
     prohibitedTopics: splitCommaSeparated(draft.prohibitedTopics),
     interviewDurationMinutes: draft.interviewDurationMinutes,
     interviewLevel: draft.interviewLevel,
-    // Copied rather than passed through: the draft stays editable after the publish request is
-    // built, and a shared reference would let a later keystroke change what was sent.
-    axisWeights: { ...draft.axisWeights },
     personaDefinition: {
       name: draft.interviewerName,
       tone: draft.interviewerTone,

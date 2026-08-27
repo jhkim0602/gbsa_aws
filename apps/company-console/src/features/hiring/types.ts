@@ -139,7 +139,6 @@ export type CriteriaConfiguration = Readonly<{
   prohibitedTopics: string[];
   interviewDurationMinutes: number;
   interviewLevel: InterviewLevel;
-  axisWeights: AxisWeightDraft;
   personaDefinition: {
     name: string;
     tone: InterviewerTone;

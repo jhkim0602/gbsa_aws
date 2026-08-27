@@ -115,10 +115,10 @@ describe("Lane D review journey", () => {
 
     expect(screen.getByText("AI 원본 · 변경 불가")).toBeTruthy();
     expect(screen.getByLabelText("AI 리포트")).toBeTruthy();
-    // 종합평가 opens first: it counts the states and lists them per criterion, so the
-    // badge appears once in each. Evidence playback lives one tab over.
-    expect(screen.getAllByText("확인됨").length).toBe(2);
-    fireEvent.click(screen.getByRole("tab", { name: "기준별 평가" }));
+    // 종합평가는 자격요건 점수만 보여 주고, 기존 기준 판정은 답변 근거 탭에 남깁니다.
+    expect(screen.queryByText("확인됨")).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "면접 답변 근거" }));
+    expect(screen.getByText("확인됨")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Evidence 재생" }));
     expect(seek).toHaveBeenCalledWith(1200);
     expect(screen.getByText("캐시와 큐를 비교했습니다.")).toBeTruthy();
@@ -276,7 +276,7 @@ describe("Lane D review journey", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("tab", { name: "기준별 평가" }));
+    fireEvent.click(screen.getByRole("tab", { name: "면접 답변 근거" }));
     fireEvent.click(screen.getByRole("button", { name: "Evidence 재생" }));
     expect(screen.getByText("세션 12345678")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "면접 타임라인" })).toBeNull();
@@ -290,9 +290,9 @@ describe("Lane D review journey", () => {
         .map((tab) => tab.textContent),
     ).toEqual([
       "종합평가",
-      "기준별 평가",
+      "면접 답변 근거",
       "면접 타임라인",
-      "자격요건 충족도",
+      "자격요건 평가",
       "추가 확인",
     ]);
     expect(reportTabList.className).not.toContain("overflow-x-auto");
@@ -301,7 +301,7 @@ describe("Lane D review journey", () => {
     const expandedTimeline = screen.getByRole("tabpanel", {
       name: "면접 타임라인",
     });
-    const video = within(expandedTimeline).getByRole("video");
+    const video = expandedTimeline.querySelector("video")!;
     expect(video.currentTime).toBe(62);
     expect(play).toHaveBeenCalled();
     expect(

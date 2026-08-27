@@ -69,7 +69,7 @@ function renderOverride(onOverride: (...args: never[]) => Promise<void>) {
     />,
   );
   // The override control lives on the per-criterion tab, not the summary the report opens on.
-  fireEvent.click(screen.getByRole("tab", { name: "기준별 평가" }));
+  fireEvent.click(screen.getByRole("tab", { name: "면접 답변 근거" }));
   return rendered;
 }
 

@@ -29,7 +29,7 @@ import type {
   CompanySubmission,
 } from "../../company/types";
 import { useApplicantReviewDossier } from "../../company/useApplicantReviewDossier";
-import { InterviewAxisRadarProfile, TimelineView } from "../../review";
+import { RequirementRadarProfile, TimelineView } from "../../review";
 import {
   Dialog,
   DialogContent,
@@ -399,15 +399,17 @@ function OverviewPage({
 
       <section className="rounded-lg border border-border-muted p-4">
         <h3 className="mb-3 text-[12px] font-bold text-ink">
-          5축 면접 역량 프로필
+          자격요건 충족 프로필
         </h3>
         {report ? (
-          <InterviewAxisRadarProfile items={report.report.items} />
+          <RequirementRadarProfile
+            assessments={report.report.requirementAssessments ?? []}
+          />
         ) : (
           <EmptyPage
             icon={<BarChart3 size={22} />}
-            title="면접 역량 데이터 대기"
-            description="면접 리포트가 준비되면 5각형 레이더로 역량을 비교합니다."
+            title="자격요건 평가 데이터 대기"
+            description="면접 리포트가 준비되면 등록한 자격요건 개수에 맞는 레이더로 충족도를 비교합니다."
           />
         )}
       </section>
