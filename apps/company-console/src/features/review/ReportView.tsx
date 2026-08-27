@@ -1,5 +1,6 @@
 import { Bot, FileSearch, LockKeyhole, PlayCircle, Quote } from "lucide-react";
 import { type KeyboardEvent, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 
 import { BUTTON_SECONDARY } from "../../app/styles/primitives";
 import { formatLocator, sourceTypeLabel } from "./questionSources";
@@ -218,12 +219,21 @@ export function ReportView({
   }
 
   function showEvidenceInVideo(startMs: number) {
-    if (timeline && videoMediaRef.current) {
+    if (!timeline) {
+      onSelectEvidence(startMs);
+      return;
+    }
+
+    // Keep this transition inside the originating click. Chromium can abort a play
+    // request that starts while an ancestor is still `hidden`, leaving the right time
+    // selected but making the next manual play fall back to the beginning.
+    flushSync(() => {
+      onSelectEvidence(startMs);
+      setActiveTab("video");
+    });
+    if (videoMediaRef.current) {
       void seekToEvidence(videoMediaRef.current, startMs).catch(() => undefined);
     }
-    onSelectEvidence(startMs);
-    if (!timeline) return;
-    setActiveTab("video");
     window.requestAnimationFrame(() => {
       document.getElementById("report-panel-video")?.scrollIntoView?.({
         behavior: "smooth",

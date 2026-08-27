@@ -213,7 +213,10 @@ describe("Lane D review journey", () => {
   it("keeps Evidence selection synchronized with the media timeline", async () => {
     const play = vi
       .spyOn(HTMLMediaElement.prototype, "play")
-      .mockResolvedValue(undefined);
+      .mockImplementation(function () {
+        expect(this.closest("[hidden]")).toBeNull();
+        return Promise.resolve();
+      });
 
     render(
       <ReviewWorkspace
