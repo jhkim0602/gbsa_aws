@@ -124,7 +124,7 @@ describe("HiringWorkspace", () => {
     expect(await screen.findByText("포지션명과 모집 기간")).toBeTruthy();
   });
 
-  it("can insert the long-form position description example", async () => {
+  it("can insert a short plain-text position description example", async () => {
     const api = createApi();
     render(<HiringWorkspace api={api} />);
     await advanceToPositionDescription();
@@ -137,9 +137,11 @@ describe("HiringWorkspace", () => {
       "포지션 설명",
     ) as HTMLTextAreaElement;
     expect(description.maxLength).toBe(2000);
-    expect(description.value).toContain("## Build the Next Version");
-    expect(description.value).toContain("주요업무");
-    expect(description.value).toContain("Junior Product Engineer");
+    expect(description.value).toContain("AI 기반 업무 자동화 서비스");
+    expect(description.value).toContain("백엔드 개발을 중심으로");
+    expect(description.value).not.toContain("##");
+    expect(description.value).not.toContain("[");
+    expect(description.value).not.toContain("•");
 
     const completeButton = screen.getByRole("button", {
       name: "포지션 상세 작성 완료",

@@ -38,36 +38,11 @@ type StepProps = {
 
 const positionDescriptionMaxLength = 2000;
 
-const positionDescriptionExample = `포지션 상세
+const positionDescriptionExample = `우리 팀은 기업 고객이 사용하는 AI 기반 업무 자동화 서비스를 만들고 있습니다.
 
-## Build the Next Version
-현재 회사 리브랜딩 및 홈페이지 개편이 진행 중입니다.
-이에 최신 현황을 먼저 공유드립니다.
+이번 포지션은 백엔드 개발을 중심으로 서버 API, 비즈니스 로직과 데이터 처리 기능을 구현하고 안정적으로 운영하는 역할입니다. 작은 팀에서 기획자와 프론트엔드 개발자와 협업하며 제품 개선 전 과정에 참여합니다.
 
-빌드잇(Buildit)은 지난 10년간 단 한 차례의 외부 투자 없이도,
-국내 주요 대기업들과 함께 엔터프라이즈 솔루션을 개발하며 성장해온 기술 중심 기업입니다.
-
-최근 빌드잇은 AI가 산업의 본질을 바꾸는 지금을 기회로 삼아,
-AI 중심 소프트웨어 기업으로의 전략적 전환을 단계별로 진행 중입니다.
-이에 따라 사업 구조와 조직 운영 방식을 새롭게 재정비하고 있습니다.
-
-빌드잇은 현재 두 개의 사업 영역을 중심으로 향후 3년의 성장 기반을 구축하고 있습니다.
-• Enterprise Business : 엔터프라이즈 솔루션 프로젝트 수행
-• AI Agent Business : AI Agent 기반 프로세스 자동화 솔루션 제품화
-
-이 변화는 단순한 확장이 아닌, 회사의 정체성을 다시 정의하는 AI 중심 리브랜딩 과정입니다.
-자율, 책임, 성장, 연결이라는 핵심 가치를 기반으로 업무 방식과 개발 문화를 새롭게 설계하고 있습니다.
-
-지금은 빌드잇이 가장 역동적으로 변화하는 시기입니다.
-다음 버전의 빌드잇을 함께 '릴리즈'할 동료를 찾고 있습니다.
-
-주요업무
-
-[담당 포지션]
-Junior Product Engineer (Backend 중심)
-
-작은 팀에서 Backend 개발을 중심으로 서버 API, 비즈니스 로직 및 데이터 처리 기능 구현과 개선에 참여하고,
-Frontend 영역까지 경험을 확장하는 역할`;
+사용자가 믿고 사용할 수 있는 서비스를 함께 만들고, 필요에 따라 프론트엔드 영역까지 경험을 넓혀갈 분을 찾습니다.`;
 
 // `.hiring-panel .position-config-section > header` outranks `.form-section > header`'s
 // `display:none`, so these sections keep their headers — see FormPrimitives.
@@ -434,7 +409,7 @@ function PositionDescriptionEditor({
         maxLength={positionDescriptionMaxLength}
         value={value}
         placeholder={
-          "포지션 상세\n\n## Build the Next Version\n회사가 지금 해결하려는 문제와 변화의 배경을 작성해 주세요.\n\n주요업무\n\n[담당 포지션]\n역할과 책임 범위를 자유롭게 작성해 주세요."
+          "회사가 해결하고 있는 문제, 이 포지션의 주요 업무와 함께 일하는 방식을 간략하게 설명해 주세요."
         }
         onChange={(event) => {
           onChange(event.target.value);
