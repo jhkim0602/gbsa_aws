@@ -1,14 +1,4 @@
-import {
-  ArrowRight,
-  BarChart3,
-  FileCheck2,
-  Gauge,
-  ListChecks,
-  Send,
-  ShieldCheck,
-  Target,
-} from "lucide-react";
-import type { ReactNode } from "react";
+import { ArrowRight, BarChart3, ListChecks, Send } from "lucide-react";
 
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "../../app/styles/primitives";
 import { interviewLevelLabels } from "../hiring";
@@ -25,7 +15,6 @@ import type {
 } from "./types";
 
 export function PositionDashboard({
-  position,
   invitations,
   criteria,
   insights,
@@ -41,19 +30,6 @@ export function PositionDashboard({
   onOpenTab(tab: PositionTab): void;
   onOpenInvitations(): void;
 }) {
-  const scored = insights.flatMap((insight) =>
-    insight.overallScore == null ? [] : [insight.overallScore],
-  );
-  const averageScore = scored.length
-    ? Math.round(scored.reduce((sum, score) => sum + score, 0) / scored.length)
-    : null;
-  const evidenceCoverage = insights.length
-    ? Math.round(
-        insights.reduce((sum, insight) => sum + insight.evidenceCoverage, 0) /
-          insights.length,
-      )
-    : 0;
-
   return (
     <div className="grid gap-4">
       <section className="overflow-hidden rounded-lg border border-border bg-surface">
@@ -90,32 +66,6 @@ export function PositionDashboard({
             </button>
           </div>
         </header>
-        <div className="grid grid-cols-4 mw-720:grid-cols-2">
-          <InsightMetric
-            label="평가 리포트"
-            value={`${insights.length}명`}
-            note={`전체 지원자 ${invitations.length}명`}
-            icon={<FileCheck2 size={16} />}
-          />
-          <InsightMetric
-            label="평균 총점"
-            value={averageScore == null ? "–" : `${averageScore}점`}
-            note="100점 기준"
-            icon={<Gauge size={16} />}
-          />
-          <InsightMetric
-            label="답변 근거 충족"
-            value={`${evidenceCoverage}%`}
-            note="인용 가능한 답변"
-            icon={<ShieldCheck size={16} />}
-          />
-          <InsightMetric
-            label="채용 목표"
-            value={`${position.headcount ?? "–"}명`}
-            note="현재 포지션"
-            icon={<Target size={16} />}
-          />
-        </div>
       </section>
 
       <CompetencyDistribution
@@ -201,33 +151,6 @@ export function PositionDashboard({
         )}
       </section>
     </div>
-  );
-}
-
-function InsightMetric({
-  label,
-  value,
-  note,
-  icon,
-}: {
-  label: string;
-  value: string;
-  note: string;
-  icon: ReactNode;
-}) {
-  return (
-    <article className="grid min-h-22 grid-cols-[32px_minmax(0,1fr)] items-center gap-3 border-r border-border-muted px-5 last:border-r-0 mw-720:nth-2:border-r-0 mw-720:nth-[-n+2]:border-b mw-720:nth-[-n+2]:border-border-muted">
-      <span className="grid size-8 place-items-center rounded-lg bg-surface-subtle text-brand">
-        {icon}
-      </span>
-      <span className="min-w-0">
-        <small className="block text-[10px] text-muted">{label}</small>
-        <strong className="mt-0.5 block font-mono text-[17px] text-ink">
-          {value}
-        </strong>
-        <small className="mt-0.5 block text-[9px] text-muted">{note}</small>
-      </span>
-    </article>
   );
 }
 
