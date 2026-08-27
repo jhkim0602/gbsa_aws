@@ -17,9 +17,16 @@ from interview_evidence.recruiting_assistant.prompt import (
 from interview_evidence.recruiting_assistant.repository import (
     AssistantDocumentRepository,
 )
-from interview_evidence.reporting.domain.report import Report, ReportItem
+from interview_evidence.reporting.domain.report import (
+    Report,
+    ReportItem,
+    RequirementAssessment,
+    RequirementAssessmentStatus,
+)
 from interview_evidence.shared.aws_clients.ports import AIModel, TextEmbedder
 from interview_evidence.shared.tenant import TenantContext
+
+ASSISTANT_PROJECTION_VERSION = "requirements-v2"
 
 
 class ReportSearchProjector:
@@ -44,17 +51,22 @@ class ReportSearchProjector:
         report: Report,
     ) -> tuple[AssistantSearchDocument, ...]:
         context.assert_company(report.company_id)
-        documents = (
-            self._summary_document(
-                context,
-                position_id=position_id,
-                position_title=position_title,
-                applicant_id=applicant_id,
-                applicant_display_name=applicant_display_name,
-                report=report,
-            ),
-            *(
-                self._criterion_document(
+        evidence_documents = (
+            tuple(
+                self._requirement_document(
+                    context,
+                    position_id=position_id,
+                    position_title=position_title,
+                    applicant_id=applicant_id,
+                    applicant_display_name=applicant_display_name,
+                    report=report,
+                    assessment=assessment,
+                )
+                for assessment in report.requirement_assessments
+            )
+            if report.requirement_assessments
+            else tuple(
+                self._legacy_evidence_document(
                     context,
                     position_id=position_id,
                     position_title=position_title,
@@ -64,7 +76,18 @@ class ReportSearchProjector:
                     item=item,
                 )
                 for item in report.items
+            )
+        )
+        documents = (
+            self._summary_document(
+                context,
+                position_id=position_id,
+                position_title=position_title,
+                applicant_id=applicant_id,
+                applicant_display_name=applicant_display_name,
+                report=report,
             ),
+            *evidence_documents,
         )
         return self._repository.replace_report_documents(
             context,
@@ -82,18 +105,35 @@ class ReportSearchProjector:
         applicant_display_name: str,
         report: Report,
     ) -> AssistantSearchDocument:
-        score = str(report.overall_score) if report.overall_score is not None else "미산정"
+        status_counts = {
+            status: sum(
+                assessment.status is status for assessment in report.requirement_assessments
+            )
+            for status in RequirementAssessmentStatus
+        }
+        total = len(report.requirement_assessments)
+        requirement_lines = tuple(
+            (
+                f"{_requirement_type_label(assessment.requirement_type)} 자격요건 · "
+                f"{_requirement_status_label(assessment.status)} · {assessment.statement}"
+            )
+            for assessment in report.requirement_assessments
+        )
         text = "\n".join(
             (
-                "지원자 종합 평가 리포트",
+                "지원자 자격요건 종합 판정",
                 f"지원자명: {applicant_display_name}",
                 f"지원 포지션: {position_title}",
                 f"리포트 상태: {report.status.value}",
-                f"종합 점수: {score}",
-                f"평가 완료 기준: {len(report.scored_items)}/{len(report.items)}",
-                f"종합 요약: {report.summary}",
-                "평가 항목: "
-                + ", ".join(item.criterion_name or str(item.criterion_id) for item in report.items),
+                (
+                    "자격요건 판정: "
+                    f"충족 {status_counts[RequirementAssessmentStatus.MET]} / 전체 {total}, "
+                    f"부분 충족 {status_counts[RequirementAssessmentStatus.PARTIALLY_MET]}, "
+                    f"미충족 {status_counts[RequirementAssessmentStatus.NOT_MET]}, "
+                    f"판단 보류 {status_counts[RequirementAssessmentStatus.UNKNOWN]}"
+                ),
+                f"근거 요약: {report.summary}",
+                *(requirement_lines or ("자격요건 판정: 아직 생성되지 않음",)),
             )
         )
         return self._document(
@@ -108,15 +148,81 @@ class ReportSearchProjector:
             text=text,
             metadata={
                 "report_status": report.status.value,
-                "overall_score": report.overall_score,
-                "scored_criteria_count": len(report.scored_items),
-                "total_criteria_count": len(report.items),
+                "requirements_total": total,
+                "requirements_met": status_counts[RequirementAssessmentStatus.MET],
+                "requirements_partially_met": status_counts[
+                    RequirementAssessmentStatus.PARTIALLY_MET
+                ],
+                "requirements_not_met": status_counts[RequirementAssessmentStatus.NOT_MET],
+                "requirements_unknown": status_counts[RequirementAssessmentStatus.UNKNOWN],
                 "applicant_display_name": applicant_display_name,
                 "position_title": position_title,
             },
         )
 
-    def _criterion_document(
+    def _requirement_document(
+        self,
+        context: TenantContext,
+        *,
+        position_id: UUID,
+        position_title: str,
+        applicant_id: UUID,
+        applicant_display_name: str,
+        report: Report,
+        assessment: RequirementAssessment,
+    ) -> AssistantSearchDocument:
+        evidence_lines = tuple(
+            line
+            for index, evidence in enumerate(assessment.evidence, start=1)
+            for line in (
+                (
+                    f"근거 {index} ({_evidence_source_label(evidence.source_kind)} · "
+                    f"{evidence.source_type}): {evidence.excerpt}"
+                ),
+                f"근거 설명 {index}: {evidence.explanation}",
+            )
+        )
+        text = "\n".join(
+            (
+                "지원자 자격요건 판정 근거",
+                f"지원자명: {applicant_display_name}",
+                f"지원 포지션: {position_title}",
+                f"자격요건 구분: {_requirement_type_label(assessment.requirement_type)}",
+                f"자격요건: {assessment.statement}",
+                f"판정 상태: {_requirement_status_label(assessment.status)}",
+                f"판정 근거: {assessment.rationale}",
+                *(evidence_lines or ("직접 연결된 근거: 없음",)),
+            )
+        )
+        return self._document(
+            context,
+            document_id=uuid5(
+                NAMESPACE_URL,
+                (
+                    f"assistant:{report.report_id}:requirement:"
+                    f"{assessment.requirement_assessment_id}"
+                ),
+            ),
+            position_id=position_id,
+            applicant_id=applicant_id,
+            report=report,
+            report_item_id=None,
+            criterion_id=None,
+            document_type="report_criterion",
+            text=text,
+            metadata={
+                "requirement_assessment_id": str(assessment.requirement_assessment_id),
+                "job_requirement_id": str(assessment.job_requirement_id),
+                "requirement_statement": assessment.statement,
+                "requirement_type": assessment.requirement_type,
+                "requirement_status": assessment.status.value,
+                "evidence_ids": [str(evidence.evidence_id) for evidence in assessment.evidence],
+                "applicant_display_name": applicant_display_name,
+                "position_title": position_title,
+            },
+        )
+
+    def _legacy_evidence_document(
         self,
         context: TenantContext,
         *,
@@ -127,23 +233,16 @@ class ReportSearchProjector:
         report: Report,
         item: ReportItem,
     ) -> AssistantSearchDocument:
-        axis_lines = tuple(
-            (
-                f"{axis.label}: "
-                f"{axis.score if axis.score is not None else '미산정'}점, {axis.rationale}"
-            )
-            for axis in item.axis_assessments
-        )
         text = "\n".join(
             (
+                "지원자 답변 근거 (이전 리포트)",
                 f"지원자명: {applicant_display_name}",
                 f"지원 포지션: {position_title}",
-                f"평가 기준: {item.criterion_name or item.criterion_id}",
-                f"평가 상태: {item.assessment_state.value}",
+                f"확인 주제: {item.criterion_name or item.criterion_id}",
+                f"근거 상태: {item.assessment_state.value}",
                 f"관찰 내용: {item.observation}",
-                f"평가 근거: {item.rationale}",
+                f"답변 근거: {item.rationale}",
                 f"불확실성: {item.uncertainty}",
-                *(("세부 평가:", *axis_lines) if axis_lines else ()),
             )
         )
         return self._document(
@@ -162,10 +261,10 @@ class ReportSearchProjector:
             metadata={
                 "criterion_name": item.criterion_name,
                 "assessment_state": item.assessment_state.value,
-                "score": item.average_score,
                 "evidence_ids": [str(evidence.evidence_id) for evidence in item.evidence],
                 "applicant_display_name": applicant_display_name,
                 "position_title": position_title,
+                "legacy_evidence": True,
             },
         )
 
@@ -193,7 +292,7 @@ class ReportSearchProjector:
             report_item_id=report_item_id,
             criterion_id=criterion_id,
             document_type=document_type,
-            source_version=str(report.version),
+            source_version=f"{report.version}:{ASSISTANT_PROJECTION_VERSION}",
             content_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
             text=text,
             embedding=self._embedder.embed(context, text, dimensions=1024),
@@ -202,6 +301,23 @@ class ReportSearchProjector:
             created_at=report.created_at,
             metadata=metadata,
         )
+
+
+def _requirement_type_label(requirement_type: str) -> str:
+    return "필수" if requirement_type == "required" else "우대"
+
+
+def _requirement_status_label(status: RequirementAssessmentStatus) -> str:
+    return {
+        RequirementAssessmentStatus.MET: "충족",
+        RequirementAssessmentStatus.PARTIALLY_MET: "부분 충족",
+        RequirementAssessmentStatus.NOT_MET: "미충족",
+        RequirementAssessmentStatus.UNKNOWN: "판단 보류",
+    }[status]
+
+
+def _evidence_source_label(source_kind: str) -> str:
+    return "면접 답변" if source_kind == "interview" else "제출 자료"
 
 
 @dataclass(frozen=True, slots=True)

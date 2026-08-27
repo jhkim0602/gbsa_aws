@@ -46,10 +46,8 @@ import { statusLabel, statusTone } from "./companyFormatters";
 import { PositionDashboard } from "./PositionDashboard";
 import { PositionQuickEditModal } from "./PositionSettings";
 import {
-  ApplicantScoreTable,
   applyConfiguredWeights,
-  CompetencyDistribution,
-  ScoreDistribution,
+  RequirementFitDistribution,
 } from "./CompetencyInsights";
 import {
   countRecruiterPhases,
@@ -211,7 +209,7 @@ const positionTabs: ReadonlyArray<{
 }> = [
   { id: "overview", label: "인사이트", icon: LayoutDashboard },
   { id: "applicants", label: "지원자", icon: Users },
-  { id: "statistics", label: "역량 분포", icon: BarChart3 },
+  { id: "statistics", label: "자격요건 분포", icon: BarChart3 },
   { id: "stages", label: "면접 운영", icon: Route },
   { id: "information", label: "설정값", icon: Info },
 ];
@@ -476,15 +474,10 @@ export function PositionOperations({
             aria-labelledby="position-tab-statistics"
             className={PANEL_GROUP}
           >
-            <ScoreDistribution insights={weightedInsights} />
-            <CompetencyDistribution
+            <RequirementFitDistribution
+              criteria={currentCriteria}
               insights={weightedInsights}
               invitations={positionInvitations}
-              limit={10}
-            />
-            <ApplicantScoreTable
-              invitations={positionInvitations}
-              insights={weightedInsights}
             />
           </section>
         ) : null}
@@ -633,8 +626,8 @@ function ApplicantRoster({
       <div className="grid grid-cols-[minmax(160px,0.7fr)_minmax(210px,1fr)_90px_100px] gap-3 border-b border-border-muted bg-surface-muted px-5 py-2.5 text-[9px] font-semibold text-muted mw-720:hidden">
         <span>지원자</span>
         <span>자격요건 요약</span>
-        <span className="text-right">충족</span>
-        <span className="text-right">판단 보류</span>
+        <span className="text-right">충족 / 전체</span>
+        <span className="text-right">미충족</span>
       </div>
       {visible.length ? (
         <div className="grid [content-visibility:auto]">
@@ -651,8 +644,12 @@ function ApplicantRoster({
             const partialCount = assessments.filter(
               (assessment) => assessment.status === "partially_met",
             ).length;
-            const unknownCount = assessments.filter(
-              (assessment) => assessment.status === "unknown",
+            const notMetCount = assessments.filter(
+              (assessment) =>
+                (assessment.humanOverride?.status ?? assessment.status) ===
+                  "not_met" ||
+                (assessment.humanOverride?.status ?? assessment.status) ===
+                  "unknown",
             ).length;
             return (
               <Link
@@ -680,10 +677,12 @@ function ApplicantRoster({
                     : `${status.label} · 면접 결과 대기`}
                 </span>
                 <strong className="text-right font-mono text-[18px] text-ink mw-720:row-[1] mw-720:col-[2]">
-                  {assessments.length ? `${metCount}개` : "–"}
+                  {assessments.length
+                    ? `${metCount} / ${assessments.length}`
+                    : "–"}
                 </strong>
                 <span className="text-right text-[10px] text-muted mw-720:hidden">
-                  {assessments.length ? `${unknownCount}개` : "–"}
+                  {assessments.length ? `${notMetCount}개` : "–"}
                 </span>
               </Link>
             );
@@ -923,14 +922,16 @@ function PositionInformation({
             <section className={CRITERIA_SECTION}>
               <h3 className={CRITERIA_SECTION_TITLE}>반드시 물어볼 질문</h3>
               <p className="text-[10px] leading-[1.55] text-muted">
-                모든 지원자에게 자연스러운 전환 문구와 함께 묻고, 답변에
-                필요한 경우에만 지원자별 꼬리질문을 이어갑니다.
+                모든 지원자에게 자연스러운 전환 문구와 함께 묻고, 답변에 필요한
+                경우에만 지원자별 꼬리질문을 이어갑니다.
               </p>
               {mandatoryQuestions.length ? (
                 <ol className={CRITERION_LIST}>
                   {mandatoryQuestions.map((question, index) => (
                     <li className={CRITERION} key={`${question}-${index}`}>
-                      <span className={CRITERION_BADGE}>필수 질문 {index + 1}</span>
+                      <span className={CRITERION_BADGE}>
+                        필수 질문 {index + 1}
+                      </span>
                       <strong className={CRITERION_TITLE}>{question}</strong>
                     </li>
                   ))}
@@ -999,9 +1000,7 @@ function PositionInformation({
             <span className={POLICY}>
               <Info className={POLICY_ICON} size={17} aria-hidden="true" />
               <small className={POLICY_LABEL}>종료 방식</small>
-              <strong className={POLICY_VALUE}>
-                근거 충분 시 조기 종료
-              </strong>
+              <strong className={POLICY_VALUE}>근거 충분 시 조기 종료</strong>
             </span>
             <span className={POLICY}>
               <ClipboardCheck

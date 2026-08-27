@@ -1,5 +1,5 @@
-import { Bot, FileSearch, LockKeyhole, PlayCircle } from "lucide-react";
-import { type KeyboardEvent, useState } from "react";
+import { Bot, FileSearch, LockKeyhole, PlayCircle, X } from "lucide-react";
+import { type KeyboardEvent, useEffect, useState } from "react";
 
 import { BUTTON_SECONDARY } from "../../app/styles/primitives";
 import { formatLocator, sourceTypeLabel } from "./questionSources";
@@ -154,6 +154,8 @@ export function ReportView({
   ): Promise<void>;
 }) {
   const [activeTab, setActiveTab] = useState<ReportTab>("overview");
+  const [playbackEvidence, setPlaybackEvidence] =
+    useState<EvidenceRange | null>(null);
   const requirementAssessments = report.requirementAssessments ?? [];
   const availableTabs = timeline
     ? reportTabs
@@ -300,6 +302,7 @@ export function ReportView({
                     report={report}
                     evidenceContext={evidenceContext}
                     onSelectEvidence={onSelectEvidence}
+                    onPlayEvidence={setPlaybackEvidence}
                     onOverride={onOverride}
                   />
                 ) : null}
@@ -326,7 +329,89 @@ export function ReportView({
           </div>
         </>
       )}
+      {playbackEvidence && timeline ? (
+        <EvidencePlaybackModal
+          evidence={playbackEvidence}
+          timeline={timeline}
+          onClose={() => setPlaybackEvidence(null)}
+          onSeek={onSelectEvidence}
+        />
+      ) : null}
     </section>
+  );
+}
+
+function EvidencePlaybackModal({
+  evidence,
+  timeline,
+  onClose,
+  onSeek,
+}: {
+  evidence: EvidenceRange;
+  timeline: ReviewTimeline;
+  onClose(): void;
+  onSeek(startMs: number): void;
+}) {
+  useEffect(() => {
+    function handleEscape(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[120] grid place-items-center bg-[rgb(15_23_42_/_62%)] p-5 backdrop-blur-[2px] print:hidden"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        aria-labelledby="evidence-playback-title"
+        aria-modal="true"
+        className="grid max-h-[calc(100vh-40px)] w-full max-w-[900px] overflow-auto rounded-xl border border-border bg-surface shadow-2xl"
+        role="dialog"
+      >
+        <header className="flex items-center justify-between gap-4 border-b border-border-muted px-5 py-4">
+          <div>
+            <p className="font-mono text-[9px] font-bold text-brand uppercase">
+              Interview evidence
+            </p>
+            <h2
+              id="evidence-playback-title"
+              className="mt-1 text-[17px] text-ink"
+            >
+              Evidence 영상 확인
+            </h2>
+            <p className="mt-1 text-[10px] text-muted">
+              {formatTime(evidence.startMs)} – {formatTime(evidence.endMs)}{" "}
+              구간부터 재생합니다.
+            </p>
+          </div>
+          <button
+            aria-label="Evidence 영상 닫기"
+            className="grid size-9 place-items-center rounded-md border border-border text-muted transition hover:border-brand hover:text-brand"
+            onClick={onClose}
+            type="button"
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
+        </header>
+        <div className="p-4">
+          <TimelineView
+            entries={timeline.entries}
+            playbackStatus={timeline.playback.status}
+            playbackUrl={timeline.playback.url}
+            selectedStartMs={evidence.startMs}
+            onSeek={onSeek}
+            showTimeline={false}
+            expanded
+            idPrefix="evidence-modal"
+          />
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -334,14 +419,14 @@ const requirementStatusLabels: Record<RequirementAssessmentStatus, string> = {
   met: "충족",
   partially_met: "부분 충족",
   not_met: "미충족",
-  unknown: "판단 불가",
+  unknown: "미충족",
 };
 
 const requirementStatusTone: Record<RequirementAssessmentStatus, string> = {
   met: "bg-success-soft text-success",
   partially_met: "bg-warning-soft text-warning",
   not_met: "bg-danger-soft text-danger",
-  unknown: "bg-surface-strong text-muted",
+  unknown: "bg-danger-soft text-danger",
 };
 
 const requirementStatusTextColor: Record<RequirementAssessmentStatus, string> =
@@ -349,23 +434,27 @@ const requirementStatusTextColor: Record<RequirementAssessmentStatus, string> =
     met: "var(--color-success)",
     partially_met: "var(--color-warning)",
     not_met: "var(--color-danger)",
-    unknown: "var(--color-subtle)",
+    unknown: "var(--color-danger)",
   };
 
 const requirementStatusOrder: RequirementAssessmentStatus[] = [
   "met",
   "partially_met",
   "not_met",
-  "unknown",
 ];
+
+function normalizedRequirementStatus(
+  status: RequirementAssessmentStatus,
+): RequirementAssessmentStatus {
+  return status === "unknown" ? "not_met" : status;
+}
 
 function requirementPlotValue(
   status: RequirementAssessmentStatus,
 ): number | null {
   if (status === "met") return 100;
   if (status === "partially_met") return 50;
-  if (status === "not_met") return 0;
-  return null;
+  return 0;
 }
 
 function RequirementsPage({
@@ -399,8 +488,9 @@ function RequirementsPage({
   return (
     <div className="grid gap-4">
       <p className="rounded-e-[5px] border-l-2 border-brand bg-brand-soft px-3 py-2.5 text-[9px] leading-[1.65] text-ink-secondary">
-        제출 자료와 면접 답변을 함께 확인해 각 자격요건을 충족, 부분 충족,
-        미충족, 판단 불가 중 하나의 상태로 표시합니다.
+        채용 설정에서 기업이 직접 입력한 필수·우대 항목입니다. AI가 제출 자료와
+        면접 답변에서 근거를 찾아 충족, 부분 충족, 미충족 상태만 제안하며 점수나
+        합격 여부에는 자동 반영하지 않습니다.
       </p>
       <RequirementGroup
         assessments={required}
@@ -463,7 +553,9 @@ function RequirementCard({
     reason: string,
   ): Promise<void>;
 }) {
-  const initialStatus = assessment.humanOverride?.status ?? assessment.status;
+  const initialStatus = normalizedRequirementStatus(
+    assessment.humanOverride?.status ?? assessment.status,
+  );
   const [status, setStatus] =
     useState<RequirementAssessmentStatus>(initialStatus);
   const [reason, setReason] = useState("");
@@ -515,7 +607,7 @@ function RequirementCard({
       <span className="font-mono text-[8px] text-subtle">
         근거 {assessment.evidence.length}건
         {assessment.status === "unknown"
-          ? " · 신뢰도 계산 안 함"
+          ? " · 직접 근거 없음"
           : ` · 판정 신뢰도 ${Math.round(assessment.confidence * 100)}%`}
       </span>
       {assessment.evidence.length ? (
@@ -562,7 +654,6 @@ function RequirementCard({
               <option value="met">충족</option>
               <option value="partially_met">부분 충족</option>
               <option value="not_met">미충족</option>
-              <option value="unknown">판단 불가</option>
             </select>
           </label>
           {changed ? (
@@ -608,14 +699,15 @@ function OverviewPage({
   stageSummary: InterviewStageSummary[];
 }) {
   const assessments = report.requirementAssessments ?? [];
-  const scoredCount = assessments.filter(
-    (assessment) => assessment.status !== "unknown",
-  ).length;
+  const scoredCount = assessments.length;
   const statusCounts = requirementStatusOrder.map(
     (status) =>
       [
         status,
-        assessments.filter((assessment) => assessment.status === status).length,
+        assessments.filter(
+          (assessment) =>
+            normalizedRequirementStatus(assessment.status) === status,
+        ).length,
       ] as const,
   );
 
@@ -649,8 +741,7 @@ function OverviewPage({
 
       <p className="rounded-e-[5px] border-l-2 border-brand bg-brand-soft px-3 py-2.5 text-[9px] leading-[1.65] text-ink-secondary">
         기업이 작성한 필수·우대 자격요건만 평가합니다. 각 항목은 충족, 부분
-        충족, 미충족, 판단 불가 상태로만 표시하며 최종 채용 결정은 담당자가
-        기록합니다.
+        충족, 미충족 상태로만 표시하며 최종 채용 결정은 담당자가 기록합니다.
       </p>
 
       {stageSummary.length > 0 ? (
@@ -659,14 +750,25 @@ function OverviewPage({
           <p className="mb-2 text-[8px] leading-[1.6] text-muted">
             고정된 기술·프로젝트·인성 단계 대신 기업의 자격요건과 필수 질문을
             지원자 자료에 연결하고, 답변 근거가 부족할 때만 꼬리질문을
-            이어갑니다. 총 질문 {stageSummary.reduce((sum, item) => sum + item.questionCount, 0)}개 ·
-            확인된 근거 {stageSummary.reduce((sum, item) => sum + item.evidenceCount, 0)}개
+            이어갑니다. 총 질문{" "}
+            {stageSummary.reduce((sum, item) => sum + item.questionCount, 0)}개
+            · 확인된 근거{" "}
+            {stageSummary.reduce((sum, item) => sum + item.evidenceCount, 0)}개
           </p>
           <ol className="grid grid-cols-3 gap-2 mw-520:grid-cols-[minmax(0,1fr)]">
             {[
-              ["기업 자격요건 확인", "필수·우대 항목과 제출 자료의 관련 근거를 연결"],
-              ["반드시 물어볼 질문", "기업이 지정한 질문을 자연스러운 흐름으로 확인"],
-              ["필요한 꼬리질문", "본인 역할·판단 근거·결과가 부족한 경우에만 추가 확인"],
+              [
+                "기업 자격요건 확인",
+                "필수·우대 항목과 제출 자료의 관련 근거를 연결",
+              ],
+              [
+                "반드시 물어볼 질문",
+                "기업이 지정한 질문을 자연스러운 흐름으로 확인",
+              ],
+              [
+                "필요한 꼬리질문",
+                "본인 역할·판단 근거·결과가 부족한 경우에만 추가 확인",
+              ],
             ].map(([label, description], index) => (
               <li
                 className="rounded-md border border-border-muted bg-surface-muted px-3 py-2.5"
@@ -839,11 +941,13 @@ function CriteriaPage({
   report,
   evidenceContext,
   onSelectEvidence,
+  onPlayEvidence,
   onOverride,
 }: {
   report: ReviewReport;
   evidenceContext: ReviewEvidenceContext;
   onSelectEvidence(startMs: number): void;
+  onPlayEvidence(evidence: EvidenceRange): void;
   onOverride?(
     reportItemId: string,
     assessmentState: AssessmentState,
@@ -855,6 +959,9 @@ function CriteriaPage({
   const [followedEvidenceId, setFollowedEvidenceId] = useState<string | null>(
     null,
   );
+  const [expandedCriteria, setExpandedCriteria] = useState<Set<string>>(
+    () => new Set(report.items[0] ? [report.items[0].reportItemId] : []),
+  );
 
   if (report.items.length === 0) {
     return <p className={REPORT_EMPTY}>평가된 기준이 없습니다.</p>;
@@ -863,23 +970,39 @@ function CriteriaPage({
   function followEvidence(evidence: EvidenceRange) {
     setFollowedEvidenceId(evidence.evidenceId);
     onSelectEvidence(evidence.startMs);
+    onPlayEvidence(evidence);
   }
 
   return (
-    <div className="grid gap-3.5">
+    <div className="grid grid-cols-2 items-start gap-3 mw-680:grid-cols-[minmax(0,1fr)]">
       {report.items.map((item, index) => {
         const sources = evidenceContext.sourcesByCriterionId[item.criterionId];
 
         return (
-          // A criterion reads as one unit, so it breaks between rather than through.
-          <article
-            className="grid gap-2.5 break-inside-avoid [&+&]:border-t [&+&]:border-border-muted [&+&]:pt-3.5"
+          <details
+            className="group break-inside-avoid overflow-hidden rounded-md border border-border-muted bg-surface"
+            open={expandedCriteria.has(item.reportItemId)}
+            onToggle={(event) => {
+              const isOpen = event.currentTarget.open;
+              setExpandedCriteria((current) => {
+                if (current.has(item.reportItemId) === isOpen) return current;
+                const next = new Set(current);
+                if (isOpen) next.add(item.reportItemId);
+                else next.delete(item.reportItemId);
+                return next;
+              });
+            }}
             key={item.reportItemId}
           >
-            <header className="flex items-center justify-between gap-2.5">
-              <h3 className="min-w-0 text-[12px] font-bold">
-                {item.criterionName}
-              </h3>
+            <summary className="flex min-h-[48px] cursor-pointer list-none items-center justify-between gap-2.5 px-3 py-2.5 [&::-webkit-details-marker]:hidden">
+              <span className="min-w-0">
+                <strong className="block truncate text-[11px]">
+                  {item.criterionName}
+                </strong>
+                <small className="mt-0.5 block text-[8px] text-subtle group-open:hidden">
+                  근거 {item.evidence.length}건 · 눌러서 확인
+                </small>
+              </span>
               <span className="inline-flex flex-[0_0_auto] items-center gap-[7px]">
                 <span
                   className={`${BADGE_BASE} ${assessmentTone[item.assessmentState]}`}
@@ -887,44 +1010,47 @@ function CriteriaPage({
                   {assessmentLabels[item.assessmentState]}
                 </span>
               </span>
-            </header>
-            <p className="text-[10px] leading-[1.6] text-muted">
-              {item.observation}
-            </p>
+            </summary>
 
-            {onOverride && (
-              <AssessmentOverride
-                item={item}
-                index={index}
-                onOverride={onOverride}
-              />
-            )}
+            <div className="grid gap-2.5 border-t border-border-muted px-3 py-2.5">
+              <p className="line-clamp-2 text-[9px] leading-[1.6] text-muted">
+                {item.observation}
+              </p>
 
-            <div className="grid gap-2">
-              {item.evidence.map((evidence) => (
-                <EvidenceCard
-                  key={evidence.evidenceId}
-                  evidence={evidence}
-                  answer={
-                    evidenceContext.answersBySegmentId[
-                      evidence.transcriptSegmentId
-                    ]
-                  }
-                  interviewStage={
-                    evidenceContext.stageBySegmentId?.[
-                      evidence.transcriptSegmentId
-                    ]
-                  }
-                  isFollowed={followedEvidenceId === evidence.evidenceId}
-                  onFollow={followEvidence}
+              {onOverride && (
+                <AssessmentOverride
+                  item={item}
+                  index={index}
+                  onOverride={onOverride}
                 />
-              ))}
-            </div>
+              )}
 
-            {sources && sources.length > 0 ? (
-              <QuestionSources sources={sources} />
-            ) : null}
-          </article>
+              <div className="grid gap-2">
+                {item.evidence.map((evidence) => (
+                  <EvidenceCard
+                    key={evidence.evidenceId}
+                    evidence={evidence}
+                    answer={
+                      evidenceContext.answersBySegmentId[
+                        evidence.transcriptSegmentId
+                      ]
+                    }
+                    interviewStage={
+                      evidenceContext.stageBySegmentId?.[
+                        evidence.transcriptSegmentId
+                      ]
+                    }
+                    isFollowed={followedEvidenceId === evidence.evidenceId}
+                    onFollow={followEvidence}
+                  />
+                ))}
+              </div>
+
+              {sources && sources.length > 0 ? (
+                <QuestionSources sources={sources} />
+              ) : null}
+            </div>
+          </details>
         );
       })}
     </div>
@@ -984,27 +1110,42 @@ function EvidenceCard({
           </span>
         </button>
       </header>
-      <p className="text-[9px] font-semibold leading-[1.55] text-ink-secondary">
+      <p className="line-clamp-2 text-[9px] font-semibold leading-[1.55] text-ink-secondary">
         {evidence.observation}
       </p>
-      <p className="text-[9px] leading-[1.6] text-muted">
-        {evidence.rationale}
-      </p>
-      {answer ? (
-        // The applicant's own words, set apart from the AI's prose above it: a reviewer must
-        // be able to tell what was said from what was concluded.
-        <blockquote className="grid gap-[3px] rounded-[5px] bg-surface px-[9px] py-[7px]">
-          <small className="font-mono text-[7px] text-subtle">
-            지원자 답변 · {formatTime(answer.startMs)}
-          </small>
-          <p className="text-[9px] leading-[1.65] text-ink">{answer.text}</p>
-        </blockquote>
-      ) : (
-        <p className={REPORT_EMPTY}>
-          이 구간의 답변 전문이 타임라인에 없습니다. 영상에서 직접 확인해
-          주세요.
-        </p>
-      )}
+      <details className="group/evidence rounded-sm border border-border-muted bg-surface">
+        <summary className="flex min-h-[28px] cursor-pointer list-none items-center px-2 text-[8px] font-semibold text-brand-strong [&::-webkit-details-marker]:hidden">
+          답변과 AI 판단 근거 보기
+          <span className="ml-auto text-subtle group-open/evidence:hidden">
+            펼치기
+          </span>
+          <span className="ml-auto hidden text-subtle group-open/evidence:inline">
+            접기
+          </span>
+        </summary>
+        <div className="grid gap-1.5 border-t border-border-muted p-2">
+          <p className="text-[8px] leading-[1.55] text-muted">
+            {evidence.rationale}
+          </p>
+          {answer ? (
+            // The applicant's own words, set apart from the AI's prose above it: a reviewer must
+            // be able to tell what was said from what was concluded.
+            <blockquote className="grid gap-[3px] rounded-[5px] bg-surface-muted px-[9px] py-[7px]">
+              <small className="font-mono text-[7px] text-subtle">
+                지원자 답변 · {formatTime(answer.startMs)}
+              </small>
+              <p className="text-[9px] leading-[1.65] text-ink">
+                {answer.text}
+              </p>
+            </blockquote>
+          ) : (
+            <p className={REPORT_EMPTY}>
+              이 구간의 답변 전문이 타임라인에 없습니다. 영상에서 직접 확인해
+              주세요.
+            </p>
+          )}
+        </div>
+      </details>
     </article>
   );
 }
@@ -1289,8 +1430,8 @@ export function RequirementRadarProfile({
       >
         <title>자격요건 충족 프로필</title>
         <desc>
-          기업이 설정한 필수·우대 자격요건을 충족, 부분 충족, 미충족, 판단 불가
-          상태로 비교합니다.
+          기업이 설정한 필수·우대 자격요건을 충족, 부분 충족, 미충족 상태로
+          비교합니다.
         </desc>
         {gridLevels.map((level) =>
           radarGrid(level, plottedRequirements.length),
@@ -1390,11 +1531,6 @@ export function RequirementRadarProfile({
             </div>
           ))}
         </dl>
-        {hasUnknownStatus ? (
-          <p className="text-[8px] leading-[1.5] text-subtle">
-            판단 불가는 해당 자격요건을 확인할 근거가 부족하다는 뜻입니다.
-          </p>
-        ) : null}
       </div>
     </div>
   );

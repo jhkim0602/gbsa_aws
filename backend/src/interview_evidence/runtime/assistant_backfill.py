@@ -11,7 +11,10 @@ from interview_evidence.company_management.application.company_service import (
     CompanyManagementPublic,
 )
 from interview_evidence.main import Runtime
-from interview_evidence.recruiting_assistant.application import ReportSearchProjector
+from interview_evidence.recruiting_assistant.application import (
+    ASSISTANT_PROJECTION_VERSION,
+    ReportSearchProjector,
+)
 from interview_evidence.reporting.api.company_routes import LaneDRuntime
 from interview_evidence.shared.aws_clients.ports import TextEmbedder
 from interview_evidence.shared.database import RequestScopedDatabase
@@ -42,6 +45,9 @@ def backfill_missing_assistant_documents(runtime: Runtime, *, limit: int) -> int
                       AND documents.deleted_at IS NULL
                       AND documents.embedding_model = :embedding_model
                       AND documents.embedding_version = :embedding_version
+                      AND documents.source_version = (
+                          CAST(reports.version AS VARCHAR) || :projection_suffix
+                      )
                 )
                 ORDER BY reports.created_at, reports.report_id
                 LIMIT :limit
@@ -50,6 +56,7 @@ def backfill_missing_assistant_documents(runtime: Runtime, *, limit: int) -> int
             {
                 "embedding_model": embedder.model_id,
                 "embedding_version": embedder.embedding_version,
+                "projection_suffix": f":{ASSISTANT_PROJECTION_VERSION}",
                 "limit": limit,
             },
         ).tuples()

@@ -2,10 +2,7 @@ import { ArrowRight, BarChart3, ListChecks, Send } from "lucide-react";
 
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from "../../app/styles/primitives";
 import { interviewLevelLabels } from "../hiring";
-import {
-  ApplicantScoreTable,
-  CompetencyDistribution,
-} from "./CompetencyInsights";
+import { RequirementFitDistribution } from "./CompetencyInsights";
 import type { PositionTab } from "./positionWorkspaceModel";
 import type {
   CompanyApplicantInsight,
@@ -30,9 +27,6 @@ export function PositionDashboard({
   onOpenTab(tab: PositionTab): void;
   onOpenInvitations(): void;
 }) {
-  const requirementAssessments = insights.flatMap(
-    (insight) => insight.requirementAssessments ?? [],
-  );
   const mandatoryQuestions =
     criteria?.criteria.flatMap((criterion) => criterion.commonQuestions) ?? [];
   return (
@@ -74,24 +68,11 @@ export function PositionDashboard({
         </header>
       </section>
 
-      {requirementAssessments.length ? (
-        <RequirementStatusOverview insights={insights} />
-      ) : (
-        <>
-          <CompetencyDistribution
-            insights={insights}
-            invitations={invitations}
-            limit={4}
-            title="기존 리포트 평가 기준별 평균"
-            description="자격요건 판정이 생성되기 전 리포트는 기존 참고 점수로 표시합니다."
-          />
-          <ApplicantScoreTable
-            invitations={invitations}
-            insights={insights}
-            limit={5}
-          />
-        </>
-      )}
+      <RequirementFitDistribution
+        criteria={criteria}
+        insights={insights}
+        invitations={invitations}
+      />
 
       <section className="overflow-hidden rounded-lg border border-border bg-surface">
         <header className="flex min-h-16 items-center justify-between gap-4 border-b border-border-muted px-5 py-3 mw-720:items-start">
@@ -160,81 +141,6 @@ export function PositionDashboard({
         )}
       </section>
     </div>
-  );
-}
-
-const requirementStatusMeta = {
-  met: { label: "충족", tone: "bg-success-soft text-success" },
-  partially_met: { label: "부분 충족", tone: "bg-warning-soft text-warning" },
-  not_met: { label: "미충족", tone: "bg-danger-soft text-danger" },
-  unknown: { label: "판단 보류", tone: "bg-surface-strong text-muted" },
-} as const;
-
-function RequirementStatusOverview({
-  insights,
-}: {
-  insights: readonly CompanyApplicantInsight[];
-}) {
-  const assessments = insights.flatMap(
-    (insight) => insight.requirementAssessments ?? [],
-  );
-  const totals = Object.fromEntries(
-    Object.keys(requirementStatusMeta).map((status) => [
-      status,
-      assessments.filter((assessment) => assessment.status === status).length,
-    ]),
-  ) as Record<keyof typeof requirementStatusMeta, number>;
-  const statements = Array.from(
-    new Map(
-      assessments.map((assessment) => [assessment.statement, assessment]),
-    ).values(),
-  );
-
-  return (
-    <section className="overflow-hidden rounded-lg border border-border bg-surface">
-      <header className="border-b border-border-muted px-5 py-4">
-        <h2 className="text-[14px] text-ink">자격요건 판정 현황</h2>
-        <p className="mt-1 text-[10px] text-muted">
-          점수 대신 제출 자료와 면접 답변을 함께 확인한 상태를 집계합니다.
-        </p>
-      </header>
-      <dl className="grid grid-cols-4 border-b border-border-muted mw-720:grid-cols-2">
-        {Object.entries(requirementStatusMeta).map(([status, meta]) => (
-          <div className="border-r border-border-muted p-4 last:border-r-0" key={status}>
-            <dt className={`inline-flex rounded-full px-2 py-1 text-[9px] font-bold ${meta.tone}`}>
-              {meta.label}
-            </dt>
-            <dd className="mt-2 font-mono text-[22px] text-ink">
-              {totals[status as keyof typeof requirementStatusMeta]}건
-            </dd>
-          </div>
-        ))}
-      </dl>
-      <div className="grid">
-        {statements.map((requirement) => {
-          const related = assessments.filter(
-            (assessment) => assessment.statement === requirement.statement,
-          );
-          return (
-            <div
-              className="grid grid-cols-[72px_minmax(0,1fr)_auto] items-center gap-3 border-b border-border-muted px-5 py-3 last:border-b-0 mw-720:grid-cols-[64px_minmax(0,1fr)]"
-              key={requirement.statement}
-            >
-              <span className="text-[9px] font-bold text-brand">
-                {requirement.requirementType === "required" ? "필수" : "우대"}
-              </span>
-              <strong className="text-[11px] leading-[1.5] text-ink">
-                {requirement.statement}
-              </strong>
-              <span className="text-[9px] text-muted mw-720:col-[2]">
-                {related.filter((item) => item.status === "met").length}명 충족 ·{" "}
-                {related.filter((item) => item.status === "partially_met").length}명 부분 충족
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </section>
   );
 }
 

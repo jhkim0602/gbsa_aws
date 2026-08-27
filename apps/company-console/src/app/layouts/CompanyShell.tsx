@@ -6,7 +6,6 @@ import {
   FilePlus2,
   LayoutDashboard,
   Menu,
-  Settings2,
   Sparkles,
   UserRound,
   Users,
@@ -181,12 +180,15 @@ export function CompanyShell() {
           {compactSidebar ? null : <p className={NAV_LABEL}>채용 운영</p>}
           {navigation.map((item) => {
             const Icon = item.icon;
+            const isApplicantContext =
+              item.to === "/applicants" &&
+              location.pathname.startsWith("/review");
             return (
               <NavLink
                 key={item.to}
                 aria-label={item.label}
                 className={({ isActive }) =>
-                  `${isActive ? NAV_ITEM_ACTIVE : NAV_ITEM} ${
+                  `${isActive || isApplicantContext ? NAV_ITEM_ACTIVE : NAV_ITEM} ${
                     compactSidebar ? NAV_ITEM_COLLAPSED : ""
                   }`
                 }
@@ -199,17 +201,6 @@ export function CompanyShell() {
               </NavLink>
             );
           })}
-
-          {location.pathname.startsWith("/review") ? (
-            <span
-              className={`${NAV_ITEM_ACTIVE} ${compactSidebar ? NAV_ITEM_COLLAPSED : ""}`}
-              aria-current="page"
-              title={compactSidebar ? "지원자 검토" : undefined}
-            >
-              <Settings2 size={18} strokeWidth={1.8} aria-hidden="true" />
-              {compactSidebar ? null : <span>지원자 검토</span>}
-            </span>
-          ) : null}
         </nav>
 
         {compactSidebar ? null : (

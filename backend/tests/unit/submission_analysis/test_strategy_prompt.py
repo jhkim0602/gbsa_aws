@@ -34,7 +34,7 @@ def test_strategy_prompt_is_a_valid_anthropic_messages_request() -> None:
     assert payload["provided_source_candidates"][0]["source_id"] == str(SOURCE_ID)
 
 
-def test_strategy_prompt_requests_natural_five_axis_coverage_without_inventing_context() -> None:
+def test_strategy_prompt_uses_company_requirements_without_inventing_context() -> None:
     system = str(
         build_strategy_prompt(
             invitation_id=INVITATION_ID,
@@ -45,9 +45,10 @@ def test_strategy_prompt_requests_natural_five_axis_coverage_without_inventing_c
         )["system"]
     )
 
-    for label in ("정확성", "깊이", "CS 기본기", "본인 기여", "설명력"):
-        assert label in system
-    assert "한 질문에 다섯 관점을 모두 억지로 담지 않습니다" in system
+    assert "기업이 등록한 필수·우대 자격요건" in system
+    assert "고정된 공통 역량 축을 새로 만들지 않습니다" in system
+    assert "하나의 검증 포인트에는 하나의 자격요건만 연결합니다" in system
+    assert "미충족으로 단정하지 않고 열린 질문" in system
     assert "검증되지 않은 사실을 확정적으로 말하지 않습니다" in system
     assert '"제출하신 자료에서" 같은 고정 도입 표현을 검증 포인트마다 반복하지 않습니다' in system
     assert "자료 근거는 말로 매번 고지하지 않더라도 source_id로 계속 유지합니다" in system

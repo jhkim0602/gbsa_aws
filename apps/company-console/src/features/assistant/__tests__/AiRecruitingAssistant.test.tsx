@@ -60,6 +60,30 @@ const api: CompanyOperationsApi = {
           evidenceCount: 2,
         },
       ],
+      requirementAssessments: [
+        {
+          requirementAssessmentId: "requirement-assessment-1",
+          jobRequirementId: "requirement-1",
+          requirementType: "required",
+          statement: "대규모 트래픽 시스템 설계 경험",
+          status: "met",
+          rationale: "면접 답변에서 직접 근거를 확인했습니다.",
+          confidence: 0.93,
+          evidence: [],
+          humanOverride: null,
+        },
+        {
+          requirementAssessmentId: "requirement-assessment-2",
+          jobRequirementId: "requirement-2",
+          requirementType: "preferred",
+          statement: "AWS 운영 경험",
+          status: "partially_met",
+          rationale: "일부 운영 경험을 확인했습니다.",
+          confidence: 0.78,
+          evidence: [],
+          humanOverride: null,
+        },
+      ],
     },
   ]),
 };
@@ -98,7 +122,11 @@ const assistantResponse = {
       excerpt: "트래픽 증가 상황의 확장 전략을 설명했습니다.",
       score: 0.91,
       scoreComponents: { vector: 0.92, lexical: 0.89 },
-      metadata: { criterion_name: "시스템 설계", score: 87 },
+      metadata: {
+        criterion_name: "시스템 설계",
+        requirement_statement: "대규모 트래픽 시스템 설계 경험",
+        score: 87,
+      },
     },
     {
       sourceId: "source-3",
@@ -241,7 +269,7 @@ describe("AI recruiting assistant", () => {
     );
     fireEvent.click(
       await screen.findByRole("button", {
-        name: "근거 1: 김민준 · AI 최종 리포트",
+        name: "근거 1: 김민준 · 자격요건 종합 판정",
       }),
     );
 
@@ -262,34 +290,20 @@ describe("AI recruiting assistant", () => {
     expect(within(drawer).getByText("종합 요약")).toBeTruthy();
     expect(screen.queryByRole("link")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "간단 리포트 보기" }));
+    expect(
+      within(drawer).getByText("충족 1 / 전체 2 · 부분 충족 1 · 미충족 0"),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "지원자 상세 보기" }));
 
     const dialog = await screen.findByRole("dialog");
     expect(
-      within(dialog).getByRole("heading", { name: "지원자 평가 요약서" }),
+      within(dialog).getByRole("heading", { name: "지원자 상세" }),
     ).toBeTruthy();
     expect(
-      within(dialog).getByRole("heading", { name: "한눈에 보기" }),
+      within(dialog).getByRole("tab", { name: "분석 리포트" }),
     ).toBeTruthy();
-    expect(within(dialog).getByText("1 / 6")).toBeTruthy();
-
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "2 기준별 평가" }),
-    );
-    expect(
-      within(dialog).getByRole("heading", { name: "기준별 평가" }),
-    ).toBeTruthy();
-    expect(within(dialog).getByText("시스템 설계")).toBeTruthy();
-    expect(within(dialog).getByText("근거 충분 · 근거 2건")).toBeTruthy();
-
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "6 최종 검토" }),
-    );
-    expect(
-      within(dialog).getByText(
-        "현재 화면은 조회 전용입니다. 채용 단계 변경은 지원자 관리의 칸반보드에서 할 수 있습니다.",
-      ),
-    ).toBeTruthy();
+    expect(within(dialog).queryByText("1 / 6")).toBeNull();
+    expect(within(dialog).queryByText("한눈에 보기")).toBeNull();
     expect(within(dialog).queryByText(/문서 구분:/)).toBeNull();
     expect(within(dialog).queryByText(/보안 등급:/)).toBeNull();
     expect(within(dialog).queryByText("검토자")).toBeNull();
@@ -357,7 +371,7 @@ describe("AI recruiting assistant", () => {
 
     expect(await screen.findByText("RAG 검색 데이터")).toBeTruthy();
     expect(
-      screen.getByText("최종 리포트와 평가 기준별 근거를 검색합니다."),
+      screen.getByText("자격요건 판정과 실제 답변 근거를 검색합니다."),
     ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "어떻게 검색되나요?" }));

@@ -39,9 +39,7 @@ def test_report_request_uses_transcript_range_for_evidence() -> None:
     repository = Mock()
     repository.get_report_for_session.return_value = None
     repository.list_transcripts.return_value = (transcript,)
-    repository.list_recording_assets.return_value = (
-        SimpleNamespace(asset_type="final_video"),
-    )
+    repository.list_recording_assets.return_value = (SimpleNamespace(asset_type="final_video"),)
     repository.list_session_events.return_value = ()
 
     company = Mock()
@@ -54,10 +52,13 @@ def test_report_request_uses_transcript_range_for_evidence() -> None:
                 weight=1.0,
             ),
         ),
+        job_requirements=(),
         interview_level="entry",
         axis_weights={},
     )
-    company.get_recruiting_assistant_subject.return_value = SimpleNamespace()
+    company.get_recruiting_assistant_subject.return_value = SimpleNamespace(
+        applicant_id=UUID("00000000-0000-7000-8000-000000000012")
+    )
 
     interview = Mock()
     interview.get_session_snapshot.return_value = SimpleNamespace(
@@ -120,12 +121,8 @@ def test_report_request_uses_transcript_range_for_evidence() -> None:
 
 
 def test_repeated_question_keeps_only_answers_that_add_information() -> None:
-    question_ids = tuple(
-        UUID(f"00000000-0000-7000-8000-00000000002{index}") for index in range(3)
-    )
-    answer_ids = tuple(
-        UUID(f"00000000-0000-7000-8000-00000000003{index}") for index in range(3)
-    )
+    question_ids = tuple(UUID(f"00000000-0000-7000-8000-00000000002{index}") for index in range(3))
+    answer_ids = tuple(UUID(f"00000000-0000-7000-8000-00000000003{index}") for index in range(3))
     question_text = "운영 문제를 해결한 경험을 설명해 주세요."
     repeated_answer = "로그를 비교해 원인을 찾고 복구했습니다."
     new_answer = "복구 후 오류율을 측정하고 재발 방지 알림을 추가했습니다."
@@ -155,9 +152,7 @@ def test_repeated_question_keeps_only_answers_that_add_information() -> None:
             )
         )
         transcripts[answer_id] = SimpleNamespace(
-            transcript_segment_id=UUID(
-                f"00000000-0000-7000-8000-00000000004{index}"
-            ),
+            transcript_segment_id=UUID(f"00000000-0000-7000-8000-00000000004{index}"),
             turn_id=answer_id,
             text=answer_text,
             session_start_ms=index * 1_000,

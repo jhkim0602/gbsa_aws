@@ -86,7 +86,8 @@ describe("requirement-only report scoring", () => {
     expect(screen.queryByText("100점")).toBeNull();
     expect(screen.queryByText("50점")).toBeNull();
     expect(screen.queryByText("0점")).toBeNull();
-    expect(screen.getAllByText("판단 불가").length).toBeGreaterThan(0);
+    expect(screen.queryByText("판단 불가")).toBeNull();
+    expect(screen.getAllByText("미충족").length).toBeGreaterThan(1);
   });
 
   it("draws a dynamic polygon from every configured qualification", () => {

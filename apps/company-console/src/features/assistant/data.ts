@@ -111,10 +111,13 @@ export function toRagAnswer({
   );
   return {
     paragraphs: splitParagraphs(response.answer),
-    findings: citations
-      .filter((citation) => citation.sourceType === "평가 기준 리포트")
-      .slice(0, 3)
-      .map((citation) => citation.meta),
+    findings: [
+      ...new Set(
+        citations
+          .filter((citation) => citation.sourceType === "자격요건·답변 근거")
+          .map((citation) => citation.meta),
+      ),
+    ].slice(0, 3),
     sourceIds: citations.map((citation) => citation.sourceId),
     citations,
     positionRows,
@@ -154,30 +157,48 @@ function toCitation({
   const position = positionById.get(source.positionId);
   const invitation = invitationById.get(source.invitationId);
   const insight = insightByInvitationId.get(source.invitationId);
-  const criterionName = readString(source.metadata.criterion_name);
+  const requirementStatement = readString(
+    source.metadata.requirement_statement,
+  );
   const applicantDisplayName = readString(
     source.metadata.applicant_display_name,
   );
   const positionTitle = readString(source.metadata.position_title);
-  const overallScore = readNumber(source.metadata.overall_score);
-  const criterionScore = readNumber(source.metadata.score);
+  const requirementType = readString(source.metadata.requirement_type);
+  const requirementStatus = readString(source.metadata.requirement_status);
+  const assessments = insight?.requirementAssessments ?? [];
+  const statusCounts = assessments.reduce(
+    (counts, assessment) => {
+      const sourceStatus =
+        assessment.humanOverride?.status ?? assessment.status;
+      const status = sourceStatus === "unknown" ? "not_met" : sourceStatus;
+      counts[status] += 1;
+      return counts;
+    },
+    { met: 0, partially_met: 0, not_met: 0 },
+  );
   const sourceType =
     source.documentType === "report_summary"
-      ? "지원자 종합 리포트"
-      : "평가 기준 리포트";
-  const title = invitation
-    ? `${displayApplicant(invitation)} · ${criterionName ?? "AI 최종 리포트"}`
-    : `${applicantDisplayName ?? "지원자"} · ${
-        criterionName ?? "AI 최종 리포트"
-      }`;
-  const scoreText =
-    criterionScore != null
-      ? `${criterionName ?? "평가 기준"} ${Math.round(criterionScore)}점`
-      : overallScore != null
-        ? `종합 ${Math.round(overallScore)}점`
-        : insight?.overallScore != null
-          ? `종합 ${insight.overallScore}점`
-          : "점수 미산정";
+      ? "자격요건 종합 판정"
+      : "자격요건·답변 근거";
+  const applicantName = invitation
+    ? displayApplicant(invitation)
+    : (applicantDisplayName ?? "지원자");
+  const title = `${applicantName} · ${
+    source.documentType === "report_summary"
+      ? "자격요건 종합 판정"
+      : (requirementStatement ?? "답변 근거")
+  }`;
+  const metadataTotal = readNumber(source.metadata.requirements_total) ?? 0;
+  const requirementSummary = assessments.length
+    ? `충족 ${statusCounts.met} / 전체 ${assessments.length} · 부분 충족 ${statusCounts.partially_met} · 미충족 ${statusCounts.not_met}`
+    : metadataTotal
+      ? `충족 ${readNumber(source.metadata.requirements_met) ?? 0} / 전체 ${metadataTotal} · 부분 충족 ${readNumber(source.metadata.requirements_partially_met) ?? 0} · 미충족 ${(readNumber(source.metadata.requirements_not_met) ?? 0) + (readNumber(source.metadata.requirements_unknown) ?? 0)}`
+      : "자격요건 판정 대기";
+  const requirementItemMeta =
+    requirementType && requirementStatus
+      ? `${requirementType === "required" ? "필수" : "우대"} · ${requirementStatusLabel(requirementStatus)}`
+      : requirementSummary;
   return {
     id: String(ordinal),
     sourceId: source.sourceId,
@@ -185,13 +206,16 @@ function toCitation({
     sourceType,
     source: position?.title ?? positionTitle ?? "채용 포지션",
     excerpt: source.excerpt,
-    meta: `${scoreText} · 검색 일치도 ${Math.round(source.score * 100)}%`,
+    meta:
+      source.documentType === "report_summary"
+        ? requirementSummary
+        : requirementItemMeta,
     scopeLabel,
     confidence: source.score,
     rationale:
       source.documentType === "report_summary"
-        ? "질문과 관련된 지원자의 최종 평가 요약이 검색되어 답변 생성에 사용되었습니다."
-        : "질문과 관련된 평가 기준의 관찰 내용과 근거가 검색되어 답변 생성에 사용되었습니다.",
+        ? "질문과 관련된 지원자의 필수·우대 자격요건 종합 판정과 근거 요약이 검색되어 답변 생성에 사용되었습니다."
+        : "질문과 관련된 실제 면접 답변 또는 제출 자료의 근거가 검색되어 답변 생성에 사용되었습니다.",
     applicantInvitationId: source.invitationId,
   };
 }
@@ -212,6 +236,17 @@ function readNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value)
     ? value
     : undefined;
+}
+
+function requirementStatusLabel(status: string) {
+  return (
+    {
+      met: "충족",
+      partially_met: "부분 충족",
+      not_met: "미충족",
+      unknown: "미충족",
+    }[status] ?? "판정 대기"
+  );
 }
 
 export function conversationTitle(question: string) {

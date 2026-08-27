@@ -332,6 +332,9 @@ describe("Lane D review journey", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "면접 답변 근거" }));
     fireEvent.click(screen.getByRole("button", { name: "Evidence 재생" }));
+    expect(
+      screen.getByRole("dialog", { name: "Evidence 영상 확인" }),
+    ).toBeTruthy();
     expect(screen.getByText("세션 12345678")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "면접 타임라인" })).toBeNull();
 
