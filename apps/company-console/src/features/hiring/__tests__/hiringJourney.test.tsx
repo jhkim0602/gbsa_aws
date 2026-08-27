@@ -179,6 +179,8 @@ describe("HiringWorkspace", () => {
     expect(
       (screen.getByLabelText("초대 메일 헤드라인") as HTMLInputElement).value,
     ).toBe("지원해주셔서 감사합니다");
+    expect(screen.getByText("면접 일정에 맞춰 자동 설정")).toBeTruthy();
+    expect(screen.queryByText("2026년 9월 30일 23:59")).toBeNull();
     expect(screen.queryByText("안내 메시지")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "예시 적용" }));

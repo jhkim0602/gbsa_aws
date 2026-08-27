@@ -47,7 +47,6 @@ export function InlineInvitationEmailEditor({
   initialTemplate,
   positionTitle,
   positionDescription,
-  recruitmentEndAt,
   descriptionCompleted,
   onPositionDescriptionChange,
   onDescriptionCompleted,
@@ -57,7 +56,6 @@ export function InlineInvitationEmailEditor({
   initialTemplate: InvitationEmailTemplate | null;
   positionTitle: string;
   positionDescription: string;
-  recruitmentEndAt: string;
   descriptionCompleted: boolean;
   onPositionDescriptionChange(value: string): void;
   onDescriptionCompleted(completed: boolean): void;
@@ -254,10 +252,8 @@ export function InlineInvitationEmailEditor({
               <span className="text-muted">포지션</span>
               <strong>{positionTitle || "포지션명"}</strong>
               <span className="text-muted">응시 마감</span>
-              <strong
-                className={draft.emphasizeDeadline ? "text-danger" : "text-ink"}
-              >
-                {formatDeadline(recruitmentEndAt)}
+              <strong className="text-ink-secondary">
+                면접 일정에 맞춰 자동 설정
               </strong>
             </div>
 
@@ -356,10 +352,4 @@ function toTemplateState(
     logoUrl: null,
     isPositionOverride: true,
   };
-}
-
-function formatDeadline(value: string) {
-  if (!value) return "모집 종료일";
-  const [year, month, day] = value.split("-");
-  return `${year}년 ${Number(month)}월 ${Number(day)}일 23:59`;
 }

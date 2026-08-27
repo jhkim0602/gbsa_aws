@@ -298,7 +298,6 @@ export function PositionStep(
                 initialTemplate={draft.invitationEmailTemplate}
                 positionDescription={draft.description}
                 positionTitle={draft.title}
-                recruitmentEndAt={draft.recruitmentEndAt}
                 onPositionDescriptionChange={(value) => {
                   update("description", value);
                   if (draft.descriptionCompleted) {
