@@ -4,7 +4,6 @@ import {
   LockKeyhole,
   Menu,
   PanelLeftClose,
-  Plus,
   Sparkles,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -216,7 +215,6 @@ export function AiRecruitingAssistant({
             activeConversationId={conversationState.activeConversationId}
             positionTitleById={positionTitleById}
             archivedPositionIds={archivedPositionIds}
-            onClose={() => setHistoryOpen(false)}
             onCreate={() => createConversation()}
             onDelete={(conversationId) => {
               conversationState.deleteConversation(conversationId);
@@ -322,16 +320,6 @@ export function AiRecruitingAssistant({
               />
             )}
           </label>
-
-          <button
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-[10px] font-semibold text-ink-secondary hover:border-brand hover:bg-brand-soft hover:text-brand mw-620:size-9 mw-620:justify-center mw-620:px-0"
-            type="button"
-            aria-label="새 채팅 만들기"
-            onClick={() => createConversation(selectedScope)}
-          >
-            <Plus size={15} aria-hidden="true" />
-            <span className="mw-620:hidden">새 채팅</span>
-          </button>
         </header>
 
         <main className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto]">

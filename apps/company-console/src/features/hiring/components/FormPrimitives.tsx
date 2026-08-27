@@ -97,13 +97,13 @@ export function FormSection({
   return (
     <section className={className ? `${SECTION} ${className}` : SECTION}>
       <header className="mb-[30px] grid grid-cols-[minmax(0,1fr)] items-start gap-[5px] mw-620:mb-6">
-        <span className="col-start-1 font-mono text-[9px] font-bold uppercase text-brand">
+        <span className="col-start-1 font-mono text-[12px] font-bold uppercase text-brand">
           {eyebrow}
         </span>
-        <h3 className="col-start-1 text-[22px] leading-[1.3] font-bold text-ink mw-620:text-[19px]">
+        <h3 className="col-start-1 text-[26px] leading-[1.3] font-bold text-ink mw-620:text-[23px]">
           {title}
         </h3>
-        <p className="col-start-1 text-[11px] leading-[1.6] text-muted">
+        <p className="col-start-1 text-[14px] leading-[1.6] text-muted mw-620:text-[13px]">
           {description}
         </p>
       </header>

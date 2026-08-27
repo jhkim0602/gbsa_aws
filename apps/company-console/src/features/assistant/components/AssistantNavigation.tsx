@@ -10,7 +10,6 @@ import {
   FileSearch,
   FileText,
   History,
-  PanelLeftClose,
   Pencil,
   Plus,
   ShieldCheck,
@@ -34,7 +33,6 @@ export function ConversationHistory({
   activeConversationId,
   positionTitleById,
   archivedPositionIds,
-  onClose,
   onCreate,
   onDelete,
   onRename,
@@ -44,7 +42,6 @@ export function ConversationHistory({
   activeConversationId: string;
   positionTitleById: ReadonlyMap<string, string>;
   archivedPositionIds: ReadonlySet<string>;
-  onClose(): void;
   onCreate(): void;
   onDelete(id: string): void;
   onRename(id: string, title: string): boolean;
@@ -91,14 +88,6 @@ export function ConversationHistory({
             onClick={onCreate}
           >
             <Plus size={16} aria-hidden="true" />
-          </button>
-          <button
-            className="grid size-8 place-items-center rounded-lg text-muted hover:bg-brand-soft hover:text-brand"
-            type="button"
-            aria-label="대화 목록 닫기"
-            onClick={onClose}
-          >
-            <PanelLeftClose size={16} aria-hidden="true" />
           </button>
         </div>
       </header>

@@ -25,10 +25,10 @@ import {
 const DESIGNER = "grid gap-7";
 const HEADER =
   "flex items-start justify-between gap-6 border-b border-border pb-5 mw-620:flex-col";
-const EYEBROW = "font-mono text-[9px] font-[650] text-brand";
-const TITLE = "mt-1 text-[18px] font-bold text-ink";
+const EYEBROW = "font-mono text-[12px] font-[650] text-brand";
+const TITLE = "mt-1 text-[26px] font-bold text-ink mw-620:text-[23px]";
 const DESCRIPTION =
-  "mt-1.5 max-w-[620px] text-[11px] leading-[1.65] text-muted";
+  "mt-1.5 max-w-[620px] text-[14px] leading-[1.65] text-muted mw-620:text-[13px]";
 
 const CRITERIA_LAYOUT =
   "grid grid-cols-[minmax(0,1fr)_260px] items-start gap-5 mw-680:grid-cols-1";

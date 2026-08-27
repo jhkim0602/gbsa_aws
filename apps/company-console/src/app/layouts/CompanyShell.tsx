@@ -121,7 +121,9 @@ const TOPBAR =
   "sticky top-0 z-30 flex min-h-[58px] items-center justify-between px-[26px]" +
   " border-b border-border bg-[rgb(255_255_255_/_96%)] backdrop-blur-[12px]" +
   " mw-760:px-[14px] print:hidden";
-const TOPBAR_MENU = ICON_BUTTON;
+const TOPBAR_MENU =
+  "hidden size-8 place-items-center rounded-md border border-border bg-surface" +
+  " font-semibold text-muted hover:bg-surface-muted hover:text-ink mw-760:inline-grid";
 const TOPBAR_TITLE = "flex items-center gap-2";
 const TOPBAR_CRUMB =
   "text-[12px] text-muted after:ml-2 after:text-subtle after:content-['/']" +

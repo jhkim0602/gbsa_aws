@@ -313,9 +313,7 @@ describe("AI recruiting assistant", () => {
         "AWS 운영 경험이 확인된 지원자를 근거와 함께 알려줘.",
       ),
     ).toBeTruthy();
-    fireEvent.click(
-      screen.getAllByRole("button", { name: "새 채팅 만들기" })[1],
-    );
+    fireEvent.click(screen.getByRole("button", { name: "새 채팅 만들기" }));
 
     expect(
       await screen.findByRole("heading", {

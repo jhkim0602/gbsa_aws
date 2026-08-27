@@ -96,9 +96,10 @@ const SECTION = "grid gap-[22px]";
 const SECTION_DIVIDED = `${SECTION} border-t border-border pt-9`;
 
 const SECTION_HEADER = "grid min-w-0 justify-items-start gap-0";
-const SECTION_EYEBROW = "font-mono text-[9px] font-[650] text-brand";
-const SECTION_TITLE = "mt-1 text-[17px] font-bold";
-const SECTION_TEXT = "mt-[5px] text-[10px] leading-[1.5] text-muted";
+const SECTION_EYEBROW = "font-mono text-[12px] font-[650] text-brand";
+const SECTION_TITLE = "mt-1 text-[26px] font-bold mw-620:text-[23px]";
+const SECTION_TEXT =
+  "mt-[5px] text-[14px] leading-[1.55] text-muted mw-620:text-[13px]";
 
 const SCHEDULE_FIELDS =
   "grid gap-7 border-y border-border py-[18px]" +
