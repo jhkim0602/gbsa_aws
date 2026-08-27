@@ -1,7 +1,7 @@
 import { Check, CheckCircle2, FileText } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 
-import { formAlertClass } from "../../../app/styles/primitives";
+import { BUTTON_PRIMARY, formAlertClass } from "../../../app/styles/primitives";
 import {
   Field,
   formInputClass,
@@ -10,6 +10,14 @@ import {
   type FormVariant,
 } from "../components/FormPrimitives";
 import { RoleCategoryField } from "../role-selector/RoleCategoryField";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../tech-stack-combobox/dialog";
 import { MAX_GUARANTEED_INTERVIEW_CONCURRENCY } from "../interviewCapacityEstimate";
 import type {
   CriteriaHiringStep,
@@ -104,7 +112,7 @@ export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
   const { draft, stage, submitting, update, onSubmit, onBack } = props;
   const [positionPage, setPositionPage] = useState<PositionPage>("basics");
   const [rolePickerOpen, setRolePickerOpen] = useState(false);
-  const rolePickerRef = useRef<HTMLDivElement>(null);
+  const roleTitleInputRef = useRef<HTMLInputElement>(null);
   const periodValid =
     !draft.recruitmentStartAt ||
     !draft.recruitmentEndAt ||
@@ -128,15 +136,7 @@ export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
     ),
   };
 
-  useEffect(() => {
-    const picker = rolePickerRef.current;
-    if (!picker) return;
-    if (rolePickerOpen) picker.removeAttribute("inert");
-    else picker.setAttribute("inert", "");
-  }, [rolePickerOpen]);
-
   function openRolePicker() {
-    rolePickerRef.current?.removeAttribute("inert");
     setRolePickerOpen(true);
   }
 
@@ -187,8 +187,8 @@ export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
               <div className={POSITION_BASICS_GRID}>
                 <Field label="포지션명">
                   <input
-                    aria-controls="position-role-picker"
                     aria-expanded={rolePickerOpen}
+                    aria-haspopup="dialog"
                     className={formInputClass()}
                     required
                     maxLength={200}
@@ -233,44 +233,66 @@ export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
                   모집 종료일은 시작일 이후로 선택해 주세요.
                 </p>
               ) : null}
-              <div
-                ref={rolePickerRef}
-                aria-hidden={!rolePickerOpen}
-                className={`grid overflow-hidden transition-[grid-template-rows,opacity,margin] duration-350 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
-                  rolePickerOpen
-                    ? "mt-5 grid-rows-[1fr] opacity-100"
-                    : "pointer-events-none mt-0 grid-rows-[0fr] opacity-0"
-                }`}
-                id="position-role-picker"
-              >
-                <div className="min-h-0 overflow-hidden">
-                  <div className="border-t border-border-muted pt-7">
-                    <header className="mb-5 grid gap-1">
-                      <span className="font-mono text-[9px] font-bold text-brand uppercase">
-                        직무 선택
-                      </span>
-                      <h4 className="text-xl font-bold text-ink">
-                        찾아보세요!
-                      </h4>
-                      <p className="text-[11px] leading-5 text-muted">
-                        세부 직무를 선택하면 포지션명에 자동으로 반영됩니다.
-                      </p>
-                    </header>
+              <Dialog open={rolePickerOpen} onOpenChange={setRolePickerOpen}>
+                <DialogContent
+                  className="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-[980px]"
+                  onOpenAutoFocus={(event) => {
+                    event.preventDefault();
+                    roleTitleInputRef.current?.focus();
+                    roleTitleInputRef.current?.select();
+                  }}
+                >
+                  <DialogHeader className="border-b border-border px-6 py-5 pr-14">
+                    <span className="font-mono text-[9px] font-bold text-brand uppercase">
+                      직무 선택
+                    </span>
+                    <DialogTitle className="text-xl font-bold text-ink">
+                      찾아보세요!
+                    </DialogTitle>
+                    <DialogDescription className="text-[11px] leading-5 text-muted">
+                      포지션명을 직접 수정하거나 아래에서 세부 직무를 선택해
+                      주세요.
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="border-b border-border-muted px-6 py-4">
+                    <label className="grid gap-2 text-[11px] font-semibold text-ink">
+                      포지션명 수정
+                      <input
+                        ref={roleTitleInputRef}
+                        className={formInputClass()}
+                        maxLength={200}
+                        value={draft.title}
+                        placeholder="예: 백엔드 플랫폼 엔지니어"
+                        onChange={(event) =>
+                          update("title", event.target.value)
+                        }
+                      />
+                    </label>
+                  </div>
+
+                  <div className="min-h-0 overflow-y-auto">
                     <RoleCategoryField
-                      focusCustomRole={rolePickerOpen}
                       value={draft.roleType}
                       onRequestClose={closeRolePicker}
                       onChange={(value, suggestedTitle) => {
                         update("roleType", value);
-                        if (suggestedTitle) {
-                          update("title", suggestedTitle);
-                          closeRolePicker();
-                        }
+                        if (suggestedTitle) update("title", suggestedTitle);
                       }}
                     />
                   </div>
-                </div>
-              </div>
+
+                  <DialogFooter className="border-t border-border px-6 py-4">
+                    <button
+                      className={BUTTON_PRIMARY}
+                      type="button"
+                      onClick={closeRolePicker}
+                    >
+                      선택 완료
+                    </button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </FormSection>
           ) : null}
 

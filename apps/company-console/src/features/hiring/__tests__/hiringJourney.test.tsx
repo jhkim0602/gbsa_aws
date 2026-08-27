@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { HiringWorkspace, type HiringWorkspaceApi } from "../index";
@@ -30,6 +36,7 @@ async function advanceToPositionDescription() {
   fireEvent.click(
     screen.getByRole("button", { name: /서비스 백엔드 사용자 기능/ }),
   );
+  fireEvent.click(screen.getByRole("button", { name: "선택 완료" }));
   completePositionBasics();
   fireEvent.click(screen.getByRole("button", { name: "다음" }));
   await screen.findByRole("heading", { name: "포지션 상세" });
@@ -56,12 +63,7 @@ describe("HiringWorkspace", () => {
     render(<HiringWorkspace api={api} />);
 
     expect(screen.getByText("포지션명과 모집 기간")).toBeTruthy();
-    expect(
-      screen
-        .getByText("찾아보세요!")
-        .closest("#position-role-picker")
-        ?.getAttribute("aria-hidden"),
-    ).toBe("true");
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.queryByText("주요 기술 스택을 선택해 주세요")).toBeNull();
     expect(screen.queryByText("포지션 상세")).toBeNull();
 
@@ -73,16 +75,18 @@ describe("HiringWorkspace", () => {
     expect(currentStep.className).toContain("!text-white");
 
     fireEvent.click(screen.getByLabelText("포지션명"));
-    expect(await screen.findByText("찾아보세요!")).toBeTruthy();
-    const customRoleInput = screen.getByLabelText("세부 직무 직접 입력");
-    expect(customRoleInput).toBe(document.activeElement);
-    fireEvent.keyDown(customRoleInput, { key: "Escape" });
-    expect(
-      screen
-        .getByText("찾아보세요!")
-        .closest("#position-role-picker")
-        ?.getAttribute("aria-hidden"),
-    ).toBe("true");
+    const roleDialog = await screen.findByRole("dialog");
+    expect(within(roleDialog).getByText("찾아보세요!")).toBeTruthy();
+    const editableTitle = within(roleDialog).getByLabelText("포지션명 수정");
+    expect(editableTitle).toBe(document.activeElement);
+    fireEvent.change(editableTitle, {
+      target: { value: "직접 수정한 포지션명" },
+    });
+    expect((screen.getByLabelText("포지션명") as HTMLInputElement).value).toBe(
+      "직접 수정한 포지션명",
+    );
+    fireEvent.keyDown(editableTitle, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
     fireEvent.click(screen.getByLabelText("포지션명"));
     fireEvent.click(
@@ -91,12 +95,9 @@ describe("HiringWorkspace", () => {
     expect((screen.getByLabelText("포지션명") as HTMLInputElement).value).toBe(
       "서비스 백엔드",
     );
-    expect(
-      screen
-        .getByText("찾아보세요!")
-        .closest("#position-role-picker")
-        ?.getAttribute("aria-hidden"),
-    ).toBe("true");
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "선택 완료" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
     completePositionBasics();
     fireEvent.click(screen.getByRole("button", { name: "다음" }));
