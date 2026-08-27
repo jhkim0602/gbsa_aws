@@ -12,8 +12,10 @@ import { HiringProgress, workflowSteps } from "./components/HiringProgress";
 import {
   CompletionState,
   CriteriaStep,
+  POSITION_DESCRIPTION_MAX_LENGTH,
   PositionStep,
 } from "./steps/HiringSteps";
+import type { InvitationEmailTemplateApi } from "./invitationEmailTemplate";
 import {
   createDefaultCriteria,
   inferRequirementCriterionCode,
@@ -65,6 +67,21 @@ const criteriaSteps: CriteriaHiringStep[] = ["evaluation", "interview"];
 const hiringDraftStorageKey = "iep.company-console.hiring-draft.v2";
 const hiringDraftStorageVersion = 2;
 
+function compactStoredDescription(value: string) {
+  if (value.length <= POSITION_DESCRIPTION_MAX_LENGTH) return value;
+
+  const sentences = value
+    .replace(/\s+/g, " ")
+    .trim()
+    .match(/[^.!?]+[.!?]?/g)
+    ?.map((sentence) => sentence.trim())
+    .filter(Boolean);
+  return (sentences?.slice(0, 4).join("\n") ?? value).slice(
+    0,
+    POSITION_DESCRIPTION_MAX_LENGTH,
+  );
+}
+
 function readStoredDraft(): HiringDraft {
   if (typeof window === "undefined" || import.meta.env.MODE === "test") {
     return initialHiringDraft;
@@ -82,10 +99,15 @@ function readStoredDraft(): HiringDraft {
       return initialHiringDraft;
     }
 
+    const storedDescription = parsed.draft.description ?? "";
+    const description = compactStoredDescription(storedDescription);
     const restored = {
       ...initialHiringDraft,
       ...parsed.draft,
-      descriptionCompleted: parsed.draft.descriptionCompleted === true,
+      description,
+      descriptionCompleted:
+        parsed.draft.descriptionCompleted === true &&
+        description === storedDescription,
     };
     return {
       ...restored,
@@ -103,9 +125,11 @@ function readStoredDraft(): HiringDraft {
 
 export function HiringWorkspace({
   api,
+  invitationTemplateApi,
   onOpenPosition,
 }: {
   api: HiringWorkspaceApi;
+  invitationTemplateApi?: InvitationEmailTemplateApi;
   onOpenPosition?: (positionId: string) => void;
 }) {
   const [step, setStep] = useState<HiringStep>("position");
@@ -213,6 +237,7 @@ export function HiringWorkspace({
           {positionSteps.includes(step as PositionHiringStep) ? (
             <PositionStep
               {...commonStepProps}
+              invitationTemplateApi={invitationTemplateApi}
               stage={step as PositionHiringStep}
               onBack={step === "position" ? undefined : () => move(-1)}
               onSubmit={(event) => {

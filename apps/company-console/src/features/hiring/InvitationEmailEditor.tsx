@@ -335,7 +335,7 @@ export function InvitationEmailEditor({
         {positionScope ? (
           <p className={SCOPE_NOTE}>
             변경한 문구는 <strong>이 포지션에만</strong> 적용됩니다. 전사
-            기본값은 설정 › 초대 메일 템플릿에서 바꿉니다.
+            기본값은 채용 관리 › 포지션 상세에서 바꿉니다.
             {saved.isPositionOverride
               ? " 현재 이 포지션은 자체 문구를 사용합니다."
               : " 현재 이 포지션은 전사 기본값을 따릅니다."}

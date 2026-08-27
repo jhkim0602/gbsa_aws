@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { mockInvitationEmailTemplateApi } from "../../../mocks/recruitingApi";
 import { HiringWorkspace, type HiringWorkspaceApi } from "../index";
 
 function createApi(): HiringWorkspaceApi {
@@ -126,8 +127,18 @@ describe("HiringWorkspace", () => {
 
   it("can insert a short plain-text position description example", async () => {
     const api = createApi();
-    render(<HiringWorkspace api={api} />);
+    render(
+      <HiringWorkspace
+        api={api}
+        invitationTemplateApi={mockInvitationEmailTemplateApi}
+      />,
+    );
     await advanceToPositionDescription();
+
+    expect(screen.getByText("초대 메일 템플릿")).toBeTruthy();
+    expect(
+      await screen.findByText(/포지션 게시 후 지원자를 초대할 때/),
+    ).toBeTruthy();
 
     fireEvent.click(
       screen.getByRole("button", { name: "포지션 상세 예시 적용" }),
@@ -136,9 +147,10 @@ describe("HiringWorkspace", () => {
     const description = screen.getByLabelText(
       "포지션 설명",
     ) as HTMLTextAreaElement;
-    expect(description.maxLength).toBe(2000);
+    expect(description.maxLength).toBe(400);
     expect(description.value).toContain("AI 기반 업무 자동화 서비스");
-    expect(description.value).toContain("백엔드 개발을 중심으로");
+    expect(description.value).toContain("서버 API, 비즈니스 로직");
+    expect(description.value.split("\n")).toHaveLength(4);
     expect(description.value).not.toContain("##");
     expect(description.value).not.toContain("[");
     expect(description.value).not.toContain("•");
@@ -147,7 +159,7 @@ describe("HiringWorkspace", () => {
       name: "포지션 상세 작성 완료",
     });
     const characterCount = screen.getByText(
-      `${description.value.length} / 2000`,
+      `${description.value.length} / 400`,
     );
     expect(
       characterCount.compareDocumentPosition(completeButton) &

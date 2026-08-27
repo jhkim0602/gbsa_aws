@@ -5,7 +5,6 @@ import {
   ChevronRight,
   FilePlus2,
   LayoutDashboard,
-  Mail,
   Menu,
   Settings2,
   Sparkles,
@@ -26,10 +25,6 @@ const navigation = [
   { label: "채용 관리", to: "/hiring", icon: FilePlus2 },
 ] as const;
 
-const settingsNavigation = [
-  { label: "초대 메일 템플릿", to: "/settings/invitation-email", icon: Mail },
-] as const;
-
 const pageTitles = [
   { path: "/company", title: "대시보드" },
   { path: "/positions/", title: "포지션 운영" },
@@ -38,7 +33,6 @@ const pageTitles = [
   { path: "/ai-assistant", title: "AI 채용 어시스턴트" },
   { path: "/hiring", title: "채용 관리" },
   { path: "/review", title: "지원자 검토" },
-  { path: "/settings/invitation-email", title: "초대 메일 템플릿" },
 ] as const;
 
 /* On paper only the page content is the document; navigation stays outside the report. */
@@ -84,8 +78,6 @@ const NAV_ITEM =
   " text-[14px] text-muted hover:bg-surface-strong hover:text-ink";
 const NAV_ITEM_ACTIVE = `${NAV_ITEM} bg-[#f2f3ff] font-semibold text-brand [&_svg]:text-brand`;
 const NAV_ITEM_COLLAPSED = "justify-center gap-0 px-0";
-const NAV_DIVIDER = "m-[10px_8px] border-t border-t-border-muted";
-
 const SUPPORT =
   "m-[0_14px_12px] grid grid-cols-[28px_minmax(0,1fr)] items-center gap-[9px]" +
   " rounded-[10px] border border-[#e6e8ed] bg-[#fbfbfd] p-3";
@@ -188,29 +180,6 @@ export function CompanyShell() {
         >
           {compactSidebar ? null : <p className={NAV_LABEL}>채용 운영</p>}
           {navigation.map((item) => {
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.to}
-                aria-label={item.label}
-                className={({ isActive }) =>
-                  `${isActive ? NAV_ITEM_ACTIVE : NAV_ITEM} ${
-                    compactSidebar ? NAV_ITEM_COLLAPSED : ""
-                  }`
-                }
-                to={item.to}
-                title={compactSidebar ? item.label : undefined}
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <Icon size={18} strokeWidth={1.8} aria-hidden="true" />
-                {compactSidebar ? null : <span>{item.label}</span>}
-              </NavLink>
-            );
-          })}
-
-          <div className={NAV_DIVIDER} />
-          {compactSidebar ? null : <p className={NAV_LABEL}>설정</p>}
-          {settingsNavigation.map((item) => {
             const Icon = item.icon;
             return (
               <NavLink

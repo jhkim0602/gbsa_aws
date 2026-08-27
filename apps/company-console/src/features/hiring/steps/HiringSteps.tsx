@@ -18,6 +18,8 @@ import {
   DialogTitle,
 } from "../tech-stack-combobox/dialog";
 import { MAX_GUARANTEED_INTERVIEW_CONCURRENCY } from "../interviewCapacityEstimate";
+import { InvitationEmailEditor } from "../InvitationEmailEditor";
+import type { InvitationEmailTemplateApi } from "../invitationEmailTemplate";
 import type {
   CriteriaHiringStep,
   HiringDraft,
@@ -36,13 +38,12 @@ type StepProps = {
   onBack?: () => void;
 };
 
-const positionDescriptionMaxLength = 2000;
+export const POSITION_DESCRIPTION_MAX_LENGTH = 400;
 
 const positionDescriptionExample = `우리 팀은 기업 고객이 사용하는 AI 기반 업무 자동화 서비스를 만들고 있습니다.
-
-이번 포지션은 백엔드 개발을 중심으로 서버 API, 비즈니스 로직과 데이터 처리 기능을 구현하고 안정적으로 운영하는 역할입니다. 작은 팀에서 기획자와 프론트엔드 개발자와 협업하며 제품 개선 전 과정에 참여합니다.
-
-사용자가 믿고 사용할 수 있는 서비스를 함께 만들고, 필요에 따라 프론트엔드 영역까지 경험을 넓혀갈 분을 찾습니다.`;
+이번 포지션은 서버 API, 비즈니스 로직과 데이터 처리 기능을 구현하고 안정적으로 운영합니다.
+기획자와 프론트엔드 개발자와 협업하며 제품 개선 전 과정에 참여합니다.
+사용자가 믿고 사용할 수 있는 서비스를 함께 만들 분을 찾습니다.`;
 
 // `.hiring-panel .position-config-section > header` outranks `.form-section > header`'s
 // `display:none`, so these sections keep their headers — see FormPrimitives.
@@ -58,9 +59,12 @@ const DESCRIPTION_EDITOR =
 // `border: 0` and `border-radius: 0` come free from Preflight, and `font-family: inherit`
 // from its `textarea { font: inherit }`.
 const DESCRIPTION_TEXTAREA =
-  "block min-h-[390px] w-full resize-y bg-surface p-6 text-[13px] leading-[1.85]" +
+  "block min-h-[132px] w-full resize-y bg-surface px-5 py-4 text-[13px] leading-[1.8]" +
   " whitespace-pre-wrap text-ink outline-0 placeholder:text-subtle" +
-  " mw-620:min-h-[330px] mw-620:px-[14px] mw-620:py-[18px] mw-620:text-[12px]";
+  " mw-620:min-h-[148px] mw-620:px-[14px] mw-620:py-[14px] mw-620:text-[12px]";
+
+const INVITATION_TEMPLATE_SECTION =
+  "mt-7 overflow-hidden rounded-md border border-border bg-surface";
 
 const EDITOR_ACTION =
   "inline-flex min-h-[30px] items-center gap-1.5 rounded-sm border border-border" +
@@ -82,8 +86,21 @@ type PositionPage = "basics" | "description";
 
 const positionPageOrder: PositionPage[] = ["basics", "description"];
 
-export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
-  const { draft, stage, submitting, update, onSubmit, onBack } = props;
+export function PositionStep(
+  props: StepProps & {
+    stage: PositionHiringStep;
+    invitationTemplateApi?: InvitationEmailTemplateApi;
+  },
+) {
+  const {
+    draft,
+    stage,
+    submitting,
+    update,
+    onSubmit,
+    onBack,
+    invitationTemplateApi,
+  } = props;
   const [positionPage, setPositionPage] = useState<PositionPage>("basics");
   const [rolePickerOpen, setRolePickerOpen] = useState(false);
   const [pendingRoleTitle, setPendingRoleTitle] = useState(draft.title);
@@ -298,7 +315,7 @@ export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
             <FormSection
               eyebrow="02 · 공고 본문"
               title="포지션 상세"
-              description="회사 소개, 포지션 배경과 주요 업무를 하나의 본문으로 구성합니다."
+              description="지원자가 빠르게 이해할 수 있도록 포지션을 3~4줄로 요약합니다."
             >
               <aside className="grid gap-1.5 rounded-lg border border-brand/20 bg-brand-soft px-4 py-3 text-[11px] leading-5 text-ink-secondary">
                 <strong className="text-ink">이 내용은 어디에 쓰이나요?</strong>
@@ -322,6 +339,23 @@ export function PositionStep(props: StepProps & { stage: PositionHiringStep }) {
                   update("descriptionCompleted", completed)
                 }
               />
+              {invitationTemplateApi ? (
+                <section className={INVITATION_TEMPLATE_SECTION}>
+                  <header className="grid gap-1 border-b border-border-muted bg-surface-muted px-4 py-3">
+                    <strong className="text-[12px] text-ink">
+                      초대 메일 템플릿
+                    </strong>
+                    <p className="text-[10px] leading-5 text-muted">
+                      포지션 게시 후 지원자를 초대할 때 사용하는 전사 공통
+                      메일을 여기서 미리 설정합니다.
+                    </p>
+                  </header>
+                  <InvitationEmailEditor
+                    api={invitationTemplateApi}
+                    scope={{ kind: "company" }}
+                  />
+                </section>
+              ) : null}
             </FormSection>
           ) : null}
         </>
@@ -356,21 +390,11 @@ function PositionDescriptionEditor({
 
   function insertExample() {
     const textarea = textareaRef.current;
-    const start = textarea?.selectionStart ?? value.length;
-    const end = textarea?.selectionEnd ?? start;
-    const before = value.slice(0, start);
-    const after = value.slice(end);
-    const prefix = before && !before.endsWith("\n\n") ? "\n\n" : "";
-    const suffix = after && !after.startsWith("\n\n") ? "\n\n" : "";
-    const inserted = `${prefix}${positionDescriptionExample}${suffix}`;
-    const nextValue = `${before}${inserted}${after}`.slice(
+    const nextValue = positionDescriptionExample.slice(
       0,
-      positionDescriptionMaxLength,
+      POSITION_DESCRIPTION_MAX_LENGTH,
     );
-    const nextCursor = Math.min(
-      before.length + inserted.length,
-      positionDescriptionMaxLength,
-    );
+    const nextCursor = nextValue.length;
 
     onChange(nextValue);
     const restoreSelection = () => {
@@ -406,10 +430,10 @@ function PositionDescriptionEditor({
         aria-label="포지션 설명"
         className={DESCRIPTION_TEXTAREA}
         required
-        maxLength={positionDescriptionMaxLength}
+        maxLength={POSITION_DESCRIPTION_MAX_LENGTH}
         value={value}
         placeholder={
-          "회사가 해결하고 있는 문제, 이 포지션의 주요 업무와 함께 일하는 방식을 간략하게 설명해 주세요."
+          "회사와 팀, 주요 업무, 협업 방식, 찾는 동료를 3~4줄로 간략하게 설명해 주세요."
         }
         onChange={(event) => {
           onChange(event.target.value);
@@ -417,7 +441,7 @@ function PositionDescriptionEditor({
       />
       <footer className="flex min-h-10 items-center justify-between border-t border-border-muted bg-surface-muted px-[14px] text-[9px] text-subtle">
         <output className="font-mono" aria-live="polite">
-          {value.length} / {positionDescriptionMaxLength}
+          {value.length} / {POSITION_DESCRIPTION_MAX_LENGTH}
         </output>
         <button
           aria-label="포지션 상세 작성 완료"

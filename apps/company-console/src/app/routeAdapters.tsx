@@ -36,7 +36,6 @@ import {
   defaultAxisWeights,
   type InvitationStatus,
   HiringWorkspace,
-  InvitationEmailSettings,
   type InvitationEmailTemplate,
   type InvitationEmailTemplateApi,
   type InvitationEmailTemplateState,
@@ -1009,7 +1008,7 @@ export function InvitationEmailSettingsRoute() {
   if (AUTH_CONFIG && !getCompanyAccessToken(localStorage)) {
     return <Navigate replace to="/auth/login" />;
   }
-  return <InvitationEmailSettings api={invitationEmailTemplateApi} />;
+  return <Navigate replace to="/hiring" />;
 }
 
 export function ApplicantManagementRoute() {
@@ -1058,6 +1057,7 @@ export function HiringRoute() {
   return (
     <HiringWorkspace
       api={hiringApi}
+      invitationTemplateApi={invitationEmailTemplateApi}
       onOpenPosition={(positionId) => navigate(`/positions/${positionId}`)}
     />
   );
