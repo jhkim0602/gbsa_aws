@@ -273,26 +273,8 @@ describe("Lane D review journey", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "기준별 평가" }));
     fireEvent.click(screen.getByRole("button", { name: "Evidence 재생" }));
-
-    const video = document.querySelector("video");
-    expect(video?.currentTime).toBe(62);
-    expect(play).toHaveBeenCalled();
     expect(screen.getByText("세션 12345678")).toBeTruthy();
-
-    const timelinePanel = screen
-      .getByRole("heading", { name: "면접 타임라인" })
-      .closest("section");
-    const humanReviewPanel = screen
-      .getByRole("heading", { name: "사람 검토" })
-      .closest("section");
-    expect(timelinePanel?.parentElement?.className).not.toContain("sticky");
-    expect(humanReviewPanel?.parentElement?.className).toContain("sticky");
-    expect(timelinePanel?.parentElement?.parentElement).toBe(
-      humanReviewPanel?.parentElement?.parentElement,
-    );
-    expect(timelinePanel?.parentElement?.parentElement?.className).toContain(
-      "[grid-area:sidebar]",
-    );
+    expect(screen.queryByRole("heading", { name: "면접 타임라인" })).toBeNull();
 
     const reportTabList = screen.getByRole("tablist", {
       name: "리포트 항목",
@@ -314,12 +296,12 @@ describe("Lane D review journey", () => {
     const expandedTimeline = screen.getByRole("tabpanel", {
       name: "면접 타임라인",
     });
-    expect(within(expandedTimeline).queryByRole("video")).toBeNull();
+    const video = within(expandedTimeline).getByRole("video");
+    expect(video.currentTime).toBe(62);
+    expect(play).toHaveBeenCalled();
     expect(
-      within(expandedTimeline).getByText(
-        "구간을 선택하면 왼쪽 면접 영상이 해당 시점으로 이동합니다.",
-      ),
-    ).toBeTruthy();
+      screen.getAllByRole("heading", { name: "면접 타임라인" }),
+    ).toHaveLength(1);
     const expandedAnswer = within(expandedTimeline)
       .getByText("캐시와 큐의 장단점을 비교했습니다.")
       .closest("button");

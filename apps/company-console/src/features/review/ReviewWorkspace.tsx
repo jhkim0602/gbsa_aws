@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { buildEvidenceContext } from "./evidenceContext";
 import { HumanReview } from "./HumanReview";
 import { ReportView } from "./ReportView";
-import { TimelineView } from "./TimelineView";
 import type {
   AssessmentState,
   InterviewStageSummary,
@@ -34,20 +33,12 @@ const META_PILL =
   "inline-flex min-h-[26px] items-center gap-1.5 rounded-md border border-border px-[9px]" +
   " font-mono text-[9px]";
 
-// The report column is a fixed-width A4 sheet. The timeline and human decision live in their
-// own column so a long report cannot stretch the grid row and push the decision far below the
-// timeline.
+// Timeline media now lives in the report's dedicated top tab. Keeping the workspace as one wide
+// column prevents a second, undersized player from competing with the report for horizontal room.
 const WORKSPACE_LAYOUT =
-  "grid grid-cols-[minmax(280px,0.6fr)_minmax(0,830px)]" +
-  " [grid-template-areas:'sidebar_report'] [align-items:start] gap-3" +
+  "mx-auto grid w-full max-w-[1100px] grid-cols-[minmax(0,1fr)] gap-3" +
   " px-8 pt-5 pb-12" +
-  " mw-1180:grid-cols-[minmax(280px,0.85fr)_minmax(0,1.15fr)]" +
-  " mw-820:grid-cols-[minmax(0,1fr)]" +
-  " mw-820:[grid-template-areas:'timeline'_'report'_'decision']" +
   " mw-680:p-4 print:block print:p-0";
-
-const SIDEBAR =
-  "grid min-w-0 content-start gap-3 [grid-area:sidebar] mw-820:contents";
 
 export function ReviewWorkspace({
   sessionId,
@@ -131,25 +122,7 @@ export function ReviewWorkspace({
       </header>
 
       <div className={WORKSPACE_LAYOUT}>
-        <div className={SIDEBAR}>
-          <div className="min-w-0 mw-820:[grid-area:timeline] print:hidden">
-            <TimelineView
-              entries={timeline.entries}
-              playbackStatus={timeline.playback.status}
-              playbackUrl={timeline.playback.url}
-              selectedStartMs={selectedStartMs}
-              onSeek={setSelectedStartMs}
-            />
-          </div>
-          <div className="min-w-0 sticky top-3 mw-820:[grid-area:decision] mw-820:static print:hidden">
-            <HumanReview
-              api={api}
-              invitationId={invitationId}
-              recruitingState={recruitingState}
-            />
-          </div>
-        </div>
-        <div className="min-w-0 [grid-area:report]">
+        <div className="min-w-0">
           <ReportView
             report={report}
             timeline={timeline}
@@ -159,6 +132,13 @@ export function ReviewWorkspace({
             onOverride={overrideAssessment}
             onOverrideRequirement={overrideRequirement}
             onSelectEvidence={setSelectedStartMs}
+          />
+        </div>
+        <div className="min-w-0 print:hidden">
+          <HumanReview
+            api={api}
+            invitationId={invitationId}
+            recruitingState={recruitingState}
           />
         </div>
       </div>

@@ -66,7 +66,8 @@ const TIMELINE_LIST =
   "grid max-h-[calc(100vh-390px)] overflow-auto px-2.5 pb-2.5" +
   " mw-820:max-h-[360px]";
 
-const TIMELINE_LIST_EXPANDED = "grid px-3 pb-3";
+const TIMELINE_LIST_EXPANDED =
+  "grid max-h-[560px] overflow-auto px-3 pb-3 mw-680:max-h-[420px]";
 
 const ENTRY_SEEK =
   "grid w-full grid-cols-[26px_minmax(0,1fr)] items-start gap-2 rounded-sm px-1" +

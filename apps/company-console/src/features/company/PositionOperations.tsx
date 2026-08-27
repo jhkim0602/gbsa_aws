@@ -81,7 +81,8 @@ const TITLE =
   "[overflow-wrap:anywhere] text-[26px] leading-[1.25] text-ink" +
   " mw-720:text-[21px]";
 const DESCRIPTION =
-  "mt-[5px] max-w-[760px] text-[13px] leading-[1.55] text-muted";
+  "mt-[5px] line-clamp-3 max-w-[760px] [overflow-wrap:anywhere] whitespace-pre-line" +
+  " text-[13px] leading-[1.55] text-muted";
 const META = "mt-[11px] flex flex-wrap items-center gap-2";
 // Each entry is separated by a hairline, so the first one drops its rule and inset.
 const META_ITEM =

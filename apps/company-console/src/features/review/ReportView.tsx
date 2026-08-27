@@ -283,7 +283,6 @@ export function ReportView({
             playbackUrl={timeline.playback.url}
             selectedStartMs={selectedStartMs}
             onSeek={onSelectEvidence}
-            showMedia={false}
             expanded
             idPrefix="report-timeline"
           />
