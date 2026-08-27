@@ -88,8 +88,39 @@ class FfmpegWebMRemuxer:
             root = Path(directory)
             manifest_lines: list[str] = []
             for index, segment in enumerate(segments):
+                source = root / f"source-{index:04d}.webm"
+                source.write_bytes(segment.body)
                 filename = f"segment-{index:04d}.webm"
-                (root / filename).write_bytes(segment.body)
+                normalized = root / filename
+                completed = subprocess.run(
+                    (
+                        self._executable,
+                        "-hide_banner",
+                        "-loglevel",
+                        "error",
+                        "-i",
+                        str(source),
+                        # MediaRecorder may swap the WebM track order each time it
+                        # restarts. The concat demuxer matches tracks by index, so
+                        # normalize every answer segment to video-then-audio first.
+                        "-map",
+                        "0:v:0?",
+                        "-map",
+                        "0:a:0?",
+                        "-c",
+                        "copy",
+                        "-y",
+                        str(normalized),
+                    ),
+                    cwd=root,
+                    capture_output=True,
+                    check=False,
+                )
+                if completed.returncode != 0 or not normalized.exists():
+                    detail = completed.stderr.decode(errors="replace").strip()[-800:]
+                    raise RuntimeError(
+                        f"recording segment normalization failed: {detail or 'no output'}"
+                    )
                 duration_seconds = (segment.session_end_ms - segment.session_start_ms) / 1000
                 manifest_lines.extend(
                     (

@@ -8,6 +8,7 @@ its key returned 404. The manifest was right about the timeline and wrong about 
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -20,6 +21,7 @@ from interview_evidence.interview_engine.application.public import (
 )
 from interview_evidence.shared.tenant import ActorType, TenantContext
 from interview_evidence.workers.reporting.media import (
+    FfmpegWebMRemuxer,
     RecordingAssembler,
     RecordingChunkObject,
     RecordingSourceSegment,
@@ -146,6 +148,47 @@ def test_new_media_recorder_headers_are_remuxed_as_answer_segments() -> None:
         (1, 2, 0, 3500, ebml + b"answer-one-aanswer-one-b"),
         (3, 3, 3500, 6000, ebml + b"answer-two"),
     ]
+
+
+def test_ffmpeg_remux_normalizes_track_order_before_concatenating(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+    manifests: list[str] = []
+
+    def run(command: tuple[str, ...], **_: object) -> SimpleNamespace:
+        calls.append(command)
+        output = Path(command[-1])
+        if output.name == "recording.webm":
+            manifest = Path(command[command.index("-i") + 1])
+            manifests.append(manifest.read_text(encoding="utf-8"))
+            output.write_bytes(b"seekable-webm")
+        else:
+            output.write_bytes(b"normalized-segment")
+        return SimpleNamespace(returncode=0, stderr=b"")
+
+    monkeypatch.setattr(
+        "interview_evidence.workers.reporting.media.subprocess.run",
+        run,
+    )
+
+    result = FfmpegWebMRemuxer(executable="ffmpeg").remux(
+        (
+            RecordingSourceSegment(b"first", 1, 2, 0, 3000),
+            RecordingSourceSegment(b"second", 3, 4, 3000, 7000),
+        )
+    )
+
+    assert result == b"seekable-webm"
+    assert len(calls) == 3
+    for command in calls[:2]:
+        assert [command[index + 1] for index, value in enumerate(command) if value == "-map"] == [
+            "0:v:0?",
+            "0:a:0?",
+        ]
+    assert "source-" not in manifests[0]
+    assert "file 'segment-0000.webm'" in manifests[0]
+    assert "file 'segment-0001.webm'" in manifests[0]
 
 
 def test_answer_segments_define_replayable_turn_ranges() -> None:
