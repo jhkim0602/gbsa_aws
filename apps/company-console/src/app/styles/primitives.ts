@@ -46,7 +46,7 @@ export function formAlertClass(
   return `${FORM_ALERT_BASE} ${FORM_ALERT_TONE[tone]}${margin ? ` ${margin}` : ""}`;
 }
 
-/** `.button-primary` / `.button-secondary` — company-console only, see TAILWIND_MIGRATION.md. */
+/** Primary and secondary buttons used by the company console. */
 const BUTTON_BASE =
   "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg px-[18px]" +
   " text-[14px] font-semibold shadow-soft";
@@ -88,12 +88,7 @@ export const PAGE_HEADER_TEXT = "mt-0.5 text-[14px] leading-[1.5] text-muted";
 /** `.page-content` */
 export const PAGE_CONTENT = "px-8 pt-5 pb-12 mw-680:p-4";
 
-/**
- * `.page-eyebrow` (hiring.css). Inside `.page-header` it loses colour, size and margin to
- * `.page-header p` (0,1,1 beats 0,1,0) — use `PAGE_EYEBROW_IN_HEADER` there.
- */
-export const PAGE_EYEBROW =
-  "mb-0.5 font-mono text-[9px] font-semibold uppercase text-brand";
+/** Eyebrow copy rendered inside a page header. */
 export const PAGE_EYEBROW_IN_HEADER =
   "mt-0.5 font-mono text-[14px] leading-[1.5] font-semibold uppercase text-muted";
 
@@ -179,7 +174,7 @@ export const INVITATION_TABLE_ROW =
   " mw-680:rounded-[3px] mw-680:border mw-680:border-border mw-680:bg-surface" +
   " mw-680:p-[14px] mw-680:not-first:border-t-border mw-680:hover:bg-surface";
 /** Every `td`: the desktop box, plus the card row and its `data-label` prefix. */
-export const INVITATION_TABLE_CELL =
+const INVITATION_TABLE_CELL =
   "h-[62px] px-3.5 py-3 text-[12px] text-muted mw-680:flex mw-680:min-w-0" +
   " mw-680:items-center mw-680:justify-between mw-680:gap-2 mw-680:p-0" +
   " mw-680:before:flex-none mw-680:before:font-mono mw-680:before:text-[8px]" +
@@ -193,7 +188,7 @@ export const INVITATION_TABLE_HEAD_CELL =
  * `td:first-child` (0,2,1) outranks the `td` rule (0,1,1) that turns the others into flex
  * rows, and its 11px gap has to be restated at the breakpoint to outrank `mw-680:gap-2`.
  */
-export const INVITATION_TABLE_IDENTITY =
+const INVITATION_TABLE_IDENTITY =
   `${INVITATION_TABLE_CELL} grid min-w-[230px] grid-cols-[38px_minmax(0,1fr)]` +
   " items-center gap-[11px] mw-680:col-[1/-1] mw-680:grid" +
   " mw-680:grid-cols-[36px_minmax(0,1fr)] mw-680:gap-[11px] mw-680:border-b" +

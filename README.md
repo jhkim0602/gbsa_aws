@@ -356,7 +356,7 @@ make infra-validate       # dev/prod Terraform 검증
 - [로컬 개발 가이드](./docs/local-development.md)
 - [신뢰성·관측성·예약 용량 설계](./docs/specs/reliability-observability-scheduled-capacity-plan.md)
 - [평가 시스템 제안](./docs/scoring-system-proposal.md)
-- [AWS·GCP 하이브리드 아키텍처](./docs/architecture/interview-evidence-aws-gcp-hybrid-4k.png)
+- [AWS·GCP 하이브리드 아키텍처](./docs/architecture/interview-evidence-aws-gcp-hybrid.png)
 
 ## License
 
