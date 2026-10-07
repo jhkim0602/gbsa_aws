@@ -919,7 +919,7 @@ def create_production_worker_runtime(environment: Mapping[str, str]) -> WorkerRu
                 clock=clock,
                 assistant_projector=assistant_projector,
                 submission=submission,
-                embedder=aws.embedder,
+                embedder=report_embedder,
                 controlproof_fault_guard=fault_guard,
                 processing_observer=processing_observer,
             ),
