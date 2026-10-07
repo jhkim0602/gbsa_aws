@@ -533,6 +533,9 @@ class ReportingRepository(Protocol):
     def save_report(self, context: TenantContext, report: Report) -> Report: ...
     def get_report(self, context: TenantContext, report_id: UUID) -> Report: ...
     def get_report_for_session(self, context: TenantContext, session_id: UUID) -> Report | None: ...
+    def transcript_availability_for_report(
+        self, context: TenantContext, report: Report
+    ) -> dict[UUID, bool]: ...
     def get_report_for_invitation(
         self, context: TenantContext, invitation_id: UUID
     ) -> Report | None: ...
@@ -923,6 +926,33 @@ class SQLAlchemyReportingRepository:
 
     def get_report_for_session(self, context: TenantContext, session_id: UUID) -> Report | None:
         return self._latest_report(context, ReportRow.interview_session_id, session_id)
+
+    def transcript_availability_for_report(
+        self, context: TenantContext, report: Report
+    ) -> dict[UUID, bool]:
+        """Read current transcript presence without changing frozen report/scoring rows."""
+        company_id = self._tenant(context)
+        context.assert_company(report.company_id)
+        evidence = tuple(value for item in report.items for value in item.evidence)
+        if not evidence:
+            return {}
+        present = set(
+            self._session.execute(
+                select(
+                    TranscriptSegmentRow.transcript_segment_id, TranscriptSegmentRow.turn_id
+                ).where(
+                    TranscriptSegmentRow.company_id == company_id,
+                    TranscriptSegmentRow.interview_session_id == report.interview_session_id,
+                    TranscriptSegmentRow.transcript_segment_id.in_(
+                        {value.transcript_segment_id for value in evidence}
+                    ),
+                )
+            )
+        )
+        return {
+            value.evidence_id: (value.transcript_segment_id, value.answer_turn_id) in present
+            for value in evidence
+        }
 
     def get_report_for_invitation(
         self, context: TenantContext, invitation_id: UUID
