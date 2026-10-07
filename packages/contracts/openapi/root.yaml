@@ -2036,6 +2036,11 @@ components:
       - rationale
       - sufficiency
       properties:
+        transcript_available:
+          type: boolean
+          description: Whether the referenced transcript row currently matches the report's
+            company, interview session and answer turn. Does not indicate playback availability
+            or change frozen scores. Omitted when availability has not been checked.
         evidence_id:
           type: string
           format: uuid

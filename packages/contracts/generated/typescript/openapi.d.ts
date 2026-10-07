@@ -951,6 +951,8 @@ export interface components {
             readonly weight: number;
         };
         readonly EvidenceView: {
+            /** Current transcript presence for this evidence; does not change frozen scores. */
+            readonly transcript_available?: boolean;
             /** Format: uuid */
             readonly answer_turn_id: string;
             /** Format: uuid */

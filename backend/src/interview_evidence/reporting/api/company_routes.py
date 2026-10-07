@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, Literal, cast
@@ -208,7 +209,12 @@ def _scoring_breakdown_view(report: Report) -> dict[str, object]:
     }
 
 
-def _report_view(report: Report, reviews: tuple[HumanReview, ...]) -> dict[str, object]:
+def _report_view(
+    report: Report,
+    reviews: tuple[HumanReview, ...],
+    *,
+    transcript_availability: Mapping[UUID, bool] | None = None,
+) -> dict[str, object]:
     requirement_overrides = {
         review.target_id: review
         for review in sorted(reviews, key=lambda item: item.created_at)
@@ -268,6 +274,12 @@ def _report_view(report: Report, reviews: tuple[HumanReview, ...]) -> dict[str, 
                         "observation": evidence.observation,
                         "rationale": evidence.rationale,
                         "sufficiency": evidence.sufficiency.value,
+                        **(
+                            {"transcript_available": transcript_availability[evidence.evidence_id]}
+                            if transcript_availability is not None
+                            and evidence.evidence_id in transcript_availability
+                            else {}
+                        ),
                     }
                     for evidence in item.evidence
                 ],
@@ -424,6 +436,9 @@ def create_company_router(
                 }
             response.status_code = status.HTTP_202_ACCEPTED
             return {"status": "queued", "retryable": True, "message": None}
+        transcript_availability = repository.transcript_availability_for_report(
+            scope.context, report
+        )
         audit.append(
             scope.context,
             action="report.view",
@@ -432,7 +447,11 @@ def create_company_router(
             result="allowed",
             metadata={"report_version": report.version},
         )
-        return _report_view(report, repository.list_reviews(scope.context, report.report_id))
+        return _report_view(
+            report,
+            repository.list_reviews(scope.context, report.report_id),
+            transcript_availability=transcript_availability,
+        )
 
     @router.get(
         "/interview-sessions/{session_id}/timeline",

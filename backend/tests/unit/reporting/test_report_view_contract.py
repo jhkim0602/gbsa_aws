@@ -11,17 +11,20 @@ exist in ``ReportView``/``ReportItemView``/``AxisAssessmentView``/``ScoreBreakdo
 schemas forbid additional properties, so the check runs both ways.
 """
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import pytest
 import yaml
 from interview_evidence.reporting.api.company_routes import _report_view
 from interview_evidence.reporting.domain.report import (
     COMMUNICATION_SEPARATED_CONFIG_VERSION,
     AssessmentState,
     AxisAssessment,
+    Evidence,
     Report,
     ReportItem,
     ReportKind,
@@ -30,6 +33,7 @@ from interview_evidence.reporting.domain.report import (
     RequirementAssessmentStatus,
     RequirementEvidence,
     RequirementEvidenceRelation,
+    Sufficiency,
 )
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -165,3 +169,38 @@ def test_the_divisor_reports_the_share_that_could_not_be_scored() -> None:
 
     assert round(breakdown["denominator"], 10) == 0.7  # type: ignore[index]
     assert round(breakdown["numerator"], 10) == 56.0  # type: ignore[index]
+
+
+@pytest.mark.parametrize("checked", [True, False, None])
+def test_evidence_availability_is_an_optional_boolean_in_the_published_contract(checked) -> None:
+    available = schemas()
+    schema = available["EvidenceView"]
+    assert schema["properties"]["transcript_available"]["type"] == "boolean"
+    assert "transcript_available" not in schema["required"]
+    original = report()
+    owner = original.items[0]
+    evidence = Evidence(
+        evidence_id=EVIDENCE_ID,
+        company_id=COMPANY_ID,
+        report_item_id=owner.report_item_id,
+        criterion_id=owner.criterion_id,
+        competency_model_version_id=owner.competency_model_version_id,
+        answer_turn_id=UUID(int=0xA001),
+        transcript_segment_id=UUID(int=0xB001),
+        video_start_ms=1000,
+        video_end_ms=2000,
+        observation="synthetic observation",
+        rationale="synthetic rationale",
+        sufficiency=Sufficiency.DIRECT,
+        generation_version="test-v1",
+        created_at=original.created_at,
+    )
+    original = replace(original, items=(replace(owner, evidence=(evidence,)), original.items[1]))
+    options = {} if checked is None else {"transcript_availability": {EVIDENCE_ID: checked}}
+    view = _report_view(original, (), **options)
+    evidence_view = view["items"][0]["evidence"][0]
+    assert_keys_declared(evidence_view, "EvidenceView", available)
+    if checked is None:
+        assert "transcript_available" not in evidence_view
+    else:
+        assert evidence_view["transcript_available"] is checked
